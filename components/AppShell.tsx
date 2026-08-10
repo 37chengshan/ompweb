@@ -120,6 +120,17 @@ export function AppShell() {
       .catch(() => {});
     return () => controller.abort();
   }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/app-update", { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data: { currentVersion?: string; availableVersion?: string | null; updateAvailable?: boolean } | null) => {
+        if (!data?.updateAvailable || !data.availableVersion) return;
+        toast.info("ompweb update available", `v${data.currentVersion ?? "?"} -> v${data.availableVersion}. Run npm install -g @kahme247/ompweb to update.`);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
 

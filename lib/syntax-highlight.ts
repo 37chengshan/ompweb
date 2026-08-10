@@ -2,6 +2,7 @@
 // Prism build, which bundles all ~600 refractor grammars plus the entire CJS
 // theme barrel. Unregistered fence languages fall back to plain text without
 // console noise (the highlighter catches the unknown-language error itself).
+import type { CSSProperties } from "react";
 import createSyntaxElement from "react-syntax-highlighter/dist/esm/create-element";
 import PrismLight from "react-syntax-highlighter/dist/esm/prism-light";
 import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash";
@@ -34,8 +35,8 @@ import toml from "react-syntax-highlighter/dist/esm/languages/prism/toml";
 import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
 import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
-import vs from "react-syntax-highlighter/dist/esm/styles/prism/vs";
-import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
+import vsTheme from "react-syntax-highlighter/dist/esm/styles/prism/vs";
+import vscDarkPlusTheme from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
 
 // Covers every language the file API maps (app/api/files getLanguage) plus the
 // common chat fence languages. Grammar modules carry their own aliases
@@ -49,6 +50,18 @@ const grammars: Record<string, unknown> = {
 for (const [name, grammar] of Object.entries(grammars)) {
   PrismLight.registerLanguage(name, grammar);
 }
+
+const PRE_STYLE = 'pre[class*="language-"]';
+
+function withoutPreBackground(theme: Record<string, CSSProperties>) {
+  const preStyle = { ...theme[PRE_STYLE] };
+  delete preStyle.background;
+  delete preStyle.backgroundColor;
+  return { ...theme, [PRE_STYLE]: preStyle };
+}
+
+const vs = withoutPreBackground(vsTheme);
+const vscDarkPlus = withoutPreBackground(vscDarkPlusTheme);
 
 export { createSyntaxElement, vs, vscDarkPlus };
 export { PrismLight as SyntaxHighlighter };

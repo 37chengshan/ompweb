@@ -66,6 +66,7 @@ function Toaster() {
           <Toast.Root
             key={t.id}
             toast={t}
+            className="toast-card"
             style={{
               pointerEvents: "auto",
               display: "flex",

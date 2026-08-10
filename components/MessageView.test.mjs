@@ -8,7 +8,7 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { SafeMarkdownBody } = await jiti.import("./MessageView.tsx");
+const { MessageView, SafeMarkdownBody } = await jiti.import("./MessageView.tsx");
 const { CodeBlock } = await jiti.import("./MermaidBlock.tsx");
 
 test("large message content avoids the markdown pipeline until requested", () => {
@@ -28,4 +28,17 @@ test("streaming code blocks avoid syntax-highlighter line markup", () => {
 
   assert.match(html, /const value = 1;/);
   assert.doesNotMatch(html, /linenumber/);
+});
+
+test("MCP mount notices stay out of the transcript", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    message: {
+      role: "custom",
+      customType: "xdev-mount-notice",
+      content: "The xd:// device inventory changed.",
+      display: false,
+    },
+  }));
+
+  assert.equal(html, "");
 });

@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo, useReducer } from "react";
 import type {
   AgentMessage,
+  CustomMessage,
   ExtensionStatusItem,
   ExtensionUiRequest,
   ExtensionWidgetItem,
@@ -16,6 +17,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { createMessageUpdateCoalescer, type MessageUpdateCoalescer } from "@/lib/message-update-coalescer";
 import { getToolNamesForPreset, type ToolPreset } from "@/lib/tool-presets";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
+import { toast } from "@/components/ui/toast";
 import type { RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 
 export interface SessionData {
@@ -336,6 +338,15 @@ function extractMessageText(message: Partial<AgentMessage>): string {
         : "")
     .filter(Boolean)
     .join("\n");
+}
+
+function describeMcpMountNotice(message: CustomMessage): string {
+  const names = [...extractMessageText(message).matchAll(/xd:\/\/([A-Za-z0-9_]+)/g)]
+    .map((match) => match[1])
+    .filter((name, index, all) => all.indexOf(name) === index);
+  if (names.length === 0) return "The MCP tool inventory changed.";
+  const visible = names.slice(0, 3).join(", ");
+  return names.length > 3 ? `${visible}, +${names.length - 3} more` : visible;
 }
 
 function imageSignature(block: unknown): string {
@@ -1190,6 +1201,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             }
             return [...prev, delivered];
           });
+        } else if (completed?.role === "custom" && (completed as CustomMessage).customType === "xdev-mount-notice") {
+          toast.info("MCP tools updated", describeMcpMountNotice(completed as CustomMessage));
         } else if (completed) {
           setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
         }

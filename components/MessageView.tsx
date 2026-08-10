@@ -146,6 +146,9 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     return null;
   }
   if (message.role === "custom") {
+    if ((message as CustomMessage).customType === "xdev-mount-notice") {
+      return null;
+    }
     if ((message as CustomMessage).customType === "compaction") {
       return <CompactionMessageView message={message as CustomMessage} />;
     }
@@ -220,6 +223,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
     >
       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "85%" }}>
         <div
+          className="chat-message-card"
           style={{
             flex: 1,
             minWidth: 0,
@@ -509,6 +513,7 @@ function AssistantMessageView({
 
   return (
     <div
+      className={`chat-message-card${isStreaming ? " chat-message-card--live" : ""}`}
       style={{
         marginBottom: 16,
         background: "var(--assistant-bg)",
@@ -824,7 +829,7 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration }: {
               fontSize: 12,
               lineHeight: 1.5,
               overflow: "auto",
-              background: "var(--bg-subtle)",
+              backgroundColor: "var(--bg-subtle)",
               borderTop: isError ? "1px solid rgba(248,113,113,0.25)" : "1px solid rgba(34,197,94,0.2)",
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
@@ -1130,7 +1135,7 @@ function PairedResult({ text, isEmpty, isError }: {
           lineHeight: 1.5,
           overflow: "auto",
           maxHeight: 400,
-          background: "var(--bg)",
+          backgroundColor: "var(--bg)",
           whiteSpace: "pre-wrap",
           wordBreak: "break-all",
           fontStyle: isEmpty ? "italic" : "normal",
@@ -1370,7 +1375,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
               margin: 0,
               padding: "9px 10px",
               borderTop: "1px solid var(--border)",
-              background: "var(--bg)",
+              backgroundColor: "var(--bg)",
               color: "var(--text-muted)",
               fontSize: 12,
               lineHeight: 1.5,

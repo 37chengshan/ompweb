@@ -949,6 +949,53 @@ span.linenumber {
 .animate-slide-down { animation: ui-slide-down 0.16s ease-out both; }
 .animate-slide-up   { animation: ui-slide-up   0.16s ease-out both; }
 
+/* Conversational motion: new turns settle into place while an active turn
+   gets a quiet accent glow. These classes only animate on mount, so streamed
+   token updates do not restart the entrance animation. */
+@keyframes chat-message-in {
+  from { opacity: 0; transform: translateY(7px) scale(0.995); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes live-response-glow {
+  0%, 100% { box-shadow: var(--shadow-card), 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50% { box-shadow: var(--shadow-card), 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent); }
+}
+.chat-message-card {
+  animation: chat-message-in var(--dur-med) var(--ease-out-warm) both;
+  transition: border-color var(--dur-fast) var(--ease-out-warm),
+              box-shadow var(--dur-fast) var(--ease-out-warm),
+              transform var(--dur-fast) var(--ease-out-warm);
+}
+.chat-message-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border)) !important;
+  box-shadow: var(--shadow-pop) !important;
+  transform: translateY(-1px);
+}
+.chat-message-card--live {
+  animation: chat-message-in var(--dur-med) var(--ease-out-warm) both,
+             live-response-glow 2.4s ease-in-out var(--dur-med) infinite;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate3d(18px, 8px, 0) scale(0.97); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+.toast-card {
+  animation: toast-in var(--dur-med) var(--ease-out-warm) both;
+  transition: transform var(--dur-fast) var(--ease-out-warm),
+              border-color var(--dur-fast) var(--ease-out-warm),
+              box-shadow var(--dur-fast) var(--ease-out-warm);
+}
+.toast-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border)) !important;
+  box-shadow: var(--shadow-modal) !important;
+  transform: translateY(-2px);
+}
+
+.live-status-dot {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .mcp-editor-grid > :first-child { min-width: 0; }
 .empty-chat-brand { }
 @media (max-width: 640px) {

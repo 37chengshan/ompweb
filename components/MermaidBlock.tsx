@@ -281,7 +281,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           fontSize: 12.5,
           lineHeight: 1.62,
           overflowX: "auto",
-          background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+          backgroundColor: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
         }}>
           <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
         </pre>

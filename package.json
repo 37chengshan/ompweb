@@ -1,14 +1,14 @@
 {
-  "name": "ompweb",
+  "name": "@kahme247/ompweb",
   "version": "0.2.0",
   "description": "Web UI for the oh-my-pi (omp) coding agent",
-  "homepage": "https://github.com/Harvi8/ompweb#readme",
+  "homepage": "https://github.com/kahme247/ompweb#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Harvi8/ompweb.git"
+    "url": "git+https://github.com/kahme247/ompweb.git"
   },
   "bugs": {
-    "url": "https://github.com/Harvi8/ompweb/issues"
+    "url": "https://github.com/kahme247/ompweb/issues"
   },
   "license": "MIT",
   "engines": {

@@ -25,13 +25,13 @@ Local web UI for the [oh-my-pi (omp) coding agent](https://github.com/can1357/oh
 **Run without installing:**
 
 ```bash
-npx ompweb@latest
+npx @kahme247/ompweb@latest
 ```
 
 **Or install globally:**
 
 ```bash
-npm install -g ompweb
+npm install -g @kahme247/ompweb
 ompweb
 ```
 

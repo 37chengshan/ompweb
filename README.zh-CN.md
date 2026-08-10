@@ -25,13 +25,13 @@
 **免安装直接运行：**
 
 ```bash
-npx ompweb@latest
+npx @kahme247/ompweb@latest
 ```
 
 **或全局安装：**
 
 ```bash
-npm install -g ompweb
+npm install -g @kahme247/ompweb
 ompweb
 ```
 

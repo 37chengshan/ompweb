@@ -25,13 +25,13 @@
 **インストールせずに実行:**
 
 ```bash
-npx ompweb@latest
+npx @kahme247/ompweb@latest
 ```
 
 **またはグローバルにインストール:**
 
 ```bash
-npm install -g ompweb
+npm install -g @kahme247/ompweb
 ompweb
 ```
 

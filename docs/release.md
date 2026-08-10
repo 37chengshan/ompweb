@@ -2,8 +2,8 @@
 
 Each release publishes two artifacts:
 
-- npm package: `ompweb`
-- GitHub Release: [Harvi8/ompweb](https://github.com/Harvi8/ompweb)
+- npm package: `@kahme247/ompweb`
+- GitHub Release: [kahme247/ompweb](https://github.com/kahme247/ompweb)
 
 After the initial bootstrap release, publishing is performed by GitHub Actions
 with npm trusted publishing. No npm access token is stored in this repository
@@ -11,7 +11,7 @@ or in GitHub secrets.
 
 ## Bootstrap the first release
 
-`ompweb` is not registered on npm yet. npm exposes trusted-publisher settings
+`@kahme247/ompweb` is not registered on npm yet. npm exposes trusted-publisher settings
 only for an existing package, so version `0.2.0` must be published once from a
 reviewed local checkout using the authenticated npm account:
 
@@ -30,9 +30,9 @@ version.
 
 ## One-time trusted-publisher setup
 
-1. In npm, open the `ompweb` package settings and add a **GitHub Actions**
+1. In npm, open the `@kahme247/ompweb` package settings and add a **GitHub Actions**
    trusted publisher with:
-   - Owner: `Harvi8`
+   - Owner: `kahme247`
    - Repository: `ompweb`
    - Workflow filename: `publish.yml`
    - Environment: `npm`
@@ -64,7 +64,7 @@ Then create and publish the matching GitHub Release:
 
 ```bash
 gh release create v<version> \
-  --repo Harvi8/ompweb \
+  --repo kahme247/ompweb \
   --verify-tag \
   --title "v<version>" \
   --generate-notes
@@ -78,9 +78,9 @@ through the configured trusted publisher.
 ## Verify
 
 ```bash
-gh run list --repo Harvi8/ompweb --workflow publish.yml --limit 1
-npm view ompweb@<version> version --registry https://registry.npmjs.org/
-npm view ompweb@<version> --json --registry https://registry.npmjs.org/
+gh run list --repo kahme247/ompweb --workflow publish.yml --limit 1
+npm view @kahme247/ompweb@<version> version --registry https://registry.npmjs.org/
+npm view @kahme247/ompweb@<version> --json --registry https://registry.npmjs.org/
 ```
 
 Confirm the workflow succeeded, the exact package version resolves, and npm

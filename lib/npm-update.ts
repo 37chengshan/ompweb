@@ -57,7 +57,7 @@ export async function checkNpmUpdate(): Promise<NpmUpdateStatus> {
 
 export async function installNpmUpdate(): Promise<void> {
   if (!installPromise) {
-    installPromise = runNpm(["install", "--global", `${NPM_PACKAGE}@latest`], {
+    installPromise = runNpm(["update", "--global", NPM_PACKAGE], {
       timeout: 300_000,
       env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
     }).then(() => {

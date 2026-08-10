@@ -89,6 +89,16 @@ export function AppShell() {
   const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
+  const installAppUpdate = useCallback(async () => {
+    try {
+      const response = await fetch("/api/app-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+      toast.success("ompweb updated", "Restart ompweb to use the new version.");
+    } catch (error) {
+      toast.error("Could not update ompweb", error instanceof Error ? error.message : String(error));
+    }
+  }, []);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
   useEffect(() => {
@@ -126,11 +136,11 @@ export function AppShell() {
       .then((response) => response.ok ? response.json() : null)
       .then((data: { currentVersion?: string; availableVersion?: string | null; updateAvailable?: boolean } | null) => {
         if (!data?.updateAvailable || !data.availableVersion) return;
-        toast.info("ompweb update available", `v${data.currentVersion ?? "?"} -> v${data.availableVersion}. Run npm install -g @kahme247/ompweb to update.`);
+        toast.info("ompweb update available", <span>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}. <button type="button" onClick={() => void installAppUpdate()} style={{ marginLeft: 6, padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}>Update now</button></span>);
       })
       .catch(() => {});
     return () => controller.abort();
-  }, []);
+  }, [installAppUpdate]);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
 

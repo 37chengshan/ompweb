@@ -1,4 +1,5 @@
 import packageJson from "../package.json";
+import { runNpm } from "./npx";
 
 const NPM_PACKAGE = "@kahme247/ompweb";
 const CHECK_TTL_MS = 60 * 60 * 1000;
@@ -51,4 +52,12 @@ export async function checkNpmUpdate(): Promise<NpmUpdateStatus> {
   } catch {
     return { currentVersion, availableVersion: null, updateAvailable: false };
   }
+}
+
+export async function installNpmUpdate(): Promise<void> {
+  await runNpm(["install", "--global", `${NPM_PACKAGE}@latest`], {
+    timeout: 300_000,
+    env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+  });
+  cached = null;
 }

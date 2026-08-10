@@ -69,6 +69,9 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
   const [update, setUpdate] = useState<UpdateState | null>(null);
   const [checking, setChecking] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [appUpdate, setAppUpdate] = useState<UpdateState | null>(null);
+  const [checkingAppUpdate, setCheckingAppUpdate] = useState(true);
+  const [updatingApp, setUpdatingApp] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [nativeSettings, setNativeSettings] = useState<NativeSettings | null>(null);
@@ -114,6 +117,37 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
   }, []);
 
   useEffect(() => { void checkForUpdate(); }, [checkForUpdate]);
+
+  const checkForAppUpdate = useCallback(async () => {
+    setCheckingAppUpdate(true);
+    try {
+      const response = await fetch("/api/app-update");
+      const data = await response.json() as UpdateState & { error?: string };
+      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+      setAppUpdate(data);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCheckingAppUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => { void checkForAppUpdate(); }, [checkForAppUpdate]);
+
+  const installAppUpdate = useCallback(async () => {
+    setUpdatingApp(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/app-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+      setMessage("ompweb was updated. Restart ompweb to use the new version.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpdatingApp(false);
+    }
+  }, []);
 
   const installUpdate = useCallback(async () => {
     setUpdating(true);
@@ -208,6 +242,18 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
               </div>
             </section>
             {nativeSettingsError && <p role="alert" style={{ margin: 0, color: "#f87171", fontSize: 12 }}>{nativeSettingsError}</p>}
+          <section style={{ borderTop: "1px solid var(--border)", paddingTop: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>ompweb application</div>
+                <div style={{ marginTop: 4, color: appUpdate?.updateAvailable ? "var(--accent)" : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                  {checkingAppUpdate ? "Checking for updates..." : appUpdate?.updateAvailable ? `v${appUpdate.currentVersion ?? "?"} -> v${appUpdate.availableVersion}` : appUpdate?.currentVersion ? `v${appUpdate.currentVersion} is up to date` : "Version unavailable"}
+                </div>
+              </div>
+              <button type="button" onClick={() => void checkForAppUpdate()} disabled={checkingAppUpdate} aria-label="Check ompweb updates" style={{ padding: 7, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: checkingAppUpdate ? "wait" : "pointer" }}><RefreshCw size={14} aria-hidden="true" /></button>
+            </div>
+            {appUpdate?.updateAvailable && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}><button type="button" onClick={() => void installAppUpdate()} disabled={updatingApp} style={{ padding: "7px 11px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "#fff", cursor: updatingApp ? "wait" : "pointer", fontSize: 12 }}>{updatingApp ? "Updating..." : "Update ompweb"}</button></div>}
+          </section>
           <section style={{ borderTop: "1px solid var(--border)", paddingTop: 18 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div>

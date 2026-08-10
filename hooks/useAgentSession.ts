@@ -1292,6 +1292,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     dispatch({ type: "start" });
     pendingScrollToUserRef.current = true;
     completionScrollAllowedRef.current = true;
+    // The send click bubbles through the global pointer listener below. It is
+    // not a request to stop following the response that this prompt starts.
+    userScrollIntentUntilRef.current = 0;
 
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
 
@@ -1745,8 +1748,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const handleScrollPositionChange = useCallback(() => {
     if (!agentRunningRef.current) return;
-    if (Date.now() < ignoreProgrammaticScrollUntilRef.current) return;
-    if (Date.now() > userScrollIntentUntilRef.current) return;
+    const userScrollIntent = Date.now() <= userScrollIntentUntilRef.current;
+    // A user wheel, keyboard, touch, or scrollbar scroll must win over the
+    // timer used to suppress our own scroll events. During a busy stream that
+    // timer is refreshed every frame, so checking it first would trap the user
+    // at the bottom.
+    if (!userScrollIntent && Date.now() < ignoreProgrammaticScrollUntilRef.current) return;
+    if (!userScrollIntent) return;
     const container = scrollContainerRef.current;
     if (!container) return;
     completionScrollAllowedRef.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 24;
@@ -1865,6 +1873,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (followScrollFrameRef.current === null) {
         followScrollFrameRef.current = requestAnimationFrame(() => {
           followScrollFrameRef.current = null;
+          if (!completionScrollAllowedRef.current) return;
           scrollToBottom(agentRunningRef.current || streamState.isStreaming ? "auto" : "smooth");
         });
       }

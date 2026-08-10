@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Noto_Sans_Mono } from "next/font/google";
-import { PwaRegistration } from "@/components/PwaRegistration";
-import "katex/dist/katex.min.css";
+import { Noto_Sans_Mono, Noto_Serif_SC, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
 const notoSansMono = Noto_Sans_Mono({
@@ -10,45 +8,48 @@ const notoSansMono = Noto_Sans_Mono({
   display: "swap",
 });
 
+// Display serif pair for the warm-humanistic heading voice: Source Serif 4
+// covers latin, Noto Serif SC covers CJK. Both expose CSS variables consumed
+// by --font-serif in globals.css.
+const sourceSerif = Source_Serif_4({
+  subsets: ["latin"],
+  variable: "--font-source-serif",
+  display: "swap",
+});
+
+const notoSerifSC = Noto_Serif_SC({
+  // CJK glyphs are served via unicode-range slices regardless of subset;
+  // "latin" satisfies next/font's preloading requirement.
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-noto-serif",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Pi Web",
-  description: "Pi Web interface for the pi coding agent",
-  applicationName: "Pi Web",
-  manifest: "/manifest.webmanifest",
-  icons: {
-    icon: [
-      {
-        url: "/icons/icon-192.png",
-        sizes: "192x192",
-        type: "image/png",
-      },
-    ],
-    apple: [
-      {
-        url: "/icons/apple-touch-icon.png",
-        sizes: "180x180",
-        type: "image/png",
-      },
-    ],
-  },
+  title: "omp web",
+  description: "Web UI for the oh-my-pi (omp) coding agent",
+  // PWA-like behavior on iOS: standalone chrome, no telephone autodetect.
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Pi Web",
+    title: "omp web",
+    statusBarStyle: "default",
   },
   formatDetection: {
     telephone: false,
   },
 };
 
+// theme-color adapts to light/dark so the browser chrome / iOS status bar
+// matches the active theme. `viewportFit: cover` lets us honor safe-area-inset
+// (used by DirectoryPicker footer) on notched devices.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  interactiveWidget: "resizes-content",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#1a1a1a" },
+    { media: "(prefers-color-scheme: light)", color: "#FAF9F6" },
+    { media: "(prefers-color-scheme: dark)", color: "#1B1916" },
   ],
 };
 
@@ -58,18 +59,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" translate="no" className={`${notoSansMono.variable} notranslate`} suppressHydrationWarning>
+    <html lang="en" translate="no" className={`${notoSansMono.variable} ${sourceSerif.variable} ${notoSerifSC.variable} notranslate`} suppressHydrationWarning>
       <head>
         <meta name="google" content="notranslate" />
+        {/* Pre-hydration: apply stored theme before first paint to avoid a flash
+            of the wrong theme. Matches html.dark selector in globals.css. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark")}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem("omp-theme"),d=matchMedia("(prefers-color-scheme: dark)").matches;if(t==="dark"||(t!=="light"&&t!=="dark"&&d))document.documentElement.classList.add("dark")}catch(e){}})();`,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var l=localStorage.getItem("omp-lang");if(l!=="en"&&l!=="zh-CN"&&l!=="ja"){var n=(navigator.language||"").toLowerCase();l=n.indexOf("zh")===0?"zh-CN":n.indexOf("ja")===0?"ja":"en"}document.documentElement.lang=l}catch(e){}})();`,
           }}
         />
       </head>
-      <body translate="no" className="notranslate">
+      <body translate="no" className="notranslate" style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
         {children}
-        <PwaRegistration />
       </body>
     </html>
   );

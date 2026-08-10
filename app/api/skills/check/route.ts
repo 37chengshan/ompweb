@@ -14,10 +14,10 @@ export async function POST(req: Request) {
       scope?: unknown;
     };
     const cwd = typeof body.cwd === "string" ? body.cwd : "";
-    if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
+    if (!cwd) return NextResponse.json({ error: "cwd required", code: "cwd_required" }, { status: 400 });
     const allowedRoots = await getAllowedFileRoots();
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 
     const pkg = typeof body.package === "string" ? body.package : undefined;
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       ? body.scope as SkillInstallScope
       : undefined;
     if ((pkg && !scope) || (!pkg && scope)) {
-      return NextResponse.json({ error: "package and scope must be provided together" }, { status: 400 });
+      return NextResponse.json({ error: "package and scope must be provided together", code: "package_scope_together" }, { status: 400 });
     }
 
     const { skills } = await loadSkillsWithInstallInfo(cwd);
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       .filter((install) => !pkg || (install.package === pkg && install.scope === scope));
 
     if (pkg && installs.length === 0) {
-      return NextResponse.json({ error: "Installed skill not found" }, { status: 404 });
+      return NextResponse.json({ error: "Installed skill not found", code: "skill_not_installed" }, { status: 404 });
     }
 
     const updates = await checkSkillUpdates(installs, {

@@ -1,0 +1,92 @@
+import { NextResponse } from "next/server";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { deleteMcpServer, parseMcpListOutput, readDiscoveredMcpServers, readMcpConfig, readUserMcpConfig, type McpLiveServer, validateMcpServer, writeMcpServer } from "@/lib/omp/mcp-config";
+import { readSessionHeader, resolveSessionPath } from "@/lib/session-reader";
+import { getRpcSession, resolveSpawnCwd, startRpcSession } from "@/lib/rpc-manager";
+
+export const dynamic = "force-dynamic";
+
+function mergeMcpServers(primary: McpLiveServer[], secondary: McpLiveServer[]): McpLiveServer[] {
+  const result = [...primary];
+  const seen = new Set(primary.map((server) => `${server.source}:${server.name}`));
+  for (const server of secondary) {
+    const key = `${server.source}:${server.name}`;
+    if (!seen.has(key)) result.push(server);
+  }
+  return result;
+}
+
+async function allowedCwd(cwd: unknown): Promise<string> {
+  if (typeof cwd !== "string" || !cwd.trim()) throw new Error("cwd is required");
+  const allowedRoots = await getAllowedFileRoots();
+  if (!isExistingFilePathAllowed(cwd, allowedRoots)) throw new Error("Workspace is not allowed");
+  return cwd;
+}
+
+export async function GET(request: Request) {
+  try {
+    const params = new URL(request.url).searchParams;
+    const requestedCwd = params.get("cwd");
+    const cwd = requestedCwd ? await allowedCwd(requestedCwd) : null;
+    const file = cwd ? readMcpConfig(cwd) : null;
+    const user = readUserMcpConfig();
+    const inventory: McpLiveServer[] = [
+      ...user.servers.map(({ name, config }) => ({ name, source: "User level", status: config.enabled === false ? "disabled" as const : "configured" as const, type: typeof config.type === "string" ? config.type : typeof config.url === "string" ? "http" : "stdio" })),
+      ...user.disabledServers.map((name) => ({ name, source: "Disabled", status: "disabled" as const })),
+      ...Object.entries(file?.config.mcpServers ?? {}).map(([name, config]) => ({ name, source: "Project level", status: config.enabled === false ? "disabled" as const : "configured" as const, type: typeof config.type === "string" ? config.type : typeof config.url === "string" ? "http" : "stdio" })),
+      ...readDiscoveredMcpServers(cwd ?? undefined, user.disabledServers),
+    ];
+    const sessionId = params.get("sessionId");
+    let liveServers: ReturnType<typeof parseMcpListOutput> | undefined;
+    let liveError: string | undefined;
+    if (sessionId) {
+      try {
+        let session = getRpcSession(sessionId);
+        if (!session?.isAlive()) {
+          const sessionFile = await resolveSessionPath(sessionId);
+          if (!sessionFile) throw new Error("Session not found");
+          ({ session } = await startRpcSession(sessionId, sessionFile, resolveSpawnCwd(readSessionHeader(sessionFile)?.cwd)));
+        }
+        liveServers = mergeMcpServers(parseMcpListOutput(await session.getMcpList()), inventory);
+      } catch (error) {
+        liveError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    return NextResponse.json({ root: file?.root ?? null, path: file?.path ?? null, exists: file?.exists ?? false, servers: Object.entries(file?.config.mcpServers ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, config]) => ({ name, config })), user, inventory, liveServers, liveError });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json() as { cwd?: unknown; name?: unknown; previousName?: unknown; server?: unknown };
+    const cwd = await allowedCwd(body.cwd);
+    validateMcpServer(body.name, body.server);
+    if (body.previousName !== undefined && typeof body.previousName !== "string") throw new Error("previousName must be a string");
+    return NextResponse.json({ success: true, ...writeMcpServer(cwd, body.name as string, body.server, body.previousName) });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json() as { name?: unknown; server?: unknown };
+    validateMcpServer(body.name, body.server);
+    return NextResponse.json({ success: true, message: "MCP server configuration is valid" });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json() as { cwd?: unknown; name?: unknown };
+    const cwd = await allowedCwd(body.cwd);
+    if (typeof body.name !== "string") throw new Error("name is required");
+    return NextResponse.json({ success: true, ...deleteMcpServer(cwd, body.name) });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+}

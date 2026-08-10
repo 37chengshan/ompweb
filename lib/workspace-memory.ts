@@ -1,19 +1,6 @@
-/**
- * Per-workspace "last open session" memory.
- *
- * Switching to a workspace (project root or cwd) restores the session the user
- * had open there last, instead of landing on a blank new-session page. Without
- * this, every workspace switch required re-picking the session by hand.
- *
- * The workspace key is the resolved project root when known (sessions carry it
- * from the server), so all worktrees of one repo share a single memory slot.
- * It falls back to the raw cwd for non-repo directories, which is its own
- * project key there.
- *
- * Stored in localStorage; best-effort (silently ignored when unavailable).
- */
+import type { SessionInfo } from "./types";
 
-const STORAGE_KEY = "pi-web:last-open-by-workspace";
+const STORAGE_KEY = "omp-web:last-open-by-project";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -21,7 +8,7 @@ interface StorageLike {
   removeItem(key: string): void;
 }
 
-function getBrowserStorage(): StorageLike | null {
+function browserStorage(): StorageLike | null {
   if (typeof window === "undefined") return null;
   try {
     return window.localStorage;
@@ -30,69 +17,47 @@ function getBrowserStorage(): StorageLike | null {
   }
 }
 
-function readMap(storage: StorageLike): Record<string, string | undefined> {
-  const raw = storage.getItem(STORAGE_KEY);
-  if (!raw) return {};
+function readEntries(storage: StorageLike): Record<string, string> {
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, string | undefined>
-      : {};
+    const raw = storage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter(([, id]) => typeof id === "string" && id.length > 0)) as Record<string, string>;
   } catch {
     return {};
   }
 }
 
-/** The remembered session id for a workspace, or null when none/stale. */
-export function getLastOpenSession(
-  workspaceKey: string,
-  storage: StorageLike | null = getBrowserStorage(),
-): string | null {
-  if (!storage) return null;
-  try {
-    const id = readMap(storage)[workspaceKey];
-    return typeof id === "string" && id.length > 0 ? id : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setLastOpenSession(
-  workspaceKey: string,
-  sessionId: string,
-  storage: StorageLike | null = getBrowserStorage(),
-): void {
-  if (!storage) return;
-  try {
-    const map = readMap(storage);
-    map[workspaceKey] = sessionId;
-    storage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // storage unavailable — memory is best-effort
-  }
-}
-
-export function clearLastOpen(
-  workspaceKey: string,
-  storage: StorageLike | null = getBrowserStorage(),
-): void {
-  if (!storage) return;
-  try {
-    const map = readMap(storage);
-    if (!(workspaceKey in map)) return;
-    delete map[workspaceKey];
-    // Keep the store clean: drop the key entirely when nothing is remembered.
-    if (Object.keys(map).length === 0) storage.removeItem(STORAGE_KEY);
-    else storage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // ignore
-  }
-}
-
-/** Workspace identity for a session: resolved project root when known, else cwd. */
-export function workspaceKeyOf(session: {
-  cwd: string;
-  projectRoot?: string | null;
-}): string {
+export function workspaceKeyOf(session: Pick<SessionInfo, "cwd" | "projectRoot">): string {
   return session.projectRoot ?? session.cwd;
+}
+
+export function getLastOpenSession(workspace: string, storage: StorageLike | null = browserStorage()): string | null {
+  if (!storage) return null;
+  return readEntries(storage)[workspace] ?? null;
+}
+
+export function setLastOpenSession(workspace: string, sessionId: string, storage: StorageLike | null = browserStorage()): void {
+  if (!storage) return;
+  try {
+    const entries = readEntries(storage);
+    entries[workspace] = sessionId;
+    storage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // Workspace restoration is a best-effort convenience.
+  }
+}
+
+export function clearLastOpenSession(workspace: string, storage: StorageLike | null = browserStorage()): void {
+  if (!storage) return;
+  try {
+    const entries = readEntries(storage);
+    if (!(workspace in entries)) return;
+    delete entries[workspace];
+    if (Object.keys(entries).length === 0) storage.removeItem(STORAGE_KEY);
+    else storage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // Workspace restoration is a best-effort convenience.
+  }
 }

@@ -1,17 +1,39 @@
-import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { homedir } from "os";
 import { invalidateModelsCache } from "@/lib/models-cache";
+import { enableProvider } from "@/lib/omp/model-roles";
+import { RpcProcess, type RpcFrame } from "@/lib/omp/rpc-process";
+import { disposeUtilityRpc } from "@/lib/omp/rpc-utility";
 
 export const dynamic = "force-dynamic";
 
-// In-memory registry: loginToken -> resolve/reject for the manualCodeInput promise
-declare global {
-  var __piLoginCallbacks: Map<string, { resolve: (v: string) => void; reject: (e: Error) => void }> | undefined;
+/**
+ * Interactive login over a dedicated `omp --mode rpc-ui` process. omp drives
+ * the flow with extension_ui_request frames: `open_url` carries the OAuth URL,
+ * `input` asks for the pasted code/redirect URL, `notify` reports progress.
+ * The SSE stream keeps pi-web's event names (auth, prompt_request, progress,
+ * success, error, cancelled) so the client flow is unchanged; the POST handler
+ * feeds the user's pasted value back as an extension_ui_response frame.
+ */
+
+const LOGIN_EXTRA_ARGS = ["--no-session", "--no-extensions", "--no-skills", "--no-lsp"];
+const READY_TIMEOUT_MS = 60_000;
+const LOGIN_TIMEOUT_MS = 15 * 60_000;
+const HEARTBEAT_MS = 30_000;
+
+interface PendingLogin {
+  provider: string;
+  submit: (value: string) => void;
 }
 
-function getCallbackRegistry() {
-  if (!globalThis.__piLoginCallbacks) globalThis.__piLoginCallbacks = new Map();
-  return globalThis.__piLoginCallbacks;
+// Registry survives dev-server hot reload; the SSE stream registers its token,
+// the POST handler resolves it.
+declare global {
+  var __ompLoginRegistry: Map<string, PendingLogin> | undefined;
+}
+
+function getLoginRegistry(): Map<string, PendingLogin> {
+  if (!globalThis.__ompLoginRegistry) globalThis.__ompLoginRegistry = new Map();
+  return globalThis.__ompLoginRegistry;
 }
 
 // POST /api/auth/login/[provider] — frontend sends redirect URL or auth code
@@ -23,162 +45,140 @@ export async function POST(
   const { token, code } = (await req.json()) as { token?: string; code?: string };
 
   if (!token || !code) {
-    return Response.json({ error: "token and code required" }, { status: 400 });
-  }
-
-  const registry = getCallbackRegistry();
-  const callbacks = registry.get(token);
-  if (!callbacks) {
-    return Response.json({ error: "No pending login for token" }, { status: 404 });
+    return Response.json({ error: "token and code required", code: "login_token_code_required" }, { status: 400 });
   }
   // Verify token belongs to this provider (token format: "<provider>-<ts>-<random>")
   if (!token.startsWith(`${provider}-`)) {
-    return Response.json({ error: "Token does not match provider" }, { status: 400 });
+    return Response.json({ error: "Token does not match provider", code: "login_token_mismatch" }, { status: 400 });
+  }
+  const pending = getLoginRegistry().get(token);
+  if (!pending) {
+    return Response.json({ error: "No pending login for token", code: "login_no_pending" }, { status: 404 });
   }
 
-  callbacks.resolve(code);
-  registry.delete(token);
+  pending.submit(code);
   return Response.json({ ok: true, provider });
 }
 
-// GET /api/auth/login/[provider] — SSE stream for OAuth flow
+// GET /api/auth/login/[provider] — SSE stream for the login flow
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ provider: string }> }
 ) {
   const { provider } = await params;
-
+  const token = `${provider}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const registry = getLoginRegistry();
   const encoder = new TextEncoder();
-  const send = (controller: ReadableStreamDefaultController, data: unknown) => {
-    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-  };
-
-  // AbortController propagates client disconnect into ModelRuntime.login().
-  const abort = new AbortController();
-  req.signal.addEventListener("abort", () => abort.abort());
 
   const stream = new ReadableStream({
     async start(controller) {
-      const modelRuntime = await ModelRuntime.create();
-      if (!modelRuntime.getProvider(provider)?.auth.oauth) {
-        send(controller, { type: "error", message: `Unknown provider: ${provider}` });
-        controller.close();
-        return;
-      }
+      let closed = false;
+      const send = (data: unknown) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          closed = true;
+        }
+      };
+      // OAuth flows sit idle while the user is in the browser; keep the SSE
+      // connection alive past proxy/Next idle timeouts.
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(":\n\n"));
+        } catch {
+          closed = true;
+        }
+      }, HEARTBEAT_MS);
 
-      const registry = getCallbackRegistry();
-      const activeTokens = new Set<string>();
-      let pendingManualRequest: { token: string; promise: Promise<string> } | undefined;
+      // The user may paste the code before omp's input request arrives (the
+      // auth event shows the paste box immediately) — buffer one value.
+      let pendingInputId: string | null = null;
+      let bufferedValue: string | null = null;
 
-      const createClientInputRequest = () => {
-        const token = `${provider}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        activeTokens.add(token);
-
-        const promise = new Promise<string>((resolve, reject) => {
-          registry.set(token, {
-            resolve: (value) => {
-              activeTokens.delete(token);
-              registry.delete(token);
-              resolve(value);
-            },
-            reject: (error) => {
-              activeTokens.delete(token);
-              registry.delete(token);
-              reject(error);
-            },
+      let proc: RpcProcess | null = null;
+      const handleFrame = (frame: RpcFrame) => {
+        if (frame.type !== "extension_ui_request") return;
+        const method = frame.method;
+        if (method === "open_url") {
+          send({
+            type: "auth",
+            url: String(frame.url ?? ""),
+            instructions: typeof frame.instructions === "string" ? frame.instructions : null,
+            token,
           });
-        });
-
-        return { token, promise };
-      };
-
-      const getManualInputRequest = () => {
-        if (!pendingManualRequest) {
-          pendingManualRequest = createClientInputRequest();
-          pendingManualRequest.promise
-            .finally(() => {
-              pendingManualRequest = undefined;
-            })
-            .catch(() => {});
+        } else if (method === "input") {
+          const id = String(frame.id);
+          if (bufferedValue !== null) {
+            const value = bufferedValue;
+            bufferedValue = null;
+            proc?.sendFrame({ type: "extension_ui_response", id, value });
+          } else {
+            pendingInputId = id;
+            send({
+              type: "prompt_request",
+              message: typeof frame.title === "string" ? frame.title : "Enter the authorization code",
+              placeholder: typeof frame.placeholder === "string" ? frame.placeholder : null,
+              token,
+            });
+          }
+        } else if (method === "notify") {
+          if (typeof frame.message === "string") send({ type: "progress", message: frame.message });
+        } else if (method === "cancel") {
+          if (pendingInputId !== null && frame.targetId === pendingInputId) pendingInputId = null;
         }
-        return pendingManualRequest;
       };
-
-      // Cleanup: remove pending token and abort any waiting promise
-      const cleanup = () => {
-        for (const token of activeTokens) {
-          registry.get(token)?.reject(new Error("Login cancelled"));
-          registry.delete(token);
-        }
-        activeTokens.clear();
-      };
-
-      // Also cancel on client disconnect
-      abort.signal.addEventListener("abort", cleanup);
 
       try {
-        await modelRuntime.login(provider, "oauth", {
-          prompt: async (prompt: AuthPrompt) => {
-            const request = prompt.type === "manual_code"
-              ? getManualInputRequest()
-              : createClientInputRequest();
-            if (prompt.type === "select") {
-              send(controller, {
-                type: "select_request",
-                message: prompt.message,
-                options: prompt.options,
-                token: request.token,
-              });
-            } else {
-              send(controller, {
-                type: "prompt_request",
-                message: prompt.message,
-                placeholder: prompt.placeholder ?? null,
-                token: request.token,
-              });
-            }
-            return request.promise;
-          },
-          notify: (event: AuthEvent) => {
-            if (event.type === "auth_url") {
-              const request = getManualInputRequest();
-              send(controller, {
-                type: "auth",
-                url: event.url,
-                instructions: event.instructions ?? null,
-                token: request.token,
-              });
-            } else if (event.type === "device_code") {
-              send(controller, {
-                type: "device_code",
-                userCode: event.userCode,
-                verificationUri: event.verificationUri,
-                intervalSeconds: event.intervalSeconds ?? null,
-                expiresInSeconds: event.expiresInSeconds ?? null,
-              });
-            } else {
-              send(controller, { type: "progress", message: event.message });
-            }
-          },
-          signal: abort.signal,
-        });
+        proc = new RpcProcess({ cwd: homedir(), extraArgs: LOGIN_EXTRA_ARGS, onFrame: handleFrame });
+      } catch (error) {
+        send({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        clearInterval(heartbeat);
+        closed = true;
+        try { controller.close(); } catch {}
+        return;
+      }
+      const child = proc;
 
+      registry.set(token, {
+        provider,
+        submit: (value: string) => {
+          if (pendingInputId !== null) {
+            const id = pendingInputId;
+            pendingInputId = null;
+            child.sendFrame({ type: "extension_ui_response", id, value });
+          } else {
+            bufferedValue = value;
+          }
+        },
+      });
+
+      const cleanup = () => {
+        registry.delete(token);
+        clearInterval(heartbeat);
+        void child.dispose();
+      };
+      req.signal.addEventListener("abort", cleanup);
+
+      try {
+        await child.waitReady(READY_TIMEOUT_MS);
+        await child.sendCommand({ type: "login", providerId: provider }, LOGIN_TIMEOUT_MS);
+        enableProvider(provider);
         invalidateModelsCache();
-        send(controller, { type: "success" });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg !== "Login cancelled") {
-          send(controller, { type: "error", message: msg });
+        disposeUtilityRpc();
+        send({ type: "success" });
+      } catch (error) {
+        if (req.signal.aborted) {
+          send({ type: "cancelled" });
         } else {
-          send(controller, { type: "cancelled" });
+          send({ type: "error", message: error instanceof Error ? error.message : String(error) });
         }
       } finally {
         cleanup();
-        controller.close();
+        closed = true;
+        try { controller.close(); } catch {}
       }
-    },
-    cancel() {
-      abort.abort();
     },
   });
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, memo, useRef, useEffect } from "react";
+import { translate, useI18n } from "@/lib/i18n";
 import type { SessionEntry, SessionTreeNode } from "@/lib/types";
-import { useI18n } from "@/hooks/useI18n";
 
 interface Props {
   tree: SessionTreeNode[];
@@ -67,7 +67,7 @@ function getLabel(entry: SessionEntry): string {
     }
     if (text.length > 40) text = text.slice(0, 40) + "…";
     if (text) return text;
-    if (msg.role === "assistant") return "[assistant]";
+    if (msg.role === "assistant") return translate("branchNavigator.assistantLabel");
   }
   return entry.type;
 }
@@ -90,19 +90,25 @@ interface TreeNodeProps {
   onSelect: (id: string) => void;
 }
 
-function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelect }: TreeNodeProps) {
-  const { node: rep, skipped } = compress(node);
-  const isActive = activePathIds.has(rep.entry.id);
-  const isOnPath = activePathIds.has(node.entry.id) || activePathIds.has(rep.entry.id);
-  const label = getLabel(rep.entry);
-  const role = rep.entry.type === "message" && "message" in rep.entry
+const TreeNodeView = memo(function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelect }: TreeNodeProps) {
+  const { t } = useI18n();
+  const { node: rep, skipped } = useMemo(() => compress(node), [node]);
+  const repId = rep.entry.id;
+  const nodeId = node.entry.id;
+  const isActive = activePathIds.has(repId);
+  const isOnPath = activePathIds.has(nodeId) || activePathIds.has(repId);
+  const label = useMemo(() => getLabel(rep.entry), [rep.entry]);
+  const role = useMemo(() => rep.entry.type === "message" && "message" in rep.entry
     ? (rep.entry.message as { role: string }).role
-    : null;
+    : null, [rep.entry]);
 
   return (
     <div>
       {/* This node row */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-label={label}
         style={{
           display: "flex",
           alignItems: "center",
@@ -110,6 +116,12 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
           cursor: "pointer",
         }}
         onClick={() => onSelect(rep.entry.id)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(rep.entry.id);
+          }
+        }}
       >
         {/* Indent guide lines */}
         {parentLines.map((hasLine, i) => (
@@ -167,15 +179,15 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
             fontSize: 9,
             fontFamily: "var(--font-mono)",
             color: role === "user" ? "var(--accent)" : "var(--text-dim)",
-            background: role === "user" ? "rgba(37,99,235,0.08)" : "var(--bg-hover)",
-            border: `1px solid ${role === "user" ? "rgba(37,99,235,0.2)" : "var(--border)"}`,
+            background: role === "user" ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--bg-hover)",
+            border: `1px solid ${role === "user" ? "color-mix(in srgb, var(--accent) 20%, transparent)" : "var(--border)"}`,
             borderRadius: 3,
             padding: "0 4px",
             marginRight: 5,
             flexShrink: 0,
             lineHeight: "16px",
           }}>
-            {role === "user" ? "U" : "A"}
+            {role === "user" ? t("branchNavigator.roleUser") : t("branchNavigator.roleAssistant")}
           </span>
         )}
 
@@ -215,14 +227,28 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
       ))}
     </div>
   );
-}
+}, (prev, next) => {
+  // Re-render only when this node, its compressed representative, or its
+  // active-path membership changed. parentLines/depth/isLast are positional
+  // and stable for a given node so they're intentionally ignored.
+  if (prev.node !== next.node) return false;
+  if (prev.onSelect !== next.onSelect) return false;
+  if (prev.activePathIds === next.activePathIds) return true;
+  // node is unchanged here, so the compressed representative id is stable —
+  // compute it once and check membership against both Set identities.
+  const id = next.node.entry.id;
+  const repId = compress(next.node).node.entry.id;
+  if (prev.activePathIds.has(repId) !== next.activePathIds.has(repId)) return false;
+  if (prev.activePathIds.has(id) !== next.activePathIds.has(id)) return false;
+  return true;
+});
 
 export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, containerRef, open: openProp, onToggle, hasSession, compact }: Props) {
   const { t } = useI18n();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
     if (!open || !inline) return;
@@ -230,13 +256,47 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
     if (!anchor) return;
     const update = () => {
       const rect = anchor.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom, left: rect.left, width: rect.width });
+      const width = rect.width;
+      const height = Math.min(260, window.innerHeight - rect.bottom - 8);
+      setDropdownPos({ top: rect.bottom, left: Math.max(0, Math.min(rect.left, window.innerWidth - width)), width, height: Math.max(60, height) });
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(anchor);
-    return () => ro.disconnect();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
   }, [open, inline, containerRef]);
+
+  // Close the inline dropdown on outside click or Escape.
+  useEffect(() => {
+    if (!open || !inline) return;
+    const closeDropdown = () => {
+      if (onToggle) onToggle();
+      else setOpenInternal(false);
+    };
+    const close = (event: MouseEvent) => {
+      // Only the branch button itself (and the panel) keep the dropdown open;
+      // other top-bar controls must close it rather than being swallowed.
+      const anchor = btnRef.current;
+      if (anchor && anchor.contains(event.target as Node)) return;
+      if (event.target instanceof Element && event.target.closest("[data-branch-panel]")) return;
+      closeDropdown();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeDropdown();
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, inline, containerRef, onToggle]);
 
   const activePathIds = useMemo(
     () => buildActivePath(tree, activeLeafId),
@@ -245,18 +305,21 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
 
   const handleSelect = useCallback((id: string) => {
     onLeafChange(id);
-  }, [onLeafChange]);
+    if (openProp === undefined) setOpenInternal(false);
+  }, [onLeafChange, openProp]);
 
-  const noBranchReason = !hasSession
-    ? t("i18n.noActiveSession")
+  const noBranchReason = useMemo(() => !hasSession
+    ? t("branchNavigator.noActiveSession")
     : !hasBranch(tree)
-      ? t("i18n.noBranches")
-      : null;
+      ? t("branchNavigator.noBranches")
+      : null, [hasSession, tree, t]);
 
   // Find first meaningful node (skip pure linear prefix)
-  const compressed = tree.length > 0 ? compress(tree[0]) : null;
-  const firstNode = compressed?.node ?? null;
-  const hasContent = !noBranchReason && firstNode && firstNode.children.length > 1;
+  const firstNode = useMemo(() => {
+    const compressed = tree.length > 0 ? compress(tree[0]) : null;
+    return compressed?.node ?? null;
+  }, [tree]);
+  const hasContent = !noBranchReason && firstNode !== null && firstNode.children.length > 1;
 
   const branchIcon = (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: hasContent ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}>
@@ -298,22 +361,27 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
           }}
           onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = open ? "var(--text)" : "var(--text-muted)"; }}
-           title={t("i18n.branches")}
-           aria-label={t("i18n.branches")}
-          aria-pressed={open}
+          title={t("branchNavigator.branches")}
+          aria-label={t("branchNavigator.branches")}
+          aria-haspopup="menu"
+          aria-expanded={open}
         >
           {branchIcon}
-           {!compact && <span>{t("i18n.branches")}</span>}
+          {!compact && <span>{t("branchNavigator.branches")}</span>}
         </button>
         {open && dropdownPos && (
-          <div style={{
+          <div data-branch-panel style={{
             position: "fixed",
             top: dropdownPos.top,
             left: dropdownPos.left,
             width: dropdownPos.width,
+            maxHeight: dropdownPos.height,
             background: "var(--bg-panel)",
+            border: "1px solid var(--border)",
             borderBottom: "1px solid var(--border)",
-            zIndex: 500,
+            boxShadow: "var(--shadow-pop)",
+            overflowY: "auto",
+            zIndex: 600,
           }}>
             {hasContent && firstNode ? (
               <div style={{ padding: "4px 12px 8px 12px", maxHeight: 260, overflowY: "auto" }}>
@@ -360,7 +428,7 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
         }}
       >
         {branchIcon}
-         <span style={{ color: "var(--text-muted)" }}>{t("i18n.branches")}</span>
+        <span style={{ color: "var(--text-muted)" }}>{t("branchNavigator.branches")}</span>
         {chevron}
       </button>
 
@@ -392,7 +460,7 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
             </div>
           ) : (
             <div style={{ padding: "10px 16px", fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
-              {noBranchReason ?? t("i18n.noBranches")}
+              {noBranchReason ?? t("branchNavigator.noBranches")}
             </div>
           )}
         </div>

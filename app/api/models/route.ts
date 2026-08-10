@@ -1,13 +1,13 @@
-import { stat } from "fs/promises";
-import { resolve } from "path";
-import { createAgentSessionServices, getAgentDir, type SettingsManager } from "@earendil-works/pi-coding-agent";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { loadModelsWithCache, withModelRuntimeError, type ModelsData } from "@/lib/models-cache";
-import { resolveVisibleModels, selectInitialModelScope } from "@/lib/model-scope";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { projectTrustReloadOptions } from "@/lib/project-trust";
+import { type OmpModel, runUtilityCommand } from "@/lib/omp/rpc-utility";
+import { readDisabledProviders } from "@/lib/omp/model-roles";
 
 export const dynamic = "force-dynamic";
+
+// The omp model registry (auth + models.yml) is global, not per-cwd, so one
+// cache entry serves every request. The ?cwd= query parameter is still
+// accepted for client compatibility but no longer affects the result.
+const MODELS_CACHE_KEY = "global";
 
 const modelNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
@@ -20,66 +20,64 @@ function compareModelEntries(
     || modelNameCollator.compare(a.id, b.id);
 }
 
-async function loadModels(cwd: string): Promise<ModelsData> {
-  const nameMap = new Map<string, string>();
-  let modelList: { id: string; name: string; provider: string }[] = [];
-  let defaultModel: { provider: string; modelId: string } | null = null;
-  const thinkingLevels: Record<string, string[]> = {};
-  const thinkingLevelMaps: Record<string, Record<string, string | null>> = {};
+// "off" is always a valid selector; the concrete efforts come from the model's
+// baked thinking metadata (omp: getSupportedEfforts = reasoning ? efforts : []).
+function thinkingLevelsFor(model: OmpModel): string[] {
+  if (!model.reasoning) return ["off"];
+  return ["off", ...(model.thinking?.efforts ?? [])];
+}
 
-  const agentDir = getAgentDir();
-  // Gate untrusted project extensions: enumerating models still imports and
-  // runs a repository's .pi/extensions factories, so honor project trust here
-  // too (see lib/project-trust.ts, #236).
-  const trustReloadOptions = projectTrustReloadOptions(cwd, agentDir);
-  const services = await createAgentSessionServices({
-    cwd,
-    agentDir,
-    ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
-  });
-  const modelError = services.modelRuntime.getError();
-  const settings: SettingsManager = services.settingsManager;
-  // `enabledModels` supports globs and fuzzy patterns, so resolve it the same
-  // way the CLI does instead of comparing pattern strings literally (#307).
-  const scope = await resolveVisibleModels(
-    services.modelRuntime,
-    settings.getEnabledModels(),
+// OMP's /fast maps to a priority service tier. These are the provider families
+// OMP currently resolves for that control (ModelControls.setFastMode).
+function supportsFastMode(model: OmpModel): boolean {
+  return model.provider === "anthropic" || model.provider === "openai" || model.provider === "google";
+}
+
+async function loadModels(): Promise<ModelsData> {
+  const { models: available } = await runUtilityCommand<{ models: OmpModel[] }>(
+    { type: "get_available_models" },
+    120_000,
   );
-  const { visible, thinkingLevelPins, warnings } = scope;
-  modelList = visible.map((m) => ({
-    id: m.id,
-    name: m.name,
-    provider: m.provider,
-  })).sort(compareModelEntries);
-  for (const m of visible) {
+
+  const nameMap = new Map<string, string>();
+  const thinkingLevels: Record<string, string[]> = {};
+  const modelList = available
+    .map((m) => ({ id: m.id, name: m.name, provider: m.provider, thinkingLevels: thinkingLevelsFor(m), supportsFastMode: supportsFastMode(m) }))
+    .sort(compareModelEntries);
+  const { providers: loginProviders } = await runUtilityCommand<{ providers: Array<{ id: string; name: string; authenticated: boolean }> }>(
+    { type: "get_login_providers" },
+    30_000,
+  );
+  const disabledProviders = readDisabledProviders();
+  const connectedProviders = loginProviders
+    .filter((provider) => provider.authenticated)
+    .map((provider) => ({ id: provider.id, name: provider.name, disabled: disabledProviders.has(provider.id) }));
+  for (const m of available) {
     const key = `${m.provider}:${m.id}`;
     nameMap.set(key, m.name);
-    thinkingLevels[key] = getSupportedThinkingLevels(m);
-    if (m.thinkingLevelMap) thinkingLevelMaps[key] = m.thinkingLevelMap;
+    thinkingLevels[key] = thinkingLevelsFor(m);
   }
 
-  const defaultProvider = settings.getDefaultProvider();
-  const defaultModelId = settings.getDefaultModel();
-  const initial = selectInitialModelScope(scope, {
-    ...(defaultProvider && defaultModelId
-      ? { defaultModel: { provider: defaultProvider, modelId: defaultModelId } }
-      : {}),
-  });
-  if (initial.model) {
-    defaultModel = { provider: initial.model.provider, modelId: initial.model.id };
+  // omp resolves the default model at session start; a --no-session utility
+  // process reports it via get_state.
+  let defaultModel: { provider: string; modelId: string } | null = null;
+  try {
+    const state = await runUtilityCommand<{ model?: { provider?: string; id?: string } }>(
+      { type: "get_state" },
+      30_000,
+    );
+    const provider = state.model?.provider;
+    const modelId = state.model?.id;
+    if (provider && modelId && available.some((m) => m.provider === provider && m.id === modelId)) {
+      defaultModel = { provider, modelId };
+    }
+  } catch {
+    // Default model is cosmetic — the models list is still useful without it.
   }
 
   return withModelRuntimeError(
-    {
-      models: Object.fromEntries(nameMap),
-      modelList,
-      defaultModel,
-      thinkingLevels,
-      thinkingLevelMaps,
-      thinkingLevelPins,
-      ...(warnings.length > 0 ? { modelScopeWarnings: warnings } : {}),
-    },
-    modelError,
+    { models: Object.fromEntries(nameMap), modelList, defaultModel, thinkingLevels, connectedProviders },
+    undefined,
   );
 }
 
@@ -88,31 +86,13 @@ const EMPTY_MODELS: ModelsData = {
   modelList: [],
   defaultModel: null,
   thinkingLevels: {},
-  thinkingLevelMaps: {},
-  thinkingLevelPins: {},
 };
 
-export async function GET(req: Request) {
-  const requestedCwd = new URL(req.url).searchParams.get("cwd") || process.cwd();
-  const cwd = resolve(requestedCwd);
-
-  let cwdStat;
+export async function GET() {
   try {
-    cwdStat = await stat(cwd);
-  } catch {
-    return Response.json({ error: `Directory does not exist: ${cwd}` }, { status: 400 });
-  }
-  if (!cwdStat.isDirectory()) {
-    return Response.json({ error: `Not a directory: ${cwd}` }, { status: 400 });
-  }
-  const allowedRoots = await getAllowedFileRoots();
-  if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
-    return Response.json({ error: "Access denied" }, { status: 403 });
-  }
-
-  try {
-    return Response.json(await loadModelsWithCache(cwd, () => loadModels(cwd)));
-  } catch {
-    return Response.json(EMPTY_MODELS);
+    return Response.json(await loadModelsWithCache(MODELS_CACHE_KEY, () => loadModels()));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return Response.json(withModelRuntimeError(EMPTY_MODELS, message));
   }
 }

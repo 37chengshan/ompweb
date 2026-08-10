@@ -1,99 +1,95 @@
-# Pi Web
+# ompweb
 
-[English](./README.md) | [简体中文](./README.zh-CN.md) | [Русский](./README.ru.md)
+[English](./README.md) | [简体中文](./README.zh-CN.md)
 
-[pi コーディングエージェント](https://github.com/badlogic/pi-mono) のローカル Web UI です。Pi Web はローカルの pi セッションファイルを読み込み、セッションの閲覧、リアルタイムチャット、モデル設定、スキル管理、プロジェクトファイルのプレビューを行えるブラウザワークスペースを提供します。
+[oh-my-pi (omp) コーディングエージェント](https://github.com/can1357/oh-my-pi)のローカル Web UI です。ompweb はローカルの omp セッションファイルを読み込み、セッションの閲覧、リアルタイムチャット、モデル設定、スキル管理、プロジェクトファイルのプレビューを行えるブラウザワークスペースを提供します。
 
-![Pi Web では、CLI と同じ pi セッションを、構造化された Markdown、ツール呼び出し、プロジェクトナビゲーションとともに表示できます](https://raw.githubusercontent.com/agegr/pi-web/main/docs/screenshot2.png)
+![ompweb — ライトテーマ](docs/screenshot-light.png)
 
-CLI と Pi Web で同じ pi セッションを利用できます。構造化されたツール呼び出し、読みやすい Markdown、セッション閲覧、整理された結果表示を備えています。
+<details>
+<summary>ダークテーマとコマンドパレット</summary>
+
+![ompweb — ダークテーマ](docs/screenshot-dark.png)
+
+![ompweb — コマンドパレット](docs/screenshot-palette.png)
+
+</details>
+
+## 必要条件
+
+- [omp](https://github.com/can1357/oh-my-pi) がインストールされ、`PATH` に含まれていること（または `OMP_WEB_OMP_BIN` でバイナリの場所を指定）
+- Node.js 22.19.0 以降（`node --version`）
 
 ## クイックスタート
 
-Pi Web には Node.js 22.19.0 以降が必要です。現在のバージョンは `node --version` で確認できます。
-
-**インストールせずに実行：**
+**インストールせずに実行:**
 
 ```bash
-npx @agegr/pi-web@latest
+npx ompweb@latest
 ```
 
-**またはグローバルにインストール：**
+**またはグローバルにインストール:**
 
 ```bash
-# 初回インストールまたはアップグレード
-npm install -g @agegr/pi-web@latest
-pi-web
+npm install -g ompweb
+ompweb
 ```
 
-**グローバルインストールをアンインストール：**
+続いて [http://127.0.0.1:30177](http://127.0.0.1:30177) を開きます。サーバーの準備が整うと、CLI はブラウザを自動的に開こうとします。ompweb はデフォルトで `127.0.0.1` で待ち受けます。
+
+**オプション:**
 
 ```bash
-npm uninstall -g @agegr/pi-web
+ompweb --port 8080              # カスタムポート
+ompweb --hostname 0.0.0.0       # 信頼できるネットワークに公開
+ompweb -p 8080 -H 0.0.0.0       # オプションを組み合わせる
+ompweb --no-open                # ブラウザを自動的に開かない
+
+PORT=8080 ompweb                # 環境変数にも対応
+OMP_WEB_HOSTNAME=0.0.0.0 ompweb # ネットワーク公開を明示的に有効化
+OMP_WEB_PASSWORD='a-long-random-password' ompweb # Basic Auth を有効化（ユーザー名: omp）
+OMP_WEB_NO_OPEN=1 ompweb        # バックグラウンドサービスとして実行する場合に便利
 ```
 
-続いて [http://127.0.0.1:30141](http://127.0.0.1:30141) を開きます。サーバーの準備が整うと、CLI はブラウザを自動的に開こうとします。Pi Web はデフォルトで `127.0.0.1` のみをリッスンします。
-
-**オプション：**
-
-```bash
-pi-web --port 8080              # カスタムポート
-pi-web --hostname 0.0.0.0       # 信頼できるネットワークに公開
-pi-web -p 8080 -H 0.0.0.0       # オプションを組み合わせる
-pi-web --no-open                # ブラウザを自動的に開かない
-
-PORT=8080 pi-web                # 環境変数にも対応
-PI_WEB_HOSTNAME=0.0.0.0 pi-web  # ネットワーク公開を明示的に有効化
-PI_WEB_ALLOWED_HOSTS=pi-web.internal pi-web  # プロキシまたはカスタムホスト名を許可
-PI_WEB_PASSWORD='十分に長いランダムなパスワード' pi-web  # Basic Auth を有効化（ユーザー名: pi）
-PI_WEB_NO_OPEN=1 pi-web         # バックグラウンドサービスとして実行する場合に便利
-```
-
-`PI_WEB_PASSWORD` を設定すると、Web インターフェースとすべての API エンドポイントが HTTP Basic Auth で保護されます。ユーザー名は常に `pi` です。未設定または空の場合、認証は無効です。
-
-Pi Web は高権限のエージェントを呼び出せます。Basic Auth は転送中のパスワードを暗号化しないため、平文 HTTP をインターネットに公開しないでください。リモートアクセスには、信頼できるリバースプロキシによる HTTPS または信頼できる VPN を使用してください。
-API リクエストでは、loopback 名、IP リテラル、選択したバインドホスト名、および `PI_WEB_ALLOWED_HOSTS` にカンマ区切りで指定した完全一致のホスト名のみを受け入れます。信頼できるリバースプロキシが異なる外部ホスト名を使用する場合は、この変数を設定してください。
-
-## HTTP プロキシ
-
-Pi Web は、サーバー側のモデルリクエストと API リクエストに標準の `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` 環境変数を使用します。
-
-macOS または Linux：
-
-```bash
-HTTP_PROXY=http://127.0.0.1:7890 \
-HTTPS_PROXY=http://127.0.0.1:7890 \
-NO_PROXY=localhost,127.0.0.1 \
-npx @agegr/pi-web@latest
-```
-
-Windows PowerShell：
-
-```powershell
-$env:HTTP_PROXY = "http://127.0.0.1:7890"
-$env:HTTPS_PROXY = "http://127.0.0.1:7890"
-$env:NO_PROXY = "localhost,127.0.0.1"
-npx @agegr/pi-web@latest
-```
+`OMP_WEB_PASSWORD` を設定すると、HTTP Basic 認証で UI とすべての API エンドポイントを保護できます。ユーザー名は常に `omp` です。未設定なら認証は無効です。Basic 認証は通信を暗号化しないため、リモート利用では信頼できるリバースプロキシまたは VPN 経由の HTTPS が必要です。ompweb をインターネットへ直接公開しないでください。
 
 ## 機能
 
-- **作業をすぐに再開**：セッションのパスやターミナル履歴を探さずに、プロジェクトごとに過去の pi の会話を閲覧できます。
-- **別の方向性を安全に試す**：以前のメッセージから続けるか、セッションをフォークして別の進め方を試せます。
-- **ブランチをまたいで作業**：サイドバーから Git worktree を切り替えると、新しいセッションと Explorer が選択したチェックアウトに追従します。
-- **プロジェクトを見ながらチャット**：エージェントの作業中に、左側でファイルを閲覧し、右側でソース、ドキュメント、画像、音声、PDF をプレビューできます。
-- **セッションの状態を明確に把握**：コンテキスト使用量、コスト、コンパクション状態、システムプロンプトの詳細をトップバーで確認できます。
-- **ターミナルでの設定を削減**：モデル、ログイン／API キー、モデルテスト、スキルの切り替えを Web UI から管理できます。
+- **作業をすぐに再開**: ターミナル履歴やセッションパスを探し回らずに、プロジェクトごとに過去の omp の会話を閲覧できます。
+- **別の方向性を安全に試す**: 以前のメッセージから続行するか、セッションをフォークして別ルートに分岐できます。
+- **サイドバーを整理**: 非アクティブなセッションはネイティブな記録を残してアーカイブし、不要になったものは明示的に削除できます。
+- **ブランチをまたいで作業**: サイドバーから Git ワークツリーを切り替えると、新しいセッションとエクスプローラーが選択したチェックアウトに追従します。
+- **プロジェクトを見ながらチャット**: エージェントの作業中に、左側でファイルを閲覧し、右側でソース、ドキュメント、画像、音声、PDF をプレビューできます。
+- **セッション状態をひと目で把握**: コンテキスト使用量、コスト、コンパクション状態、システムプロンプトの詳細をトップバーで確認できます。
+- **ターミナルに頼らない設定**: モデル、ログイン/APIキー、モデルテスト、ネイティブ OMP 制御（アドバイザー、承認、Bash ポリシー、思考、コンパクション、メモリ、自動学習、リトライ/フォールバック）、スキル、プラグイン、プロジェクト MCP サーバーを Web UI から管理できます。
+- **Settings で MCP を管理**: 専用の MCP タブでプロジェクトサーバーの状態（有効 / 無効 / 無効な設定）を表示し、追加、編集、名前変更、検証、削除を行えます。設定エラーはトーストで通知されます。
+- **OMP を最新に保つ**: Settings からインストール済みランタイムを確認・更新し、必要に応じてアクティブなセッションを再起動できます。
+- **完了を見逃さない**: エージェント完了時のブラウザー通知を有効にし、インストール済みスキルの更新を確認できます。
+- **⌘K でどこへでもジャンプ**: セッションの切り替え、新規作成、テーマ切替ができるコマンドパレット（⌘K / Ctrl+K）。
+- **温かみのある紙のようなデザイン**: ライト/ダークの2テーマ、セリフ体のディスプレイ書体、WCAG AA 検証済みのコントラスト。トークン駆動の UI キット（Base UI プリミティブ、cmdk、lucide アイコン）で構築。
 
-## 注意事項
+## 設定
 
-- **データディレクトリ**：Pi Web はデフォルトで `~/.pi/agent/sessions` を読み込みます。別の pi エージェントディレクトリを指定するには `PI_CODING_AGENT_DIR` を設定してください。
-- **セッションファイル**：ファイルは `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` に保存されます。
-- **実行環境**：セッションの作業ディレクトリを利用できるよう、Pi Web は pi と同じ OS またはコンテナで実行してください。
-- **モデル設定**：Models パネルは pi エージェントディレクトリ内の `models.json` を読み書きします。モデルの一覧とデフォルト値は pi の設定から取得されます。
-- **ファイルアクセス**：ファイルの閲覧とプレビューは、選択したプロジェクトディレクトリとセッションに含まれる作業ディレクトリに限定されます。
-- **Git worktree**：切り替え機能が表示される条件、新しい worktree の作成方法、削除時の動作については、[Pi Web の Worktree](./docs/worktrees.md) を参照してください。
-- **Fork とセッション内ブランチの違い**：Fork は新しい `.jsonl` ファイルを作成します。"Edit from here" は同じセッションファイル内に別のブランチを作成します。
+| 変数 | 意味 |
+| --- | --- |
+| `PORT` | サーバーポート（デフォルト `30177`。`-p/--port` が優先） |
+| `OMP_WEB_HOSTNAME` | バインドするホスト名（デフォルト `127.0.0.1`。`-H/--hostname` が優先） |
+| `OMP_WEB_PASSWORD` | 任意の HTTP Basic 認証パスワード（ユーザー名: `omp`） |
+| `OMP_WEB_NO_OPEN` | `1`/`true` を設定するとブラウザの自動起動をスキップ |
+| `OMP_WEB_OMP_BIN` | `omp` バイナリが `PATH` にない場合の絶対パス |
+| `PI_CODING_AGENT_DIR` | 別の omp エージェントディレクトリを指定（デフォルト `~/.omp/agent`） |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | サーバーサイドリクエスト用の標準プロキシ変数 |
+
+## アーキテクチャ
+
+ompweb は Node 上でホストされる Next.js アプリで、インストール済みの `omp` バイナリを操作します。エージェント自体は同梱していません:
+
+- **ライブセッション**: `omp --mode rpc-ui`（stdio 上の NDJSON）を、アクティブなセッションごとに 1 つの子プロセスとして起動します。そのため、エージェントのバージョンは常にインストールされているものと完全に一致します。
+- **セッション閲覧**: omp のセッションファイル（`~/.omp/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`）を直接読み込みます。タイトル変更、アーカイブ、削除は、OMP のライブ書き込みと競合しないよう保護されたネイティブファイルのメンテナンス操作です。
+- **モデルと認証**: omp 子プロセスに対する RPC コマンドを使用します。モデルパネルは omp エージェントディレクトリ内の `models.yml` を編集します。
+- **スキルとプラグイン**: omp のスキルディレクトリ（`~/.omp/agent/skills`、プロジェクトの `.omp/skills`、互換ディレクトリ）をスキャンし、プラグイン管理には `omp plugin` を呼び出します。
+- **ファイルアクセス**: ファイルの閲覧とプレビューは、選択したプロジェクトディレクトリとセッションに現れる作業ディレクトリに限定されます。
+- **フォークとセッション内ブランチの違い**: フォークは新しい `.jsonl` ファイルを作成します。「ここから編集」は同じセッションファイル内に別のブランチを作成します。
 
 ## 開発
 
@@ -102,57 +98,37 @@ npm install
 npm run dev
 ```
 
-ローカル開発サーバーは [http://127.0.0.1:30141](http://127.0.0.1:30141) で動作します。
+ローカル開発サーバーは [http://127.0.0.1:30177](http://127.0.0.1:30177) で動作します。
 
-よく使うチェック：
+よく使うチェック:
 
 ```bash
-node_modules/.bin/tsc --noEmit
-npm run lint
+npx tsc --noEmit       # 型チェック
+npm run lint           # ESLint（警告ゼロを強制）
+node --test lib/*.test.mjs components/*.test.mjs   # テスト実行
 ```
 
-ローカル開発中は `next build` / `npm run build` を実行しないでください。`.next/` に書き込みが行われ、開発サーバーに影響する可能性があります。ビルドはリリース作業に任せてください。
+ローカル開発中は `next build` / `npm run build` の実行を避けてください。`.next/` への書き込みが行われ、開発サーバーに干渉することがあります。ビルドはリリース作業のときだけにしてください。
 
-## プロジェクト構成
+## 国際化
 
-```text
-app/
-  api/
-    agent/          # AgentSession を作成・操作し、SSE イベントを公開
-    auth/           # OAuth と API キーの管理
-    cwd/validate/   # カスタム作業ディレクトリの検証
-    default-cwd/    # pi のデフォルト作業ディレクトリを取得
-    files/          # ファイルの一覧、読み込み、プレビュー、監視
-    home/           # 現在のユーザーのホームディレクトリ
-    models/         # 利用可能なモデル、デフォルトモデル、思考レベル
-    models-config/  # models.json の読み書きとモデルのテスト
-    sessions/       # セッションの読み込み、名前変更、削除、コンテキスト、HTML エクスポート
-    skills/         # スキルの一覧、検索、インストール、有効化／無効化
-components/
-  AppShell.tsx        # メインレイアウト、URL 状態、上部パネル、ファイルタブ
-  SessionSidebar.tsx  # プロジェクト選択、セッションツリー、Explorer
-  ChatWindow.tsx      # メッセージ、SSE、画像のドラッグ＆ドロップ、ミニマップ
-  ChatInput.tsx       # 入力欄、モデル／ツール／思考／コンパクション／スラッシュコントロール
-  MessageView.tsx     # メッセージ、思考、ツール呼び出し／結果の表示
-  ModelsConfig.tsx    # モデルと認証の設定パネル
-  SkillsConfig.tsx    # スキル管理パネル
-  FileExplorer.tsx    # ファイルツリー
-  FileViewer.tsx      # ソース、差分、画像、音声、PDF、DOCX のプレビュー
-lib/
-  http-dispatcher.ts  # サーバー側 fetch の HTTP(S) プロキシ設定
-  rpc-manager.ts      # AgentSessionWrapper のライフサイクルとグローバルレジストリ
-  session-reader.ts   # .jsonl セッションファイルとブランチコンテキストの解析
-  normalize.ts        # toolCall フィールド名の正規化
-  file-access.ts      # ファイル読み込みの安全境界
-  file-paths.ts       # ファイルパスのエンコードと相対パスのヘルパー
-  markdown.ts         # Markdown／Mermaid／KaTeX プラグインの設定
-  pi-types.ts         # pi 関連の型
-hooks/
-  useAgentSession.ts  # セッションの読み込み、コマンド送信、SSE ステートマシン
-  useAudio.ts         # 完了通知音
-  useDragDrop.ts      # 画像のドラッグ＆ドロップ
-  useTheme.ts         # テーマの切り替え
-bin/
-  pi-web.js           # npm CLI エントリポイント
-instrumentation.ts    # サーバー HTTP ディスパッチャーの初期化
-```
+ompweb は英語、簡体字中国語（简体中文）、日本語をサポートし、3 言語で UI 全体の翻訳文字列を提供しています。言語は `navigator.language` から自動検出され、トップバーの言語メニューから実行時に切り替えできます。選択はセッション間で永続化されます。
+
+- 辞書ファイル: `lib/i18n/locales/{en,zh-CN,ja}.json`
+- フレームワーク: `lib/i18n/index.tsx` — `useSyncExternalStore` ベースの軽量ストア、`{var}` 補間と複数形サポート（`.one`/`.other`）
+- API エラーメッセージは安定したエラーコード（`errors.<code>`）でクライアント側で翻訳
+
+## 品質
+
+- **アクセシビリティ**: WCAG AA 準拠 — Lighthouse アクセシビリティスコア 100/100、キーボードナビゲーション全面対応、フォーカス可視リング、ARIA ロール
+- **パフォーマンス**: リストコンポーネントのメモ化、RAF によるスクロール/マウスハンドラのスロットリング、デバウンス検索、ストリーミング JSONL リーダー、ETag キャッシュによるセッションリスト
+- **堅牢性**: omp 子プロセスのグレースフルシャットダウン（プロセスグループキル）、エラーバウンダリ、アトミックなセッションファイル書き換え
+- **テスト**: セッション解析、ターミナル入力、Markdown レンダリング、メッセージ表示、ネイティブ設定、MCP 設定をカバーする焦点を絞ったテストスイート
+
+## クレジット
+
+ompweb は [agegr/pi-web](https://github.com/agegr/pi-web)（MIT）のフォークです。pi-web は [badlogic/pi-mono](https://github.com/badlogic/pi-mono) の pi コーディングエージェント向け Web UI で、これを [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 向けに適合させたものです。
+
+## ライセンス
+
+MIT

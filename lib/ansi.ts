@@ -157,27 +157,27 @@ function applyAnsiCodes(style: CSSProperties, codes: number[]): CSSProperties {
     } else if (code === 39) {
       delete next.color;
     } else if (code === 49) {
-      delete next.backgroundColor;
+      delete next.background;
     } else if (code >= 30 && code <= 37) {
       next.color = ANSI_8_COLORS[code - 30];
     } else if (code >= 90 && code <= 97) {
       next.color = ANSI_BRIGHT_COLORS[code - 90];
     } else if (code >= 40 && code <= 47) {
-      next.backgroundColor = ANSI_8_COLORS[code - 40];
+      next.background = ANSI_8_COLORS[code - 40];
     } else if (code >= 100 && code <= 107) {
-      next.backgroundColor = ANSI_BRIGHT_COLORS[code - 100];
+      next.background = ANSI_BRIGHT_COLORS[code - 100];
     } else if ((code === 38 || code === 48) && codes[i + 1] === 2) {
       const [r, g, b] = [codes[i + 2], codes[i + 3], codes[i + 4]];
       if ([r, g, b].every((value) => typeof value === "number" && Number.isFinite(value))) {
         if (code === 38) next.color = `rgb(${r}, ${g}, ${b})`;
-        else next.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+        else next.background = `rgb(${r}, ${g}, ${b})`;
       }
       i += 4;
     } else if ((code === 38 || code === 48) && codes[i + 1] === 5) {
       const color = ansi256Color(codes[i + 2]);
       if (color) {
         if (code === 38) next.color = color;
-        else next.backgroundColor = color;
+        else next.background = color;
       }
       i += 2;
     }

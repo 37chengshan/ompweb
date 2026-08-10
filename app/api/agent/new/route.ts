@@ -1,65 +1,53 @@
 import { NextResponse } from "next/server";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
 import { allowFileRoot } from "@/lib/file-access";
 import { invalidateSessionListCache } from "@/lib/session-reader";
-import { startRpcSession } from "@/lib/rpc-manager";
+import { WebRpcError, startRpcSession } from "@/lib/rpc-manager";
+import { RpcCommandError } from "@/lib/omp/rpc-process";
 
-const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-
-function parseThinkingLevel(value: unknown): ThinkingLevel | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value === "string" && THINKING_LEVELS.has(value as ThinkingLevel)) {
-    return value as ThinkingLevel;
+function newSessionErrorResponse(error: unknown) {
+  if (error instanceof SyntaxError) {
+    return NextResponse.json({ error: "Invalid JSON request body", code: "invalid_json" }, { status: 400 });
   }
-  throw new Error(`Invalid thinking level: ${String(value)}`);
+  if (error instanceof WebRpcError || error instanceof RpcCommandError) {
+    return NextResponse.json(
+      { error: error.message, code: error instanceof WebRpcError ? error.code : (error.code ?? "rpc_command_failed") },
+      { status: 400 },
+    );
+  }
+  return NextResponse.json({ error: String(error) }, { status: 500 });
 }
 // POST /api/agent/new  body: { cwd: string; type: string; message?: string; ... }
-// Spawns a brand-new pi session. Most calls immediately send the first command;
+// Spawns a brand-new omp session. Most calls immediately send the first command;
 // type:"ensure_session" only creates the runtime so clients can query commands.
-// Returns pi's real session id plus the model/thinking state selected at startup.
+// Returns { sessionId, data } where sessionId is omp's real session id.
+// Model/thinking presets are applied post-ready via RPC set_model /
+// set_thinking_level (not CLI flags) so failures surface as command errors and
+// the live model catalog (incl. background discovery) is consulted.
 export async function POST(req: Request) {
-  let commandType: string | undefined;
-  let promptAccepted = false;
   try {
     const body = await req.json() as { cwd?: string; [key: string]: unknown };
     const { cwd, ...command } = body;
-    commandType = typeof command.type === "string" ? command.type : undefined;
 
     if (!cwd || typeof cwd !== "string") {
-      return NextResponse.json({
-        error: "cwd is required",
-        ...(commandType === "prompt"
-          ? { code: "prompt_rejected", accepted: false }
-          : {}),
-      }, { status: 400 });
+      return NextResponse.json({ error: "cwd is required", code: "cwd_required" }, { status: 400 });
     }
     if (!existsSync(cwd)) {
-      return NextResponse.json({
-        error: `Directory does not exist: ${cwd}`,
-        ...(commandType === "prompt"
-          ? { code: "prompt_rejected", accepted: false }
-          : {}),
-      }, { status: 400 });
+      return NextResponse.json({ error: `Directory does not exist: ${cwd}`, code: "directory_not_found" }, { status: 400 });
     }
 
     // Use a one-time key so startRpcSession's lock doesn't conflict with real session ids
-    const { provider, modelId, toolNames, thinkingLevel, ...promptCommand } = command as { provider?: string; modelId?: string; toolNames?: string[]; thinkingLevel?: unknown; [key: string]: unknown };
-    if ((provider && !modelId) || (!provider && modelId)) {
-      throw new Error("provider and modelId must be provided together");
+    const { provider, modelId, toolNames, thinkingLevel, advisor, ...promptCommand } = command as { provider?: string; modelId?: string; toolNames?: string[]; thinkingLevel?: string; advisor?: boolean; [key: string]: unknown };
+    if (typeof promptCommand.type !== "string" || !promptCommand.type.trim()) {
+      return NextResponse.json({ error: "command type is required", code: "command_type_required" }, { status: 400 });
     }
-    const explicitThinkingLevel = parseThinkingLevel(thinkingLevel);
 
     // Must be unique per request: startRpcSession coalesces concurrent callers
     // that share a key onto one session. Date.now() (ms resolution) collides for
     // requests in the same millisecond, merging two new sessions into one.
     const tempKey = `__new__${randomUUID()}`;
-    const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, {
-      ...(toolNames ? { toolNames } : {}),
-      ...(provider && modelId ? { initialModel: { provider, modelId } } : {}),
-      ...(explicitThinkingLevel ? { thinkingLevel: explicitThinkingLevel } : {}),
-    });
+    const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, toolNames, advisor === true);
 
     // Keep the files-route allowed-roots cache (see app/api/files/[...path]/route.ts)
     // in sync so the new cwd is immediately readable via /api/files. Without this,
@@ -67,41 +55,24 @@ export async function POST(req: Request) {
     allowFileRoot(cwd);
     invalidateSessionListCache();
 
-    const state = await session.send({ type: "get_state" }) as {
-      model?: { id: string; provider: string };
-      thinkingLevel?: string;
-    };
+    // Apply pre-selected model before sending the prompt
+    if (provider && modelId) {
+      await session.send({ type: "set_model", provider, modelId });
+    }
+
+    // Apply pre-selected thinking level before sending the prompt
+    if (thinkingLevel) {
+      await session.send({ type: "set_thinking_level", level: thinkingLevel });
+    }
 
     if (promptCommand.type === "ensure_session") {
-      return NextResponse.json({
-        success: true,
-        sessionId: realSessionId,
-        data: null,
-        model: state.model
-          ? { provider: state.model.provider, modelId: state.model.id }
-          : null,
-        thinkingLevel: state.thinkingLevel,
-      });
+      return NextResponse.json({ success: true, sessionId: realSessionId, data: null });
     }
 
     const result = await session.send(promptCommand);
-    promptAccepted = promptCommand.type === "prompt";
 
-    return NextResponse.json({
-      success: true,
-      sessionId: realSessionId,
-      data: result,
-      model: state.model
-        ? { provider: state.model.provider, modelId: state.model.id }
-        : null,
-      thinkingLevel: state.thinkingLevel,
-    });
+    return NextResponse.json({ success: true, sessionId: realSessionId, data: result });
   } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : String(error),
-      ...(commandType === "prompt" && !promptAccepted
-        ? { code: "prompt_rejected", accepted: false }
-        : {}),
-    }, { status: 500 });
+    return newSessionErrorResponse(error);
   }
 }

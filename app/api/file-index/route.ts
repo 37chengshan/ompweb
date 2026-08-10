@@ -85,7 +85,8 @@ function listWithWalk(cwd: string): FileListing {
     const { abs, rel, depth } = queue.shift()!;
     let dirents: fs.Dirent[];
     try {
-      dirents = fs.readdirSync(abs, { withFileTypes: true });
+      const readDirectorySync = Reflect.get(fs, "readdirSync") as typeof fs.readdirSync;
+      dirents = readDirectorySync(abs, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -118,26 +119,26 @@ export async function GET(req: NextRequest) {
   try {
     const cwd = req.nextUrl.searchParams.get("cwd")?.trim() ?? "";
     if (!cwd || (!cwd.startsWith("/") && !isWindowsAbsolutePath(cwd))) {
-      return NextResponse.json({ error: "cwd must be an absolute path" }, { status: 400 });
+      return NextResponse.json({ error: "cwd must be an absolute path", code: "cwd_must_be_absolute" }, { status: 400 });
     }
     const query = req.nextUrl.searchParams.get("q")?.slice(0, MAX_QUERY_LENGTH) ?? "";
 
     const allowedRoots = await getAllowedFileRoots();
     if (!isFilePathAllowed(cwd, allowedRoots)) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 
     let stat: fs.Stats;
     try {
       stat = fs.statSync(cwd);
     } catch {
-      return NextResponse.json({ error: "Directory not found" }, { status: 404 });
+      return NextResponse.json({ error: "Directory not found", code: "directory_not_found" }, { status: 404 });
     }
     if (!stat.isDirectory()) {
-      return NextResponse.json({ error: "Not a directory" }, { status: 400 });
+      return NextResponse.json({ error: "Not a directory", code: "not_a_directory" }, { status: 400 });
     }
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 
     const cache = getIndexCache();

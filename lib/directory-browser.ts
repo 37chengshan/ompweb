@@ -1,4 +1,4 @@
-import { readdir, realpath, stat } from "fs/promises";
+import * as fsPromises from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 
@@ -7,35 +7,8 @@ export interface BrowsableDirectory {
   path: string;
 }
 
-export function shouldShowWindowsDrivePicker(
-  directory?: string,
-  platform: NodeJS.Platform = process.platform,
-): boolean {
-  return platform === "win32" && !directory;
-}
-
 export function getBrowseStartDirectory(directory?: string): string {
   return directory || homedir();
-}
-
-export function getWindowsDriveCandidates(): BrowsableDirectory[] {
-  return "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((letter) => ({
-    name: `${letter}:`,
-    path: `${letter}:\\`,
-  }));
-}
-
-export async function listWindowsDrives(): Promise<BrowsableDirectory[]> {
-  const candidates = await Promise.all(getWindowsDriveCandidates().map(async (drive) => {
-    try {
-      const driveStat = await stat(drive.path);
-      return driveStat.isDirectory() ? drive : null;
-    } catch {
-      return null;
-    }
-  }));
-
-  return candidates.filter((drive): drive is BrowsableDirectory => drive !== null);
 }
 
 export function normalizeDirectory(directory: string): string {
@@ -47,18 +20,22 @@ export function normalizeDirectory(directory: string): string {
 export function getParentDirectory(directory: string): string | null {
   const pathApi = /^[a-zA-Z]:[\\/]/.test(directory) || directory.startsWith("\\\\")
     ? path.win32
-    : path;
+    : directory.startsWith("/") ? path.posix : path;
   const normalized = pathApi.normalize(directory);
   const parent = pathApi.dirname(normalized);
   return parent === normalized ? null : parent;
 }
 
 export async function resolveDirectory(directory: string): Promise<string> {
-  return realpath(normalizeDirectory(directory));
+  return fsPromises.realpath(normalizeDirectory(directory));
 }
 
 export async function listDirectories(directory: string): Promise<BrowsableDirectory[]> {
-  const entries = await readdir(directory, { withFileTypes: true });
+  // Keep the directory argument opaque to Next's NFT build tracer. This is a
+  // user-selected path and must only be inspected at request time; tracing it
+  // as a static glob would walk the entire Windows profile during `next build`.
+  const readDirectory = Reflect.get(fsPromises, "readdir") as typeof fsPromises.readdir;
+  const entries = await readDirectory(directory, { withFileTypes: true });
   // 忽略损坏、不可访问或不指向目录的符号链接。
   const candidates = await Promise.all(entries.map(async (entry) => {
     if (entry.isDirectory()) {
@@ -68,8 +45,8 @@ export async function listDirectories(directory: string): Promise<BrowsableDirec
 
     try {
       const entryPath = path.join(directory, entry.name);
-      const realEntryPath = await realpath(entryPath);
-      const entryStat = await stat(realEntryPath);
+      const realEntryPath = await fsPromises.realpath(entryPath);
+      const entryStat = await fsPromises.stat(realEntryPath);
       if (!entryStat.isDirectory()) return null;
       return { name: entry.name, path: entryPath };
     } catch {

@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const cwd = typeof body.cwd === "string" ? body.cwd.trim() : "";
 
     if (!cwd) {
-      return NextResponse.json({ error: "Path is required" }, { status: 400 });
+      return NextResponse.json({ error: "Path is required", code: "path_required" }, { status: 400 });
     }
 
     const normalizedCwd = normalizeCwd(cwd);
@@ -26,11 +26,11 @@ export async function POST(req: Request) {
     try {
       stat = statSync(normalizedCwd);
     } catch {
-      return NextResponse.json({ error: `Directory does not exist: ${cwd}` }, { status: 400 });
+      return NextResponse.json({ error: `Directory does not exist: ${cwd}`, code: "directory_not_found" }, { status: 400 });
     }
 
     if (!stat.isDirectory()) {
-      return NextResponse.json({ error: `Path is not a directory: ${cwd}` }, { status: 400 });
+      return NextResponse.json({ error: `Path is not a directory: ${cwd}`, code: "not_a_directory" }, { status: 400 });
     }
 
     allowFileRoot(normalizedCwd);

@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server";
-import { readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
+import * as fsRuntime from "fs";
 import { dirname, join } from "path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  buildSessionTree,
+  deleteSessionFileWithArtifacts,
+  getLeafEntryId,
+  loadSessionFile,
+  parseTitleSlotLine,
+  setSessionTitle,
+  writeSessionFileAtomicSync,
+} from "@/lib/omp/session-files";
 import {
   resolveSessionPath,
+  resolveParentSessionId,
   resolveSessionIdByPath,
   invalidateSessionPathCache,
   invalidateSessionListCache,
@@ -12,7 +22,6 @@ import {
 } from "@/lib/session-reader";
 import { sessionPathKey } from "@/lib/session-path";
 import { getRpcSession } from "@/lib/rpc-manager";
-import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 
 // BranchNavigator still traverses recursively, so keep the response tree shallow.
 const MAX_PROJECTED_TREE_DEPTH = 200;
@@ -122,30 +131,41 @@ export async function GET(
   try {
     const filePath = await resolveSessionPath(id);
     if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
     }
 
-    const sm = SessionManager.open(filePath);
-    const entries = sm.getEntries();
-    const leafId = sm.getLeafId();
-    const tree = projectTreeForResponse(sm.getTree());
     const searchParams = new URL(req.url).searchParams;
     const deferThinking = searchParams.has("deferThinking");
     const deferToolResultImages = searchParams.has("deferMedia");
-    const context = buildSessionContext(entries as never, leafId, { deferThinking, deferToolResultImages });
-    const totalActiveMs = computeSessionTotalActiveMs(entries);
+    const includeState = searchParams.has("includeState");
 
-    const header = sm.getHeader();
-    let modified = header?.timestamp ?? new Date().toISOString();
+    const { header, entries, error: loadError } = loadSessionFile(filePath, {
+      resolveBlobs: true,
+      skipToolResultImages: deferToolResultImages,
+    });
+    if (loadError === "too_large") {
+      return NextResponse.json(
+        { error: "Session file is too large to open in omp-web", code: "session_file_too_large" },
+        { status: 413 },
+      );
+    }
+    if (!header) {
+      return NextResponse.json({ error: "Session file is missing or malformed", code: "session_file_malformed" }, { status: 404 });
+    }
+    const leafId = getLeafEntryId(entries);
+    const tree = projectTreeForResponse(buildSessionTree(entries));
+    const context = buildSessionContext(entries, leafId, { deferThinking, deferToolResultImages });
+
+    let modified = header.timestamp ?? new Date().toISOString();
     try { modified = statSync(filePath).mtime.toISOString(); } catch { /* use header timestamp */ }
-    const parentSessionId = header?.parentSession
-      ? await resolveSessionIdByPath(header.parentSession)
+    const parentSessionId = header.parentSession
+      ? await resolveParentSessionId(header.parentSession)
       : undefined;
-    const info = header ? {
+    const info = {
       path: filePath,
       id: header.id,
       cwd: header.cwd ?? "",
-      name: sm.getSessionName(),
+      name: header.title,
       created: header.timestamp,
       modified,
       messageCount: context.messages.length,
@@ -157,7 +177,25 @@ export async function GET(
           })()
         : "(no messages)",
       parentSessionId,
-    } : null;
+    };
+
+    // ?includeState=1 inlines the wrapper's live agent state (same shape as
+    // GET /api/agent/[id]) so the client's post-turn refresh is one request
+    // instead of two. On a get_state failure the field is omitted entirely —
+    // callers treat a missing `agent` as "fetch it separately".
+    let agent: { running: boolean; state?: unknown } | undefined;
+    if (includeState) {
+      const rpc = getRpcSession(id);
+      if (rpc?.isAlive()) {
+        try {
+          agent = { running: true, state: await rpc.send({ type: "get_state" }) };
+        } catch {
+          // Leave agent unset; the session payload is still valid without it.
+        }
+      } else {
+        agent = { running: false };
+      }
+    }
 
     return NextResponse.json({
       sessionId: id,
@@ -166,7 +204,7 @@ export async function GET(
       leafId,
       tree,
       context,
-      totalActiveMs,
+      ...(agent ? { agent } : {}),
     });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
@@ -181,15 +219,30 @@ export async function PATCH(
   const { id } = await params;
   try {
     const { name } = await req.json() as { name?: string };
-    if (typeof name !== "string") {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    if (typeof name !== "string" || !name.trim()) {
+      return NextResponse.json({ error: "name is required", code: "session_name_required" }, { status: 400 });
     }
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    // A running omp process owns its session file; route the rename through it
+    // so the in-memory title cannot clobber ours on the next flush. This runs
+    // before the path check because omp does not create the session file until
+    // the history holds an assistant message.
+    let renamed = false;
+    const rpc = getRpcSession(id);
+    if (rpc?.isAlive?.() && typeof rpc.send === "function") {
+      try {
+        await rpc.send({ type: "set_session_name", name: name.trim() });
+        renamed = true;
+      } catch {
+        // Fall back to the on-disk title slot below.
+      }
     }
-    const sm = SessionManager.open(filePath);
-    sm.appendSessionInfo(name.trim());
+    if (!renamed) {
+      const filePath = await resolveSessionPath(id);
+      if (!filePath) {
+        return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
+      }
+      setSessionTitle(filePath, name.trim(), "user");
+    }
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -206,45 +259,99 @@ export async function DELETE(
   try {
     const filePath = await resolveSessionPath(id);
     if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
     }
 
     // Read only the bounded header before deleting.
-    const parentSessionPath = readSessionHeader(filePath)?.parentSession;
+    const deletedHeader = readSessionHeader(filePath);
+    const deletedSessionId = deletedHeader?.id ?? id;
+    const parentSession = deletedHeader?.parentSession;
+
+    // Children reference their parent either by file path or by bare session id
+    // (see resolveParentSessionId), so the grandparent has to be written back in
+    // whichever form each child used. Resolve both forms up front.
+    let grandparentPath: string | undefined;
+    let grandparentId: string | undefined;
+    if (parentSession) {
+      const idForPath = await resolveSessionIdByPath(parentSession);
+      if (idForPath) {
+        grandparentPath = parentSession;
+        grandparentId = idForPath;
+      } else {
+        const pathForId = await resolveSessionPath(parentSession);
+        if (pathForId) {
+          grandparentPath = pathForId;
+          grandparentId = parentSession;
+        }
+      }
+    }
 
     // Re-attach all direct children to this session's parent (cascade re-parent)
     // Scan sibling files in the same directory
     const targetPathKey = sessionPathKey(filePath);
     const dir = dirname(filePath);
+    const skippedChildren: Array<{ id: string; reason: string }> = [];
     try {
-      const files = readdirSync(dir).filter(
+      const readDirectorySync = Reflect.get(fsRuntime, "readdirSync") as typeof readdirSync;
+      const files = readDirectorySync(dir).filter(
         (file) => file.endsWith(".jsonl") && sessionPathKey(join(dir, file)) !== targetPathKey,
       );
       for (const file of files) {
         const childPath = join(dir, file);
+
+        // Parse phase: an unreadable or non-matching sibling is simply not a
+        // child of the deleted session, so it must not be reported as skipped.
+        let lines: string[];
+        let headerIndex: number;
+        let header: { type?: string; id?: string; parentSession?: string };
+        let linkedByPath: boolean;
         try {
-          const content = readFileSync(childPath, "utf8");
-          const lines = content.split("\n");
-          const header = JSON.parse(lines[0]) as { type?: string; parentSession?: string };
-          if (
-            header.type === "session" &&
-            header.parentSession &&
-            sessionPathKey(header.parentSession) === targetPathKey
-          ) {
-            // Rewrite header with new parentSession
-            header.parentSession = parentSessionPath;
-            lines[0] = JSON.stringify(header);
-            writeFileSync(childPath, lines.join("\n"));
-          }
-        } catch { /* skip malformed */ }
+          lines = readFileSync(childPath, "utf8").split("\n");
+          // v3 files carry a fixed-width title slot on line 1; the session
+          // header is then line 2. The slot line is left byte-identical.
+          headerIndex = parseTitleSlotLine(lines[0] ?? "") ? 1 : 0;
+          header = JSON.parse(lines[headerIndex]) as typeof header;
+          if (header.type !== "session" || !header.parentSession) continue;
+          linkedByPath = sessionPathKey(header.parentSession) === targetPathKey;
+          if (!linkedByPath && header.parentSession !== deletedSessionId) continue;
+        } catch {
+          continue;
+        }
+
+        // A live omp process owns its session file and flushes its whole
+        // in-memory state on write — our rewrite would be clobbered by (or
+        // interleaved with) its next flush.
+        const childId = typeof header.id === "string" ? header.id : undefined;
+        if (childId && getRpcSession(childId)?.isAlive?.()) {
+          skippedChildren.push({ id: childId, reason: "session_child_live" });
+          continue;
+        }
+
+        // Write the replacement in the same form the child used.
+        header.parentSession = linkedByPath
+          ? (grandparentPath ?? parentSession)
+          : (grandparentId ?? parentSession);
+        lines[headerIndex] = JSON.stringify(header);
+        try {
+          // Atomic: writeFileSync truncates first, so a crash or ENOSPC here
+          // would permanently truncate a session the user did NOT delete.
+          writeSessionFileAtomicSync(childPath, lines.join("\n"), "reparent");
+        } catch {
+          skippedChildren.push({ id: childId ?? file, reason: "session_child_rewrite_failed" });
+        }
       }
     } catch { /* skip if dir unreadable */ }
 
-    await getRpcSession(id)?.shutdown();
-    unlinkSync(filePath);
+    // Await the child's exit before unlinking: omp flushes session state on
+    // shutdown and would recreate the file if it were still running.
+    await getRpcSession(id)?.destroyAndWait?.();
+    deleteSessionFileWithArtifacts(filePath);
     invalidateSessionPathCache(id);
     invalidateSessionListCache();
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      ...(skippedChildren.length > 0 ? { skippedChildren } : {}),
+    });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

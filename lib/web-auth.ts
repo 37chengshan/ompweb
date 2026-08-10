@@ -1,27 +1,21 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-export const PI_WEB_AUTH_USERNAME = "pi";
+export const OMP_WEB_AUTH_USERNAME = "omp";
 
-function hashSecret(value: string): Buffer {
+function hash(value: string): Buffer {
   return createHash("sha256").update(value, "utf8").digest();
 }
 
-function secretsEqual(actual: string, expected: string): boolean {
-  return timingSafeEqual(hashSecret(actual), hashSecret(expected));
+function equal(left: string, right: string): boolean {
+  return timingSafeEqual(hash(left), hash(right));
 }
 
-export function isWebPasswordEnabled(
-  password: string | undefined = process.env.PI_WEB_PASSWORD,
-): password is string {
+export function isWebPasswordEnabled(password: string | undefined = process.env.OMP_WEB_PASSWORD): password is string {
   return typeof password === "string" && password.length > 0;
 }
 
-export function isValidBasicAuthorization(
-  authorization: string | null,
-  password = process.env.PI_WEB_PASSWORD,
-): boolean {
+export function isValidBasicAuthorization(authorization: string | null, password = process.env.OMP_WEB_PASSWORD): boolean {
   if (!isWebPasswordEnabled(password) || !authorization) return false;
-
   const match = /^Basic\s+(\S+)$/i.exec(authorization);
   if (!match) return false;
 
@@ -33,13 +27,8 @@ export function isValidBasicAuthorization(
   } catch {
     return false;
   }
-
   const separator = credentials.indexOf(":");
   if (separator === -1) return false;
-
-  const username = credentials.slice(0, separator);
-  const suppliedPassword = credentials.slice(separator + 1);
-  const usernameMatches = secretsEqual(username, PI_WEB_AUTH_USERNAME);
-  const passwordMatches = secretsEqual(suppliedPassword, password);
-  return usernameMatches && passwordMatches;
+  return equal(credentials.slice(0, separator), OMP_WEB_AUTH_USERNAME)
+    && equal(credentials.slice(separator + 1), password);
 }

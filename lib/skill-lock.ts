@@ -28,10 +28,11 @@ interface AnnotateSkillOptions {
   projectLockPath?: string;
 }
 
-export function getGlobalSkillsLockPath({
-  homeDir = homedir(),
-  xdgStateHome = process.env.XDG_STATE_HOME,
-}: GlobalLockPathOptions = {}): string {
+export function getGlobalSkillsLockPath(options: GlobalLockPathOptions = {}): string {
+  const homeDir = options.homeDir ?? homedir();
+  // Callers that inject a home directory (tests or alternate installations)
+  // must not accidentally inherit the host process's XDG state directory.
+  const xdgStateHome = options.xdgStateHome ?? (options.homeDir === undefined ? process.env.XDG_STATE_HOME : undefined);
   return xdgStateHome
     ? join(xdgStateHome, "skills", ".skill-lock.json")
     : join(homeDir, ".agents", ".skill-lock.json");
@@ -129,15 +130,17 @@ export function annotateSkillsWithInstallInfo(
 ): SkillInfo[] {
   const globalEntries = readSkillLock(globalLockPath);
   const projectEntries = readSkillLock(projectLockPath);
-  const globalSkillsRoot = join(agentDir, "skills");
-  const projectSkillsRoot = join(cwd, ".pi", "skills");
+  // skills.sh installs with --agent universal land in .agents/skills; omp's
+  // own dirs remain valid install roots for manually placed skills.
+  const globalSkillsRoots = [join(agentDir, "skills"), join(homedir(), ".agents", "skills")];
+  const projectSkillsRoots = [join(cwd, ".omp", "skills"), join(cwd, ".agents", "skills")];
 
   return skills.map((skill) => {
     if (!existsSync(skill.filePath)) return skill;
 
-    const install = isWithin(skill.filePath, globalSkillsRoot)
+    const install = globalSkillsRoots.some((root) => isWithin(skill.filePath, root))
       ? getInstallInfo(globalEntries, skill.name, "global")
-      : isWithin(skill.filePath, projectSkillsRoot)
+      : projectSkillsRoots.some((root) => isWithin(skill.filePath, root))
         ? getInstallInfo(projectEntries, skill.name, "project")
         : undefined;
 

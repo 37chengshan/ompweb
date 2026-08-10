@@ -1,12 +1,22 @@
-// Types mirrored from pi-mono coding-agent session-manager
+// Types mirrored from oh-my-pi coding-agent session-entries (v3 format).
+// omp-web cannot import the Bun-only @oh-my-pi packages, so the on-disk
+// shapes are re-declared here. Legacy pi v1/v2 fields are kept optional.
+
+export type SessionTitleSource = "auto" | "user";
 
 export interface SessionHeader {
   type: "session";
   version?: number;
   id: string;
+  /** Current title, folded in from the fixed-width title slot (line 1) on load. */
+  title?: string;
+  titleSource?: SessionTitleSource;
   timestamp: string;
   cwd: string;
+  /** Extra workspace roots beyond cwd (multi-root workspace). */
+  additionalDirectories?: string[];
   parentSession?: string;
+  providerPromptCacheKey?: string;
 }
 
 export interface SessionEntryBase {
@@ -21,9 +31,16 @@ export interface TextContent {
   text: string;
 }
 
+/**
+ * Image block. omp persists the flat {data, mimeType} shape (data may be a
+ * `blob:sha256:` reference until resolved); legacy pi entries used the nested
+ * Anthropic-style `source` shape. The UI handles both.
+ */
 export interface ImageContent {
   type: "image";
-  source: {
+  data?: string;
+  mimeType?: string;
+  source?: {
     type: "base64" | "url";
     media_type?: string;
     data?: string;
@@ -66,6 +83,7 @@ export interface AssistantMessage {
     output: number;
     cacheRead: number;
     cacheWrite: number;
+    totalTokens?: number;
     cost: {
       input: number;
       output: number;
@@ -107,7 +125,48 @@ export interface BashExecutionMessage {
   timestamp?: number;
 }
 
-export type AgentMessage = UserMessage | AssistantMessage | ToolResultMessage | CustomMessage | BashExecutionMessage;
+/** System-slot instruction message (steering envelopes, file-mention text). */
+export interface DeveloperMessage {
+  role: "developer";
+  content: string | (TextContent | ImageContent)[];
+  timestamp?: number;
+}
+
+/** User-initiated Python execution via the $ command (omp-only). */
+export interface PythonExecutionMessage {
+  role: "pythonExecution";
+  code: string;
+  output: string;
+  exitCode?: number;
+  cancelled?: boolean;
+  truncated?: boolean;
+  excludeFromContext?: boolean;
+  timestamp?: number;
+}
+
+/** Auto-read @filepath mentions packed into a single message (omp-only). */
+export interface FileMentionMessage {
+  role: "fileMention";
+  files: Array<{
+    path: string;
+    content: string;
+    lineCount?: number;
+    byteSize?: number;
+    skippedReason?: "tooLarge" | "binary";
+    image?: ImageContent;
+  }>;
+  timestamp?: number;
+}
+
+export type AgentMessage =
+  | UserMessage
+  | AssistantMessage
+  | ToolResultMessage
+  | CustomMessage
+  | BashExecutionMessage
+  | DeveloperMessage
+  | PythonExecutionMessage
+  | FileMentionMessage;
 
 export type ExtensionUiRequest =
   | {
@@ -211,22 +270,38 @@ export interface SessionMessageEntry extends SessionEntryBase {
 
 export interface ThinkingLevelChangeEntry extends SessionEntryBase {
   type: "thinking_level_change";
-  thinkingLevel: string;
+  thinkingLevel?: string | null;
+  /** Configured selector ("auto" or a concrete level); absent on old entries. */
+  configured?: string | null;
 }
 
 export interface ModelChangeEntry extends SessionEntryBase {
   type: "model_change";
-  provider: string;
-  modelId: string;
+  /** omp format: "provider/modelId". */
+  model?: string;
+  /** Model role ("default", "smol", ...); undefined means "default". */
+  role?: string;
+  /** Legacy pi format kept for pre-migration files. */
+  provider?: string;
+  modelId?: string;
+}
+
+export interface ServiceTierChangeEntry extends SessionEntryBase {
+  type: "service_tier_change";
+  serviceTier: unknown;
 }
 
 export interface CompactionEntry extends SessionEntryBase {
   type: "compaction";
   summary: string;
+  shortSummary?: string;
   firstKeptEntryId: string;
   tokensBefore: number;
   details?: unknown;
+  preserveData?: Record<string, unknown>;
+  fromExtension?: boolean;
   fromHook?: boolean;
+  warning?: string;
 }
 
 export interface BranchSummaryEntry extends SessionEntryBase {
@@ -234,6 +309,7 @@ export interface BranchSummaryEntry extends SessionEntryBase {
   fromId: string;
   summary: string;
   details?: unknown;
+  fromExtension?: boolean;
   fromHook?: boolean;
 }
 
@@ -257,21 +333,63 @@ export interface LabelEntry extends SessionEntryBase {
   label: string | undefined;
 }
 
+/** Legacy pi rename entry; omp replaced it with the title slot + title_change. */
 export interface SessionInfoEntry extends SessionEntryBase {
   type: "session_info";
   name?: string;
+}
+
+/** Append-only audit entry recording a session title change (omp). */
+export interface TitleChangeEntry extends SessionEntryBase {
+  type: "title_change";
+  title: string;
+  previousTitle?: string;
+  source: SessionTitleSource;
+  trigger?: string;
+}
+
+/** Tracks which time-traveling rules have been injected this session (omp). */
+export interface TtsrInjectionEntry extends SessionEntryBase {
+  type: "ttsr_injection";
+  injectedRules: string[];
+}
+
+/** Initial context capture for subagent sessions (omp). */
+export interface SessionInitEntry extends SessionEntryBase {
+  type: "session_init";
+  systemPrompt: string;
+  task: string;
+  tools: string[];
+  outputSchema?: unknown;
+  outputSchemaMode?: string;
+  restrictToolNames?: boolean;
+  spawns?: string;
+  readSummarize?: boolean;
+}
+
+/** Agent mode transitions, e.g. plan mode (omp). */
+export interface ModeChangeEntry extends SessionEntryBase {
+  type: "mode_change";
+  /** Current mode name, or "none" when exiting a mode. */
+  mode: string;
+  data?: Record<string, unknown>;
 }
 
 export type SessionEntry =
   | SessionMessageEntry
   | ThinkingLevelChangeEntry
   | ModelChangeEntry
+  | ServiceTierChangeEntry
   | CompactionEntry
   | BranchSummaryEntry
   | CustomEntry
   | CustomMessageEntry
   | LabelEntry
-  | SessionInfoEntry;
+  | SessionInfoEntry
+  | TitleChangeEntry
+  | TtsrInjectionEntry
+  | SessionInitEntry
+  | ModeChangeEntry;
 
 export type FileEntry = SessionHeader | SessionEntry;
 

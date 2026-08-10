@@ -1,5 +1,3 @@
-import type { ResourceDiagnostic } from "@earendil-works/pi-coding-agent";
-
 export interface SkillSearchResult {
   package: string;
   installs: string;
@@ -48,24 +46,6 @@ export interface SkillInfo {
   install?: SkillInstallInfo;
 }
 
-export interface SkillsResponse {
-  skills: SkillInfo[];
-  diagnostics: ResourceDiagnostic[];
-  projectResourcesLoaded: boolean;
-}
-
-export interface ProjectTrustStatus {
-  requiresTrust: boolean;
-  trusted: boolean;
-}
-
-export interface AppUpdateResponse {
-  currentVersion: string;
-  latestVersion: string;
-  updateAvailable: boolean;
-  releaseUrl: string;
-}
-
 export type PluginScope = "global" | "project";
 export type PluginResourceKind = "extension" | "skill" | "prompt" | "theme";
 
@@ -108,5 +88,4 @@ export interface PluginsResponse {
   packages: PluginPackageInfo[];
   totals: PluginResourceCounts;
   diagnostics: PluginDiagnostic[];
-  projectResourcesLoaded: boolean;
 }

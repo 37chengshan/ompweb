@@ -1,11 +1,6 @@
-import type {
-  AgentSessionEvent,
-  SessionManager,
-  SettingsManager,
-  SlashCommandInfo,
-  Theme,
-} from "@earendil-works/pi-coding-agent";
-import type { AgentMessage as PiAgentMessage } from "@earendil-works/pi-agent-core";
+// Local mirrors of the omp shapes used by omp-web. omp's SDK packages are
+// Bun-only, so these types are hand-maintained against
+// oh-my-pi/packages/coding-agent/src/modes/rpc/rpc-types.ts (protocol v1).
 
 export interface ContextUsage {
   percent: number | null;
@@ -23,10 +18,115 @@ export interface ToolInfo {
   description: string;
 }
 
-export interface NavigateTreeResult {
-  editorText?: string;
+/** Subset of omp's Model (pi-ai) that the web UI reads; extra fields pass through. */
+export interface OmpModel {
+  id: string;
+  provider: string;
+  name?: string;
+  api?: string;
+  reasoning?: boolean;
+  contextWindow?: number;
+  maxTokens?: number;
+  input?: string[];
+  thinking?: {
+    mode?: string;
+    efforts?: string[];
+    requiresEffort?: boolean;
+    defaultLevel?: string;
+  };
+  [key: string]: unknown;
+}
+
+export interface TodoItem {
+  content: string;
+  status: string;
+  blocker?: string;
+}
+
+export interface TodoPhase {
+  name: string;
+  tasks: TodoItem[];
+}
+
+/** Mirror of omp's RpcSessionState (the raw `get_state` payload). */
+export interface RpcSessionState {
+  model?: OmpModel;
+  thinkingLevel: string | undefined;
+  isStreaming: boolean;
+  isCompacting: boolean;
+  steeringMode: "all" | "one-at-a-time";
+  followUpMode: "all" | "one-at-a-time";
+  interruptMode: "immediate" | "wait";
+  sessionFile?: string;
+  sessionId: string;
+  sessionName?: string;
+  autoCompactionEnabled: boolean;
+  messageCount: number;
+  queuedMessageCount: number;
+  todoPhases: TodoPhase[];
+  systemPrompt?: string[];
+  contextUsage?: { tokens: number; contextWindow: number; percent: number };
+  fastMode?: boolean;
+  fastModeEnabled?: boolean;
+  fastModeActive?: boolean;
+}
+
+/**
+ * The state shape omp-web's own API returns to the browser
+ * (AgentSessionWrapper adapts RpcSessionState and adds process-side flags).
+ */
+export interface WebSessionState {
+  sessionId: string;
+  sessionFile: string;
+  sessionName?: string;
+  isStreaming: boolean;
+  isPromptRunning: boolean;
+  isBashRunning: boolean;
+  isCompacting: boolean;
+  autoCompactionEnabled: boolean;
+  model?: ModelLike & { name?: string };
+  messageCount: number;
+  queuedMessageCount: number;
+  contextUsage: ContextUsage | null;
+  systemPrompt: string;
+  thinkingLevel: string;
+  fastModeEnabled: boolean;
+  todoPhases: TodoPhase[];
+  extensionStatuses: Array<{ key: string; text: string }>;
+  extensionWidgets: Array<{ key: string; lines: string[]; placement: "aboveEditor" | "belowEditor" }>;
+}
+
+export type AvailableSlashCommandSource =
+  | "builtin"
+  | "skill"
+  | "extension"
+  | "custom"
+  | "mcp_prompt"
+  | "file";
+
+/** Mirror of omp's RpcAvailableSlashCommand (`get_available_commands`). */
+export interface RpcAvailableSlashCommand {
+  name: string;
+  aliases?: string[];
+  description?: string;
+  input?: { hint?: string };
+  subcommands?: Array<{ name: string; description?: string; usage?: string }>;
+  source: AvailableSlashCommandSource;
+}
+
+/** Mirror of omp's BashResult (`bash` command response). */
+export interface BashResultInfo {
+  output: string;
+  exitCode: number | undefined;
   cancelled: boolean;
-  aborted?: boolean;
+  timedOut?: boolean;
+  truncated: boolean;
+  totalLines?: number;
+  totalBytes?: number;
+  outputLines?: number;
+  outputBytes?: number;
+  artifactId?: string;
+  workingDir?: string;
 }
 
 export interface SessionStatsInfo {
@@ -41,139 +141,31 @@ export interface SessionStatsInfo {
   tokens: {
     input: number;
     output: number;
+    reasoning?: number;
     cacheRead: number;
     cacheWrite: number;
     total: number;
   };
+  premiumRequests?: number;
   cost: number;
   contextUsage?: ContextUsage;
-  /** Estimated active time across all entries in the session file. */
-  totalActiveMs?: number;
 }
 
-interface PromptTemplateLike {
-  name: string;
-  description?: string;
-  sourceInfo: SlashCommandInfo["sourceInfo"];
-}
-
-interface SkillLike {
-  name: string;
-  description?: string;
-  sourceInfo: SlashCommandInfo["sourceInfo"];
-}
-
-interface ResourceLoaderLike {
-  getSkills(): { skills: SkillLike[] };
-}
-
-interface ExtensionRunnerLike {
-  getRegisteredCommands(): Array<{
-    invocationName: string;
-    description?: string;
-    sourceInfo: SlashCommandInfo["sourceInfo"];
-  }>;
-  emit?(event: { type: "session_shutdown"; reason: "quit" }): Promise<unknown>;
-  setUIContext?(uiContext?: unknown, mode?: "tui" | "rpc" | "json" | "print"): void;
-}
-
-type DialogOptionsLike = {
-  signal?: AbortSignal;
-  timeout?: number;
-};
-
-type WidgetOptionsLike = {
-  placement?: "aboveEditor" | "belowEditor";
-};
-
-export interface ExtensionUiContextLike {
-  select(title: string, options: string[], opts?: DialogOptionsLike): Promise<string | undefined>;
-  confirm(title: string, message: string, opts?: DialogOptionsLike): Promise<boolean>;
-  input(title: string, placeholder?: string, opts?: DialogOptionsLike): Promise<string | undefined>;
-  editor(title: string, prefill?: string, opts?: DialogOptionsLike): Promise<string | undefined>;
-  notify(message: string, type?: "info" | "warning" | "error"): void;
-  onTerminalInput(): () => void;
-  setStatus(key: string, text: string | undefined): void;
-  setWorkingMessage(message?: string): void;
-  setWorkingVisible(visible: boolean): void;
-  setWorkingIndicator(options?: { frames?: string[]; intervalMs?: number }): void;
-  setHiddenThinkingLabel(label?: string): void;
-  setWidget(key: string, content: string[] | ((...args: never[]) => unknown) | undefined, options?: WidgetOptionsLike): void;
-  setFooter(factory: unknown): void;
-  setHeader(factory: unknown): void;
-  setTitle(title: string): void;
-  custom<T = unknown>(...args: unknown[]): Promise<T>;
-  pasteToEditor(text: string): void;
-  setEditorText(text: string): void;
-  getEditorText(): string;
-  addAutocompleteProvider(): void;
-  setEditorComponent(): void;
-  getEditorComponent(): undefined;
-  readonly theme: Theme;
-  getAllThemes(): unknown[];
-  getTheme(name: string): undefined;
-  setTheme(theme: unknown): { success: boolean; error?: string };
-  getToolsExpanded(): boolean;
-  setToolsExpanded(expanded: boolean): void;
-}
-
-export interface AgentSessionLike {
-  readonly sessionId: string;
-  readonly sessionFile: string | undefined;
-  readonly isStreaming: boolean;
-  readonly isCompacting: boolean;
-  readonly autoCompactionEnabled: boolean;
-  readonly autoRetryEnabled: boolean;
-  readonly model: ModelLike | undefined;
-  readonly modelRuntime: {
-    getModel: (provider: string, modelId: string) => ModelLike | undefined;
-    refresh: (options?: { allowNetwork?: boolean }) => Promise<unknown>;
-  };
-  readonly sessionManager: SessionManager;
-  readonly settingsManager: SettingsManager;
-  readonly agent: {
-    state?: {
-      systemPrompt?: string;
-      thinkingLevel?: string;
-      streamingMessage?: PiAgentMessage;
-    };
-  };
-  readonly extensionRunner: ExtensionRunnerLike;
-  readonly promptTemplates: readonly PromptTemplateLike[];
-  readonly resourceLoader: ResourceLoaderLike;
-
-  readonly bindExtensions?: unknown;
-  dispose(): void;
-  reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
-  subscribe(listener: (event: AgentSessionEvent) => void): () => void;
-  prompt(text: string, options?: {
-    images?: Array<{ type: "image"; data: string; mimeType: string }>;
-    streamingBehavior?: "steer" | "followUp";
-    source?: "interactive" | "rpc";
-    preflightResult?: (success: boolean) => void;
-  }): Promise<void>;
-  abort(): Promise<void>;
-  executeBash(command: string, onChunk?: (chunk: string) => void, options?: { excludeFromContext?: boolean }): Promise<{ output: string; exitCode?: number; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string }>;
-  abortBash(): void;
-  readonly isBashRunning: boolean;
-  setModel(model: ModelLike): Promise<void>;
-  navigateTree(targetId: string, options?: { summarize?: boolean }): Promise<NavigateTreeResult>;
-  setThinkingLevel(level: string): void;
-  compact(customInstructions?: string): Promise<unknown>;
-  setSessionName(name: string): void;
-  getSessionStats(): Omit<SessionStatsInfo, "sessionName">;
-  getLastAssistantText(): string | undefined;
-  setAutoCompactionEnabled(enabled: boolean): void;
-  setAutoRetryEnabled(enabled: boolean): void;
-  steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
-  followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
-  readonly pendingMessageCount: number;
-  getSteeringMessages(): readonly string[];
-  getFollowUpMessages(): readonly string[];
-  clearQueue(): { steering: string[]; followUp: string[] };
-  getAllTools(): ToolInfo[];
-  getActiveToolNames(): string[];
-  setActiveToolsByName(names: string[]): void;
-  abortCompaction(): void;
-  getContextUsage(): ContextUsage | undefined;
-}
+/**
+ * omp's rpc-ui extension UI request frames, including the methods missing from
+ * the browser-facing union in lib/types.ts (`open_url`, `cancel`). The wrapper
+ * adds `expiresAt` when a timeout is present so reconnecting clients can
+ * expire stale dialogs.
+ */
+export type OmpExtensionUiRequest =
+  | { type: "extension_ui_request"; id: string; method: "select"; title: string; options: string[]; timeout?: number; expiresAt?: number }
+  | { type: "extension_ui_request"; id: string; method: "confirm"; title: string; message: string; timeout?: number; expiresAt?: number }
+  | { type: "extension_ui_request"; id: string; method: "input"; title: string; placeholder?: string; timeout?: number; expiresAt?: number }
+  | { type: "extension_ui_request"; id: string; method: "editor"; title: string; prefill?: string; promptStyle?: boolean; timeout?: number; expiresAt?: number }
+  | { type: "extension_ui_request"; id: string; method: "cancel"; targetId: string }
+  | { type: "extension_ui_request"; id: string; method: "notify"; message: string; notifyType?: "info" | "warning" | "error" }
+  | { type: "extension_ui_request"; id: string; method: "setStatus"; statusKey: string; statusText: string | undefined }
+  | { type: "extension_ui_request"; id: string; method: "setWidget"; widgetKey: string; widgetLines: string[] | undefined; widgetPlacement?: "aboveEditor" | "belowEditor" }
+  | { type: "extension_ui_request"; id: string; method: "setTitle"; title: string }
+  | { type: "extension_ui_request"; id: string; method: "set_editor_text"; text: string }
+  | { type: "extension_ui_request"; id: string; method: "open_url"; url: string; launchUrl?: string; instructions?: string };

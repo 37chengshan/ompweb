@@ -20,11 +20,11 @@ export async function POST(req: Request) {
       ? body.scope as SkillInstallScope
       : undefined;
     if (!cwd || !pkg || !scope) {
-      return NextResponse.json({ error: "cwd, package, and scope are required" }, { status: 400 });
+      return NextResponse.json({ error: "cwd, package, and scope are required", code: "cwd_package_scope_required" }, { status: 400 });
     }
     const allowedRoots = await getAllowedFileRoots();
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 
     const { skills } = await loadSkillsWithInstallInfo(cwd);
@@ -32,10 +32,10 @@ export async function POST(req: Request) {
       (item) => item.install?.package === pkg && item.install.scope === scope,
     );
     if (!skill?.install) {
-      return NextResponse.json({ error: "Installed skill not found" }, { status: 404 });
+      return NextResponse.json({ error: "Installed skill not found", code: "skill_not_installed" }, { status: 404 });
     }
     if (!skill.install.canCheckForUpdates) {
-      return NextResponse.json({ error: "This skill cannot be updated automatically" }, { status: 400 });
+      return NextResponse.json({ error: "This skill cannot be updated automatically", code: "skill_update_unsupported" }, { status: 400 });
     }
 
     const { stdout, stderr } = await runNpx(buildSkillUpdateArgs(skill.install), {

@@ -3,61 +3,24 @@ interface WindowNotificationLike {
   close: () => void;
 }
 
-interface ServiceWorkerRegistrationLike {
-  showNotification: (title: string, options?: NotificationOptions) => Promise<void>;
-}
-
 export interface CompletionNotificationEnvironment {
-  createWindowNotification: (title: string, options?: NotificationOptions) => WindowNotificationLike;
-  getServiceWorkerRegistration: (() => Promise<ServiceWorkerRegistrationLike | undefined>) | null;
+  createNotification: (title: string, options?: NotificationOptions) => WindowNotificationLike;
 }
 
-interface CompletionNotificationOptions {
-  title: string;
-  body: string;
-  sessionUrl: string;
-  onClick: () => void;
-}
-
-export type NotificationDelivery = "service-worker" | "window" | null;
-
-function getBrowserEnvironment(): CompletionNotificationEnvironment {
-  return {
-    createWindowNotification: (title, options) => new Notification(title, options),
-    getServiceWorkerRegistration: "serviceWorker" in navigator
-      ? () => navigator.serviceWorker.getRegistration()
-      : null,
-  };
-}
-
-export async function showCompletionNotification(
-  options: CompletionNotificationOptions,
-  environment: CompletionNotificationEnvironment = getBrowserEnvironment(),
-): Promise<NotificationDelivery> {
-  if (environment.getServiceWorkerRegistration) {
-    try {
-      const registration = await environment.getServiceWorkerRegistration();
-      if (registration) {
-        await registration.showNotification(options.title, {
-          body: options.body,
-          data: { url: options.sessionUrl },
-        });
-        return "service-worker";
-      }
-    } catch {
-      // Fall back to a page notification where the constructor is supported.
-    }
-  }
-
+export function showCompletionNotification(
+  title: string,
+  body: string,
+  onClick: () => void,
+  environment: CompletionNotificationEnvironment = { createNotification: (nextTitle, options) => new Notification(nextTitle, options) },
+): boolean {
   try {
-    const notification = environment.createWindowNotification(options.title, { body: options.body });
+    const notification = environment.createNotification(title, { body });
     notification.onclick = () => {
       notification.close();
-      options.onClick();
+      onClick();
     };
-    return "window";
+    return true;
   } catch {
-    // Most mobile browsers expose Notification but require service-worker delivery.
-    return null;
+    return false;
   }
 }

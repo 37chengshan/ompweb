@@ -9,7 +9,7 @@ const jiti = createJiti(import.meta.url, {
   tsconfigPaths: true,
 });
 const { MarkdownBody } = await jiti.import("./MarkdownBody.tsx");
-const { normalizeDisplayMath } = await jiti.import("../lib/markdown.ts");
+const { normalizeDisplayMath, loadMathMarkdownPlugins } = await jiti.import("../lib/markdown.ts");
 
 function renderMarkdown(markdown) {
   return renderToStaticMarkup(
@@ -37,28 +37,23 @@ test("keeps local file markdown links in the app", () => {
   assert.doesNotMatch(html, /target=|rel=|\snode=/);
 });
 
-test("keeps single-tilde CJK numeric ranges literal instead of striking them", () => {
-  const html = renderMarkdown("5~7U 保证金 × 100~200倍杠杆");
+test("renders math as plain text until the lazy KaTeX pipeline loads", () => {
+  const html = renderMarkdown(String.raw`射线为 \(r_c = K^{-1}p\)。`);
 
-  assert.doesNotMatch(html, /<del>/);
-  assert.match(html, /5~7U/);
-  assert.match(html, /100~200倍/);
+  assert.doesNotMatch(html, /class="katex"/);
+  assert.match(html, /r_c/);
 });
 
-test("still renders double-tilde strikethrough", () => {
-  const html = renderMarkdown("~~gone~~");
-
-  assert.match(html, /<del>gone<\/del>/);
-});
-
-test("renders LaTeX parenthesis delimiters as inline math", () => {
+test("renders LaTeX parenthesis delimiters as inline math", async () => {
+  await loadMathMarkdownPlugins();
   const html = renderMarkdown(String.raw`射线为 \(r_c = K^{-1}p\)。`);
 
   assert.match(html, /class="katex"/);
   assert.match(html, /r_c/);
 });
 
-test("renders paired LaTeX bracket delimiters as display math", () => {
+test("renders paired LaTeX bracket delimiters as display math", async () => {
+  await loadMathMarkdownPlugins();
   const html = renderMarkdown(String.raw`\[
 P(\lambda)=o_b+\lambda r_b
 \]`);

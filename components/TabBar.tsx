@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { getFileIcon } from "./FileIcons";
-import { useI18n } from "@/hooks/useI18n";
 
 export interface Tab {
   id: string;
   label: string;
   filePath: string;
   sourceSessionId?: string | null;
-  initialDisplayMode?: "source" | "preview" | "diff";
 }
 
 interface Props {
@@ -22,9 +22,28 @@ interface Props {
 export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Keep the active tab visible when the bar overflows horizontally.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const active = list.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeTabId)}"]`);
+    if (!active) return;
+    const listRect = list.getBoundingClientRect();
+    const tabRect = active.getBoundingClientRect();
+    if (tabRect.left < listRect.left) {
+      list.scrollLeft -= listRect.left - tabRect.left;
+    } else if (tabRect.right > listRect.right) {
+      list.scrollLeft += tabRect.right - listRect.right;
+    }
+  }, [activeTabId, tabs]);
 
   return (
     <div
+      ref={listRef}
+      role="tablist"
+      aria-label="Open files"
       style={{
         display: "flex",
         alignItems: "flex-end",
@@ -39,7 +58,21 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
         return (
           <div
             key={tab.id}
+            data-tab-id={tab.id}
             onClick={() => onSelectTab(tab.id)}
+            role="tab"
+            tabIndex={isActive ? 0 : -1}
+            aria-selected={isActive}
+            aria-label={tab.filePath}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectTab(tab.id); }
+              if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+                event.preventDefault();
+                const index = tabs.findIndex((item) => item.id === tab.id);
+                const next = tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+                if (next) onSelectTab(next.id);
+              }
+            }}
             onMouseDown={(e) => {
               if (e.button === 1) e.preventDefault();
             }}
@@ -66,9 +99,25 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               minWidth: 80,
               flexShrink: 0,
               userSelect: "none",
-              transition: "background 0.1s, color 0.1s",
+              position: "relative",
+              transition: `background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)`,
             }}
           >
+            {isActive && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 2,
+                  background: "var(--accent)",
+                  borderTopLeftRadius: "var(--radius-control)",
+                  borderTopRightRadius: "var(--radius-control)",
+                }}
+              />
+            )}
             <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7, display: "flex", alignItems: "center" }}>
               {getFileIcon(tab.label, 13)}
             </span>
@@ -92,20 +141,17 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
                 width: 24, height: 24,
                 background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
                 border: "none",
-                borderRadius: 4,
+                borderRadius: "var(--radius-control)",
                 color: hoveredClose === tab.id ? "var(--text)" : "var(--text-dim)",
                 cursor: "pointer",
                 padding: 0,
                 flexShrink: 0,
-                transition: "background 0.1s, color 0.1s",
+                transition: `background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)`,
               }}
-               title={t("i18n.close")}
-               aria-label={`${t("i18n.close")} ${tab.label}`}
+              title={t("tabBar.close")}
+              aria-label={t("tabBar.closeTab", { label: tab.label })}
             >
-              <svg width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-                <line x1="2" y1="2" x2="8" y2="8" />
-                <line x1="8" y1="2" x2="2" y2="8" />
-              </svg>
+              <X size={11} strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
         );

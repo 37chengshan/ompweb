@@ -1,0 +1,47 @@
+# Contributing to omp-web
+
+Thanks for your interest in contributing!
+
+## Setup
+
+- Node.js 22.19.0 or newer
+- The [omp](https://github.com/can1357/oh-my-pi) binary on your `PATH` (or set `OMP_WEB_OMP_BIN`)
+
+```bash
+npm install
+npm run dev   # http://127.0.0.1:30177
+```
+
+## Checks (must pass before submitting)
+
+```bash
+npx tsc --noEmit                                   # type check
+npm run lint                                       # ESLint, zero warnings
+node --test lib/*.test.mjs components/*.test.mjs   # unit tests
+```
+
+Avoid `npm run build` during local development — it writes to `.next/` and
+interferes with the dev server. Builds are for release work.
+
+## Conventions
+
+- **Styling**: use the design tokens in `app/globals.css` (colors, radius,
+  shadow, motion) — no hardcoded colors. Shared primitives live in
+  `components/ui/` (Dialog/Tooltip/Collapsible/field/toast, built on Base UI);
+  icons come from `lucide-react`.
+- **i18n**: every user-facing string needs entries in all three dictionaries:
+  `lib/i18n/locales/{en,zh-CN,ja}.json`.
+- **Architecture**: omp-web never imports `@oh-my-pi/*` or `@earendil-works/*`
+  packages (Bun-only). Live agent features go through the `omp` child process
+  via RPC; see `DESIGN.md` and `AGENTS.md` for the full contract.
+
+## Pull requests
+
+- Keep PRs focused; describe the user-visible change and how you verified it.
+- For UI changes, include before/after screenshots in both light and dark
+  themes when practical.
+
+## Reporting issues
+
+Please use the issue templates and include your OS, Node version, omp version,
+and browser.

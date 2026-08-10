@@ -1,14 +1,10 @@
 export interface ModelsData {
   models: Record<string, string>;
-  modelList: { id: string; name: string; provider: string }[];
+  modelList: { id: string; name: string; provider: string; supportsFastMode?: boolean }[];
   defaultModel: { provider: string; modelId: string } | null;
   thinkingLevels: Record<string, string[]>;
-  thinkingLevelMaps: Record<string, Record<string, string | null>>;
-  /** `provider/modelId` → thinking level pinned by an `enabledModels` `:level` suffix. */
-  thinkingLevelPins: Record<string, string>;
+  connectedProviders?: { id: string; name: string; disabled: boolean }[];
   modelError?: string;
-  /** Warnings from resolving the `enabledModels` scope (e.g. a pattern matched nothing). */
-  modelScopeWarnings?: string[];
 }
 
 interface ModelsCacheState {
@@ -49,29 +45,43 @@ export function withModelRuntimeError(data: ModelsData, modelError: string | und
 export function loadModelsWithCache(cwd: string, loader: () => Promise<ModelsData>): Promise<ModelsData> {
   const state = getModelsCacheState();
   const cached = state.entries.get(cwd);
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.data);
+
+  const load = state.inFlight.get(cwd) ?? startModelsLoad(state, cwd, loader);
+
   if (cached) {
-    if (cached.expiresAt > Date.now()) return Promise.resolve(cached.data);
-    state.entries.delete(cwd);
+    // Stale-while-revalidate: serve the expired entry immediately while the
+    // refresh runs in the background. Staleness here only ever means TTL age —
+    // invalidateModelsCache() (login, set_model, models.yml writes) clears
+    // entries outright, so mutations never serve through this path.
+    load.catch(() => {
+      // A failed background refresh keeps serving the stale entry; the next
+      // request retries.
+    });
+    return Promise.resolve(cached.data);
   }
+  return load;
+}
 
-  const existingLoad = state.inFlight.get(cwd);
-  if (existingLoad) return existingLoad;
-
+function startModelsLoad(
+  state: ModelsCacheState,
+  cwd: string,
+  loader: () => Promise<ModelsData>,
+): Promise<ModelsData> {
   const generation = state.generation;
   const loadPromise: Promise<ModelsData> = Promise.resolve()
     .then(loader)
     .then((data) => {
       if (state.generation === generation && state.inFlight.get(cwd) === loadPromise) {
-        const now = Date.now();
-        for (const [key, entry] of state.entries) {
-          if (entry.expiresAt <= now) state.entries.delete(key);
-        }
+        // Expired entries are kept (they back stale-while-revalidate serving);
+        // the entry cap alone bounds the map.
+        state.entries.delete(cwd);
         while (state.entries.size >= MAX_MODELS_CACHE_ENTRIES) {
           const oldestKey = state.entries.keys().next().value;
           if (oldestKey === undefined) break;
           state.entries.delete(oldestKey);
         }
-        state.entries.set(cwd, { data, expiresAt: now + MODELS_CACHE_TTL_MS });
+        state.entries.set(cwd, { data, expiresAt: Date.now() + MODELS_CACHE_TTL_MS });
       }
       return data;
     })

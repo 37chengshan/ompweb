@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, realpathSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { promisify } from "util";
 import { allowFileRoot } from "./allowed-roots";
-import { samePath, toNativePath } from "./paths";
 
 const execFileAsync = promisify(execFile);
 
@@ -40,6 +39,11 @@ declare global {
 
 const PROJECT_CACHE_TTL_MS = 60_000;
 
+function comparablePath(value: string): string {
+  const normalized = resolve(value).replace(/\\/g, "/");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
 function getProjectCache(): Map<string, { info: ProjectInfo; expiresAt: number }> {
   if (!globalThis.__piProjectCache) globalThis.__piProjectCache = new Map();
   return globalThis.__piProjectCache;
@@ -60,14 +64,6 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-function realPathOrSelf(filePath: string): string {
-  try {
-    return realpathSync(filePath);
-  } catch {
-    return filePath;
-  }
-}
-
 /**
  * addWorktree() places worktrees in `<repoRoot>-worktrees/<dir>`. When such a
  * directory no longer exists (worktree removed), group its sessions back
@@ -79,7 +75,7 @@ function inferRemovedWorktree(cwd: string): ProjectInfo | null {
   if (!parent.endsWith("-worktrees")) return null;
   const repoRoot = parent.slice(0, -"-worktrees".length);
   if (!repoRoot || !existsSync(join(repoRoot, ".git"))) return null;
-  return { projectRoot: realPathOrSelf(repoRoot), branch: basename(cwd), isWorktree: true, isTopLevel: true };
+  return { projectRoot: repoRoot, branch: basename(cwd), isWorktree: true, isTopLevel: true };
 }
 
 export async function resolveProject(cwd: string): Promise<ProjectInfo> {
@@ -99,22 +95,19 @@ export async function resolveProject(cwd: string): Promise<ProjectInfo> {
       "--git-common-dir", "--git-dir", "--show-toplevel",
       "--abbrev-ref", "HEAD",
     ]);
-    const [commonDirRaw, gitDirRaw, toplevelRaw, ref] = out.split("\n").map((l) => l.trim());
-    // Only the first three lines are paths — `ref` is a branch name and must
-    // keep its forward slashes (`feature/foo`).
-    const [commonDir, gitDir, toplevel] = [commonDirRaw, gitDirRaw, toplevelRaw].map(toNativePath);
+    const [commonDir, gitDir, toplevel, ref] = out.split("\n").map((l) => l.trim());
     // git prints resolved (symlink-free) paths; normalize cwd the same way
-    const realCwd = realPathOrSelf(cwd);
+    let realCwd = cwd;
+    try { realCwd = realpathSync(cwd); } catch { /* keep as-is */ }
     // For a linked worktree, --git-dir differs from --git-common-dir.
     // Only collapse *worktree toplevels* into the main repo. A session whose
     // cwd is a subdirectory of a repo keeps its own project identity —
     // grouping subdirs under the repo root would change where new sessions
     // are created for existing users.
-    const isTopLevel = samePath(toplevel, realCwd);
-    const isWorktreeTopLevel = !samePath(gitDir, commonDir) && isTopLevel;
-    const topLevelProjectRoot = isWorktreeTopLevel ? dirname(commonDir) : toplevel;
+    const isTopLevel = comparablePath(toplevel) === comparablePath(realCwd);
+    const isWorktreeTopLevel = comparablePath(gitDir) !== comparablePath(commonDir) && isTopLevel;
     info = {
-      projectRoot: isTopLevel ? realPathOrSelf(topLevelProjectRoot) : cwd,
+      projectRoot: isWorktreeTopLevel ? resolve(dirname(commonDir)) : cwd,
       branch: ref && ref !== "HEAD" ? ref : null,
       isWorktree: isWorktreeTopLevel,
       isTopLevel,
@@ -138,7 +131,7 @@ export async function resolveProject(cwd: string): Promise<ProjectInfo> {
 /** Main repo root (parent of the shared .git dir), or throws for non-git dirs */
 async function getRepoRoot(cwd: string): Promise<string> {
   const commonDir = await git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  return realPathOrSelf(dirname(toNativePath(commonDir)));
+  return dirname(commonDir);
 }
 
 export async function listWorktrees(cwd: string): Promise<WorktreeInfo[]> {
@@ -148,12 +141,15 @@ export async function listWorktrees(cwd: string): Promise<WorktreeInfo[]> {
 
   const flush = () => {
     if (current?.path) {
+      // Git may emit forward-slash absolute paths on Windows; normalize before
+      // comparing with API/UI paths produced by Node's path helpers.
+      const worktreePath = resolve(current.path);
       // Prunable worktrees point at missing/broken gitdirs and cannot be
       // browsed or selected usefully. Also skip vanished paths even if git has
       // not marked them prunable yet.
-      if (!current.prunable && existsSync(current.path)) {
+      if (!current.prunable && existsSync(worktreePath)) {
         worktrees.push({
-          path: current.path,
+          path: worktreePath,
           branch: current.branch ?? null,
           isMain: worktrees.length === 0,
         });
@@ -165,7 +161,7 @@ export async function listWorktrees(cwd: string): Promise<WorktreeInfo[]> {
   for (const line of out.split("\n")) {
     if (line.startsWith("worktree ")) {
       flush();
-      current = { path: toNativePath(line.slice("worktree ".length).trim()) };
+      current = { path: line.slice("worktree ".length).trim() };
     } else if (line.startsWith("branch ") && current) {
       current.branch = line.slice("branch ".length).trim().replace(/^refs\/heads\//, "");
     } else if (line.startsWith("prunable") && current) {
@@ -176,14 +172,6 @@ export async function listWorktrees(cwd: string): Promise<WorktreeInfo[]> {
   }
   flush();
   return worktrees;
-}
-
-function findWorktreeByPath(worktrees: readonly WorktreeInfo[], candidate: string): WorktreeInfo | undefined {
-  return worktrees.find((worktree) => samePath(worktree.path, candidate));
-}
-
-export function findCurrentWorktreePath(worktrees: readonly WorktreeInfo[], cwd: string): string | null {
-  return findWorktreeByPath(worktrees, realPathOrSelf(cwd))?.path ?? null;
 }
 
 function sanitizeBranchForDir(branch: string): string {
@@ -231,12 +219,12 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
 
 export async function removeWorktree(cwd: string, worktreePath: string, force = false): Promise<void> {
   const worktrees = await listWorktrees(cwd);
-  const target = findWorktreeByPath(worktrees, worktreePath);
+  const target = worktrees.find((w) => w.path === worktreePath);
   if (!target) throw new Error(`Not a worktree of this repository: ${worktreePath}`);
   if (target.isMain) throw new Error("Cannot remove the main worktree");
 
   try {
-    await git(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), target.path]);
+    await git(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), worktreePath]);
   } catch (error) {
     throw new Error(extractGitError(error));
   }

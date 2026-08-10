@@ -20,7 +20,6 @@ import {
 } from "@/lib/file-types";
 import { resolveDirentIsDirectory } from "@/lib/file-dirent";
 import { isFilePathReferencedBySession } from "@/lib/session-file-references";
-import { isApiRequestAllowed } from "@/lib/request-security";
 import {
   inspectUploadTargets,
   parseUploadConflictStrategy,
@@ -86,17 +85,17 @@ async function getUploadDirectory(segments: string[]): Promise<
   const directory = filePathFromSegments(segments);
   const allowedRoots = await getAllowedFileRoots();
   if (!isFilePathAllowed(directory, allowedRoots)) {
-    return { response: NextResponse.json({ error: "Access denied" }, { status: 403 }) };
+    return { response: NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 }) };
   }
 
   let stat: fs.Stats;
   try {
     stat = fs.statSync(directory);
   } catch {
-    return { response: NextResponse.json({ error: "Upload directory not found" }, { status: 404 }) };
+    return { response: NextResponse.json({ error: "Upload directory not found", code: "upload_directory_not_found" }, { status: 404 }) };
   }
   if (!stat.isDirectory()) {
-    return { response: NextResponse.json({ error: "Upload target is not a directory" }, { status: 400 }) };
+    return { response: NextResponse.json({ error: "Upload target is not a directory", code: "upload_target_not_directory" }, { status: 400 }) };
   }
 
   // A browsable directory can be a symlink. Resolve both sides before writes
@@ -111,7 +110,7 @@ async function getUploadDirectory(segments: string[]): Promise<
     }
   }
   if (!isFilePathAllowed(realDirectory, realRoots)) {
-    return { response: NextResponse.json({ error: "Access denied" }, { status: 403 }) };
+    return { response: NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 }) };
   }
 
   return { directory: realDirectory };
@@ -126,10 +125,6 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  if (!isApiRequestAllowed(request)) {
-    return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
-  }
-
   try {
     const { path: segments } = await params;
     const uploadDirectory = await getUploadDirectory(segments);
@@ -141,7 +136,7 @@ export async function POST(
       const body = await request.json().catch(() => null) as { fileNames?: unknown } | null;
       const fileNames = parseUploadFileNames(body?.fileNames);
       if (!fileNames) {
-        return NextResponse.json({ error: "fileNames must be an array of strings" }, { status: 400 });
+        return NextResponse.json({ error: "fileNames must be an array of strings", code: "invalid_file_names" }, { status: 400 });
       }
       const validationError = validateUploadFileNames(fileNames);
       if (validationError) {
@@ -151,12 +146,12 @@ export async function POST(
     }
 
     if (type !== "upload") {
-      return NextResponse.json({ error: "Invalid upload request type" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid upload request type", code: "invalid_upload_type" }, { status: 400 });
     }
 
     const strategy = parseUploadConflictStrategy(request.nextUrl.searchParams.get("conflict"));
     if (!strategy) {
-      return NextResponse.json({ error: "Invalid conflict strategy" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid conflict strategy", code: "invalid_conflict_strategy" }, { status: 400 });
     }
 
     let formData: FormData;
@@ -164,16 +159,16 @@ export async function POST(
       formData = await parseFormDataWithinLimit(request, MAX_UPLOAD_REQUEST_BYTES);
     } catch (error) {
       if (error instanceof RequestBodyTooLargeError) {
-        return NextResponse.json({ error: "Uploads must total 100MB or less" }, { status: 413 });
+        return NextResponse.json({ error: "Uploads must total 100MB or less", code: "upload_total_too_large" }, { status: 413 });
       }
       throw error;
     }
     const files = formData.getAll("files").filter((entry): entry is File => typeof entry !== "string");
     if (files.some((file) => file.size > MAX_UPLOAD_FILE_BYTES)) {
-      return NextResponse.json({ error: "Each upload must be 25MB or smaller" }, { status: 413 });
+      return NextResponse.json({ error: "Each upload must be 25MB or smaller", code: "upload_file_too_large" }, { status: 413 });
     }
     if (files.reduce((total, file) => total + file.size, 0) > MAX_UPLOAD_TOTAL_BYTES) {
-      return NextResponse.json({ error: "Uploads must total 100MB or less" }, { status: 413 });
+      return NextResponse.json({ error: "Uploads must total 100MB or less", code: "upload_total_too_large" }, { status: 413 });
     }
     const fileNames = files.map((file) => file.name);
     const validationError = validateUploadFileNames(fileNames);
@@ -185,6 +180,7 @@ export async function POST(
     if (strategy === "error" && inspection.conflicts.length > 0) {
       return NextResponse.json({
         error: "One or more files already exist",
+        code: "upload_conflict",
         conflicts: inspection.conflicts,
         nonReplaceable: inspection.nonReplaceable,
       }, { status: 409 });
@@ -421,7 +417,7 @@ export async function GET(
     const rawType = request.nextUrl.searchParams.get("type") ?? "list";
     const type = parseFileRequestType(rawType);
     if (!type) {
-      return NextResponse.json({ error: "Invalid file request type" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid file request type", code: "invalid_request_type" }, { status: 400 });
     }
     const sessionId = request.nextUrl.searchParams.get("sessionId");
 
@@ -432,28 +428,28 @@ export async function GET(
       type !== "list" &&
       await isFilePathReferencedBySession(filePath, sessionId);
     if (!allowedByRoot && !allowedBySessionReference) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 
     let stat: fs.Stats;
     try {
       stat = fs.statSync(filePath);
     } catch {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ error: "Not found", code: "file_not_found" }, { status: 404 });
     }
 
     if (!allowedBySessionReference && !isExistingFilePathAllowed(filePath, allowedRoots)) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 
     if (type === "read") {
       if (!stat.isFile()) {
-        return NextResponse.json({ error: "Not a file" }, { status: 400 });
+        return NextResponse.json({ error: "Not a file", code: "not_a_file" }, { status: 400 });
       }
       const imageMime = getImageMime(filePath);
       if (imageMime) {
         if (stat.size > IMAGE_PREVIEW_MAX_BYTES) {
-          return NextResponse.json({ error: "Image too large (>10MB)" }, { status: 413 });
+          return NextResponse.json({ error: "Image too large (>10MB)", code: "image_too_large" }, { status: 413 });
         }
         return streamFile(filePath, stat, imageMime, request.headers.get("range"));
       }
@@ -466,7 +462,7 @@ export async function GET(
         return streamFile(filePath, stat, documentMime, request.headers.get("range"));
       }
       if (stat.size > TEXT_PREVIEW_MAX_BYTES) {
-        return NextResponse.json({ error: "File too large for preview (>256KB)" }, { status: 413 });
+        return NextResponse.json({ error: "File too large for preview (>256KB)", code: "file_too_large_preview" }, { status: 413 });
       }
       const content = fs.readFileSync(filePath, "utf-8");
       const language = getLanguage(filePath);
@@ -475,7 +471,7 @@ export async function GET(
 
     if (type === "download") {
       if (!stat.isFile()) {
-        return NextResponse.json({ error: "Not a file" }, { status: 400 });
+        return NextResponse.json({ error: "Not a file", code: "not_a_file" }, { status: 400 });
       }
       const mime = getImageMime(filePath) || getAudioMime(filePath) || getDocumentMime(filePath) || "application/octet-stream";
       return streamFile(filePath, stat, mime, request.headers.get("range"), true);
@@ -483,7 +479,7 @@ export async function GET(
 
     if (type === "meta") {
       if (!stat.isFile()) {
-        return NextResponse.json({ error: "Not a file" }, { status: 400 });
+        return NextResponse.json({ error: "Not a file", code: "not_a_file" }, { status: 400 });
       }
       const imageMime = getImageMime(filePath);
       const audioMime = getAudioMime(filePath);
@@ -498,13 +494,13 @@ export async function GET(
 
     if (type === "preview") {
       if (!stat.isFile()) {
-        return NextResponse.json({ error: "Not a file" }, { status: 400 });
+        return NextResponse.json({ error: "Not a file", code: "not_a_file" }, { status: 400 });
       }
       if (getFileExt(filePath) !== "docx") {
-        return NextResponse.json({ error: "Preview not available for this file type" }, { status: 400 });
+        return NextResponse.json({ error: "Preview not available for this file type", code: "preview_unavailable" }, { status: 400 });
       }
       if (stat.size > DOCX_PREVIEW_MAX_BYTES) {
-        return NextResponse.json({ error: "DOCX too large for preview (>10MB)" }, { status: 413 });
+        return NextResponse.json({ error: "DOCX too large for preview (>10MB)", code: "docx_too_large" }, { status: 413 });
       }
 
       const mammoth = await import("mammoth");
@@ -529,7 +525,7 @@ export async function GET(
 
     if (type === "watch") {
       if (!stat.isFile()) {
-        return NextResponse.json({ error: "Not a file" }, { status: 400 });
+        return NextResponse.json({ error: "Not a file", code: "not_a_file" }, { status: 400 });
       }
       let watcher: fs.FSWatcher | null = null;
       let lastMtimeMs = stat.mtimeMs;
@@ -584,12 +580,13 @@ export async function GET(
 
     // type === "list"
     if (!stat.isDirectory()) {
-      return NextResponse.json({ error: "Not a directory" }, { status: 400 });
+      return NextResponse.json({ error: "Not a directory", code: "not_a_directory" }, { status: 400 });
     }
 
     // Avoid per-entry stat calls for normal files and directories. Symlinks and
     // filesystems without directory type information use the stat fallback.
-    const dirents = fs.readdirSync(filePath, { withFileTypes: true });
+    const readDirectorySync = Reflect.get(fs, "readdirSync") as typeof fs.readdirSync;
+    const dirents = readDirectorySync(filePath, { withFileTypes: true });
     const entries = dirents
       .filter((d) => !IGNORED_NAMES.has(d.name) && !IGNORED_SUFFIXES.some((s) => d.name.endsWith(s)))
       .flatMap((d) => {

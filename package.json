@@ -1,21 +1,21 @@
 {
-  "name": "@agegr/pi-web",
-  "version": "0.8.8-beta.1",
-  "description": "Web UI for the pi coding agent",
-  "homepage": "https://github.com/agegr/pi-web#readme",
+  "name": "ompweb",
+  "version": "0.2.0",
+  "description": "Web UI for the oh-my-pi (omp) coding agent",
+  "homepage": "https://github.com/Po1nt9/omp-web#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/agegr/pi-web.git"
+    "url": "git+https://github.com/Po1nt9/omp-web.git"
   },
   "bugs": {
-    "url": "https://github.com/agegr/pi-web/issues"
+    "url": "https://github.com/Po1nt9/omp-web/issues"
   },
   "license": "MIT",
   "engines": {
     "node": ">=22.19.0"
   },
   "bin": {
-    "pi-web": "bin/pi-web.js"
+    "ompweb": "bin/omp-web.js"
   },
   "files": [
     "bin",
@@ -28,39 +28,36 @@
     "package.json"
   ],
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 30141",
-    "dev:lan": "next dev -H 0.0.0.0 -p 30141",
+    "dev": "next dev -H 127.0.0.1 -p 30177",
+    "dev:lan": "next dev -H 0.0.0.0 -p 30177",
     "build": "next build --webpack",
-    "start": "next start -H 127.0.0.1 -p 30141",
-    "start:lan": "next start -H 0.0.0.0 -p 30141",
+    "start": "next start -H 127.0.0.1 -p 30177",
+    "start:lan": "next start -H 0.0.0.0 -p 30177",
+    "test": "node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs components/*.test.mjs",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\"",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.84.0",
-    "@earendil-works/pi-ai": "0.84.0",
-    "@earendil-works/pi-coding-agent": "0.84.0",
-    "@earendil-works/pi-tui": "0.84.0",
-    "js-yaml": "^5.2.3",
-    "next": "16.2.12",
-    "proper-lockfile": "4.1.2",
+    "@base-ui/react": "^1.6.0",
+    "cmdk": "^1.1.1",
+    "lucide-react": "^1.27.0",
+    "motion": "^12.42.2",
+    "next": "16.3.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "remark-frontmatter": "^5.0.0",
-    "undici": "8.5.0"
+    "undici": "8.10.0",
+    "yaml": "^2"
   },
   "devDependencies": {
     "@lobehub/icons": "^5.6.0",
     "@tailwindcss/postcss": "^4.2.2",
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25",
-    "@types/proper-lockfile": "4.1.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-syntax-highlighter": "^15.5.13",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.2.9",
     "jiti": "^2.7.0",
     "katex": "^0.16.47",
     "mammoth": "^1.12.0",

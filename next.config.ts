@@ -36,7 +36,7 @@ const nextConfig: NextConfig = {
   // Next.js enables gzip/brotli compression for `next start` by default; no
   // custom compression middleware is needed (and would require a custom server).
   async headers() {
-    return [
+    const headers = [
       {
         // Hashed build output never changes, so browsers/proxies may cache it
         // immutably for a year and skip revalidation entirely.
@@ -54,6 +54,12 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
+
+    if (process.env.NODE_ENV !== "production") {
+      return headers.slice(1);
+    }
+
+    return headers;
   },
   env: {
     NEXT_PUBLIC_APP_VERSION: version,

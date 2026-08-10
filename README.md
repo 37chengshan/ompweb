@@ -7,11 +7,9 @@ Local web UI for the [oh-my-pi (omp) coding agent](https://github.com/can1357/oh
 ![ompweb — light theme](docs/screenshot-light.png)
 
 <details>
-<summary>Dark theme &amp; command palette</summary>
+<summary>Dark theme</summary>
 
 ![ompweb — dark theme](docs/screenshot-dark.png)
-
-![ompweb — command palette](docs/screenshot-palette.png)
 
 </details>
 

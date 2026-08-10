@@ -4,13 +4,12 @@ export async function register(): Promise<void> {
   const { configureHttpDispatcher } = await import("@/lib/http-dispatcher");
   configureHttpDispatcher();
 
-  // Startup diagnostics: node version, agent dir, pid. Cheap to emit and the
-  // only signal in the logs that the server runtime actually came up. Kept to
-  // one line so it greps cleanly; failures here must never block boot.
+  // Startup diagnostics: agent dir. Kept to one line so it greps cleanly;
+  // failures here must never block boot.
   try {
     const { getAgentDir } = await import("@/lib/session-reader");
     console.log(
-      `[omp-web] starting (node ${process.version}, pid ${process.pid}, agent-dir ${getAgentDir()})`,
+      `[omp-web] starting (agent-dir ${getAgentDir()})`,
     );
   } catch {
     // Diagnostics are best-effort.

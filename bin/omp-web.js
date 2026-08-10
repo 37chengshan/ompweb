@@ -17,6 +17,8 @@ const path = require("path");
 const fs = require("fs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { parseLaunchOptions } = require("./omp-web-options");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { isPortAvailable } = require("./port-availability");
 
 const pkgDir = path.join(__dirname, "..");
 const nextDir = path.join(pkgDir, ".next");
@@ -58,35 +60,49 @@ nextArgs.push("-H", hostname);
 
 // Always run next's JS entry with node directly — avoids .bin symlink issues
 // and path-with-spaces problems on Windows when shell: true is used.
-const child = spawn(process.execPath, [nextBin, ...nextArgs], {
-  cwd: pkgDir,
-  stdio: ["inherit", "pipe", "inherit"],
-  env: { ...process.env },
-});
-
-let browserOpened = false;
 const url = `http://${hostname}:${port}`;
 
-child.stdout.on("data", (chunk) => {
-  const text = chunk.toString();
-  process.stdout.write(text);
-  if (openBrowser && !browserOpened && text.includes("Ready")) {
-    browserOpened = true;
-    const isWindows = process.platform === "win32";
-    const isMac = process.platform === "darwin";
-    const openCmd = isWindows ? "start" : isMac ? "open" : "xdg-open";
-    const opener = spawn(openCmd, [url], {
-      shell: isWindows,
-      stdio: "ignore",
-      detached: true,
-    });
-
-    opener.on("error", (error) => {
-      console.warn(`Could not open browser automatically: ${error.message}`);
-    });
-
-    opener.unref();
+async function main() {
+  if (!await isPortAvailable(port, hostname)) {
+    console.error(`Port ${port} on ${hostname} is already in use.`);
+    console.error(`If ompweb is already running, open ${url}. Otherwise, stop the process using it or run: ompweb --port ${Number(port) + 1}`);
+    process.exitCode = 1;
+    return;
   }
-});
 
-child.on("exit", (code) => process.exit(code ?? 0));
+  const child = spawn(process.execPath, [nextBin, ...nextArgs], {
+    cwd: pkgDir,
+    stdio: ["inherit", "pipe", "inherit"],
+    env: { ...process.env },
+  });
+
+  let browserOpened = false;
+  child.stdout.on("data", (chunk) => {
+    const text = chunk.toString();
+    process.stdout.write(text);
+    if (openBrowser && !browserOpened && text.includes("Ready")) {
+      browserOpened = true;
+      const isWindows = process.platform === "win32";
+      const isMac = process.platform === "darwin";
+      const openCmd = isWindows ? "start" : isMac ? "open" : "xdg-open";
+      const opener = spawn(openCmd, [url], {
+        shell: isWindows,
+        stdio: "ignore",
+        detached: true,
+      });
+
+      opener.on("error", (error) => {
+        console.warn(`Could not open browser automatically: ${error.message}`);
+      });
+
+      opener.unref();
+    }
+  });
+
+  child.on("exit", (code) => process.exit(code ?? 0));
+}
+
+main().catch((error) => {
+  console.error(`Could not check whether ${url} is available: ${error.message}`);
+  process.exit(1);
+});

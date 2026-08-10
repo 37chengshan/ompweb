@@ -15,6 +15,7 @@ function runOmpUpdate(args: string[]): Promise<string> {
       timeout: 300_000,
       maxBuffer: 1024 * 1024,
       env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+      windowsHide: true,
     }, (error, stdout, stderr) => {
       if (error) reject(new Error((stderr || stdout || error.message).trim().slice(-1000)));
       else resolve(`${stdout}\n${stderr}`.trim());

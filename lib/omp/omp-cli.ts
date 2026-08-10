@@ -80,7 +80,7 @@ export async function getOmpVersion(): Promise<string | null> {
   }
   try {
     const output = await new Promise<string>((resolve, reject) => {
-      execFile(bin, ["--version"], { timeout: 10_000 }, (error, stdout) => {
+      execFile(bin, ["--version"], { timeout: 10_000, windowsHide: true }, (error, stdout) => {
         if (error) reject(error);
         else resolve(stdout);
       });

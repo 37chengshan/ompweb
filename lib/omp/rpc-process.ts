@@ -92,6 +92,7 @@ export class RpcProcess {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
       // omp launches grandchildren (LSP servers, extension subprocesses). Run the
       // child in its own process group so dispose() can SIGTERM/SIGKILL the whole
       // tree — otherwise a crashed omp would orphan its LSP children as zombies.

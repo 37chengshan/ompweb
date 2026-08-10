@@ -38,6 +38,7 @@ async function exportSession(filePath: string, outputPath: string): Promise<void
     cwd: tmpdir(),
     timeout: 60_000,
     maxBuffer: 4 * 1024 * 1024,
+    windowsHide: true,
   });
 }
 

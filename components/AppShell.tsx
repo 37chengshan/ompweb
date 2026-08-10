@@ -90,7 +90,9 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
+  const [ompUpdateAvailable, setOmpUpdateAvailable] = useState(false);
   const appUpdateInFlightRef = useRef(false);
+  const ompUpdateInFlightRef = useRef(false);
   const installAppUpdate = useCallback(async () => {
     if (appUpdateInFlightRef.current) return;
     appUpdateInFlightRef.current = true;
@@ -104,6 +106,21 @@ export function AppShell() {
       toast.error("Could not update ompweb", error instanceof Error ? error.message : String(error));
     } finally {
       appUpdateInFlightRef.current = false;
+    }
+  }, []);
+  const installOmpUpdate = useCallback(async () => {
+    if (ompUpdateInFlightRef.current) return;
+    ompUpdateInFlightRef.current = true;
+    try {
+      const response = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+      setOmpUpdateAvailable(false);
+      toast.success("OMP updated", "Restart active OMP sessions in Settings to use the new runtime.");
+    } catch (error) {
+      toast.error("Could not update OMP", error instanceof Error ? error.message : String(error));
+    } finally {
+      ompUpdateInFlightRef.current = false;
     }
   }, []);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
@@ -131,12 +148,13 @@ export function AppShell() {
     })
       .then((response) => response.ok ? response.json() : null)
       .then((data: { currentVersion?: string | null; availableVersion?: string | null; updateAvailable?: boolean } | null) => {
+        setOmpUpdateAvailable(Boolean(data?.updateAvailable));
         if (!data?.updateAvailable || !data.availableVersion) return;
-        toast.info("OMP update available", `v${data.currentVersion ?? "?"} -> v${data.availableVersion}. Open Settings to install it.`);
+        toast.info("OMP update available", <span>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}. <button type="button" onClick={() => void installOmpUpdate()} style={{ marginLeft: 6, padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}>Update now</button></span>);
       })
       .catch(() => {});
     return () => controller.abort();
-  }, []);
+  }, [installOmpUpdate]);
   useEffect(() => {
     const controller = new AbortController();
     void fetch("/api/app-update", { signal: controller.signal })
@@ -591,7 +609,7 @@ export function AppShell() {
             onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
           >
-            <span style={{ position: "relative", display: "inline-flex" }}><Settings2 size={14} aria-hidden="true" />{appUpdateAvailable && <span aria-label="ompweb update available" role="status" style={{ position: "absolute", top: -3, right: -4, width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", border: "1px solid var(--bg-panel)" }} />}</span>
+            <span style={{ position: "relative", display: "inline-flex" }}><Settings2 size={14} aria-hidden="true" />{(appUpdateAvailable || ompUpdateAvailable) && <span aria-label="Update available" role="status" style={{ position: "absolute", top: -3, right: -4, width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", border: "1px solid var(--bg-panel)" }} />}</span>
             Settings
           </button>
       </div>
@@ -1369,7 +1387,7 @@ export function AppShell() {
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
-    {settingsTab && <SettingsConfig activeTab={settingsTab} advisorEnabled={advisorEnabled} onAdvisorChange={handleAdvisorChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
+    {settingsTab && <SettingsConfig activeTab={settingsTab} advisorEnabled={advisorEnabled} onAdvisorChange={handleAdvisorChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onOmpUpdateAvailabilityChange={setOmpUpdateAvailable} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
     </ToastProvider>
     </>
   );

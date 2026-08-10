@@ -56,7 +56,7 @@ function NativeSetting({ label, description, children }: { label: string; descri
   );
 }
 
-export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onSelectTab, onClose }: {
+export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onOmpUpdateAvailabilityChange, onSelectTab, onClose }: {
   activeTab: SettingsTab;
   advisorEnabled: boolean;
   onAdvisorChange: (enabled: boolean) => void;
@@ -64,6 +64,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
   sessionId: string | null;
   onModelsSaved: () => void;
   onPluginsReloaded: () => void;
+  onOmpUpdateAvailabilityChange: (available: boolean) => void;
   onSelectTab: (tab: SettingsTab) => void;
   onClose: () => void;
 }) {
@@ -117,12 +118,13 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
       const data = await response.json() as UpdateState & { error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       setUpdate(data);
+      onOmpUpdateAvailabilityChange(data.updateAvailable);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setChecking(false);
     }
-  }, []);
+  }, [onOmpUpdateAvailabilityChange]);
 
   useEffect(() => { void checkForUpdate(); }, [checkForUpdate]);
 

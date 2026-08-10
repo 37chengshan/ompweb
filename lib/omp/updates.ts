@@ -32,6 +32,13 @@ export async function checkOmpUpdate(): Promise<OmpUpdateStatus> {
   return parseOmpUpdateStatus(await runOmpUpdate(["--check"]));
 }
 
+let installPromise: Promise<string> | null = null;
+
 export async function installOmpUpdate(): Promise<string> {
-  return runOmpUpdate([]);
+  if (!installPromise) {
+    installPromise = runOmpUpdate([]).finally(() => {
+      installPromise = null;
+    });
+  }
+  return installPromise;
 }

@@ -29,7 +29,7 @@ export async function getAllowedFileRoots(): Promise<Set<string>> {
   for (const s of sessions) {
     if (s.cwd) roots.add(normalizeSlashes(s.cwd));
     // The project root (main repo shared by all worktrees) is browsable too —
-    // the project dropdown lists it even when only worktrees have sessions.
+    // the projects sidebar lists it even when only worktrees have sessions.
     if (s.projectRoot) roots.add(normalizeSlashes(s.projectRoot));
   }
 

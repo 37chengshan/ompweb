@@ -76,6 +76,7 @@ app/api/
   omp-settings/route.ts           GET/PUT native config.yml settings (allow-listed)
   mcp/route.ts                    GET/POST/PUT/DELETE project MCP servers
   plugins/route.ts                GET/POST plugin management (shells out to `omp plugin`)
+  projects/route.ts               GET registered+discovered projects | POST add | DELETE hide
   skills/route.ts                 GET/PATCH loaded skills and disable-model-invocation
   skills/install/route.ts         POST install skills through npx skills add
   skills/search/route.ts          GET/POST skills.sh search
@@ -90,6 +91,8 @@ lib/
   markdown.ts          shared markdown helpers
   npx.ts               npx runner used by skill install
   pi-types.ts          local structural types for agent/RPC objects
+  project-ordering.ts  pure project sort/group/activity helpers (client + tests)
+  project-registry.ts  on-disk managed-project registry (~/.omp/agent/projects.json)
   rpc-manager.ts       session registry + startRpcSession over RpcProcess
   session-reader.ts    session .jsonl parsing + path cache + buildSessionContext
   skills-service.ts    pure-Node skill discovery mirroring omp's providers
@@ -162,6 +165,30 @@ handled or safely ignored.
 - New worktrees are created under `<repoRoot>-worktrees/<sanitized-branch>`. Existing branches are reused; otherwise `git worktree add -b` creates the branch.
 - Removing a dirty worktree returns `409` with `{ dirty: true }` so the UI can ask before retrying with `force`.
 - Sessions whose cwd points at a removed worktree are inferred back into the main project instead of becoming a phantom project row.
+
+### Managed projects sidebar (`lib/project-registry.ts`, `/api/projects`)
+- The sidebar lists **managed projects**: explicitly added directories (registered in
+  `~/.omp/agent/projects.json`, written atomically as temp-file + rename) plus
+  session-discovered ones — hidden entries excluded. Removing a project only
+  marks it hidden (reversible via re-adding); hidden entries suppress session
+  re-discovery.
+- Registry paths are canonical `projectRoot`s: `POST` resolves worktrees to
+  their main repo via `resolveProject`, and `resolveProject` returns the
+  symlink-free on-disk form for plain directories so registered and
+  session-discovered paths compare equal on Windows casing.
+- `GET /api/projects` re-authorizes registered roots with `allowFileRoot()` —
+  the in-memory browse allowlist does not survive restarts, and empty managed
+  projects derive no root from sessions.
+- The client sorts the merged list by latest session activity, then
+  most-recently-added (`lib/project-ordering.ts`); expanded project paths live
+  in `localStorage` (`omp-web:expanded-projects`), defaulting to only the
+  active/restored project expanded, and stale keys are pruned against the
+  current project list (only after the first project fetch — an empty
+  still-loading list must never wipe storage).
+- Each project's session tree is capped at 5 roots with a show-more toggle;
+  project rows are cards matching the session items' height/margins/accent
+  treatment, and the active project's worktree selector renders directly
+  below its row.
 
 ### File access allow-list
 - `/api/files` is intentionally not a general filesystem browser. Allowed roots come from session cwds, their resolved project roots, `~/omp-cwd-*`, and roots explicitly added with `allowFileRoot()`.

@@ -32,6 +32,28 @@ const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer
   ssr: false,
   loading: () => <PanelLoadingFallback />,
 });
+
+// Resizable desktop sidebar: the width is stored on the container as the
+// --sidebar-width CSS variable (globals.css) and persisted between sessions.
+const SIDEBAR_WIDTH_STORAGE_KEY = "omp-web:sidebar-width";
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 520;
+const SIDEBAR_DEFAULT_WIDTH = 260;
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
+}
+
+function loadSidebarWidth(): number {
+  if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    const width = raw ? Number(raw) : NaN;
+    return Number.isFinite(width) ? clampSidebarWidth(width) : SIDEBAR_DEFAULT_WIDTH;
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH;
+  }
+}
 const SettingsConfig = dynamic(() => import("./SettingsConfig").then((m) => m.SettingsConfig), {
   ssr: false,
   loading: () => <ModalLoadingFallback />,
@@ -89,6 +111,27 @@ export function AppShell() {
   const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
+  useEffect(() => {
+    setSidebarWidth(loadSidebarWidth());
+  }, []);
+  // Persist the committed width (after each change; skipped mid-drag, then
+  // written once the drag ends). The first run is skipped so the mount-time
+  // default cannot overwrite the stored width before it is loaded.
+  const sidebarWidthMountedRef = useRef(false);
+  useEffect(() => {
+    if (!sidebarWidthMountedRef.current) {
+      sidebarWidthMountedRef.current = true;
+      return;
+    }
+    if (sidebarResizing) return;
+    try {
+      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
+    } catch {
+      // ignore storage quota / privacy-mode errors
+    }
+  }, [sidebarWidth, sidebarResizing]);
   const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
   const [ompUpdateAvailable, setOmpUpdateAvailable] = useState(false);
   const appUpdateInFlightRef = useRef(false);
@@ -101,7 +144,7 @@ export function AppShell() {
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       setAppUpdateAvailable(false);
-      toast.success("ompweb updated", "Restart ompweb to use the new version.");
+      toast.success("ompweb update started", "ompweb will restart automatically. Refresh when it is available again.");
     } catch (error) {
       toast.error("Could not update ompweb", error instanceof Error ? error.message : String(error));
     } finally {
@@ -242,6 +285,49 @@ export function AppShell() {
     if (isMobile) setActiveTopPanel(null);
     setSidebarOpen((open) => !open);
   }, [isMobile]);
+
+  const resetSidebarWidth = useCallback(() => {
+    setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+  }, []);
+
+  const changeSidebarWidth = useCallback((delta: number) => {
+    setSidebarWidth((prev) => clampSidebarWidth(prev + delta));
+  }, []);
+
+  const handleSidebarResizeKey = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      changeSidebarWidth(-10);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      changeSidebarWidth(10);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      resetSidebarWidth();
+    }
+  }, [changeSidebarWidth, resetSidebarWidth]);
+
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    if (isMobile) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+    setSidebarResizing(true);
+    const onMove = (ev: MouseEvent) => {
+      setSidebarWidth(clampSidebarWidth(startWidth + (ev.clientX - startX)));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setSidebarResizing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [isMobile, sidebarWidth]);
 
   useEffect(() => {
     if (!activeTopPanel || !topBarRef.current) return;
@@ -696,7 +782,7 @@ export function AppShell() {
 
       {/* Left sidebar */}
       <div
-        className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
+        className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizing ? " sidebar-resizing" : ""}`}
         aria-hidden={mobileSidebarReady && !sidebarOpen ? true : undefined}
         inert={mobileSidebarReady && !sidebarOpen ? true : undefined}
         style={{
@@ -706,10 +792,39 @@ export function AppShell() {
           flexDirection: "column",
           flexShrink: 0,
           zIndex: 200,
+          // Desktop-only: the width is user-adjustable via the resize handle.
+          ...(!isMobile ? { "--sidebar-width": `${sidebarWidth}px` } : {}),
         }}
       >
         {sidebarContent}
       </div>
+
+      {/* Resize handle — desktop only, hidden while the sidebar is closed */}
+      {!isMobile && sidebarOpen && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("appShell.resizeSidebar")}
+          tabIndex={0}
+          onMouseDown={handleSidebarResizeStart}
+          onDoubleClick={resetSidebarWidth}
+          onKeyDown={handleSidebarResizeKey}
+          title={t("appShell.resizeSidebarTitle")}
+          style={{
+            width: 5,
+            flexShrink: 0,
+            cursor: "col-resize",
+            background: "transparent",
+            zIndex: 205,
+            outline: "none",
+            transition: "background 0.12s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 35%, transparent)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          onFocus={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 35%, transparent)"; }}
+          onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
+        />
+      )}
 
       {/* Center: chat */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>

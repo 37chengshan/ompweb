@@ -107,7 +107,10 @@ export async function resolveProject(cwd: string): Promise<ProjectInfo> {
     const isTopLevel = comparablePath(toplevel) === comparablePath(realCwd);
     const isWorktreeTopLevel = comparablePath(gitDir) !== comparablePath(commonDir) && isTopLevel;
     info = {
-      projectRoot: isWorktreeTopLevel ? resolve(dirname(commonDir)) : cwd,
+      // realCwd is the symlink-free, on-disk-cased form git itself resolved;
+      // use it for the non-worktree root too so the project registry and the
+      // session-discovered roots produce identical strings (Windows casing).
+      projectRoot: isWorktreeTopLevel ? resolve(dirname(commonDir)) : realCwd,
       branch: ref && ref !== "HEAD" ? ref : null,
       isWorktree: isWorktreeTopLevel,
       isTopLevel,

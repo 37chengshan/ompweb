@@ -1,4 +1,6 @@
 // Types mirrored from oh-my-pi coding-agent session-entries (v3 format).
+import type { TodoPhase } from "./pi-types";
+
 // omp-web cannot import the Bun-only @oh-my-pi packages, so the on-disk
 // shapes are re-declared here. Legacy pi v1/v2 fields are kept optional.
 
@@ -418,9 +420,21 @@ export interface SessionInfo {
   worktreeBranch?: string;
 }
 
+/** A project in the sidebar: an explicitly added directory (registered in the
+ *  on-disk registry) or one discovered from existing sessions. Paths are the
+ *  canonical projectRoot — worktrees resolve to their main repository. */
+export interface ManagedProject {
+  path: string;
+  /** ISO timestamp of the last explicit add; present only for registered
+   *  projects and used to order projects without sessions. */
+  addedAt?: string;
+}
+
 export interface SessionContext {
   messages: AgentMessage[];
   entryIds: string[]; // parallel to messages — the session entry id for each message
   thinkingLevel: string;
   model: { provider: string; modelId: string } | null;
+  /** Latest persisted todo snapshot on the selected session branch. */
+  todoPhases: TodoPhase[];
 }

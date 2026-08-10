@@ -1724,9 +1724,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    const end = messagesEndRef.current;
+    if (!container || !end) return;
     ignoreProgrammaticScrollUntilRef.current = Date.now() + PROGRAMMATIC_SCROLL_IGNORE_MS;
-    container.scrollTo({ top: container.scrollHeight, behavior: reducedMotion ? "auto" : behavior });
+    end.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "auto" : behavior });
   }, [reducedMotion]);
 
   const scrollUserMsgToTop = useCallback(() => {
@@ -1756,8 +1757,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!userScrollIntent && Date.now() < ignoreProgrammaticScrollUntilRef.current) return;
     if (!userScrollIntent) return;
     const container = scrollContainerRef.current;
-    if (!container) return;
-    completionScrollAllowedRef.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 24;
+    const end = messagesEndRef.current;
+    if (!container || !end) return;
+    completionScrollAllowedRef.current = end.getBoundingClientRect().bottom - container.getBoundingClientRect().bottom <= 24;
   }, []);
 
   // Load session on mount

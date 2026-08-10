@@ -93,10 +93,11 @@ export class RpcProcess {
       env: { ...process.env, ...options.env },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
-      // omp launches grandchildren (LSP servers, extension subprocesses). Run the
+      // On POSIX, omp launches grandchildren (LSP servers, extension subprocesses). Run the
       // child in its own process group so dispose() can SIGTERM/SIGKILL the whole
       // tree — otherwise a crashed omp would orphan its LSP children as zombies.
-      detached: true,
+      // Windows uses taskkill /t instead, so detaching would only create a console.
+      detached: process.platform !== "win32",
     });
 
     let resolveReady: (frame: RpcFrame) => void;

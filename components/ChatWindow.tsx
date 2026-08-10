@@ -743,11 +743,11 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
               />
             )}
 
+            <div ref={messagesEndRef} />
+
             {agentRunning && (
               <div style={{ height: scrollContainerRef.current ? scrollContainerRef.current.clientHeight : "80vh" }} />
             )}
-
-            <div ref={messagesEndRef} />
             </div>
           </div>
         </div>

@@ -11,6 +11,7 @@ export interface NpmUpdateStatus {
 }
 
 let cached: { checkedAt: number; status: NpmUpdateStatus } | null = null;
+let installPromise: Promise<void> | null = null;
 
 function parseVersion(version: string): { parts: number[]; prerelease: boolean } | null {
   const match = version.match(/^v?(\d+)\.(\d+)\.(\d+)(-.+)?$/);
@@ -55,9 +56,15 @@ export async function checkNpmUpdate(): Promise<NpmUpdateStatus> {
 }
 
 export async function installNpmUpdate(): Promise<void> {
-  await runNpm(["install", "--global", `${NPM_PACKAGE}@latest`], {
-    timeout: 300_000,
-    env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
-  });
-  cached = null;
+  if (!installPromise) {
+    installPromise = runNpm(["install", "--global", `${NPM_PACKAGE}@latest`], {
+      timeout: 300_000,
+      env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+    }).then(() => {
+      cached = null;
+    }).finally(() => {
+      installPromise = null;
+    });
+  }
+  return installPromise;
 }

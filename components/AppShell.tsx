@@ -89,14 +89,21 @@ export function AppShell() {
   const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
+  const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
+  const appUpdateInFlightRef = useRef(false);
   const installAppUpdate = useCallback(async () => {
+    if (appUpdateInFlightRef.current) return;
+    appUpdateInFlightRef.current = true;
     try {
       const response = await fetch("/api/app-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+      setAppUpdateAvailable(false);
       toast.success("ompweb updated", "Restart ompweb to use the new version.");
     } catch (error) {
       toast.error("Could not update ompweb", error instanceof Error ? error.message : String(error));
+    } finally {
+      appUpdateInFlightRef.current = false;
     }
   }, []);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
@@ -135,6 +142,7 @@ export function AppShell() {
     void fetch("/api/app-update", { signal: controller.signal })
       .then((response) => response.ok ? response.json() : null)
       .then((data: { currentVersion?: string; availableVersion?: string | null; updateAvailable?: boolean } | null) => {
+        setAppUpdateAvailable(Boolean(data?.updateAvailable));
         if (!data?.updateAvailable || !data.availableVersion) return;
         toast.info("ompweb update available", <span>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}. <button type="button" onClick={() => void installAppUpdate()} style={{ marginLeft: 6, padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}>Update now</button></span>);
       })
@@ -583,7 +591,7 @@ export function AppShell() {
             onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
           >
-            <Settings2 size={14} aria-hidden="true" />
+            <span style={{ position: "relative", display: "inline-flex" }}><Settings2 size={14} aria-hidden="true" />{appUpdateAvailable && <span aria-label="ompweb update available" role="status" style={{ position: "absolute", top: -3, right: -4, width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", border: "1px solid var(--bg-panel)" }} />}</span>
             Settings
           </button>
       </div>
@@ -598,22 +606,10 @@ export function AppShell() {
         0% {
           opacity: 0;
           transform: translateY(-24px);
-          filter: blur(6px);
-          box-shadow: 0 2px 8px rgba(0,0,0,0);
-        }
-        55% {
-          opacity: 1;
-          transform: translateY(0);
-          filter: blur(0);
-          background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
-          box-shadow: 0 18px 44px rgba(176,62,34,0.16);
         }
         100% {
           opacity: 1;
           transform: translateY(0);
-          filter: blur(0);
-          background: var(--bg-panel);
-          box-shadow: 0 10px 28px rgba(0,0,0,0.10);
         }
       }
       @keyframes session-info-light-wash {
@@ -634,7 +630,7 @@ export function AppShell() {
         overflow: hidden;
         transform-origin: top right;
         animation: session-info-pop 360ms ease-out both;
-        will-change: transform, opacity, filter, background, box-shadow;
+        will-change: transform, opacity;
       }
       .session-info-popover::after {
         content: "";

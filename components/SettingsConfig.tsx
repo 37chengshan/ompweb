@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { ExternalLink, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab } from "./SettingsTabs";
-import { ModelsConfig } from "./ModelsConfig";
-import { SkillsConfig } from "./SkillsConfig";
-import { PluginsConfig } from "./PluginsConfig";
-import { McpConfig } from "./McpConfig";
+
+const SettingsTabLoading = () => <div role="status" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>Loading settings…</div>;
+const ModelsConfig = dynamic(() => import("./ModelsConfig").then((module) => module.ModelsConfig), { loading: SettingsTabLoading });
+const SkillsConfig = dynamic(() => import("./SkillsConfig").then((module) => module.SkillsConfig), { loading: SettingsTabLoading });
+const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => module.PluginsConfig), { loading: SettingsTabLoading });
+const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading });
 
 type UpdateState = {
   currentVersion: string | null;
@@ -77,6 +80,11 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
   const [nativeSettings, setNativeSettings] = useState<NativeSettings | null>(null);
   const [nativeSettingsError, setNativeSettingsError] = useState<string | null>(null);
   const [nativeSavesInFlight, setNativeSavesInFlight] = useState(0);
+  const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTab>>(() => new Set(["general", activeTab]));
+
+  useEffect(() => {
+    setVisitedTabs((tabs) => tabs.has(activeTab) ? tabs : new Set([...tabs, activeTab]));
+  }, [activeTab]);
 
   useEffect(() => {
     fetch("/api/omp-settings")
@@ -272,10 +280,10 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
             {message && <p role="status" style={{ margin: "10px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{message}</p>}
           </section>
           </div>
-          <div style={{ display: activeTab === "models" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
+          {visitedTabs.has("models") && <div style={{ display: activeTab === "models" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
             <ModelsConfig embedded onClose={onClose} onSaved={onModelsSaved} />
-          </div>
-          <div role="tabpanel" id="settings-panel-mcp" aria-labelledby="settings-tab-mcp" style={{ display: activeTab === "mcp" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column", overflowY: "auto", padding: 20, gap: 14 }}>
+          </div>}
+          {visitedTabs.has("mcp") && <div role="tabpanel" id="settings-panel-mcp" aria-labelledby="settings-tab-mcp" style={{ display: activeTab === "mcp" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column", overflowY: "auto", padding: 20, gap: 14 }}>
             {cwd && <section style={{ padding: "16px", border: "1px solid var(--border)", borderRadius: "var(--radius-modal)", background: "var(--bg-subtle)" }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>MCP Behavior</div>
               <p style={{ margin: "6px 0 10px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>Global MCP behavior, persisted in OMP&apos;s config. Servers below are project-scoped and saved to <code>.omp/mcp.json</code> when no existing MCP config is present.</p>
@@ -288,11 +296,11 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
             <McpConfig cwd={cwd} sessionId={sessionId} />
             {!cwd && <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 12 }}>Select a workspace to view and edit its project MCP configuration.</p>}
             {nativeSettingsError && <p role="alert" style={{ margin: 0, color: "#f87171", fontSize: 12 }}>{nativeSettingsError}</p>}
-          </div>
-          {cwd && <div style={{ display: activeTab === "skills" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
+          </div>}
+          {cwd && visitedTabs.has("skills") && <div style={{ display: activeTab === "skills" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
             <SkillsConfig embedded cwd={cwd} onClose={onClose} />
           </div>}
-          {cwd && <div style={{ display: activeTab === "plugins" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
+          {cwd && visitedTabs.has("plugins") && <div style={{ display: activeTab === "plugins" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
             <PluginsConfig embedded cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onPluginsReloaded} />
           </div>}
         </div>

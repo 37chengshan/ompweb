@@ -343,6 +343,22 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
     return history.reverse();
   }, [messages]);
   const messageRefs = useMessageRefs(visibleMessages.length);
+  const conversationMeta = useMemo(() => {
+    const toolResultsMap = new Map<string, ToolResultMessage>();
+    let lastUserIdx = -1;
+    let lastAnchorIdx = -1;
+    const visibleRefIndexByMessage = new Map<number, number>();
+    let refIdx = 0;
+
+    messages.forEach((message, index) => {
+      if (message.role === "toolResult") toolResultsMap.set((message as ToolResultMessage).toolCallId, message as ToolResultMessage);
+      if (message.role === "user") lastUserIdx = index;
+      if (isGroupAnchor(message)) lastAnchorIdx = index;
+      if (message.role === "user" || message.role === "assistant") visibleRefIndexByMessage.set(index, refIdx++);
+    });
+
+    return { toolResultsMap, lastUserIdx, lastAnchorIdx, visibleRefIndexByMessage };
+  }, [messages]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
@@ -529,34 +545,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
               <ExtensionWidgets widgets={aboveEditorWidgets} />
 
             {(() => {
-              const toolResultsMap = new Map<string, ToolResultMessage>();
-              for (const msg of messages) {
-                if (msg.role === "toolResult") {
-                  toolResultsMap.set((msg as ToolResultMessage).toolCallId, msg as ToolResultMessage);
-                }
-              }
-
-              let lastUserIdx = -1;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i].role === "user") { lastUserIdx = i; break; }
-              }
-              // Anchor for live-tail detection: the last user message, or a
-              // compaction summary when compaction has replaced it mid-turn.
-              // Computed independently from lastUserIdx (which is kept for the
-              // scroll-to-user ref) because a compaction summary can sit after
-              // the last user message and anchor the still-streaming segment.
-              let lastAnchorIdx = -1;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                if (isGroupAnchor(messages[i])) { lastAnchorIdx = i; break; }
-              }
-
-              const visibleRefIndexByMessage = new Map<number, number>();
-              let refIdx = 0;
-              messages.forEach((msg, idx) => {
-                if (msg.role === "user" || msg.role === "assistant") {
-                  visibleRefIndexByMessage.set(idx, refIdx++);
-                }
-              });
+              const { toolResultsMap, lastUserIdx, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
 
               const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
                 messageRefs.current[refIndex] = el;

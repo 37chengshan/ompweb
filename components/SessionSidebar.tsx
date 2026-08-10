@@ -246,13 +246,13 @@ function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
 
 const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
 
-function useScramble(target: string, running: boolean): string {
+function useScramble(target: string, running: boolean, reducedMotion: boolean): string {
   const [display, setDisplay] = useState(target);
   const frameRef = useRef<number | null>(null);
   const iterRef = useRef(0);
 
   useEffect(() => {
-    if (!running) {
+    if (!running || reducedMotion) {
       setDisplay(target);
       return;
     }
@@ -284,7 +284,7 @@ function useScramble(target: string, running: boolean): string {
 
     frameRef.current = requestAnimationFrame(step);
     return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
-  }, [target, running]);
+  }, [target, running, reducedMotion]);
 
   return display;
 }
@@ -293,15 +293,19 @@ function OmpWebTitle() {
   const [showVersion, setShowVersion] = useState(false);
   const [scrambling, setScrambling] = useState(false);
   const revertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrambleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   const target = showVersion ? `v${process.env.NEXT_PUBLIC_OMP_WEB_VERSION ?? "0.0.0"}` : "omp web";
-  const display = useScramble(target, scrambling);
+  const display = useScramble(target, scrambling, reducedMotion);
 
   const triggerScramble = useCallback((toVersion: boolean) => {
     setShowVersion(toVersion);
+    if (scrambleTimerRef.current) clearTimeout(scrambleTimerRef.current);
+    if (reducedMotion) return;
     setScrambling(true);
-    setTimeout(() => setScrambling(false), (toVersion ? 6 : 8) * 4 * (1000 / 60) + 100);
-  }, []);
+    scrambleTimerRef.current = setTimeout(() => setScrambling(false), (toVersion ? 6 : 8) * 4 * (1000 / 60) + 100);
+  }, [reducedMotion]);
 
   const handleClick = useCallback(() => {
     if (revertTimerRef.current) clearTimeout(revertTimerRef.current);
@@ -314,18 +318,22 @@ function OmpWebTitle() {
     }
   }, [showVersion, triggerScramble]);
 
-  useEffect(() => () => { if (revertTimerRef.current) clearTimeout(revertTimerRef.current); }, []);
+  useEffect(() => () => {
+    if (revertTimerRef.current) clearTimeout(revertTimerRef.current);
+    if (scrambleTimerRef.current) clearTimeout(scrambleTimerRef.current);
+  }, []);
 
   return (
     <button
       onClick={handleClick}
       style={{
-        background: "none", border: "none", padding: 0, cursor: "default",
+        background: "none", border: "none", padding: 0, cursor: "pointer",
         fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em",
         color: showVersion ? "var(--accent)" : "var(--text)",
         fontFamily: "var(--font-mono)",
         minWidth: "6ch",
       }}
+      title={showVersion ? "Show ompweb name" : "Show ompweb version"}
     >
       {display}
     </button>

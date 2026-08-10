@@ -1,177 +1,87 @@
 # Release Checklist
 
-This repo publishes two artifacts for each release:
+Each release publishes two artifacts:
 
 - npm package: `ompweb`
-- GitHub Release: `Po1nt9/omp-web`
+- GitHub Release: [Harvi8/ompweb](https://github.com/Harvi8/ompweb)
 
-Use this checklist from a clean `main` checkout.
+After the initial bootstrap release, publishing is performed by GitHub Actions
+with npm trusted publishing. No npm access token is stored in this repository
+or in GitHub secrets.
 
-## 1. Preflight
+## Bootstrap the first release
 
-```bash
-git status --short --branch
-git log --oneline --decorate -5
-gh auth status
-npm whoami
-node -e "const p=require('./package.json'); console.log(p.version)"
-```
-
-Expected:
-
-- `git status` is clean, or only contains changes you intentionally plan to release.
-- GitHub is authenticated as an account that can push and create releases.
-- npm is authenticated as an account that can publish `ompweb`.
-
-## 2. Publish to npm
+`ompweb` is not registered on npm yet. npm exposes trusted-publisher settings
+only for an existing package, so version `0.2.0` must be published once from a
+reviewed local checkout using the authenticated npm account:
 
 ```bash
-npm run release
+npm ci
+npm test
+npm run build
+npm pack --dry-run
+npm publish --access public
 ```
 
-The release script runs:
+Do not create a GitHub Release for this bootstrap version: the publish workflow
+is intentionally release-triggered and npm will reject a duplicate version.
+After this succeeds, configure trusted publishing before publishing any later
+version.
+
+## One-time trusted-publisher setup
+
+1. In npm, open the `ompweb` package settings and add a **GitHub Actions**
+   trusted publisher with:
+   - Owner: `Harvi8`
+   - Repository: `ompweb`
+   - Workflow filename: `publish.yml`
+   - Environment: `npm`
+2. In GitHub, create the `npm` environment for this repository. Add required
+   reviewers if releases need approval.
+3. Confirm Actions are enabled for the repository.
+
+The workflow at `.github/workflows/publish.yml` requests only `contents: read`
+and `id-token: write`. It installs npm 11.5.1 or newer, as required for trusted
+publishing. The OIDC permission lets npm verify the GitHub Actions identity and
+generate provenance for the published package.
+
+## Release later versions
+
+Run these from a clean `main` checkout after the release changes are merged.
 
 ```bash
-npm version patch --no-git-tag-version && npm run build && npm publish --access public
+npm ci
+npm test
+npm run build
+npm version <major|minor|patch>
+git push origin main --follow-tags
 ```
 
-Notes:
+`npm version` updates `package.json` and `package-lock.json`, creates a commit,
+and creates a `v<version>` tag. Review the generated commit before pushing.
 
-- This bumps `package.json` and `package-lock.json`.
-- It intentionally runs a production build. Do not run `next build` during normal development; release work is the exception.
-- If `npm view ompweb version` briefly shows the previous version, check the exact version instead:
-
-```bash
-npm view ompweb@<version> version --registry https://registry.npmjs.org/
-npm view ompweb versions --json --registry https://registry.npmjs.org/
-```
-
-## 3. Commit the Version Bump
-
-Replace `<version>` with the new package version, for example `0.7.5`.
-
-```bash
-git diff -- package.json package-lock.json
-git add package.json package-lock.json
-git commit -m "Release v<version>"
-```
-
-## 4. Tag and Push
-
-```bash
-git tag -a v<version> -m "v<version>"
-git push origin main --tags
-```
-
-Confirm the tag does not already exist before creating it when unsure:
-
-```bash
-git ls-remote --tags origin v<version>
-gh release view v<version> --repo Po1nt9/omp-web
-```
-
-## 5. Generate Release Notes from Commits
-
-Use the previous release tag as the base.
-
-```bash
-git log --oneline --decorate v<previous>..v<version>
-git log --format='%h%x09%s%n%b' v<previous>..v<version>
-git diff --stat v<previous>..v<version>
-```
-
-Write the release notes from those commits, not from memory. Include both Chinese and English sections. Keep commit hashes next to each item when useful.
-
-Suggested structure:
-
-```markdown
-## 中文
-
-基于 `v<previous>..v<version>` 的提交整理。
-
-### 新增
-
-- ...
-
-### 修复
-
-- ...
-
-### 改进
-
-- ...
-
-### 内部调整
-
-- 发布 npm 包 `ompweb@<version>`。
-
-## English
-
-Prepared from commits in `v<previous>..v<version>`.
-
-### Added
-
-- ...
-
-### Fixed
-
-- ...
-
-### Improved
-
-- ...
-
-### Internal
-
-- Published npm package `ompweb@<version>`.
-```
-
-## 6. Create or Update the GitHub Release
-
-Create a new release:
+Then create and publish the matching GitHub Release:
 
 ```bash
 gh release create v<version> \
-  --repo Po1nt9/omp-web \
+  --repo Harvi8/ompweb \
   --verify-tag \
   --title "v<version>" \
-  --notes-file release-notes.md
+  --generate-notes
 ```
 
-If the release already exists and only the notes need updating:
+Publishing the GitHub Release starts the `Publish npm package` workflow. It
+checks out that immutable tag, verifies the tag matches `package.json`, installs
+from the lockfile, runs tests and the production build, then publishes `ompweb`
+through the configured trusted publisher.
+
+## Verify
 
 ```bash
-gh release edit v<version> \
-  --repo Po1nt9/omp-web \
-  --notes-file release-notes.md
-```
-
-You can avoid a temporary file by passing notes through stdin:
-
-```bash
-gh release edit v<version> --repo Po1nt9/omp-web --notes-file - <<'EOF'
-## 中文
-
-...
-
-## English
-
-...
-EOF
-```
-
-## 7. Final Verification
-
-```bash
-gh release view v<version> --repo Po1nt9/omp-web
+gh run list --repo Harvi8/ompweb --workflow publish.yml --limit 1
 npm view ompweb@<version> version --registry https://registry.npmjs.org/
-git status --short --branch
-git log --oneline --decorate -3
+npm view ompweb@<version> --json --registry https://registry.npmjs.org/
 ```
 
-Expected:
-
-- GitHub Release exists and is not a draft unless intentionally published as one.
-- npm exact version resolves.
-- `main` is aligned with `origin/main`.
-- `HEAD` points at the release commit and `v<version>` tag.
+Confirm the workflow succeeded, the exact package version resolves, and npm
+shows the expected provenance link.

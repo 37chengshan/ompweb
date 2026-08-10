@@ -2,13 +2,13 @@
   "name": "ompweb",
   "version": "0.2.0",
   "description": "Web UI for the oh-my-pi (omp) coding agent",
-  "homepage": "https://github.com/Po1nt9/omp-web#readme",
+  "homepage": "https://github.com/Harvi8/ompweb#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Po1nt9/omp-web.git"
+    "url": "git+https://github.com/Harvi8/ompweb.git"
   },
   "bugs": {
-    "url": "https://github.com/Po1nt9/omp-web/issues"
+    "url": "https://github.com/Harvi8/ompweb/issues"
   },
   "license": "MIT",
   "engines": {
@@ -22,7 +22,11 @@
     ".next",
     "!.next/cache",
     "!.next/dev",
-    "!.next/**/*.js.map",
+    "!.next/diagnostics",
+    "!.next/types",
+    "!.next/trace",
+    "!.next/trace-build",
+    "!.next/**/*.map",
     "public",
     "next.config.ts",
     "package.json"
@@ -36,7 +40,7 @@
     "test": "node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs components/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
+    "release:check": "npm test && npm run build"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

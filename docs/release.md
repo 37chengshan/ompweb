@@ -23,8 +23,8 @@ npm pack --dry-run
 npm publish --access public
 ```
 
-Do not create a GitHub Release for this bootstrap version: the publish workflow
-is intentionally release-triggered and npm will reject a duplicate version.
+Do not create a tag or GitHub Release for this bootstrap version: npm will
+reject a duplicate version.
 After this succeeds, configure trusted publishing before publishing any later
 version.
 
@@ -40,10 +40,11 @@ version.
    reviewers if releases need approval.
 3. Confirm Actions are enabled for the repository.
 
-The workflow at `.github/workflows/publish.yml` requests only `contents: read`
-and `id-token: write`. It installs npm 11.5.1 or newer, as required for trusted
-publishing. The OIDC permission lets npm verify the GitHub Actions identity and
-generate provenance for the published package.
+The workflow at `.github/workflows/publish.yml` requests `contents: write` to
+create the GitHub Release and `id-token: write` for trusted publishing. It
+installs npm 11.5.1 or newer, as required for trusted publishing. The OIDC
+permission lets npm verify the GitHub Actions identity and generate provenance
+for the published package.
 
 ## Release later versions
 
@@ -60,20 +61,13 @@ git push origin main --follow-tags
 `npm version` updates `package.json` and `package-lock.json`, creates a commit,
 and creates a `v<version>` tag. Review the generated commit before pushing.
 
-Then create and publish the matching GitHub Release:
-
-```bash
-gh release create v<version> \
-  --repo kahme247/ompweb \
-  --verify-tag \
-  --title "v<version>" \
-  --generate-notes
-```
-
-Publishing the GitHub Release starts the `Publish npm package` workflow. It
-checks out that immutable tag, verifies the tag matches `package.json`, installs
-from the lockfile, runs tests and the production build, then publishes `ompweb`
-through the configured trusted publisher.
+Pushing the tag starts the `Publish npm package` workflow. It checks out that
+immutable tag, verifies the tag matches `package.json`, installs from the
+lockfile, runs tests and the production build, then creates a draft GitHub
+Release with generated notes. It publishes `ompweb` through the configured
+trusted publisher and makes that release public only after npm accepts the
+package. A rerun can safely finish a release if npm has already accepted its
+version.
 
 ## Verify
 

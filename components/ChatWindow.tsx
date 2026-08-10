@@ -231,7 +231,6 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
     activeSubagentCount, currentTodoPhase,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
-    lastUserMsgRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
@@ -345,19 +344,17 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
   const messageRefs = useMessageRefs(visibleMessages.length);
   const conversationMeta = useMemo(() => {
     const toolResultsMap = new Map<string, ToolResultMessage>();
-    let lastUserIdx = -1;
     let lastAnchorIdx = -1;
     const visibleRefIndexByMessage = new Map<number, number>();
     let refIdx = 0;
 
     messages.forEach((message, index) => {
       if (message.role === "toolResult") toolResultsMap.set((message as ToolResultMessage).toolCallId, message as ToolResultMessage);
-      if (message.role === "user") lastUserIdx = index;
       if (isGroupAnchor(message)) lastAnchorIdx = index;
       if (message.role === "user" || message.role === "assistant") visibleRefIndexByMessage.set(index, refIdx++);
     });
 
-    return { toolResultsMap, lastUserIdx, lastAnchorIdx, visibleRefIndexByMessage };
+    return { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage };
   }, [messages]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
@@ -545,11 +542,10 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
               <ExtensionWidgets widgets={aboveEditorWidgets} />
 
             {(() => {
-              const { toolResultsMap, lastUserIdx, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
+              const { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
 
               const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
                 messageRefs.current[refIndex] = el;
-                if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
               const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean } = {}): ReactNode => {
@@ -744,10 +740,6 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
             )}
 
             <div ref={messagesEndRef} />
-
-            {agentRunning && (
-              <div style={{ height: scrollContainerRef.current ? scrollContainerRef.current.clientHeight : "80vh" }} />
-            )}
             </div>
           </div>
         </div>

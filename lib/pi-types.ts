@@ -38,12 +38,14 @@ export interface OmpModel {
 }
 
 export interface TodoItem {
+  id?: string;
   content: string;
-  status: string;
+  status: "pending" | "in_progress" | "completed" | "blocked" | "abandoned";
   blocker?: string;
 }
 
 export interface TodoPhase {
+  id?: string;
   name: string;
   tasks: TodoItem[];
 }

@@ -30,6 +30,7 @@ export interface SessionData {
     entryIds: string[];
     thinkingLevel: string;
     model: { provider: string; modelId: string } | null;
+    todoPhases: TodoPhase[];
   };
 }
 
@@ -566,8 +567,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     for (let index = 0; index < todoPhases.length; index++) {
       const phase = todoPhases[index];
       const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
-      const done = tasks.filter((task) => task.status === "completed" || task.status === "abandoned").length;
-      if (done < tasks.length) {
+      const done = tasks.filter((task) => task.status === "completed").length;
+      if (tasks.some((task) => task.status === "pending" || task.status === "in_progress")) {
         return { name: phase.name, index: index + 1, phaseCount: todoPhases.length, done, total: tasks.length };
       }
     }
@@ -596,6 +597,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setActiveLeafId(d.leafId);
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
+      setTodoPhases(d.context.todoPhases ?? []);
       setCurrentModelOverride(null);
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
@@ -645,9 +647,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const url = `/api/sessions/${encodeURIComponent(sid)}/context?${params}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
+      const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[]; todoPhases: TodoPhase[] } };
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
+      setTodoPhases(d.context.todoPhases ?? []);
     } catch (e) {
       console.error("Failed to load context:", e);
     }
@@ -928,7 +931,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // must not overwrite the messages of the run currently streaming.
     if (runId !== undefined && promptRunIdRef.current !== runId) return;
     try {
-      if (sid) await loadSession(sid);
+      if (sid) await loadSession(sid, false, true);
     } finally {
       if (runId !== undefined && promptRunIdRef.current !== runId) return;
       optimisticUserMessageKeyRef.current = null;
@@ -1221,6 +1224,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       case "tool_execution_end": {
         const id = event.toolCallId as string;
+        if (event.toolName === "todo" && sessionIdRef.current) {
+          void reconcileAgentState(sessionIdRef.current);
+        }
         setAgentPhase((prev) => {
           if (prev?.kind !== "running_tools") return prev;
           const tools = prev.tools.filter((t) => t.id !== id);
@@ -1229,6 +1235,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
       }
+      case "todo_reminder":
+      case "todo_auto_clear":
+        if (sessionIdRef.current) void reconcileAgentState(sessionIdRef.current);
+        break;
       case "auto_retry_start":
         setRetryInfo({ attempt: event.attempt as number, maxAttempts: event.maxAttempts as number, errorMessage: event.errorMessage as string | undefined });
         break;
@@ -1267,7 +1277,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as unknown as IncomingExtensionUiRequest);
         break;
     }
-  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, onAgentEnd]);
+  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, onAgentEnd, reconcileAgentState]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -1936,7 +1946,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
-    activeSubagentCount, currentTodoPhase,
+    activeSubagentCount, currentTodoPhase, todoPhases,
     isNew,
     // Refs
     sessionIdRef, eventSourceRef, messagesEndRef, scrollContainerRef,

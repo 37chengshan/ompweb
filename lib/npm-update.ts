@@ -1,5 +1,7 @@
 import packageJson from "../package.json";
-import { runNpm } from "./npx";
+import { spawn } from "child_process";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const NPM_PACKAGE = "@kahme247/ompweb";
 const CHECK_TTL_MS = 60 * 60 * 1000;
@@ -32,8 +34,8 @@ export function isNewerVersion(availableVersion: string, currentVersion: string)
   return !available.prerelease && current.prerelease;
 }
 
-export async function checkNpmUpdate(): Promise<NpmUpdateStatus> {
-  if (cached && Date.now() - cached.checkedAt < CHECK_TTL_MS) return cached.status;
+export async function checkNpmUpdate(force = false): Promise<NpmUpdateStatus> {
+  if (!force && cached && Date.now() - cached.checkedAt < CHECK_TTL_MS) return cached.status;
 
   const currentVersion = packageJson.version;
   try {
@@ -57,14 +59,41 @@ export async function checkNpmUpdate(): Promise<NpmUpdateStatus> {
 
 export async function installNpmUpdate(): Promise<void> {
   if (!installPromise) {
-    installPromise = runNpm(["update", "--global", NPM_PACKAGE], {
-      timeout: 300_000,
-      env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
-    }).then(() => {
-      cached = null;
-    }).finally(() => {
+    installPromise = startDetachedUpdater().catch((error) => {
       installPromise = null;
+      throw error;
     });
   }
   return installPromise;
+}
+
+async function startDetachedUpdater(): Promise<void> {
+  const packageDir = process.env.OMP_WEB_PACKAGE_DIR ?? process.cwd();
+  const helperPath = join(packageDir, "bin", "omp-web-update.js");
+  const updaterArgs = [
+    helperPath,
+    "--parent-pid", String(process.pid),
+    "--package-dir", packageDir,
+    "--port", process.env.OMP_WEB_PORT ?? process.env.PORT ?? "30177",
+    "--hostname", process.env.OMP_WEB_HOSTNAME ?? "127.0.0.1",
+  ];
+  if (process.env.OMP_WEB_LAUNCHER_PID) {
+    updaterArgs.push("--launcher-pid", process.env.OMP_WEB_LAUNCHER_PID);
+  }
+
+  const updater = spawn(process.execPath, updaterArgs, {
+    cwd: tmpdir(),
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    updater.once("spawn", resolve);
+    updater.once("error", reject);
+  });
+  updater.unref();
+
+  const shutdownTimer = setTimeout(() => process.exit(0), 500);
+  shutdownTimer.unref();
 }

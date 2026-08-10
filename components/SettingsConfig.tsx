@@ -128,10 +128,10 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
 
   useEffect(() => { void checkForUpdate(); }, [checkForUpdate]);
 
-  const checkForAppUpdate = useCallback(async () => {
+  const checkForAppUpdate = useCallback(async (force = false) => {
     setCheckingAppUpdate(true);
     try {
-      const response = await fetch("/api/app-update");
+      const response = await fetch(force ? "/api/app-update?force=1" : "/api/app-update");
       const data = await response.json() as UpdateState & { error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       setAppUpdate(data);
@@ -151,7 +151,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
       const response = await fetch("/api/app-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
-      setMessage("ompweb was updated. Restart ompweb to use the new version.");
+      setMessage("ompweb is updating and will restart automatically. Refresh this page when it is available again.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -260,7 +260,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
                   {checkingAppUpdate ? "Checking for updates..." : appUpdate?.updateAvailable ? `v${appUpdate.currentVersion ?? "?"} -> v${appUpdate.availableVersion}` : appUpdate?.currentVersion ? `v${appUpdate.currentVersion} is up to date` : "Version unavailable"}
                 </div>
               </div>
-              <button type="button" onClick={() => void checkForAppUpdate()} disabled={checkingAppUpdate} aria-label="Check ompweb updates" style={{ padding: 7, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: checkingAppUpdate ? "wait" : "pointer" }}><RefreshCw size={14} aria-hidden="true" /></button>
+              <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate} aria-label="Check ompweb updates" style={{ padding: 7, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: checkingAppUpdate ? "wait" : "pointer" }}><RefreshCw size={14} aria-hidden="true" /></button>
             </div>
             {appUpdate?.updateAvailable && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}><button type="button" onClick={() => void installAppUpdate()} disabled={updatingApp} style={{ padding: "7px 11px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "#fff", cursor: updatingApp ? "wait" : "pointer", fontSize: 12 }}>{updatingApp ? "Updating..." : "Update ompweb"}</button></div>}
           </section>

@@ -18,6 +18,7 @@ import type {
   SessionInfo,
 } from "./types";
 import { normalizeToolCalls } from "./normalize";
+import type { TodoPhase } from "./pi-types";
 import { sessionPathKey } from "./session-path";
 import { resolveProject, type ProjectInfo } from "./worktree";
 
@@ -237,6 +238,56 @@ export function getSessionEntries(filePath: string): SessionEntry[] {
   return loadSessionFile(filePath).entries;
 }
 
+function parseTodoPhases(value: unknown): TodoPhase[] | null {
+  if (!Array.isArray(value)) return null;
+  const statuses = new Set(["pending", "in_progress", "completed", "blocked", "abandoned"]);
+  const phases: TodoPhase[] = [];
+  for (const phase of value) {
+    if (!isRecord(phase) || typeof phase.name !== "string" || !Array.isArray(phase.tasks)) return null;
+    const tasks = [];
+    for (const task of phase.tasks) {
+      if (!isRecord(task) || typeof task.content !== "string" || typeof task.status !== "string" || !statuses.has(task.status)) return null;
+      if (task.blocker !== undefined && typeof task.blocker !== "string") return null;
+      tasks.push({
+        content: task.content,
+        status: task.status as TodoPhase["tasks"][number]["status"],
+        ...(typeof task.blocker === "string" ? { blocker: task.blocker } : {}),
+      });
+    }
+    phases.push({ name: phase.name, tasks });
+  }
+  return phases;
+}
+
+/** Latest valid todo snapshot on the selected branch, without exposing tool metadata to the client. */
+export function getTodoPhasesFromEntries(entries: SessionEntry[], leafId?: string | null): TodoPhase[] {
+  if (leafId === null || entries.length === 0) return [];
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  let entry = leafId ? byId.get(leafId) : entries[entries.length - 1];
+  const path: SessionEntry[] = [];
+  const seen = new Set<string>();
+  while (entry && !seen.has(entry.id)) {
+    seen.add(entry.id);
+    path.push(entry);
+    entry = entry.parentId ? byId.get(entry.parentId) : undefined;
+  }
+
+  for (let index = path.length - 1; index >= 0; index--) {
+    const current = path[index];
+    if (current.type === "custom" && current.customType === "user_todo_edit") {
+      const phases = isRecord(current.data) ? parseTodoPhases(current.data.phases) : null;
+      if (phases) return phases;
+    }
+    if (current.type === "message" && current.message.role === "toolResult") {
+      const message = current.message as { role?: string; toolName?: string; isError?: boolean; details?: unknown };
+      if (message.toolName !== "todo" || message.isError) continue;
+      const phases = isRecord(message.details) ? parseTodoPhases(message.details.phases) : null;
+      if (phases) return phases;
+    }
+  }
+  return [];
+}
+
 const SUPERSEDED_COMPACTION_SUMMARY = "[Superseded compaction summary elided after a newer compaction]";
 
 /**
@@ -253,7 +304,7 @@ export function buildSessionContext(
   leafId?: string | null,
   options: { deferThinking?: boolean; deferToolResultImages?: boolean } = {},
 ): SessionContext {
-  const emptyContext: SessionContext = { messages: [], entryIds: [], thinkingLevel: "off", model: null };
+  const emptyContext: SessionContext = { messages: [], entryIds: [], thinkingLevel: "off", model: null, todoPhases: [] };
   const byId = new Map<string, SessionEntry>();
   for (const e of entries) byId.set(e.id, e);
 
@@ -348,7 +399,7 @@ export function buildSessionContext(
       : { provider: "", modelId: defaultModel };
   }
 
-  return { messages, entryIds, thinkingLevel, model };
+  return { messages, entryIds, thinkingLevel, model, todoPhases: getTodoPhasesFromEntries(entries, leafId) };
 }
 
 function parseEntryTimestamp(timestamp: string): number | undefined {

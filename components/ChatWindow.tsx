@@ -8,6 +8,7 @@ import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ExtensionDialog } from "./ExtensionDialog";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { TodoList } from "./TodoList";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -228,7 +229,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase,
-    activeSubagentCount, currentTodoPhase,
+    activeSubagentCount, currentTodoPhase, todoPhases,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
@@ -694,6 +695,8 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
             {streamState.isStreaming && streamState.streamingMessage && (
               <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} />
             )}
+
+            <TodoList phases={todoPhases} />
 
             {agentRunning && !streamState.streamingMessage && (
               <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">

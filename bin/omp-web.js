@@ -73,7 +73,13 @@ async function main() {
   const child = spawn(process.execPath, [nextBin, ...nextArgs], {
     cwd: pkgDir,
     stdio: ["inherit", "pipe", "inherit"],
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      OMP_WEB_PACKAGE_DIR: pkgDir,
+      OMP_WEB_LAUNCHER_PID: String(process.pid),
+      OMP_WEB_PORT: port,
+      OMP_WEB_HOSTNAME: hostname,
+    },
   });
 
   let browserOpened = false;
@@ -84,9 +90,8 @@ async function main() {
       browserOpened = true;
       const isWindows = process.platform === "win32";
       const isMac = process.platform === "darwin";
-      const openCmd = isWindows ? "start" : isMac ? "open" : "xdg-open";
+      const openCmd = isWindows ? "explorer.exe" : isMac ? "open" : "xdg-open";
       const opener = spawn(openCmd, [url], {
-        shell: isWindows,
         stdio: "ignore",
         detached: true,
       });

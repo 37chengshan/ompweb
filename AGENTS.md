@@ -282,7 +282,7 @@ must consume these variables — no hardcoded colors.
 color:  --bg --bg-panel --bg-hover --bg-selected --border --bg-subtle
         --text --text-muted --text-dim
         --accent --accent-strong --accent-hover   (links / filled buttons / hover)
-        --user-bg --assistant-bg --tool-bg
+        --user-bg --tool-bg
 type:   --font-serif (display headings, class .display-serif)  --font-mono
 shape:  --radius-control (8) --radius-card (12) --radius-modal (16)
 depth:  --shadow-card --shadow-pop --shadow-modal

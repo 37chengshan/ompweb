@@ -242,6 +242,10 @@ export class AgentSessionWrapper {
   private async initialize(): Promise<void> {
     const ready = await this.proc.waitReady(READY_TIMEOUT_MS);
     await this.proc.negotiateProtocol(ready);
+    // Subscribe to subagent lifecycle/progress/event frames so the UI can show
+    // a live subagent roster. Older omp builds may not know the command —
+    // degrade silently (the UI falls back to no subagent info).
+    await this.proc.sendCommand({ type: "set_subagent_subscription", level: "events" }).catch(() => {});
     const state = await this.proc.sendCommand<RpcSessionState>({ type: "get_state" });
     this.applyIdentity(state);
   }

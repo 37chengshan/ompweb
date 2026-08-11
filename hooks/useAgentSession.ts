@@ -64,6 +64,21 @@ interface AgentEvent {
   [key: string]: unknown;
 }
 
+/** Live subagent roster entry, fed by omp's subagent_lifecycle/progress frames
+ * (payload shapes mirrored from oh-my-pi task/types.ts). */
+export interface SubagentInfo {
+  id: string;
+  agent: string;
+  description?: string;
+  status: "started" | "completed" | "failed" | "aborted";
+  task?: string;
+  sessionFile?: string;
+  parentToolCallId?: string;
+  index: number;
+}
+
+const SUBAGENT_TERMINAL_STATUSES = new Set(["completed", "failed", "aborted"]);
+
 interface CompactCommandResult {
   tokensBefore?: number;
   estimatedTokensAfter?: number;
@@ -479,8 +494,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [extensionStatuses, setExtensionStatuses] = useState<ExtensionStatusItem[]>([]);
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
-  const [activeSubagentCount, setActiveSubagentCount] = useState(0);
+  const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
   const [todoPhases, setTodoPhases] = useState<TodoPhase[]>([]);
+  const activeSubagentCount = subagents.filter((subagent) => subagent.status === "started").length;
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
@@ -500,7 +516,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const newSessionPromotedRef = useRef(false);
   const promptRunIdRef = useRef(0);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
-  const activeSubagentIdsRef = useRef<Set<string>>(new Set());
   // True once this mount has persisted a non-empty queue: gates removal so a
   // just-mounted empty state cannot wipe a stored queue before restore runs.
   const queuePersistDirtyRef = useRef(false);
@@ -935,8 +950,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentRunning(false);
       setAgentPhase(null);
       setRetryInfo(null);
-      activeSubagentIdsRef.current.clear();
-      setActiveSubagentCount(0);
+      setSubagents([]);
       dispatch({ type: "end" });
       onAgentEnd?.();
     }
@@ -1101,8 +1115,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setAgentRunning(false);
         setAgentPhase(null);
         setRetryInfo(null);
-        activeSubagentIdsRef.current.clear();
-        setActiveSubagentCount(0);
+        setSubagents([]);
         dispatch({ type: "end" });
         if (sessionIdRef.current) {
           loadSession(sessionIdRef.current);
@@ -1262,16 +1275,49 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         break;
       case "subagent_lifecycle": {
-        // Display-only counter for the status line. Defensive parsing: an omp
-        // protocol change degrades to showing nothing, never breaks the run.
-        const payload = event.payload as { id?: unknown; status?: unknown } | undefined;
-        const id = typeof payload?.id === "string" ? payload.id : null;
-        const status = typeof payload?.status === "string" ? payload.status : null;
-        if (!id || !status) break;
-        const ids = activeSubagentIdsRef.current;
-        if (status === "started") ids.add(id);
-        else ids.delete(id);
-        setActiveSubagentCount(ids.size);
+        // Roster fed by omp's subagent_lifecycle frames. Payload mirrors
+        // SubagentLifecyclePayload (oh-my-pi task/types.ts); defensive
+        // parsing degrades to ignoring the frame, never breaking the run.
+        const payload = event.payload as { id?: unknown; agent?: unknown; description?: unknown; status?: unknown; sessionFile?: unknown; parentToolCallId?: unknown; index?: unknown } | undefined;
+        if (!payload || typeof payload.id !== "string" || typeof payload.status !== "string") break;
+        const id = payload.id;
+        const status = payload.status;
+        const info: SubagentInfo = {
+          id,
+          agent: typeof payload.agent === "string" ? payload.agent : "subagent",
+          description: typeof payload.description === "string" ? payload.description : undefined,
+          status: SUBAGENT_TERMINAL_STATUSES.has(status) ? status as SubagentInfo["status"] : "started",
+          sessionFile: typeof payload.sessionFile === "string" ? payload.sessionFile : undefined,
+          parentToolCallId: typeof payload.parentToolCallId === "string" ? payload.parentToolCallId : undefined,
+          index: typeof payload.index === "number" ? payload.index : -1,
+        };
+        setSubagents((prev) => {
+          const existingIndex = prev.findIndex((subagent) => subagent.id === id);
+          if (existingIndex === -1) return [...prev, info];
+          const next = [...prev];
+          next[existingIndex] = { ...next[existingIndex], ...info };
+          return next;
+        });
+        break;
+      }
+      case "subagent_progress": {
+        // Progress frames carry no subagent id — they are keyed by
+        // parentToolCallId (when linked) or the spawn ordinal index.
+        const payload = event.payload as { index?: unknown; agent?: unknown; task?: unknown; parentToolCallId?: unknown } | undefined;
+        const task = typeof payload?.task === "string" && payload.task.trim() ? payload.task : null;
+        if (!task) break;
+        const index = typeof payload?.index === "number" ? payload.index : -1;
+        const parentToolCallId = typeof payload?.parentToolCallId === "string" ? payload.parentToolCallId : null;
+        setSubagents((prev) => {
+          if (prev.length === 0) return prev;
+          let target = -1;
+          if (parentToolCallId) target = prev.findIndex((subagent) => subagent.parentToolCallId === parentToolCallId);
+          if (target === -1 && index >= 0) target = prev.findIndex((subagent) => subagent.index === index);
+          if (target === -1 || prev[target].task === task) return prev;
+          const next = [...prev];
+          next[target] = { ...next[target], task };
+          return next;
+        });
         break;
       }
       case "extension_ui_request":
@@ -1947,7 +1993,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
-    activeSubagentCount, currentTodoPhase, todoPhases,
+    subagents, activeSubagentCount, currentTodoPhase, todoPhases,
     isNew,
     // Refs
     sessionIdRef, eventSourceRef, messagesEndRef, scrollContainerRef,

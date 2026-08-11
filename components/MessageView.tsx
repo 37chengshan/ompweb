@@ -498,7 +498,6 @@ function AssistantMessageView({
       for (const b of bs) {
         if (b.type === "text") chars += (b as TextContent).text?.length ?? 0;
         else if (b.type === "thinking") chars += (b as ThinkingContent).thinking?.length ?? 0;
-        else if (b.type === "toolCall") chars += JSON.stringify((b as ToolCallContent).input ?? {}).length;
       }
       if (chars === 0) return;
       if (streamStartRef.current === null) streamStartRef.current = now;
@@ -513,15 +512,8 @@ function AssistantMessageView({
 
   return (
     <div
-      className={`chat-message-card${isStreaming ? " chat-message-card--live" : ""}`}
-      style={{
-        marginBottom: 16,
-        background: "var(--assistant-bg)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius-card)",
-        boxShadow: "var(--shadow-card)",
-        padding: "10px 14px",
-      }}
+      className={`chat-message${isStreaming ? " chat-message--live" : ""}`}
+      style={{ marginBottom: 16 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -544,7 +536,6 @@ function AssistantMessageView({
           for (const b of blocks) {
             if (b.type === "text") chars += (b as TextContent).text?.length ?? 0;
             else if (b.type === "thinking") chars += (b as ThinkingContent).thinking?.length ?? 0;
-            else if (b.type === "toolCall") chars += JSON.stringify((b as ToolCallContent).input ?? {}).length;
           }
           const est = Math.round(chars / 4);
           return (
@@ -634,7 +625,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} isStreaming={isStreaming} />;
   }
   return null;
 }
@@ -753,12 +744,13 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
 ));
 
 
-const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
+const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isStreaming }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean }) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
-  const inputStr = JSON.stringify(block.input, null, 2);
+  // Streamed tool calls start expanded so their input stays visible as it
+  // grows; settled transcript calls collapse to the header until clicked.
+  const [expanded, setExpanded] = useState(isStreaming ?? false);
   const isEditTool = isEditToolName(block.toolName);
-  const resultDiff = result && !result.isError ? getResultDiff(result) : null;
+  const resultDiff = expanded && result && !result.isError ? getResultDiff(result) : null;
 
   // Result display
   const resultText = result
@@ -820,7 +812,7 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration }: {
         </CollapsibleTrigger>
 
         {/* ── Expanded: input args ── */}
-        {!isEditTool && (
+        {expanded && !isEditTool && (
           <pre
             style={{
               margin: 0,
@@ -835,12 +827,12 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration }: {
               wordBreak: "break-all",
             }}
           >
-            {inputStr}
+            {JSON.stringify(block.input, null, 2)}
           </pre>
         )}
 
         {/* ── Paired result — only shown when expanded ── */}
-        {result && (
+        {expanded && result && (
           resultDiff ? (
             <PairedDiffResult
               diff={resultDiff}

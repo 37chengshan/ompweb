@@ -127,10 +127,10 @@ const GIT_STATUS_LABEL_KEYS: Record<GitFileStatusKind, string> = {
 };
 
 const GIT_STATUS_COLORS: Record<GitFileStatusKind, string> = {
-  modified: "#d6a84b",
+  modified: "var(--status-modified)",
   added: "var(--status-success)",
   deleted: "var(--status-error)",
-  renamed: "#60a5fa",
+  renamed: "var(--status-renamed)",
   untracked: "var(--status-success)",
   conflict: "var(--status-error)",
 };
@@ -360,7 +360,7 @@ function TreeNode({
               height: 6,
               flexShrink: 0,
               borderRadius: "50%",
-              background: "#d6a84b",
+              background: "var(--status-modified)",
             }}
           />
         )}

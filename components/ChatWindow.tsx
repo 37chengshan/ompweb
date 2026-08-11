@@ -229,7 +229,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase,
-    activeSubagentCount, currentTodoPhase, todoPhases,
+    subagents, activeSubagentCount, currentTodoPhase, todoPhases,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
@@ -717,6 +717,31 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
                       : null,
                   ].filter(Boolean).join(" · ")}
                 </span>
+              </div>
+            )}
+            {subagents.length > 0 && (
+              <div role="list" aria-label={tn("chatWindow.subagentCount", subagents.length)} style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+                {subagents.map((subagent) => (
+                  <span
+                    key={subagent.id}
+                    title={subagent.description ?? subagent.task ?? subagent.id}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      padding: "2px 9px",
+                      border: "1px solid var(--border)",
+                      borderRadius: 999,
+                      background: "var(--bg-panel)",
+                      fontSize: 11,
+                      color: subagent.status === "started" ? "var(--text)" : "var(--text-dim)",
+                      opacity: subagent.status === "started" ? 1 : 0.65,
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 10.5, color: "var(--accent)" }}>{subagent.agent}</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
+                      {subagent.task ?? subagent.description ?? subagent.status}
+                    </span>
+                  </span>
+                ))}
               </div>
             )}
 

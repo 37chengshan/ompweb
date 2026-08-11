@@ -19,7 +19,6 @@
   --color-accent-strong: var(--accent-strong);
   --color-accent-hover: var(--accent-hover);
   --color-user-bg: var(--user-bg);
-  --color-assistant-bg: var(--assistant-bg);
   --color-tool-bg: var(--tool-bg);
   --color-bg-subtle: var(--bg-subtle);
   --font-mono-font: var(--font-mono);
@@ -47,12 +46,13 @@
   --accent-strong: #B03E22;
   --accent-hover: #96331B;
   --user-bg: #F5EDE1;
-  --assistant-bg: #FAF9F6;
   --tool-bg: #F6F3ED;
   --bg-subtle: rgba(60,50,35,0.04);
   --status-error: #B42318;
   --status-success: #18794E;
   --status-warning: #8A5A00;
+  --status-modified: #A87B1F;
+  --status-renamed: #2563EB;
   --on-accent: #FFFFFF;
   --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
 }
@@ -78,12 +78,13 @@ html.dark {
   --accent-strong: #C2542E;
   --accent-hover: #E89371;
   --user-bg: #2C2721;
-  --assistant-bg: #1B1916;
   --tool-bg: #26221D;
   --bg-subtle: rgba(235,225,210,0.05);
   --status-error: #FF8A80;
   --status-success: #69D5A5;
   --status-warning: #F0C36A;
+  --status-modified: #E0B24D;
+  --status-renamed: #7CA8FF;
   --on-accent: #FFFFFF;
   --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
 }
@@ -972,15 +973,12 @@ span.linenumber {
 .animate-slide-up   { animation: ui-slide-up   var(--dur-med) var(--ease-out-warm) both; }
 
 /* Conversational motion: new turns settle into place while an active turn
-   gets a quiet accent glow. These classes only animate on mount, so streamed
-   token updates do not restart the entrance animation. */
+   gets a quiet accent pulse on the unboxed message. These classes only
+   animate on mount, so streamed token updates do not restart the entrance
+   animation. */
 @keyframes chat-message-in {
   from { opacity: 0; transform: translateY(7px) scale(0.995); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes live-response-glow {
-  0%, 100% { box-shadow: var(--shadow-card), 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
-  50% { box-shadow: var(--shadow-card), 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent); }
 }
 .chat-message-card {
   animation: chat-message-in var(--dur-med) var(--ease-out-warm) both;
@@ -993,9 +991,21 @@ span.linenumber {
   box-shadow: var(--shadow-pop) !important;
   transform: translateY(-1px);
 }
-.chat-message-card--live {
+
+/* Unboxed assistant message: entrance animation only. Tool-call and
+   thinking blocks carry their own boxes; the --live variant pulses a
+   soft left accent bar instead of a card glow so streaming stays
+   visible without boxing the message text. */
+.chat-message {
+  animation: chat-message-in var(--dur-med) var(--ease-out-warm) both;
+}
+.chat-message--live {
   animation: chat-message-in var(--dur-med) var(--ease-out-warm) both,
-             live-response-glow 2.4s ease-in-out var(--dur-med) infinite;
+             live-text-pulse 2.4s ease-in-out var(--dur-med) infinite;
+}
+@keyframes live-text-pulse {
+  0%, 100% { box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50% { box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--accent) 30%, transparent); }
 }
 
 @keyframes toast-in {

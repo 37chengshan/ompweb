@@ -92,6 +92,7 @@
   "branchNavigator.noBranches": "此会话没有分支",
   "branchNavigator.roleAssistant": "A",
   "branchNavigator.roleUser": "U",
+  "chatInput.attachFile": "附加文件",
   "chatInput.attachImage": "附加图片",
   "chatInput.changeModel": "切换模型",
   "chatInput.changeReasoning": "更改思考等级",

@@ -2,21 +2,25 @@
 
 import { useState, useCallback, useRef } from "react";
 
+function isAttachableDragItem(item: DataTransferItem): boolean {
+  return item.type.startsWith("image/") || item.type === "text/plain" || item.type === "text/markdown";
+}
+
 export function useDragDrop(onDrop: (files: File[]) => void) {
   const [isDragOver, setIsDragOver] = useState(false);
   const counterRef = useRef(0);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
-    const hasImages = Array.from(e.dataTransfer.items).some((item) => item.type.startsWith("image/"));
-    if (!hasImages) return;
+    const hasAttachables = Array.from(e.dataTransfer.items).some(isAttachableDragItem);
+    if (!hasAttachables) return;
     e.preventDefault();
     counterRef.current += 1;
     setIsDragOver(true);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    const hasImages = Array.from(e.dataTransfer.items).some((item) => item.type.startsWith("image/"));
-    if (!hasImages) return;
+    const hasAttachables = Array.from(e.dataTransfer.items).some(isAttachableDragItem);
+    if (!hasAttachables) return;
     e.preventDefault();
   }, []);
 

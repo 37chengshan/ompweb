@@ -92,6 +92,7 @@
   "branchNavigator.noBranches": "This session has no branches",
   "branchNavigator.roleAssistant": "A",
   "branchNavigator.roleUser": "U",
+  "chatInput.attachFile": "Attach files",
   "chatInput.attachImage": "Attach image",
   "chatInput.changeModel": "Change model",
   "chatInput.changeReasoning": "Change reasoning level",

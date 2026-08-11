@@ -324,7 +324,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
 
   const onDrop = useCallback((files: File[]) => {
     if (sessionBusy) return;
-    chatInputRef?.current?.addImages(files);
+    chatInputRef?.current?.addFiles(files);
   }, [sessionBusy, chatInputRef]);
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);

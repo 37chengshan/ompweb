@@ -3,9 +3,17 @@ export interface ChatDraftImage {
   mimeType: string;
 }
 
+export interface ChatDraftFile {
+  name: string;
+  mimeType: string;
+  content: string;
+  size: number;
+}
+
 export interface ChatDraft {
   value: string;
   images: ChatDraftImage[];
+  files: ChatDraftFile[];
 }
 
 const drafts = new Map<string, ChatDraft>();
@@ -14,12 +22,14 @@ function cloneDraft(draft: ChatDraft): ChatDraft {
   return {
     value: draft.value,
     images: draft.images.map((image) => ({ ...image })),
+    files: draft.files.map((file) => ({ ...file })),
   };
 }
 
 function isEmptyDraft(draft: ChatDraft): boolean {
-  return !draft.value && draft.images.length === 0;
+  return !draft.value && draft.images.length === 0 && draft.files.length === 0;
 }
+
 
 export function getDraft(key: string): ChatDraft | null {
   const draft = drafts.get(key);

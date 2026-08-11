@@ -92,6 +92,7 @@
   "branchNavigator.noBranches": "このセッションにはブランチがありません",
   "branchNavigator.roleAssistant": "A",
   "branchNavigator.roleUser": "U",
+  "chatInput.attachFile": "ファイルを添付",
   "chatInput.attachImage": "画像を添付",
   "chatInput.changeModel": "モデルを変更",
   "chatInput.changeReasoning": "思考レベルを変更",

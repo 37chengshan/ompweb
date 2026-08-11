@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, useCallback, useMemo, type CSSProperties, 
 import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
 import {
   createSyntaxElement as renderSyntaxNode,
+  ensureLanguageRegistered,
+  isLanguageRegistered,
   SyntaxHighlighter,
   vs,
   vscDarkPlus,
@@ -797,6 +799,20 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
   const [gitDiff, setGitDiff] = useState<GitFileDiffResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [highlightReady, setHighlightReady] = useState(true);
+
+  // Load the PrismLight grammar for this file's language on demand instead of
+  // paying for every grammar at cold start (see lib/syntax-highlight.ts).
+  useEffect(() => {
+    if (!data) return;
+    let cancelled = false;
+    setHighlightReady(isLanguageRegistered(data.language));
+    const promise = ensureLanguageRegistered(data.language);
+    if (promise) {
+      promise.then(() => { if (!cancelled) setHighlightReady(true); });
+    }
+    return () => { cancelled = true; };
+  }, [data]);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("source");
   const [wrapLines, setWrapLines] = useState(false);
   const [watching, setWatching] = useState(false);
@@ -1191,7 +1207,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
               {markdownPreview}
             </ReactMarkdown>
           </div>
-        ) : (
+        ) : highlightReady ? (
           <SyntaxHighlighter
             className={wrapLines ? "file-source-view is-wrapped" : "file-source-view"}
             language={data.language === "text" ? "plaintext" : data.language}
@@ -1224,6 +1240,24 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
           >
             {data.content}
           </SyntaxHighlighter>
+        ) : (
+          <pre
+            style={{
+              margin: 0,
+              padding: "11px 13px",
+              fontSize: 12.5,
+              lineHeight: 1.62,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              color: "var(--text)",
+              fontFamily: "var(--font-mono)",
+              minWidth: "100%",
+              minHeight: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            {data.content}
+          </pre>
         )}
       </div>
     </div>

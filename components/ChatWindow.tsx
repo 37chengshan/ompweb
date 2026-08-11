@@ -7,9 +7,10 @@ import { countToolCallBlocks, getDisplayableAssistantBlocks, splitFinalAssistant
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ExtensionDialog } from "./ExtensionDialog";
+import { SubagentTranscriptDialog } from "./SubagentTranscriptDialog";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { TodoList } from "./TodoList";
-import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
+import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentInfo } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -252,6 +253,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
   // Only render the last N messages initially. When the user scrolls to the
   // top, load another page while keeping the scroll position stable.
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
+  const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
 
@@ -480,6 +482,12 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
           onRespond={respondToExtensionUi}
         />
       )}
+
+      <SubagentTranscriptDialog
+        subagent={selectedSubagent}
+        sessionId={session?.id ?? sessionIdRef.current ?? null}
+        onClose={() => setSelectedSubagent(null)}
+      />
 
       {extensionCustomUi && (
         <ExtensionCustomPanel
@@ -722,9 +730,11 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
             {subagents.length > 0 && (
               <div role="list" aria-label={tn("chatWindow.subagentCount", subagents.length)} style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
                 {subagents.map((subagent) => (
-                  <span
+                  <button
                     key={subagent.id}
-                    title={subagent.description ?? subagent.task ?? subagent.id}
+                    type="button"
+                    onClick={() => setSelectedSubagent(subagent)}
+                    title={`${subagent.agent} · ${subagent.description ?? subagent.task ?? subagent.status}`}
                     style={{
                       display: "inline-flex", alignItems: "center", gap: 6,
                       padding: "2px 9px",
@@ -734,13 +744,18 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
                       fontSize: 11,
                       color: subagent.status === "started" ? "var(--text)" : "var(--text-dim)",
                       opacity: subagent.status === "started" ? 1 : 0.65,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "border-color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
                     }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 40%, var(--border))"; e.currentTarget.style.background = "var(--bg-hover)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
                   >
                     <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 10.5, color: "var(--accent)" }}>{subagent.agent}</span>
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
                       {subagent.task ?? subagent.description ?? subagent.status}
                     </span>
-                  </span>
+                  </button>
                 ))}
               </div>
             )}

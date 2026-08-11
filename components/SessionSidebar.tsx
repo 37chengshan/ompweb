@@ -11,7 +11,7 @@ import { toast } from "./ui/toast";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
-import { Archive, Check, ChevronDown, ChevronRight, GitBranch, Pencil, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, GitBranch, Pencil, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 
 declare global {
   interface Window {
@@ -868,6 +868,34 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onNewSession?.(tempId, selectedCwd);
   }, [selectedCwd, onNewSession]);
 
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportSession = useCallback(async (file: File | null) => {
+    if (!file || importing) return;
+    setImporting(true);
+    try {
+      const content = await file.text();
+      const res = await fetch("/api/sessions/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, content }),
+      });
+      const data = await res.json().catch(() => ({})) as { success?: boolean; error?: string; code?: string };
+      if (!res.ok || !data.success) {
+        toast.error(data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      toast.success(t("sessionSidebar.imported"));
+      loadSessions(false);
+      void loadProjects();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImporting(false);
+    }
+  }, [importing, loadSessions, loadProjects, t]);
+
   // Sessions of every worktree in the selected project are shown together
   const expandedProjectPaths = expandedProjects ?? EMPTY_PROJECT_SET;
   const showWorktreeSwitcher = Boolean(
@@ -1038,6 +1066,52 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               <Plus size={12} strokeWidth={2.2} aria-hidden="true" />
               {t("sessionSidebar.new")}
             </button>
+            <Tooltip content={t("sessionSidebar.importTitle")} side="bottom">
+            <button
+              aria-label={t("sessionSidebar.import")}
+              onClick={() => importInputRef.current?.click()}
+              disabled={importing}
+              title={t("sessionSidebar.importTitle")}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border)",
+                color: importing ? "var(--text-dim)" : "var(--text-muted)",
+                cursor: importing ? "wait" : "pointer",
+                width: 32, height: 32,
+                borderRadius: "var(--radius-control)",
+                padding: 0,
+                flexShrink: 0,
+                opacity: importing ? 0.6 : 1,
+                transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
+              }}
+              onMouseEnter={(e) => {
+                if (importing) return;
+                e.currentTarget.style.background = "var(--bg-selected)";
+                e.currentTarget.style.color = "var(--accent)";
+                e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 35%, transparent)";
+              }}
+              onMouseLeave={(e) => {
+                if (importing) return;
+                e.currentTarget.style.background = "var(--bg-panel)";
+                e.currentTarget.style.color = "var(--text-muted)";
+                e.currentTarget.style.borderColor = "var(--border)";
+              }}
+            >
+              <FileUp size={15} strokeWidth={2} aria-hidden="true" />
+            </button>
+            </Tooltip>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".jsonl,.json,application/json,application/jsonl"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                e.target.value = "";
+                void handleImportSession(file);
+              }}
+            />
             <Tooltip content={t("sessionSidebar.refresh")} side="bottom">
             <button
               aria-label={t("sessionSidebar.refresh")}

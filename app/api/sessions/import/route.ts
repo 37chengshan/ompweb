@@ -47,10 +47,23 @@ export async function POST(req: Request) {
         return null;
       }
       if (entry && typeof entry === "object") {
-        const record = entry as { type?: unknown; cwd?: unknown };
+        const record = entry as { type?: unknown; cwd?: unknown; message?: unknown };
         if (record.type === "session" && typeof record.cwd === "string") cwd = record.cwd;
         if (record.type === "session") {
           return JSON.stringify({ ...record, id: freshId });
+        }
+        // Imported bashExecution entries must not carry fullOutputPath: the
+        // bash-output route authorizes tmpdir files only when the session
+        // references them, and an imported file could otherwise forge a
+        // reference to any pi-bash-*.log (the referenced temp file never
+        // survives an import anyway).
+        if (record.type === "message") {
+          const message = record.message;
+          if (message && typeof message === "object" && (message as { role?: unknown }).role === "bashExecution") {
+            const safeMessage = { ...message as Record<string, unknown> };
+            delete safeMessage.fullOutputPath;
+            return JSON.stringify({ ...record, message: safeMessage });
+          }
         }
       }
       return line;

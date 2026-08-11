@@ -18,6 +18,7 @@ import { createMessageUpdateCoalescer, type MessageUpdateCoalescer } from "@/lib
 import { getToolNamesForPreset, type ToolPreset } from "@/lib/tool-presets";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { toast } from "@/components/ui/toast";
+import { expandWebSlashCommand } from "@/lib/web-slash-commands";
 import type { RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 
 export interface SessionData {
@@ -230,7 +231,7 @@ export interface SlashCommandInfo {
 
 export type BuiltinSlashCommandResult =
   | { handled: false }
-  | { handled: true; message?: string; error?: string; action?: "openSessionStats" };
+  | { handled: true; message?: string; error?: string; action?: "openSessionStats"; retainInput?: boolean };
 
 export interface UseAgentSessionOptions {
   session: SessionInfo | null;
@@ -1327,19 +1328,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, onAgentEnd, reconcileAgentState]);
   handleAgentEventRef.current = handleAgentEvent;
 
-  const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
+  const handleSend = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
     const trimmedMessage = message.trim();
-    if (!trimmedMessage && !images?.length) return;
-    if (agentRunningRef.current || bashRunningRef.current) return;
+    if (!trimmedMessage && !images?.length) return false;
+    if (agentRunningRef.current || bashRunningRef.current) return false;
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
 
     const isBashCommand = !images?.length && trimmedMessage.startsWith("!");
     if (isBashCommand) {
       const isExcluded = trimmedMessage.startsWith("!!");
       const bashCmd = (isExcluded ? trimmedMessage.slice(2) : trimmedMessage.slice(1)).trim();
-      if (!bashCmd) return;
+      if (!bashCmd) return false;
       await executeBashRef.current?.(bashCmd, isExcluded);
-      return;
+      return true;
     }
 
     const promptRunId = promptRunIdRef.current + 1;
@@ -1402,6 +1403,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (isSlashCommandPrompt && sentSessionId) {
         void waitForPromptSettlement(sentSessionId, promptRunId);
       }
+      return true;
     } catch (e) {
       console.error("Failed to send message:", e);
       // Every failure here (stream connect, ensure_session, set_model, the
@@ -1431,6 +1433,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentRunning(false);
       setAgentPhase(null);
       dispatch({ type: "end" });
+      return false;
     }
   }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, opts.chatInputRef]);
 
@@ -1676,15 +1679,37 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           return complete({ handled: true, message: translate("agentSession.copiedLastMessage") });
         }
 
-        default:
-          return { handled: false };
+        default: {
+          // Web-native prompt commands (/goal, /plan, ...). omp's same-named
+          // builtins are TUI-only and never execute over RPC, so the palette
+          // shows these instead (CLIENT_BUILTIN_COMMAND_NAMES drops omp's
+          // copies). handleSend runs the full prompt pipeline — optimistic
+          // bubble, running state, settlement — with the expanded text.
+          const expansion = expandWebSlashCommand(text);
+          if (expansion.kind === "not-web") return { handled: false };
+          if (expansion.kind === "usage-error") {
+            // error keeps the user's text in the input so they can append args.
+            return complete({
+              handled: true,
+              error: translate("agentSession.commandRequiresArgs", {
+                command: expansion.command,
+                usage: translate(expansion.argumentHintKey),
+              }),
+            });
+          }
+          const sent = await handleSend(expansion.prompt);
+          // A failed send (transport/session) already surfaced its own notice;
+          // retainInput keeps the original /command text for a retry instead
+          // of letting ChatInput clear it.
+          return sent ? { handled: true } : { handled: true, retainInput: true };
+        }
       }
     } catch (e) {
       return complete({ handled: true, error: e instanceof Error ? e.message : String(e) });
     } finally {
       if (commandName === "compact") setIsCompacting(false);
     }
-  }, [addNotice, ensureNewSession, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen]);
+  }, [addNotice, ensureNewSession, handleSend, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen]);
 
   // Queued (undelivered) messages live in the queue panel only; the chat gets
   // the real user message when pi delivers it (user message_end event). An

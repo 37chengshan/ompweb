@@ -3,6 +3,8 @@
 import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import { clearDraft, getDraft, setDraft, type ChatDraftFile, type ChatDraftImage } from "@/lib/draft-store";
+import { WEB_SLASH_COMMANDS, expandWebSlashCommand } from "@/lib/web-slash-commands";
+import { toast } from "@/components/ui/toast";
 import {
   composeMessageWithTextAttachments,
   isTextAttachmentFile,
@@ -131,6 +133,8 @@ type SlashCommandSource = "builtin" | "extension" | "prompt" | "skill" | "ompBui
 type SlashCommandPaletteItem = {
   name: string;
   description?: string;
+  /** Bracketed argument hint rendered after the command name, e.g. "[goal]". */
+  argumentHint?: string;
   source: SlashCommandSource;
 };
 
@@ -138,7 +142,14 @@ function isDormantSkillCommand(command: SlashCommandPaletteItem, dormantNames: S
   return command.source === "skill" && dormantNames.has(command.name);
 }
 
-const BUILTIN_SLASH_COMMAND_DEFS: { name: string; descriptionKey: string }[] = [
+const BUILTIN_SLASH_COMMAND_DEFS: { name: string; descriptionKey: string; argumentHintKey?: string }[] = [
+  // Web-native prompt-composing commands (goal/plan/... are TUI-only in omp and
+  // never execute over the RPC prompt path — see lib/web-slash-commands.ts).
+  ...WEB_SLASH_COMMANDS.map((command) => ({
+    name: command.name,
+    descriptionKey: command.descriptionKey,
+    argumentHintKey: command.argumentHintKey,
+  })),
   { name: "compact", descriptionKey: "chatInput.cmdCompact" },
   { name: "reload", descriptionKey: "chatInput.cmdReload" },
   { name: "name", descriptionKey: "chatInput.cmdName" },
@@ -620,7 +631,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!attachedImages.length && !attachedTextFiles.length && msg.startsWith("/") && onBuiltinCommand) {
       const result = await onBuiltinCommand(msg);
       if (result.handled) {
-        if (!result.error) clearInput();
+        if (!result.error && !result.retainInput) clearInput();
         return;
       }
     }
@@ -650,19 +661,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     () => BUILTIN_SLASH_COMMAND_DEFS.map((def) => ({
       name: def.name,
       description: t(def.descriptionKey),
+      ...(def.argumentHintKey ? { argumentHint: t(def.argumentHintKey) } : {}),
       source: "builtin" as const,
     })),
     [t],
   );
 
-  // omp-reported builtin commands group separately below the other sources;
-  // names the web UI intercepts itself are dropped so each command appears
-  // exactly once and the client interception behavior is unchanged.
+  // Externally reported commands (extension/prompt/skill/ompBuiltin) group
+  // below the client built-ins; any name the web UI intercepts itself —
+  // whether an omp builtin or a user extension — is dropped so each command
+  // appears exactly once and the client interception behavior is unchanged.
   const externalSlashCommands: SlashCommandPaletteItem[] = React.useMemo(
     () => (slashCommands ?? []).flatMap((command): SlashCommandPaletteItem[] => {
       const source = command.source as string;
+      if (CLIENT_BUILTIN_COMMAND_NAMES.has(command.name)) return [];
       if (source === "builtin" || source === "ompBuiltin") {
-        if (CLIENT_BUILTIN_COMMAND_NAMES.has(command.name)) return [];
         return [{ name: command.name, description: command.description, source: "ompBuiltin" }];
       }
       return [command];
@@ -897,6 +910,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     onAudioUnlock?.();
     const streamingBehavior = mode === "steer" ? "steer" : "followUp";
     if (msg.startsWith("/") && onPromptWithStreamingBehavior) {
+      // Web commands must be expanded even when queued: the raw slash text
+      // would otherwise reach omp as a literal message (its /goal //plan are
+      // TUI-only). Action commands (compact/...) keep the raw text so omp's
+      // own ACP handlers can run them.
+      const expansion = expandWebSlashCommand(msg);
+      if (expansion.kind === "expand") {
+        onPromptWithStreamingBehavior(expansion.prompt, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+        clearInput();
+        return;
+      }
+      if (expansion.kind === "usage-error") {
+        toast.error(t("chatInput.commandUsageTitle"), t("agentSession.commandRequiresArgs", {
+          command: expansion.command,
+          usage: t(expansion.argumentHintKey),
+        }));
+        return;
+      }
       onPromptWithStreamingBehavior(msg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
       clearInput();
       return;
@@ -907,7 +937,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       onFollowUp(msg, attachedImages.length ? attachedImages : undefined);
     }
     clearInput();
-  }, [value, attachedImages, attachedTextFiles, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, attachedTextFiles, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
     const lastIndex = filteredSlashCommands.length - 1;
@@ -1635,6 +1665,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                 wordBreak: "break-word",
                               }}>
                                 /{command.name}
+                                {command.argumentHint && (
+                                  <span style={{ marginLeft: 6, fontSize: 10, color: "var(--text-dim)" }}>{command.argumentHint}</span>
+                                )}
                                 {dormant && <span style={{ marginLeft: 6, fontSize: 10, color: "var(--text-dim)" }}>{t("chatInput.dormant")}</span>}
                               </span>
                               {command.description && (

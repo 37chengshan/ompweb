@@ -99,6 +99,16 @@ export function validateModelsConfig(config: ModelsFileConfig): void {
       if (typeof model.maxTokens === "number" && model.maxTokens <= 0) {
         throw new Error(`Provider ${providerName}, model ${model.id}: invalid maxTokens`);
       }
+      // omp's schema requires all four cost fields whenever cost is present
+      // (partial costs make omp reject the whole file), so refuse to write one.
+      if (isRecord(model.cost)) {
+        for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const) {
+          const value = model.cost[key];
+          if (typeof value !== "number" || !Number.isFinite(value)) {
+            throw new Error(`Provider ${providerName}, model ${model.id}: cost.${key} is required (cost needs input, output, cacheRead, and cacheWrite)`);
+          }
+        }
+      }
     }
   }
 }

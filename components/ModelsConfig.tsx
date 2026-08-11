@@ -24,6 +24,7 @@ import {
 import { Plus, Trash2, RefreshCw, AlertCircle, Cpu, Settings, Sparkles, Check as CheckIcon, ArrowDown, ArrowUp } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { SettingsTabs, type SettingsTab } from "./SettingsTabs";
+import { ModelCatalogPicker } from "./ModelCatalogPicker";
 // Color icons (have their own fill colors — no background needed)
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
@@ -1643,6 +1644,8 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
   const [runtimeModelsLoading, setRuntimeModelsLoading] = useState(true);
   const [visibleModelKeys, setVisibleModelKeys] = useState<Set<string> | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Provider name whose catalog picker is open (null = closed).
+  const [catalogPicker, setCatalogPicker] = useState<string | null>(null);
   // Set when models.yml is on disk but unparseable: the editor shows the error
   // instead of an empty form, and saving stays blocked so the hand-written file
   // is never overwritten with nothing.
@@ -1798,6 +1801,22 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
       setSelection({ type: "model", providerName, index: idx });
       return prev;
     });
+  }, []);
+
+  const addModelFromCatalog = useCallback((providerName: string, model: ModelEntry, baseUrl?: string) => {
+    setConfig((prev) => {
+      const provider = prev.providers?.[providerName] ?? {};
+      const models = [...(provider.models ?? []), model];
+      const next: ProviderEntry = { ...provider, models };
+      if (baseUrl && !provider.baseUrl) next.baseUrl = baseUrl;
+      return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: next } };
+    });
+    setConfig((prev) => {
+      const idx = (prev.providers?.[providerName]?.models?.length ?? 1) - 1;
+      setSelection({ type: "model", providerName, index: idx });
+      return prev;
+    });
+    setCatalogPicker(null);
   }, []);
 
   const updateModel = useCallback((providerName: string, index: number, m: ModelEntry) => {
@@ -2093,16 +2112,27 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                       );
                     })}
 
-                    {/* Add model button */}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); addModel(pName); }}
-                      style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px 4px 26px", borderRadius: 5, cursor: "pointer", color: "var(--text-dim)", width: "100%", border: "none", background: "none", fontFamily: "inherit" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
-                    >
-                      <span style={{ fontSize: 11 }}>{t("modelsConfig.addModel")}</span>
-                    </button>
+                    {/* Add model buttons */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 8px 4px 26px" }}>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); addModel(pName); }}
+                        style={{ display: "flex", alignItems: "center", gap: 4, padding: 0, borderRadius: 5, cursor: "pointer", color: "var(--text-dim)", border: "none", background: "none", fontFamily: "inherit" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+                      >
+                        <span style={{ fontSize: 11 }}>{t("modelsConfig.addModel")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setCatalogPicker(pName); }}
+                        style={{ display: "flex", alignItems: "center", gap: 4, padding: 0, borderRadius: 5, cursor: "pointer", color: "var(--text-dim)", border: "none", background: "none", fontFamily: "inherit" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+                      >
+                        <span style={{ fontSize: 11 }}>{t("modelsConfig.addFromCatalog")}</span>
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -2177,6 +2207,16 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
         onSelectApiKey={(id) => setSelection({ type: "apikey", providerId: id })}
         onAddCustom={addCustomProvider}
         onClose={() => setPickerOpen(false)}
+      />
+    )}
+    {catalogPicker !== null && (
+      <ModelCatalogPicker
+        open
+        providerName={catalogPicker}
+        providerBaseUrl={config.providers?.[catalogPicker]?.baseUrl ?? ""}
+        existingIds={new Set((config.providers?.[catalogPicker]?.models ?? []).map((m) => m.id))}
+        onAdd={(model, baseUrl) => addModelFromCatalog(catalogPicker, model, baseUrl)}
+        onClose={() => setCatalogPicker(null)}
       />
     )}
     </>

@@ -25,7 +25,7 @@ type NativeSettings = {
   textVerbosity?: "low" | "medium" | "high";
   personality?: "default" | "friendly" | "pragmatic" | "none";
   advisor?: { enabled?: boolean; subagents?: boolean; syncBacklog?: "off" | "1" | "3" | "5"; immuneTurns?: number };
-  tools?: { approvalMode?: "always-ask" | "write" | "yolo"; approval?: { bash?: "allow" | "prompt" | "deny" } };
+  tools?: { approvalMode?: "always-ask" | "write" | "yolo"; approval?: { bash?: "allow" | "prompt" | "deny"; extension?: "allow" | "prompt" } };
   compaction?: { enabled?: boolean; midTurnEnabled?: boolean; strategy?: "snapcompact" | "handoff" | "context-full" | "shake" | "off"; autoContinue?: boolean; remoteEnabled?: boolean; keepRecentTokens?: number };
   memory?: { backend?: "off" | "local" | "mnemopi" | "hindsight" };
   autolearn?: { enabled?: boolean; autoContinue?: boolean; minToolCalls?: number };
@@ -217,6 +217,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 9 }}>
               <NativeSetting label="Approval Mode" description="Choose when OMP asks before tool calls."><select style={nativeSelectStyle} value={nativeSettings?.tools?.approvalMode ?? "yolo"} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), tools: { ...(nativeSettings?.tools ?? {}), approvalMode: event.target.value as "always-ask" | "write" | "yolo" } })}><option value="always-ask">Always ask</option><option value="write">Allow writes</option><option value="yolo">Auto approve</option></select></NativeSetting>
               <NativeSetting label="Bash Override" description="Override the default policy for Bash commands."><select style={nativeSelectStyle} value={nativeSettings?.tools?.approval?.bash ?? "prompt"} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), tools: { ...(nativeSettings?.tools ?? {}), approval: { ...(nativeSettings?.tools?.approval ?? {}), bash: event.target.value as "allow" | "prompt" | "deny" } } })}><option value="allow">Allow</option><option value="prompt">Always ask</option><option value="deny">Deny</option></select></NativeSetting>
+              <NativeSetting label="Extension Tool Requests" description="Automatically approve extension requests such as “Allow tool: hub”."><select style={nativeSelectStyle} value={nativeSettings?.tools?.approval?.extension ?? "prompt"} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), tools: { ...(nativeSettings?.tools ?? {}), approval: { ...(nativeSettings?.tools?.approval ?? {}), extension: event.target.value as "allow" | "prompt" } } })}><option value="prompt">Ask every time</option><option value="allow">Auto approve</option></select></NativeSetting>
             </div>
           </section>
           <section style={{ padding: "16px", border: "1px solid var(--border)", borderRadius: "var(--radius-modal)", background: "var(--bg-subtle)" }}>
@@ -251,7 +252,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
                <NativeSetting label="Retain Completed Turns" description="Store completed conversation turns in Mnemopi memory."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={nativeSettings?.mnemopi?.autoRetain ?? true} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), mnemopi: { ...(nativeSettings?.mnemopi ?? {}), autoRetain: event.target.checked } })} /></NativeSetting>
               </div>
             </section>
-            {nativeSettingsError && <p role="alert" style={{ margin: 0, color: "#f87171", fontSize: 12 }}>{nativeSettingsError}</p>}
+            {nativeSettingsError && <p role="alert" style={{ margin: 0, color: "var(--status-error)", fontSize: 12 }}>{nativeSettingsError}</p>}
           <section style={{ borderTop: "1px solid var(--border)", paddingTop: 18 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div>
@@ -262,7 +263,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
               </div>
               <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate} aria-label="Check ompweb updates" style={{ padding: 7, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: checkingAppUpdate ? "wait" : "pointer" }}><RefreshCw size={14} aria-hidden="true" /></button>
             </div>
-            {appUpdate?.updateAvailable && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}><button type="button" onClick={() => void installAppUpdate()} disabled={updatingApp} style={{ padding: "7px 11px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "#fff", cursor: updatingApp ? "wait" : "pointer", fontSize: 12 }}>{updatingApp ? "Updating..." : "Update ompweb"}</button></div>}
+            {appUpdate?.updateAvailable && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}><button type="button" onClick={() => void installAppUpdate()} disabled={updatingApp} style={{ padding: "7px 11px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--on-accent)", cursor: updatingApp ? "wait" : "pointer", fontSize: 12 }}>{updatingApp ? "Updating..." : "Update ompweb"}</button></div>}
           </section>
           <section style={{ borderTop: "1px solid var(--border)", paddingTop: 18 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -275,7 +276,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
               <button type="button" onClick={() => void checkForUpdate()} disabled={checking} aria-label="Check OMP updates" style={{ padding: 7, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: checking ? "wait" : "pointer" }}><RefreshCw size={14} aria-hidden="true" /></button>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-              {update?.updateAvailable && <button type="button" onClick={() => void installUpdate()} disabled={updating} style={{ padding: "7px 11px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "#fff", cursor: updating ? "wait" : "pointer", fontSize: 12 }}>{updating ? "Updating..." : "Install OMP update"}</button>}
+              {update?.updateAvailable && <button type="button" onClick={() => void installUpdate()} disabled={updating} style={{ padding: "7px 11px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--on-accent)", cursor: updating ? "wait" : "pointer", fontSize: 12 }}>{updating ? "Updating..." : "Install OMP update"}</button>}
               <button type="button" onClick={() => void restartSessions()} disabled={restarting} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: restarting ? "wait" : "pointer", fontSize: 12 }}><RotateCcw size={13} aria-hidden="true" /> {restarting ? "Restarting..." : "Restart OMP sessions"}</button>
               <a href="https://github.com/can1357/oh-my-pi/releases" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", color: "var(--text-muted)", textDecoration: "none", fontSize: 12 }}><ExternalLink size={13} aria-hidden="true" /> Changelog</a>
             </div>
@@ -297,7 +298,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
             </section>}
             <McpConfig cwd={cwd} sessionId={sessionId} />
             {!cwd && <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 12 }}>Select a workspace to view and edit its project MCP configuration.</p>}
-            {nativeSettingsError && <p role="alert" style={{ margin: 0, color: "#f87171", fontSize: 12 }}>{nativeSettingsError}</p>}
+            {nativeSettingsError && <p role="alert" style={{ margin: 0, color: "var(--status-error)", fontSize: 12 }}>{nativeSettingsError}</p>}
           </div>}
           {cwd && visitedTabs.has("skills") && <div style={{ display: activeTab === "skills" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
             <SkillsConfig embedded cwd={cwd} onClose={onClose} />

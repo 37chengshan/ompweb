@@ -342,12 +342,7 @@ function extractMessageText(message: Partial<AgentMessage>): string {
 }
 
 function describeMcpMountNotice(message: CustomMessage): string {
-  const names = [...extractMessageText(message).matchAll(/xd:\/\/([A-Za-z0-9_]+)/g)]
-    .map((match) => match[1])
-    .filter((name, index, all) => all.indexOf(name) === index);
-  if (names.length === 0) return "The MCP tool inventory changed.";
-  const visible = names.slice(0, 3).join(", ");
-  return names.length > 3 ? `${visible}, +${names.length - 3} more` : visible;
+  return extractMessageText(message).trim() || "The MCP tool inventory changed.";
 }
 
 function imageSignature(block: unknown): string {
@@ -1142,15 +1137,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         break;
       case "notice": {
         const level = event.level as string | undefined;
-        addNotice({
-          type: level === "error" ? "error" : level === "warning" ? "warning" : "info",
-          message: (event.message as string | undefined) ?? "",
-        });
+        const message = (event.message as string | undefined)?.trim() ?? "";
+        if (/^xd:\/\/:\s*mounted\s+mcp__/i.test(message)) {
+          toast.info("MCP tools updated", message);
+        } else {
+          addNotice({
+            type: level === "error" ? "error" : level === "warning" ? "warning" : "info",
+            message,
+          });
+        }
         break;
       }
       case "command_output": {
-        const text = event.text as string | undefined;
-        if (text?.trim()) addNotice({ type: "info", message: text });
+        const text = (event.text as string | undefined)?.trim() ?? "";
+        if (/^xd:\/\/:\s*mounted\s+mcp__/i.test(text)) toast.info("MCP tools updated", text);
+        else if (text) addNotice({ type: "info", message: text });
         break;
       }
       case "thinking_level_changed":

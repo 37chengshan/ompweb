@@ -443,24 +443,24 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
       onDrop={handleDrop}
     >
       {isDragOver && !sessionBusy && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex animate-[drop-zone-in_0.15s_ease_both] items-center justify-center bg-[rgba(176,62,34,0.06)] backdrop-blur-[1px]">
+        <div className="drop-zone-overlay pointer-events-none absolute inset-0 z-50 flex items-center justify-center backdrop-blur-[1px]">
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             {[0, 0.8, 1.6].map((delay) => (
               <div
                 key={delay}
-                className="absolute h-[720px] w-[720px] rounded-full border-[1.5px] border-solid border-[rgba(176,62,34,0.5)] animate-[drop-ripple_2.4s_ease-out_infinite_backwards]"
+                className="drop-ripple-ring absolute h-[720px] w-[720px] rounded-full border-[1.5px] border-solid"
                 style={{ transformOrigin: "center", animationDelay: `${delay}s` }}
               />
             ))}
           </div>
           <svg
             width="280" height="280" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg"
-            className="drop-shadow-[0_6px_18px_rgba(176,62,34,0.18)]"
+            className="drop-zone-illustration"
           >
-            <rect x="28" y="44" width="84" height="60" rx="8" fill="rgba(176,62,34,0.08)" stroke="rgba(176,62,34,0.50)" strokeWidth="1.8"/>
-            <path d="M36 100 L54 72 L68 88 L80 74 L104 100Z" fill="rgba(176,62,34,0.16)" stroke="rgba(176,62,34,0.40)" strokeWidth="1.4" strokeLinejoin="round"/>
-            <circle cx="96" cy="58" r="8" fill="rgba(176,62,34,0.22)" stroke="rgba(176,62,34,0.55)" strokeWidth="1.6"/>
-            <g stroke="rgba(176,62,34,0.45)" strokeWidth="1.4" strokeLinecap="round">
+            <rect x="28" y="44" width="84" height="60" rx="8" fill="color-mix(in srgb, var(--accent) 8%, transparent)" stroke="color-mix(in srgb, var(--accent) 50%, transparent)" strokeWidth="1.8"/>
+            <path d="M36 100 L54 72 L68 88 L80 74 L104 100Z" fill="color-mix(in srgb, var(--accent) 16%, transparent)" stroke="color-mix(in srgb, var(--accent) 40%, transparent)" strokeWidth="1.4" strokeLinejoin="round"/>
+            <circle cx="96" cy="58" r="8" fill="color-mix(in srgb, var(--accent) 22%, transparent)" stroke="color-mix(in srgb, var(--accent) 55%, transparent)" strokeWidth="1.6"/>
+            <g stroke="color-mix(in srgb, var(--accent) 45%, transparent)" strokeWidth="1.4" strokeLinecap="round">
               <line x1="96" y1="46" x2="96" y2="43"/>
               <line x1="96" y1="70" x2="96" y2="73"/>
               <line x1="84" y1="58" x2="81" y2="58"/>
@@ -844,11 +844,11 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
     >
       {notices.map((notice, index) => {
         const color = notice.type === "error"
-          ? "#ef4444"
+          ? "var(--status-error)"
           : notice.type === "warning"
-            ? "#d97706"
+            ? "var(--status-warning)"
             : notice.type === "success"
-              ? "#10b981"
+              ? "var(--status-success)"
               : "var(--accent)";
         return (
           <div
@@ -869,15 +869,13 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
               color: "var(--text-muted)",
               width: "fit-content",
               maxWidth: "min(100%, 620px)",
-              boxShadow: floating
-                ? "0 1px 2px rgba(15,23,42,0.05), 0 10px 28px -14px rgba(15,23,42,0.24)"
-                : "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
+              boxShadow: floating ? "var(--shadow-modal)" : "var(--shadow-pop)",
               fontSize: 18,
               lineHeight: 1.45,
               transformOrigin: "top center",
               animation: notice.exiting
-                ? "notice-shelf-out 0.18s ease-in forwards"
-                : "notice-shelf-in 0.18s ease-out both",
+                ? "notice-shelf-out var(--dur-med) ease-in forwards"
+                : "notice-shelf-in var(--dur-med) var(--ease-out-warm) both",
               padding: "0 12px",
             }}
           >
@@ -952,7 +950,7 @@ function ExtensionCustomPanel({
           border: "1px solid var(--border)",
           borderRadius: 8,
           background: "var(--bg)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+          boxShadow: "var(--shadow-modal)",
           overflow: "hidden",
           outline: "none",
         }}

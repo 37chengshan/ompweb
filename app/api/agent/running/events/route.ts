@@ -3,8 +3,8 @@ import { getRunningRpcSessionIds, subscribeRunningSessions } from "@/lib/rpc-man
 export const dynamic = "force-dynamic";
 
 // GET /api/agent/running/events - SSE stream of the set of currently-running
-// session ids. Pushes an update whenever any session starts or stops working,
-// so the sidebar never has to poll.
+// session ids. Also carries refresh hints when a live session's file metadata
+// changes, so the sidebar can show a newly-started session immediately.
 export async function GET(req: Request) {
   const stream = new ReadableStream({
     start(controller) {
@@ -15,9 +15,13 @@ export async function GET(req: Request) {
 
       // Subscribe BEFORE taking the initial snapshot so no state change can slip
       // through the gap between snapshot and subscription.
-      const unsubscribe = subscribeRunningSessions((ids) => {
+      const unsubscribe = subscribeRunningSessions(({ ids, refreshSessionList }) => {
         try {
-          encode({ type: "running", runningSessionIds: ids });
+          encode({
+            type: "running",
+            runningSessionIds: ids,
+            ...(refreshSessionList ? { refreshSessionList: true } : {}),
+          });
         } catch {
           // controller already closed
         }

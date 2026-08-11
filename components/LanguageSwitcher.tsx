@@ -110,7 +110,7 @@ export function LanguageSwitcher() {
           minWidth: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: "0 8px",
           background: "none", border: "none", borderRight: "1px solid var(--border)",
           color: open ? "var(--text)" : "var(--text-muted)", cursor: "pointer",
-          transition: "color 0.12s", fontSize: 11, whiteSpace: "nowrap",
+          transition: "color var(--dur-fast) var(--ease-out-warm)", fontSize: 11, whiteSpace: "nowrap",
         }}
         onMouseEnter={(e) => { if (!open) e.currentTarget.style.color = "var(--text)"; }}
         onMouseLeave={(e) => { if (!open) e.currentTarget.style.color = "var(--text-muted)"; }}
@@ -135,7 +135,7 @@ export function LanguageSwitcher() {
             background: "var(--bg)",
             border: "1px solid var(--border)",
             borderRadius: 8,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
+            boxShadow: "var(--shadow-pop)",
           }}
         >
           {LOCALES.map((l, i) => {
@@ -166,7 +166,7 @@ export function LanguageSwitcher() {
                     cursor: "pointer",
                     fontSize: 12,
                     textAlign: "left",
-                    transition: "background-color 0.12s, color 0.12s",
+                    transition: "background-color var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
                   }}
                 >
                   <span>{l.label}</span>

@@ -170,7 +170,7 @@ const TreeNodeView = memo(function TreeNodeView({ node, activePathIds, depth, is
           background: isActive ? "var(--accent)" : isOnPath ? "var(--text-muted)" : "var(--border)",
           border: isActive ? "none" : "1px solid var(--text-dim)",
           marginRight: 6,
-          transition: "background 0.12s",
+          transition: "background var(--dur-fast) var(--ease-out-warm)",
         }} />
 
         {/* Role badge */}
@@ -441,7 +441,7 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
           right: 0,
           background: "var(--bg)",
           borderBottom: "1px solid var(--border)",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+          boxShadow: "var(--shadow-pop)",
           zIndex: 100,
         }}>
           {hasContent && firstNode ? (

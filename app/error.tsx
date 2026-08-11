@@ -63,7 +63,7 @@ export default function ErrorBoundary({
           border: "none",
           borderRadius: "var(--radius-control)",
           background: "var(--accent-strong)",
-          color: "#fff",
+          color: "var(--on-accent)",
           cursor: "pointer",
           boxShadow: "var(--shadow-card)",
           transition: "background var(--dur-fast) var(--ease-out-warm)",

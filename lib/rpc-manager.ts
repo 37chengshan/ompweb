@@ -3,6 +3,7 @@ import { homedir } from "os";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { RpcCommandError, RpcProcess, type RpcFrame } from "./omp/rpc-process";
+import { readNativeSettings } from "./omp/settings-config";
 import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
 import { PRESET_FULL } from "./tool-presets";
 import type {
@@ -273,6 +274,7 @@ export class AgentSessionWrapper {
   private handleFrame(frame: RpcFrame): void {
     this.resetIdleTimer();
     const event = frame as AgentEvent;
+    let refreshSessionList = false;
 
     switch (event.type) {
       case "command_output": {
@@ -290,6 +292,11 @@ export class AgentSessionWrapper {
       }
       case "agent_start":
         this.streaming = true;
+        // The session file can appear just after the prompt acknowledgement.
+        // Invalidate and signal the sidebar now rather than waiting for the
+        // agent's first reply or terminal event.
+        invalidateSessionListCache();
+        refreshSessionList = true;
         break;
       case "agent_end":
         if (event.isTerminal !== false) {
@@ -315,6 +322,7 @@ export class AgentSessionWrapper {
       case "session_info_update":
         if (typeof event.title === "string") this._sessionName = event.title;
         invalidateSessionListCache();
+        refreshSessionList = true;
         break;
       case "response": {
         // Unsolicited failed responses surface async prompt failures (omp
@@ -327,16 +335,20 @@ export class AgentSessionWrapper {
         }
         break;
       }
-      case "extension_ui_request":
-        this.trackExtensionUiRequest(event);
+      case "extension_ui_request": {
+        if (this.trackExtensionUiRequest(event)) {
+          notifyRunningChange();
+          return;
+        }
         break;
+      }
       case "host_tool_call":
         this.rejectUnexpectedHostTool(event);
         break;
     }
 
     this.emit(event);
-    notifyRunningChange();
+    notifyRunningChange({ refreshSessionList });
   }
 
   /** Forget a pending dialog and its expiry timer. */
@@ -355,33 +367,44 @@ export class AgentSessionWrapper {
     this.pendingUiRequests.clear();
   }
 
-  private trackExtensionUiRequest(event: AgentEvent): void {
+  private trackExtensionUiRequest(event: AgentEvent): boolean {
     const method = event.method as string;
     const id = event.id as string;
     if (method === "cancel") {
       this.forgetPendingUiRequest(event.targetId as string);
-      return;
+      return false;
+    }
+    // Only the “Allow tool: <name>” confirmation is covered. Other extension
+    // prompts, including login/editor confirmations, remain interactive.
+    let autoApproveExtension = false;
+    try {
+      autoApproveExtension = readNativeSettings().settings.tools?.approval?.extension === "allow";
+    } catch {
+      // A malformed config must not prevent normal interactive approval.
+    }
+    if (method === "confirm" && typeof event.title === "string" && /^allow tool\s*:/i.test(event.title) && autoApproveExtension) {
+      this.forgetPendingUiRequest(id);
+      this.proc.sendFrame({ type: "extension_ui_response", id, confirmed: true });
+      return true;
     }
     if (PENDING_UI_METHODS.has(method)) {
       this.forgetPendingUiRequest(id);
       const timeout = typeof event.timeout === "number" ? event.timeout : undefined;
       if (timeout && timeout > 0) {
         event.expiresAt = Date.now() + timeout;
-        // omp gives up on the dialog when its timeout elapses; drop it here too
-        // or it replays as a ghost dialog on every SSE (re)connect.
         const timer = setTimeout(() => this.forgetPendingUiRequest(id), timeout);
         timer.unref?.();
         this.uiExpiryTimers.set(id, timer);
       }
       this.pendingUiRequests.set(id, event);
-      return;
+      return false;
     }
     if (method === "setStatus") {
       const key = event.statusKey as string;
       const text = event.statusText as string | undefined;
       if (text === undefined) this.extensionStatuses.delete(key);
       else this.extensionStatuses.set(key, text);
-      return;
+      return false;
     }
     if (method === "setWidget") {
       const key = event.widgetKey as string;
@@ -396,6 +419,7 @@ export class AgentSessionWrapper {
         });
       }
     }
+    return false;
   }
 
   /**
@@ -856,11 +880,15 @@ export class AgentSessionWrapper {
 // ============================================================================
 // Session registry
 // ============================================================================
+export interface RunningSessionUpdate {
+  ids: string[];
+  refreshSessionList: boolean;
+}
 
 declare global {
   var __ompSessions: Map<string, AgentSessionWrapper> | undefined;
   var __ompStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
-  var __ompRunningListeners: Set<(ids: string[]) => void> | undefined;
+  var __ompRunningListeners: Set<(update: RunningSessionUpdate) => void> | undefined;
 }
 
 function getRegistry(): Map<string, AgentSessionWrapper> {
@@ -908,13 +936,13 @@ export async function restartAllRpcSessions(): Promise<number> {
 // survive Next.js hot-reload.
 // ----------------------------------------------------------------------------
 
-function getRunningListeners(): Set<(ids: string[]) => void> {
+function getRunningListeners(): Set<(update: RunningSessionUpdate) => void> {
   if (!globalThis.__ompRunningListeners) globalThis.__ompRunningListeners = new Set();
   return globalThis.__ompRunningListeners;
 }
 
-/** Subscribe to running-session-id changes. Returns an unsubscribe function. */
-export function subscribeRunningSessions(listener: (ids: string[]) => void): () => void {
+/** Subscribe to running-session-id changes and session-list refreshes. */
+export function subscribeRunningSessions(listener: (update: RunningSessionUpdate) => void): () => void {
   const listeners = getRunningListeners();
   listeners.add(listener);
   return () => { listeners.delete(listener); };
@@ -923,16 +951,18 @@ export function subscribeRunningSessions(listener: (ids: string[]) => void): () 
 let lastRunningSnapshot = "";
 
 /**
- * Recompute the running-session-id set and, if it changed since the last
- * notification, broadcast it to subscribers. Cheap to call often.
+ * Recompute the running-session-id set and, when it changes, broadcast it.
+ * A session file may first appear after its id starts running, so callers can
+ * force one otherwise-identical update to refresh sidebar session metadata.
  */
-export function notifyRunningChange(): void {
+export function notifyRunningChange({ refreshSessionList = false }: { refreshSessionList?: boolean } = {}): void {
   const ids = getRunningRpcSessionIds();
   const snapshot = JSON.stringify([...ids].sort());
-  if (snapshot === lastRunningSnapshot) return;
+  if (snapshot === lastRunningSnapshot && !refreshSessionList) return;
   lastRunningSnapshot = snapshot;
+  const update = { ids, refreshSessionList };
   for (const listener of getRunningListeners()) {
-    try { listener(ids); } catch { /* ignore listener errors */ }
+    try { listener(update); } catch { /* ignore listener errors */ }
   }
 }
 

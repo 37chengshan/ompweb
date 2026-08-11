@@ -50,6 +50,11 @@
   --assistant-bg: #FAF9F6;
   --tool-bg: #F6F3ED;
   --bg-subtle: rgba(60,50,35,0.04);
+  --status-error: #B42318;
+  --status-success: #18794E;
+  --status-warning: #8A5A00;
+  --on-accent: #FFFFFF;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
 }
 
 /* Warm-ember palette (dark). Same AA verification as light. */
@@ -76,6 +81,11 @@ html.dark {
   --assistant-bg: #1B1916;
   --tool-bg: #26221D;
   --bg-subtle: rgba(235,225,210,0.05);
+  --status-error: #FF8A80;
+  --status-success: #69D5A5;
+  --status-warning: #F0C36A;
+  --on-accent: #FFFFFF;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
 }
 
 /* Shape / elevation / motion tokens (warm-humanistic system). */
@@ -91,6 +101,7 @@ html.dark {
   --dur-fast: 150ms;
   --dur-med: 220ms;
   --dur-slow: 320ms;
+  --dur-theme: 450ms;
 }
 html.dark {
   --shadow-card: 0 1px 2px rgba(0,0,0,0.35), 0 0 0 1px rgba(235,225,210,0.03);
@@ -891,6 +902,17 @@ span.linenumber {
   0%   { transform: scale(0); opacity: 0.6; }
   100% { transform: scale(1); opacity: 0; }
 }
+.drop-zone-overlay {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  animation: drop-zone-in var(--dur-fast) var(--ease-out-warm) both;
+}
+.drop-ripple-ring {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: drop-ripple 2.4s var(--ease-out-warm) infinite backwards;
+}
+.drop-zone-illustration {
+  filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--accent) 18%, transparent));
+}
 
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -944,10 +966,10 @@ span.linenumber {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in    { animation: ui-fade-in   0.14s ease-out both; }
-.animate-scale-in   { animation: ui-scale-in  0.16s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
-.animate-slide-down { animation: ui-slide-down 0.16s ease-out both; }
-.animate-slide-up   { animation: ui-slide-up   0.16s ease-out both; }
+.animate-fade-in    { animation: ui-fade-in   var(--dur-fast) var(--ease-out-warm) both; }
+.animate-scale-in   { animation: ui-scale-in var(--dur-med) var(--ease-out-warm) both; }
+.animate-slide-down { animation: ui-slide-down var(--dur-med) var(--ease-out-warm) both; }
+.animate-slide-up   { animation: ui-slide-up   var(--dur-med) var(--ease-out-warm) both; }
 
 /* Conversational motion: new turns settle into place while an active turn
    gets a quiet accent glow. These classes only animate on mount, so streamed
@@ -1010,8 +1032,11 @@ span.linenumber {
 /* Subtle transition on common interactive surfaces so hovers/selections feel
    alive without being sluggish. Opted into via .ui-smooth or applied inline. */
 .ui-smooth {
-  transition: background-color 0.14s ease, color 0.14s ease,
-              border-color 0.14s ease, opacity 0.14s ease, transform 0.14s ease;
+  transition: background-color var(--dur-fast) var(--ease-out-warm),
+              color var(--dur-fast) var(--ease-out-warm),
+              border-color var(--dur-fast) var(--ease-out-warm),
+              opacity var(--dur-fast) var(--ease-out-warm),
+              transform var(--dur-fast) var(--ease-out-warm);
 }
 
 @keyframes notice-shelf-in {
@@ -1084,7 +1109,7 @@ span.linenumber {
     position: relative;
     overflow: hidden;
     --sidebar-width: 260px;
-    transition: width 0.2s ease, min-width 0.2s ease;
+    transition: width var(--dur-med) var(--ease-out-warm), min-width var(--dur-med) var(--ease-out-warm);
   }
   .sidebar-container.sidebar-open {
     width: var(--sidebar-width, 260px);
@@ -1111,7 +1136,7 @@ span.linenumber {
 @media (min-width: 641px) {
   .right-panel-container {
     overflow: hidden;
-    transition: width 0.2s ease, min-width 0.2s ease;
+    transition: width var(--dur-med) var(--ease-out-warm), min-width var(--dur-med) var(--ease-out-warm);
     flex-shrink: 0;
   }
   .right-panel-container.right-panel-open {
@@ -1142,7 +1167,7 @@ span.linenumber {
     bottom: 0;
     width: 280px;
     max-width: 85vw;
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition: transform var(--dur-slow) var(--ease-out-warm), box-shadow var(--dur-slow) var(--ease-out-warm);
   }
   .sidebar-container.sidebar-open {
     transform: translateX(0);
@@ -1155,7 +1180,7 @@ span.linenumber {
 
   .right-panel-container {
     overflow: hidden;
-    transition: width 0.2s ease, min-width 0.2s ease;
+    transition: width var(--dur-med) var(--ease-out-warm), min-width var(--dur-med) var(--ease-out-warm);
     flex-shrink: 0;
   }
   .right-panel-container.right-panel-open {

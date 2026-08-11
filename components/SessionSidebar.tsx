@@ -189,7 +189,7 @@ function AnimatedDropdown({ open, children, style }: { open: boolean; children: 
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0) scale(1)" : "translateY(-8px) scale(0.96)",
         transformOrigin: "top center",
-        transition: `opacity ${DROPDOWN_ANIMATION_MS}ms ease, transform ${DROPDOWN_ANIMATION_MS}ms ease`,
+        transition: "opacity var(--dur-fast) var(--ease-out-warm), transform var(--dur-fast) var(--ease-out-warm)",
         pointerEvents: open ? "auto" : "none",
       }}
     >
@@ -456,16 +456,21 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [unreadSessionIds]);
 
   useEffect(() => {
-    // Live running status via SSE — no polling. The server pushes the current
-    // set of running session ids whenever any session starts/stops working.
+    // Live running status and session-list invalidations arrive via SSE; the
+    // sidebar never has to poll while an agent is working.
     const source = new EventSource("/api/agent/running/events");
 
     source.onmessage = (e) => {
       try {
-        const data = JSON.parse(e.data) as { type?: string; runningSessionIds?: string[] };
+        const data = JSON.parse(e.data) as {
+          type?: string;
+          runningSessionIds?: string[];
+          refreshSessionList?: boolean;
+        };
         if (data.type === "running") {
           sseAuthoritativeRef.current = true;
           setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+          if (data.refreshSessionList) void loadSessions(false);
         }
       } catch {
         // ignore malformed frames
@@ -474,7 +479,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
     // On error EventSource auto-reconnects; keep the last known state meanwhile.
     return () => source.close();
-  }, []);
+  }, [loadSessions]);
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
@@ -1015,7 +1020,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 fontWeight: 500,
                 letterSpacing: "-0.01em",
                 flexShrink: 0,
-                transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
               }}
               title={selectedCwd ? t("sessionSidebar.newSessionIn", { cwd: selectedCwd }) : t("sessionSidebar.selectProjectFirst")}
               onMouseEnter={(e) => {
@@ -1111,7 +1116,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 background: "none", border: "none",
                 color: "var(--text-dim)", cursor: "pointer",
                 borderRadius: "var(--radius-control)",
-                transition: "color 0.12s, background 0.12s",
+                transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
@@ -1421,7 +1426,7 @@ function ProjectRow({
               color: "var(--text-dim)", cursor: "pointer",
               borderRadius: "var(--radius-control)",
               opacity: removeBusy ? 0.5 : 1,
-              transition: "color 0.12s, background 0.12s",
+              transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 8%, transparent)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
@@ -1474,7 +1479,7 @@ function ProjectRow({
                     fontSize: 11,
                     fontWeight: 500,
                     borderRadius: "var(--radius-control)",
-                    transition: "color 0.12s, background 0.12s",
+                    transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
@@ -1605,7 +1610,7 @@ function ProjectWorktreeSwitcher({
                     <button
                       onClick={() => onRemoveWorktree(wt.path, true)}
                       disabled={wtBusy}
-                      style={{ padding: "3px 9px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-control)", color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                      style={{ padding: "3px 9px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-control)", color: "var(--on-accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
                     >
                       {t("sessionSidebar.force")}
                     </button>
@@ -1662,7 +1667,7 @@ function ProjectWorktreeSwitcher({
                         background: "none", border: "none",
                         color: "var(--text-dim)", cursor: "pointer",
                         borderRadius: "var(--radius-control)", flexShrink: 0,
-                        transition: "color 0.12s, background 0.12s",
+                        transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 8%, transparent)"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
@@ -1745,7 +1750,7 @@ function ProjectWorktreeSwitcher({
                     background: "var(--accent)",
                     border: "none",
                     borderRadius: "var(--radius-control)",
-                    color: "#fff",
+                    color: "var(--on-accent)",
                     fontSize: 11,
                     fontWeight: 600,
                     cursor: wtBusy || !wtNewBranch.trim() ? "not-allowed" : "pointer",
@@ -2133,7 +2138,7 @@ const SessionItem = memo(function SessionItem({
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
                 height: 30, padding: "0 11px",
                 background: "var(--accent-strong)", border: "none",
-                borderRadius: "var(--radius-control)", color: "#fff",
+                borderRadius: "var(--radius-control)", color: "var(--on-accent)",
                 cursor: "pointer", fontSize: 12, fontWeight: 600,
                 whiteSpace: "nowrap",
               }}
@@ -2170,7 +2175,7 @@ const SessionItem = memo(function SessionItem({
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
                 height: 30, padding: "0 11px",
                 background: "var(--accent-strong)", border: "none",
-                borderRadius: "var(--radius-control)", color: "#fff",
+                borderRadius: "var(--radius-control)", color: "var(--on-accent)",
                 cursor: "pointer", fontSize: 12, fontWeight: 600,
                 whiteSpace: "nowrap",
               }}
@@ -2317,7 +2322,7 @@ const SessionItem = memo(function SessionItem({
                   borderRadius: "var(--radius-control)", color: "var(--text-muted)",
                   cursor: hasChildren ? "not-allowed" : "pointer", flexShrink: 0,
                   opacity: hasChildren ? 0.45 : 1,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => {
                   if (hasChildren) return;
@@ -2347,7 +2352,7 @@ const SessionItem = memo(function SessionItem({
                   background: "var(--bg-hover)", border: "1px solid var(--border)",
                   borderRadius: "var(--radius-control)", color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = "var(--bg-selected)";
@@ -2375,7 +2380,7 @@ const SessionItem = memo(function SessionItem({
                   background: "var(--bg-hover)", border: "1px solid var(--border)",
                   borderRadius: "var(--radius-control)", color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 8%, transparent)";

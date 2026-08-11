@@ -279,7 +279,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
               display: "flex", gap: 3,
               opacity: hovered || actionsActive ? 1 : 0,
               pointerEvents: hovered || actionsActive ? "auto" : "none",
-              transition: "opacity 0.12s",
+              transition: "opacity var(--dur-fast) var(--ease-out-warm)",
             }}
             onFocusCapture={() => setActionsActive(true)}
             onBlurCapture={() => setActionsActive(false)}
@@ -297,7 +297,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                   cursor: "pointer",
                   fontSize: 11, fontWeight: 400,
                   whiteSpace: "nowrap",
-                  transition: "color 0.12s",
+                  transition: "color var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "var(--accent)"; }}
                 onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "var(--text-dim)"; }}
@@ -313,7 +313,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 display: "flex", gap: 3,
                 opacity: (hovered || actionsActive || forking) ? 1 : 0,
                 pointerEvents: (hovered || actionsActive || forking) ? "auto" : "none",
-                transition: "opacity 0.12s",
+                transition: "opacity var(--dur-fast) var(--ease-out-warm)",
               }}
               onFocusCapture={() => setActionsActive(true)}
               onBlurCapture={() => setActionsActive(false)}
@@ -332,7 +332,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                       cursor: "pointer",
                       fontSize: 11, fontWeight: 400,
                       whiteSpace: "nowrap",
-                      transition: "color 0.12s",
+                      transition: "color var(--dur-fast) var(--ease-out-warm)",
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
@@ -357,7 +357,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                       cursor: forking ? "not-allowed" : "pointer",
                       fontSize: 11, fontWeight: 400,
                       whiteSpace: "nowrap",
-                      transition: "color 0.12s",
+                      transition: "color var(--dur-fast) var(--ease-out-warm)",
                     }}
                     onMouseEnter={(e) => { if (!forking) e.currentTarget.style.color = "var(--accent)"; }}
                     onMouseLeave={(e) => { if (!forking) e.currentTarget.style.color = "var(--text-dim)"; }}
@@ -561,7 +561,7 @@ function AssistantMessageView({
                   {tps !== null && (() => {
                     const bg = tps >= 50 ? "#53b3cb" : tps >= 30 ? "#9bc53d" : tps >= 15 ? "#f9c22e" : "#e01a4f";
                     return (
-                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: bg, color: "#fff", fontSize: 11, fontWeight: 400 }}>
+                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: bg, color: "var(--on-accent)", fontSize: 11, fontWeight: 400 }}>
                         {t("messageView.tokensPerSecond", { tps: tps.toFixed(1) })}
                       </span>
                     );
@@ -603,7 +603,7 @@ function AssistantMessageView({
                 whiteSpace: "nowrap",
                 opacity: (hovered || actionsActive) ? 1 : 0,
                 pointerEvents: (hovered || actionsActive) ? "auto" : "none",
-                transition: "opacity 0.12s, color 0.12s",
+                transition: "opacity var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
               }}
               onFocus={() => setActionsActive(true)}
               onBlur={() => setActionsActive(false)}
@@ -730,7 +730,7 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
         <CollapsiblePanel
           style={{
             padding: "8px 10px",
-            color: error ? "#f87171" : "var(--text-muted)",
+            color: error ? "var(--status-error)" : "var(--text-muted)",
             fontSize: 12,
             lineHeight: 1.6,
             whiteSpace: "pre-wrap",
@@ -799,7 +799,7 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration }: {
             minWidth: 0,
           }}
         >
-          <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
+          <span style={{ color: isError ? "var(--status-error)" : "var(--status-success)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
             {block.toolName}
           </span>
           <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
@@ -972,7 +972,7 @@ function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" |
   const marker =
     cell.type === "added" ? "+" : cell.type === "removed" ? "-" : " ";
   const markerColor =
-    cell.type === "added" ? "#22c55e" : cell.type === "removed" ? "#f87171" : "var(--text-dim)";
+    cell.type === "added" ? "var(--status-success)" : cell.type === "removed" ? "var(--status-error)" : "var(--text-dim)";
 
   return (
     <div
@@ -1042,8 +1042,8 @@ function PatchTextView({ text }: { text: string }) {
           kind === "hunk" ? "rgba(96,165,250,0.12)" :
           "transparent";
         const color =
-          kind === "added" ? "#22c55e" :
-          kind === "removed" ? "#f87171" :
+          kind === "added" ? "var(--status-success)" :
+          kind === "removed" ? "var(--status-error)" :
           kind === "hunk" ? "var(--accent)" :
           "var(--text)";
 
@@ -1130,7 +1130,7 @@ function PairedResult({ text, isEmpty, isError }: {
         style={{
           margin: 0,
           padding: "8px 10px",
-          color: isError ? "#f87171" : (isEmpty ? "var(--text-dim)" : "var(--text-muted)"),
+          color: isError ? "var(--status-error)" : (isEmpty ? "var(--text-dim)" : "var(--text-muted)"),
           fontSize: 12,
           lineHeight: 1.5,
           overflow: "auto",

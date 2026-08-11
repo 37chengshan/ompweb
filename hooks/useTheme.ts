@@ -47,6 +47,19 @@ function getServerSnapshot(): ThemePreference {
 }
 
 type ToggleOrigin = { x: number; y: number };
+function motionDurationMs(variable: string, fallback: number): number {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+  if (raw.endsWith("ms")) {
+    const value = Number.parseFloat(raw);
+    return Number.isFinite(value) ? value : fallback;
+  }
+  if (raw.endsWith("s")) {
+    const value = Number.parseFloat(raw);
+    return Number.isFinite(value) ? value * 1000 : fallback;
+  }
+  return fallback;
+}
+
 
 export function useTheme() {
   const preference = useSyncExternalStore(subscribe, storedPreference, getServerSnapshot);
@@ -82,9 +95,10 @@ export function useTheme() {
     const endRadius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
     const transition = document.startViewTransition(apply);
     transition.ready.then(() => {
+      const styles = getComputedStyle(document.documentElement);
       document.documentElement.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`] }, {
-        duration: 450,
-        easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
+        duration: motionDurationMs("--dur-theme", 450),
+        easing: styles.getPropertyValue("--ease-out-warm").trim() || "ease-out",
         pseudoElement: "::view-transition-new(root)",
       });
     }).catch(() => {});

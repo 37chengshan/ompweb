@@ -72,7 +72,7 @@ export function ExtensionDialog({
         alignItems: "center",
         justifyContent: "center",
         padding: 20,
-        background: "rgba(0,0,0,0.18)",
+        background: "var(--overlay-backdrop)",
       }}
     >
       <div
@@ -85,9 +85,9 @@ export function ExtensionDialog({
         style={{
           width: "min(560px, 100%)",
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: "var(--radius-modal)",
           background: "var(--bg)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+          boxShadow: "var(--shadow-modal)",
           overflow: "hidden",
           outline: "none",
         }}
@@ -117,7 +117,7 @@ export function ExtensionDialog({
                     cursor: "pointer",
                     textAlign: "left",
                     fontSize: 13,
-                    transition: "background-color 0.12s, border-color 0.12s",
+                    transition: "background-color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-panel)"; }}
@@ -184,7 +184,7 @@ export function ExtensionDialog({
               background: "var(--bg)",
               color: "var(--text-muted)",
               cursor: "pointer",
-              transition: "background-color 0.12s, color 0.12s",
+              transition: "background-color var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg)"; e.currentTarget.style.color = "var(--text-muted)"; }}
@@ -199,9 +199,9 @@ export function ExtensionDialog({
                 borderRadius: 6,
                 border: "1px solid var(--accent)",
                 background: "var(--accent)",
-                color: "#fff",
+                color: "var(--on-accent)",
                 cursor: "pointer",
-                transition: "background-color 0.12s",
+                transition: "background-color var(--dur-fast) var(--ease-out-warm)",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-hover)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "var(--accent)"; }}
@@ -216,9 +216,9 @@ export function ExtensionDialog({
                 borderRadius: 6,
                 border: "1px solid var(--accent)",
                 background: "var(--accent)",
-                color: "#fff",
+                color: "var(--on-accent)",
                 cursor: "pointer",
-                transition: "background-color 0.12s",
+                transition: "background-color var(--dur-fast) var(--ease-out-warm)",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-hover)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "var(--accent)"; }}

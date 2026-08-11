@@ -1,0 +1,5 @@
+{
+    "pendant.autoGenerateSessionNames": true,
+    "pendant.context.autoAttach": true,
+    "pendant.subagents.enabled": true
+}

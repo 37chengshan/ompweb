@@ -89,7 +89,7 @@ function Toggle({
         cursor: loading ? "wait" : "pointer",
         background: enabled ? "var(--accent)" : "var(--border)",
         position: "relative",
-        transition: "background 0.18s",
+        transition: "background var(--dur-med) var(--ease-out-warm)",
       }}
     >
       <span
@@ -101,8 +101,8 @@ function Toggle({
           height: 16,
           borderRadius: "50%",
           background: "var(--bg)",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.22)",
-          transition: "left 0.18s cubic-bezier(.4,0,.2,1)",
+          boxShadow: "var(--shadow-card)",
+          transition: "left var(--dur-med) var(--ease-out-warm)",
         }}
       />
     </button>
@@ -185,7 +185,7 @@ function SkillDetail({
           onToggle={() => onToggle(skill)}
         />
         {saveError && (
-          <span style={{ fontSize: 12, color: "#f87171", flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: "var(--status-error)", flexShrink: 0 }}>
             {saveError}
           </span>
         )}
@@ -275,7 +275,7 @@ function SkillDetail({
                 style={{
                   fontFamily: "var(--font-mono)",
                   fontSize: 12,
-                  color: "#d97706",
+                  color: "var(--status-warning)",
                 }}
               >
                 {shortVersion(updateStatus.latestVersion)}
@@ -289,9 +289,9 @@ function SkillDetail({
                   color: checkingUpdate
                     ? "var(--accent)"
                     : updateStatus?.state === "up-to-date"
-                      ? "#16a34a"
+                      ? "var(--status-success)"
                       : updateStatus?.state === "error"
-                          ? "#ef4444"
+                          ? "var(--status-error)"
                           : "var(--text-dim)",
                 }}
               >
@@ -313,7 +313,7 @@ function SkillDetail({
                   border: "none",
                   borderRadius: 5,
                   background: "var(--accent)",
-                  color: "#fff",
+                  color: "var(--on-accent)",
                   cursor: updating || checkingUpdate ? "not-allowed" : "pointer",
                   opacity: updating || checkingUpdate ? 0.5 : 1,
                   fontSize: 11,
@@ -325,7 +325,7 @@ function SkillDetail({
             )}
           </div>
           {updateError && (
-            <span style={{ fontSize: 12, color: "#ef4444" }}>{updateError}</span>
+            <span style={{ fontSize: 12, color: "var(--status-error)" }}>{updateError}</span>
           )}
         </div>
       )}
@@ -496,7 +496,7 @@ function AddSkillPanel({
               borderRadius: 6,
               border: "none",
               background: "var(--accent)",
-              color: "#fff",
+              color: "var(--on-accent)",
               cursor: searching || !query.trim() ? "not-allowed" : "pointer",
               opacity: searching || !query.trim() ? 0.5 : 1,
               flexShrink: 0,
@@ -553,11 +553,11 @@ function AddSkillPanel({
 
         {/* Errors */}
         {searchError && (
-          <div style={{ fontSize: 12, color: "#f87171" }}>{searchError}</div>
+          <div style={{ fontSize: 12, color: "var(--status-error)" }}>{searchError}</div>
         )}
         {installError && (
           <div
-            style={{ fontSize: 12, color: "#f87171", wordBreak: "break-word" }}
+            style={{ fontSize: 12, color: "var(--status-error)", wordBreak: "break-word" }}
           >
             {installError}
           </div>
@@ -660,11 +660,11 @@ function AddSkillPanel({
                         : "pointer",
                     background: isInstalled ? "rgba(34,197,94,0.1)" : "none",
                     color: isInstalled
-                      ? "#16a34a"
+                      ? "var(--status-success)"
                       : isInstalling
                         ? "var(--accent)"
                         : "var(--text-muted)",
-                    transition: "color 0.12s",
+                    transition: "color var(--dur-fast) var(--ease-out-warm)",
                   }}
                 >
                   {isInstalled
@@ -974,7 +974,7 @@ export function SkillsConfig({
                   style={{
                     padding: "10px 8px",
                     fontSize: 11,
-                    color: "#f87171",
+                    color: "var(--status-error)",
                   }}
                 >
                   {error}
@@ -1127,7 +1127,7 @@ export function SkillsConfig({
                                   <span
                                     title={t("skillsConfig.updateAvailable")}
                                     style={{
-                                      color: "#d97706",
+                                      color: "var(--status-warning)",
                                       fontSize: 13,
                                       lineHeight: 1,
                                       flexShrink: 0,
@@ -1297,7 +1297,7 @@ export function SkillsConfig({
               ).length;
               if (availableCount === 0) return null;
               return (
-                <span style={{ fontSize: 12, color: "#d97706" }}>
+                <span style={{ fontSize: 12, color: "var(--status-warning)" }}>
                   {tn("skillsConfig.updateCount", availableCount)}
                 </span>
               );

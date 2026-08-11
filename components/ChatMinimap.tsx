@@ -360,7 +360,7 @@ export function ChatMinimap({ messages, streamingMessage, scrollContainer, messa
                 background: color.bg,
                 border: `1.5px solid ${color.border}`,
                 flexShrink: 0,
-                transition: "transform 0.1s",
+                transition: "transform var(--dur-fast) var(--ease-out-warm)",
                 transform: isNearest ? "scale(1.6)" : "scale(1)",
               }}
             />
@@ -409,7 +409,7 @@ export function ChatMinimap({ messages, streamingMessage, scrollContainer, messa
               zIndex: 100,
               pointerEvents: "none",
               opacity: isNearest ? 1 : 0.45,
-              transition: "top 0.1s, opacity 0.1s",
+              transition: "top var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
             }}
           >
             <div

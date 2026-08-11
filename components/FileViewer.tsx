@@ -361,9 +361,9 @@ function DiffView({ patch }: { patch: string }) {
                 minWidth: "100%",
                 background: bg,
                 borderLeft: line.type === "added"
-                  ? "3px solid #4ade80"
+                  ? "3px solid var(--status-success)"
                   : line.type === "removed"
-                  ? "3px solid #f87171"
+                  ? "3px solid var(--status-error)"
                   : "3px solid transparent",
               }}
             >
@@ -483,7 +483,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId }: Props) {
               borderRadius: "50%",
               background: watching ? "var(--status-success)" : "var(--border)",
               display: "inline-block",
-              boxShadow: watching ? "0 0 4px #4ade80" : "none",
+              boxShadow: watching ? "0 0 4px var(--status-success)" : "none",
             }}
           />
           {watching ? t("fileViewer.live") : t("fileViewer.static")}
@@ -521,7 +521,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId }: Props) {
               maxWidth: "100%",
               maxHeight: "100%",
               objectFit: "contain",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+              boxShadow: "var(--shadow-pop)",
             }}
           />
         )}
@@ -617,7 +617,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId }: Props) {
               borderRadius: "50%",
               background: watching ? "var(--status-success)" : "var(--border)",
               display: "inline-block",
-              boxShadow: watching ? "0 0 4px #4ade80" : "none",
+              boxShadow: watching ? "0 0 4px var(--status-success)" : "none",
             }}
           />
           {watching ? t("fileViewer.live") : t("fileViewer.static")}
@@ -752,7 +752,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
               borderRadius: "50%",
               background: watching ? "var(--status-success)" : "var(--border)",
               display: "inline-block",
-              boxShadow: watching ? "0 0 4px #4ade80" : "none",
+              boxShadow: watching ? "0 0 4px var(--status-success)" : "none",
             }}
           />
           {watching ? t("fileViewer.live") : t("fileViewer.static")}
@@ -1032,7 +1032,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
           className="file-viewer-live-indicator"
           style={{
             background: watching ? "var(--status-success)" : "var(--border)",
-            boxShadow: watching ? "0 0 4px #4ade80" : "none",
+            boxShadow: watching ? "0 0 4px var(--status-success)" : "none",
           }}
         />
 

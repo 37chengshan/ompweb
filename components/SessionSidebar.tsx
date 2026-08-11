@@ -1055,7 +1055,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 borderRadius: "var(--radius-control)",
                 padding: 0,
                 flexShrink: 0,
-                transition: "background 0.3s, color 0.3s, border-color 0.3s",
+                transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
               }}
               onMouseEnter={(e) => {
                 if (sessionRefreshDone) return;
@@ -1218,7 +1218,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                   borderRadius: "var(--radius-control)",
                   flexShrink: 0,
                   opacity: explorerUploadBusy ? 0.6 : 1,
-                  transition: "color 0.3s, background 0.3s",
+                  transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => { if (explorerUploadBusy) return; e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
                 onMouseLeave={(e) => { if (explorerUploadBusy) return; e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
@@ -1244,7 +1244,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 cursor: "pointer",
                 borderRadius: "var(--radius-control)",
                 flexShrink: 0,
-                transition: "color 0.3s, background 0.3s",
+                transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
               }}
               onMouseEnter={(e) => { if (explorerRefreshing) return; e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
               onMouseLeave={(e) => { if (explorerRefreshing) return; e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}

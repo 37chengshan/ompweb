@@ -1739,7 +1739,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 fontWeight: 600,
                 letterSpacing: "-0.01em",
                 boxShadow: (value.trim() || attachedImages.length) ? "0 1px 3px rgba(176,62,34,0.25)" : "none",
-                transition: "background 0.15s, box-shadow 0.15s",
+                transition: "background var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm)",
               }}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

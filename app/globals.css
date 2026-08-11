@@ -677,7 +677,7 @@ pre, code {
   border-radius: 7px;
   background: var(--bg-panel);
   margin: 0 auto;
-  transition: width 0.15s ease;
+  transition: width var(--dur-fast) var(--ease-out-warm);
 }
 .mermaid-zoom-canvas svg {
   display: block;

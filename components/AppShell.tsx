@@ -910,7 +910,7 @@ export function AppShell() {
                   flexShrink: 0,
                   fontSize: 11,
                   whiteSpace: "nowrap",
-                  transition: "color 0.1s, background 0.1s, opacity 0.1s",
+                  transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => {
                   if (!selectedSession) return;
@@ -982,7 +982,7 @@ export function AppShell() {
                       cursor: disabled ? "not-allowed" : "pointer",
                       opacity: disabled && autoNameStatus.kind !== "naming" ? 0.45 : 1,
                       flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
-                      transition: "color 0.1s, background 0.1s, opacity 0.1s",
+                      transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
                     }}
                     onMouseEnter={(e) => {
                       if (disabled) return;
@@ -1040,7 +1040,7 @@ export function AppShell() {
                   borderRight: "1px solid var(--border)",
                   cursor: "pointer",
                   color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-                  fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+                  fontSize: 11, whiteSpace: "nowrap", transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)"; }}
@@ -1109,7 +1109,7 @@ export function AppShell() {
                   fontSize: 11, color: "var(--text-muted)",
                   whiteSpace: "nowrap", cursor: "pointer",
                   fontVariantNumeric: "tabular-nums",
-                  transition: "color 0.1s, background 0.1s",
+                  transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)"; }}

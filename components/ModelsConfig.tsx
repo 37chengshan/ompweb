@@ -727,7 +727,7 @@ function ThinkingEditor({
           border: "none",
           cursor: "pointer",
           fontWeight: 400,
-          transition: "background 0.1s, color 0.1s",
+          transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
           whiteSpace: "nowrap",
           background: "var(--bg-panel)",
           color: "var(--text-dim)",
@@ -786,7 +786,7 @@ function ThinkingEditor({
             </div>
 
             {/* Custom button + input fused */}
-            <div style={{ display: "flex", borderRadius: 5, border: `1px solid ${state === "string" ? "var(--accent)" : "var(--border)"}`, overflow: "hidden", transition: "border-color 0.1s" }}>
+            <div style={{ display: "flex", borderRadius: 5, border: `1px solid ${state === "string" ? "var(--accent)" : "var(--border)"}`, overflow: "hidden", transition: "border-color var(--dur-fast) var(--ease-out-warm)" }}>
               <button
                 onClick={() => setLevel(level, strVal || level)}
                 style={{ ...btnBase, ...(state === "string" ? btnActive : {}), borderRight: "1px solid var(--border)", flexShrink: 0 }}
@@ -808,7 +808,7 @@ function ThinkingEditor({
                   fontFamily: "var(--font-mono)",
                   fontSize: 11,
                   padding: "4px 7px",
-                  transition: "background 0.1s, color 0.1s",
+                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
                 }}
               />
             </div>
@@ -1279,8 +1279,8 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <SectionTitle>{t("modelsConfig.subscription")}</SectionTitle>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: provider.loggedIn ? "#4ade80" : "var(--border)", display: "inline-block" }} />
-          <span style={{ fontSize: 11, color: provider.loggedIn ? "#4ade80" : "var(--text-dim)" }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: provider.loggedIn ? "var(--status-success)" : "var(--border)", display: "inline-block" }} />
+          <span style={{ fontSize: 11, color: provider.loggedIn ? "var(--status-success)" : "var(--text-dim)" }}>
             {provider.loggedIn ? t("modelsConfig.connected") : t("modelsConfig.notConnected")}
           </span>
         </div>
@@ -1417,8 +1417,8 @@ function ApiKeyDetail({ provider }: { provider: ApiKeyProvider }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <SectionTitle>{t("modelsConfig.apiKey")}</SectionTitle>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: provider.configured ? "#4ade80" : "var(--border)", display: "inline-block" }} />
-          <span style={{ fontSize: 11, color: provider.configured ? "#4ade80" : "var(--text-dim)" }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: provider.configured ? "var(--status-success)" : "var(--border)", display: "inline-block" }} />
+          <span style={{ fontSize: 11, color: provider.configured ? "var(--status-success)" : "var(--text-dim)" }}>
             {provider.configured ? t("modelsConfig.configured") : t("modelsConfig.notConfigured")}
           </span>
         </div>
@@ -2151,9 +2151,9 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
             position: "relative",
             padding: "6px 16px",
             minWidth: 92,
-            background: savedOk ? "#16a34a" : (saving || parseError) ? "var(--bg-panel)" : "var(--accent)",
+            background: savedOk ? "var(--status-success)" : (saving || parseError) ? "var(--bg-panel)" : "var(--accent)",
             border: "none", borderRadius: 6,
-            color: savedOk ? "#fff" : (saving || parseError) ? "var(--text-muted)" : "#fff",
+            color: savedOk ? "var(--on-accent)" : (saving || parseError) ? "var(--text-muted)" : "var(--on-accent)",
             cursor: (saving || savedOk || parseError) ? "default" : "pointer", fontSize: 13, fontWeight: 600,
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
             transition: "background-color var(--dur-med) var(--ease-out-warm), color var(--dur-med) var(--ease-out-warm)",

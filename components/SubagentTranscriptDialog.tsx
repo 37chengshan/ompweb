@@ -84,9 +84,10 @@ function SubagentMessageRow({ message }: { message: AgentMessage }) {
   );
 }
 
-export function SubagentTranscriptDialog({ subagent, sessionId, onClose }: {
+export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersion, onClose }: {
   subagent: SubagentInfo | null;
   sessionId: string | null;
+  transcriptVersion: number;
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -97,6 +98,7 @@ export function SubagentTranscriptDialog({ subagent, sessionId, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const [exhausted, setExhausted] = useState(false);
   const requestSeqRef = useRef(0);
+  const refreshedTranscriptVersionRef = useRef(0);
 
   const open = subagent !== null;
 
@@ -137,6 +139,7 @@ export function SubagentTranscriptDialog({ subagent, sessionId, onClose }: {
     setExhausted(false);
     setError(null);
     setDetail(null);
+    refreshedTranscriptVersionRef.current = transcriptVersion;
     let cancelled = false;
 
     void (async () => {
@@ -152,7 +155,16 @@ export function SubagentTranscriptDialog({ subagent, sessionId, onClose }: {
     })();
 
     return () => { cancelled = true; };
-  }, [open, sessionId, subagent?.id, subagent?.sessionFile, loadPage]);
+  }, [open, sessionId, subagent?.id, subagent?.sessionFile, transcriptVersion, loadPage]);
+
+  // Child events arrive as an invalidation signal. Continue from nextByte
+  // instead of replaying the transcript on every streamed child event.
+  useEffect(() => {
+    if (!open || !sessionId || transcriptVersion === 0 || loading) return;
+    if (refreshedTranscriptVersionRef.current === transcriptVersion) return;
+    refreshedTranscriptVersionRef.current = transcriptVersion;
+    void loadPage(nextByte, subagent?.sessionFile);
+  }, [open, sessionId, transcriptVersion, loading, loadPage, nextByte, subagent?.sessionFile]);
 
   const loadMore = () => { void loadPage(nextByte, subagent?.sessionFile); };
 

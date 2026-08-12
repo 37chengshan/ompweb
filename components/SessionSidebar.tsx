@@ -153,6 +153,22 @@ function PathLabel({ text, style }: { text: string; style?: CSSProperties }) {
   );
 }
 
+function formatRelativeTime(value: string, locale: string, now: number): string | null {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+
+  const minutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "narrow" });
+  if (minutes < 1) return formatter.format(0, "minute");
+  if (minutes < 60) return formatter.format(-minutes, "minute");
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return formatter.format(-hours, "hour");
+  return formatter.format(-Math.floor(hours / 24), "day");
+}
+
+const SIDEBAR_BUTTON_TRANSITION = "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)";
+
 const DROPDOWN_ANIMATION_MS = 140;
 
 function AnimatedDropdown({ open, children, style }: { open: boolean; children: ReactNode; style: CSSProperties }) {
@@ -371,7 +387,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [wtError, setWtError] = useState<string | null>(null);
   const [wtBusy, setWtBusy] = useState(false);
   const [wtConfirmRemove, setWtConfirmRemove] = useState<string | null>(null);
-  const [worktreeLoadingCwd, setWorktreeLoadingCwd] = useState<string | null>(null);
   const wtDropdownRef = useRef<HTMLDivElement>(null);
   const wtNewInputRef = useRef<HTMLInputElement>(null);
   const [explorerOpen, setExplorerOpen] = useState(true);
@@ -381,6 +396,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
+  // Relative session times must age while the sidebar stays open; one shared
+  // minute clock avoids a timer per session row.
+  const [relativeTimeNow, setRelativeTimeNow] = useState(() => Date.now());
+
   // Once the SSE stream has delivered a frame it is the source of truth for
   // running state; late /api/sessions responses must not overwrite it.
   const sseAuthoritativeRef = useRef(false);
@@ -442,6 +461,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   useEffect(() => {
     void loadProjects();
   }, [loadProjects, refreshKey]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setRelativeTimeNow(Date.now()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Persist expansion state; null means nothing was stored yet.
   useEffect(() => {
@@ -605,16 +629,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   useLayoutEffect(() => {
     if (!selectedCwd) {
       setWorktreeState(null);
-      setWorktreeLoadingCwd(null);
       return;
     }
     let cancelled = false;
-    setWorktreeLoadingCwd(selectedCwd);
     fetch(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`)
       .then((r) => r.json())
       .then((d: { projectRoot?: string; isGit?: boolean; isTopLevel?: boolean; worktrees?: WorktreeEntry[]; error?: string }) => {
         if (cancelled) return;
-        setWorktreeLoadingCwd(null);
         if (d.error || !d.projectRoot) {
           setWorktreeState(null);
           return;
@@ -629,7 +650,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       })
       .catch(() => {
         if (!cancelled) {
-          setWorktreeLoadingCwd(null);
           setWorktreeState(null);
         }
       });
@@ -904,28 +924,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     && selectedCwd
     && selectedProject === worktreeState.projectRoot
   );
-  const worktreeGuide = selectedCwd
-    && worktreeState
-    && selectedProject === worktreeState.projectRoot
-    && !showWorktreeSwitcher
-    ? (worktreeState.isGit
-        ? {
-            label: t("sessionSidebar.openRepoRoot"),
-            title: t("sessionSidebar.openRepoRootTitle"),
-          }
-        : {
-            label: t("sessionSidebar.gitRepoRootOnly"),
-            title: t("sessionSidebar.gitRepoRootOnlyTitle"),
-          })
-    : null;
-  const worktreeLoading = Boolean(selectedCwd && worktreeLoadingCwd === selectedCwd);
-  const inactiveWorktreeSelector = worktreeGuide
-    ?? (worktreeLoading && !showWorktreeSwitcher
-      ? {
-          label: t("sessionSidebar.worktreesLoading"),
-          title: t("sessionSidebar.worktreesLoadingTitle"),
-        }
-      : null);
 
   // Stable callbacks for the session list so memoized children don't re-render
   // on every parent state change.
@@ -941,69 +939,35 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     if (selected) setLastOpenSession(workspaceKeyOf(selected), selected.id);
   }, [allSessions, selectedSessionId]);
 
-  // The active project's worktree selector (or its inactive guide) renders
-  // directly below the active project row. Built once — each ProjectRow only
-  // renders them when it is the active project.
+  // The compact worktree control belongs in the active Git project's identity
+  // row. Non-Git projects intentionally render no Git affordance at all.
   const activeProjectSwitcher = showWorktreeSwitcher && worktreeState ? (
-    <div style={{ paddingLeft: 42, paddingRight: 12, marginTop: 4 }}>
-      <ProjectWorktreeSwitcher
-        worktreeState={worktreeState}
-        selectedCwd={selectedCwd}
-        homeDir={homeDir}
-        wtDropdownOpen={wtDropdownOpen}
-        setWtDropdownOpen={setWtDropdownOpen}
-        wtNewOpen={wtNewOpen}
-        setWtNewOpen={setWtNewOpen}
-        wtNewBranch={wtNewBranch}
-        setWtNewBranch={setWtNewBranch}
-        wtError={wtError}
-        setWtError={setWtError}
-        wtBusy={wtBusy}
-        wtConfirmRemove={wtConfirmRemove}
-        setWtConfirmRemove={setWtConfirmRemove}
-        onSelectWorktree={(path) => {
-          setSelectedCwd(path);
-          setWtDropdownOpen(false);
-          setWtError(null);
-        }}
-        onCreateWorktree={handleCreateWorktree}
-        onRemoveWorktree={(path, force) => void handleRemoveWorktree(path, force)}
-        dropdownRef={wtDropdownRef}
-        newInputRef={wtNewInputRef}
-      />
-    </div>
-  ) : null;
-  const activeProjectGuide = !showWorktreeSwitcher && inactiveWorktreeSelector ? (
-    <div style={{ paddingLeft: 42, paddingRight: 12, marginTop: 4 }}>
-      <button
-        type="button"
-        aria-disabled="true"
-        tabIndex={-1}
-        title={inactiveWorktreeSelector.title}
-        style={{
-          width: "100%",
-          height: 29,
-          boxSizing: "border-box",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "0 10px",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-control)",
-          background: "var(--bg-hover)",
-          color: "var(--text-dim)",
-          fontSize: 11,
-          lineHeight: 1.35,
-          whiteSpace: "nowrap",
-          textAlign: "left",
-          cursor: "default",
-          opacity: 0.82,
-        }}
-      >
-        <GitBranch size={12} strokeWidth={2} style={{ flexShrink: 0 }} aria-hidden="true" />
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{inactiveWorktreeSelector.label}</span>
-      </button>
-    </div>
+    <ProjectWorktreeSwitcher
+      compact
+      worktreeState={worktreeState}
+      selectedCwd={selectedCwd}
+      homeDir={homeDir}
+      wtDropdownOpen={wtDropdownOpen}
+      setWtDropdownOpen={setWtDropdownOpen}
+      wtNewOpen={wtNewOpen}
+      setWtNewOpen={setWtNewOpen}
+      wtNewBranch={wtNewBranch}
+      setWtNewBranch={setWtNewBranch}
+      wtError={wtError}
+      setWtError={setWtError}
+      wtBusy={wtBusy}
+      wtConfirmRemove={wtConfirmRemove}
+      setWtConfirmRemove={setWtConfirmRemove}
+      onSelectWorktree={(path) => {
+        setSelectedCwd(path);
+        setWtDropdownOpen(false);
+        setWtError(null);
+      }}
+      onCreateWorktree={handleCreateWorktree}
+      onRemoveWorktree={(path, force) => void handleRemoveWorktree(path, force)}
+      dropdownRef={wtDropdownRef}
+      newInputRef={wtNewInputRef}
+    />
   ) : null;
 
   return (
@@ -1227,6 +1191,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               selectedSessionId={selectedSessionId}
               runningSessionIds={runningSessionIds}
               unreadSessionIds={unreadSessionIds}
+              relativeTimeNow={relativeTimeNow}
               onActivate={activateProject}
               onToggleExpand={toggleProjectExpanded}
               onRemoveProject={handleRemoveProject}
@@ -1235,7 +1200,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               onRenamed={loadSessions}
               onSessionDeleted={handleSessionDeleted}
               activeWorktreeSwitcher={activeProjectSwitcher}
-              activeWorktreeGuide={activeProjectGuide}
+              homeDir={homeDir}
             />
           ))}
         </div>
@@ -1362,6 +1327,7 @@ interface ProjectRowProps {
   selectedSessionId: string | null;
   runningSessionIds: Set<string>;
   unreadSessionIds: Set<string>;
+  relativeTimeNow: number;
   onActivate: (path: string) => void;
   onToggleExpand: (path: string) => void;
   onRemoveProject: (path: string) => void;
@@ -1370,7 +1336,7 @@ interface ProjectRowProps {
   onRenamed?: () => void;
   onSessionDeleted?: (id: string) => void;
   activeWorktreeSwitcher?: ReactNode;
-  activeWorktreeGuide?: ReactNode;
+  homeDir: string;
 }
 
 /** One project in the sidebar: a card row matching the session items' visual
@@ -1386,6 +1352,7 @@ function ProjectRow({
   selectedSessionId,
   runningSessionIds,
   unreadSessionIds,
+  relativeTimeNow,
   onActivate,
   onToggleExpand,
   onRemoveProject,
@@ -1394,7 +1361,7 @@ function ProjectRow({
   onRenamed,
   onSessionDeleted,
   activeWorktreeSwitcher,
-  activeWorktreeGuide,
+  homeDir,
 }: ProjectRowProps) {
   const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
@@ -1409,8 +1376,9 @@ function ProjectRow({
   const showActions = hovered || focusWithin;
 
   return (
-    <div style={{ marginBottom: 2 }}>
+    <section className="sidebar-project" style={{ marginBottom: isExpanded ? 8 : 4 }}>
       <div
+        className="sidebar-project-header"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onFocus={() => setFocusWithin(true)}
@@ -1420,45 +1388,51 @@ function ProjectRow({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
-          height: 44,
-          margin: "2px 8px",
-          padding: "0 4px 0 6px",
+          gap: 2,
+          minHeight: 48,
+          margin: "0 6px",
+          padding: "4px 5px 4px 4px",
           borderRadius: "var(--radius-control)",
           background: isActive ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent",
-          borderLeft: isActive ? "3px solid var(--accent)" : "3px solid transparent",
-          transition: "background var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
+          border: `1px solid ${isActive ? "color-mix(in srgb, var(--accent) 20%, var(--border))" : "transparent"}`,
+          boxShadow: isActive ? "var(--shadow-card)" : "none",
+          transition: SIDEBAR_BUTTON_TRANSITION,
         }}
       >
         <button
+          className="sidebar-project-toggle"
           onClick={() => onToggleExpand(project.path)}
           aria-label={isExpanded ? t("projects.collapseProject", { name: label }) : t("projects.expandProject", { name: label })}
           aria-expanded={isExpanded}
           title={isExpanded ? t("projects.collapseProjectTitle", { path: project.path }) : t("projects.expandProjectTitle", { path: project.path })}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
-            width: 24, height: 24, padding: 0, flexShrink: 0,
+            width: 26, height: 26, padding: 0, flexShrink: 0,
+            alignSelf: "flex-start", marginTop: 4,
             background: "none", border: "none",
-            color: "var(--text-dim)", cursor: "pointer",
+            color: "var(--text-dim)", cursor: "pointer", lineHeight: 0,
             borderRadius: "var(--radius-control)",
             transform: isExpanded ? "rotate(90deg)" : "none",
-            transition: "transform var(--dur-fast) var(--ease-out-warm)",
+            transition: "transform var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
           }}
         >
           <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
         </button>
         <button
+          className="sidebar-project-identity"
           onClick={() => onActivate(project.path)}
           aria-current={isActive ? "true" : undefined}
           title={project.path}
           style={{
             flex: 1,
             minWidth: 0,
-            height: "100%",
+            alignSelf: "stretch",
             display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "0 4px",
+            flexDirection: "column",
+            alignItems: "stretch",
+            justifyContent: "center",
+            gap: 2,
+            padding: "0 5px",
             background: "none", border: "none",
             color: isActive ? "var(--text)" : "var(--text-muted)",
             cursor: "pointer",
@@ -1471,22 +1445,28 @@ function ProjectRow({
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              flex: 1,
-              minWidth: 0,
               fontSize: 13,
-              fontWeight: isActive ? 600 : 500,
-              lineHeight: 1.4,
+              fontWeight: isActive ? 650 : 600,
+              lineHeight: 1.25,
             }}
           >
             {label}
           </span>
-          {hasActivity && (
-            <span aria-label={t("projects.activity", { running: activity?.running ?? 0, unread: activity?.unread ?? 0 })} style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-              {(activity?.running ?? 0) > 0 && <span title={t("projects.running")} style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", animation: "pulse 1.5s ease-in-out infinite" }} />}
-              {(activity?.unread ?? 0) > 0 && <span title={t("projects.unread")} style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--text-muted)" }} />}
-            </span>
-          )}
+          <PathLabel
+            text={displayCwd(project.path, homeDir)}
+            style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.25 }}
+          />
         </button>
+        {isActive && activeWorktreeSwitcher}
+        <span
+          aria-label={hasActivity ? t("projects.activity", { running: activity?.running ?? 0, unread: activity?.unread ?? 0 }) : project.path}
+          title={hasActivity ? t("projects.activity", { running: activity?.running ?? 0, unread: activity?.unread ?? 0 }) : project.path}
+          style={{ display: "flex", alignItems: "center", gap: 4, margin: "13px 4px 0", flexShrink: 0, alignSelf: "flex-start", lineHeight: 0 }}
+        >
+          {(activity?.running ?? 0) > 0 && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-success)", boxShadow: "0 0 0 3px color-mix(in srgb, var(--status-success) 14%, transparent)" }} />}
+          {(activity?.unread ?? 0) > 0 && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }} />}
+          {!hasActivity && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text-dim)" }} />}
+        </span>
         {showActions && (
           <button
             onClick={() => onRemoveProject(project.path)}
@@ -1496,11 +1476,12 @@ function ProjectRow({
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: 26, height: 26, padding: 0, flexShrink: 0,
+              alignSelf: "flex-start", marginTop: 4,
               background: "none", border: "none",
-              color: "var(--text-dim)", cursor: "pointer",
+              color: "var(--text-dim)", cursor: "pointer", lineHeight: 0,
               borderRadius: "var(--radius-control)",
               opacity: removeBusy ? 0.5 : 1,
-              transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
+              transition: SIDEBAR_BUTTON_TRANSITION,
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 8%, transparent)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
@@ -1510,11 +1491,10 @@ function ProjectRow({
         )}
       </div>
 
-      {isActive && activeWorktreeSwitcher}
-      {isActive && activeWorktreeGuide}
+
 
       {isExpanded && (
-        <div style={{ paddingLeft: 20 }}>
+        <div className="sidebar-project-sessions" style={{ margin: "3px 12px 0 25px", paddingLeft: 5, borderLeft: "1px solid color-mix(in srgb, var(--border) 78%, transparent)" }}>
           {visibleRoots.length === 0 ? (
             <div style={{ padding: "8px 12px 10px", color: "var(--text-dim)", fontSize: 11 }}>
               {t("projects.emptyProject")}
@@ -1528,6 +1508,7 @@ function ProjectRow({
                   selectedSessionId={selectedSessionId}
                   runningSessionIds={runningSessionIds}
                   unreadSessionIds={unreadSessionIds}
+                  relativeTimeNow={relativeTimeNow}
                   onSelectSession={onSelectSession}
                   onRenamed={onRenamed}
                   onSessionDeleted={onSessionDeleted}
@@ -1542,18 +1523,18 @@ function ProjectRow({
                     display: "flex",
                     alignItems: "center",
                     gap: 5,
-                    width: "calc(100% - 16px)",
-                    margin: "2px 8px",
-                    padding: "7px 12px",
+                    width: "100%",
+                    margin: "3px 0 0",
+                    padding: "7px 8px",
                     background: "none",
                     border: "none",
                     color: "var(--text-dim)",
                     cursor: "pointer",
                     textAlign: "left",
                     fontSize: 11,
-                    fontWeight: 500,
+                    fontWeight: 600,
                     borderRadius: "var(--radius-control)",
-                    transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
+                    transition: SIDEBAR_BUTTON_TRANSITION,
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
@@ -1568,11 +1549,12 @@ function ProjectRow({
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
 interface ProjectWorktreeSwitcherProps {
+  compact?: boolean;
   worktreeState: WorktreeState;
   selectedCwd: string | null;
   homeDir: string;
@@ -1594,10 +1576,10 @@ interface ProjectWorktreeSwitcherProps {
   newInputRef: RefObject<HTMLInputElement | null>;
 }
 
-/** Worktree switcher rendered directly below the active project's row. All
- *  worktrees of a project share one list, so switching between them keeps the
- *  row mounted instead of flickering while data refetches. */
+/** Worktree switcher. Its compact form lives beside the active project's
+ * name; opening it exposes the project's complete worktree list. */
 function ProjectWorktreeSwitcher({
+  compact = false,
   worktreeState,
   selectedCwd,
   homeDir,
@@ -1621,35 +1603,43 @@ function ProjectWorktreeSwitcher({
   const { t } = useI18n();
   const currentWt = worktreeState.worktrees.find((w) => w.path === selectedCwd)
     ?? worktreeState.worktrees.find((w) => w.isMain);
+  const compactLabel = currentWt?.branch?.trim() || displayCwd(worktreeState.projectRoot, homeDir);
   return (
-    <div ref={dropdownRef} style={{ position: "relative", marginTop: 6 }}>
+    <div ref={dropdownRef} style={{ position: "relative", marginTop: compact ? 4 : 6, alignSelf: compact ? "flex-start" : undefined, flexShrink: 0 }}>
       <button
         onClick={() => setWtDropdownOpen((v) => !v)}
         title={currentWt ? t("sessionSidebar.switchWorktreeTo", { path: currentWt.path }) : t("sessionSidebar.switchWorktree")}
         style={{
-          width: "100%",
-          height: 29,
+          width: compact ? 92 : "100%",
+          maxWidth: compact ? 92 : undefined,
+          height: compact ? 26 : 29,
           boxSizing: "border-box",
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          padding: "0 10px",
+          gap: compact ? 4 : 6,
+          padding: compact ? "0 6px" : "0 10px",
           background: "var(--bg-hover)",
           border: "1px solid var(--border)",
           borderRadius: "var(--radius-control)",
           cursor: "pointer",
           fontSize: 11,
-          lineHeight: 1.35,
+          lineHeight: 1.2,
           color: "var(--text-muted)",
           textAlign: "left",
         }}
       >
         <GitBranch size={12} strokeWidth={2} style={{ flexShrink: 0, color: currentWt && !currentWt.isMain ? "var(--accent)" : "var(--text-dim)" }} aria-hidden="true" />
-        <PathLabel
-          text={currentWt ? (currentWt.branch ?? displayCwd(currentWt.path, homeDir)) : "…"}
-          style={{ flex: 1, fontFamily: "var(--font-mono)", color: "var(--text)" }}
-        />
-        {worktreeState.worktrees.length > 1 && (
+        {compact ? (
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontWeight: 600, lineHeight: 1.2, color: "var(--text)" }}>
+            {compactLabel}
+          </span>
+        ) : (
+          <PathLabel
+            text={currentWt ? (currentWt.branch ?? displayCwd(currentWt.path, homeDir)) : "…"}
+            style={{ flex: 1, fontFamily: "var(--font-mono)", color: "var(--text)" }}
+          />
+        )}
+        {!compact && worktreeState.worktrees.length > 1 && (
           <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10 }}>
             {worktreeState.worktrees.length}
           </span>
@@ -1662,8 +1652,9 @@ function ProjectWorktreeSwitcher({
         style={{
           position: "absolute",
           top: "calc(100% + 4px)",
-          left: 0,
+          left: compact ? "auto" : 0,
           right: 0,
+          minWidth: compact ? 220 : undefined,
           zIndex: 100,
           background: "var(--bg)",
           border: "1px solid var(--border)",
@@ -1872,6 +1863,7 @@ const SessionTreeItem = memo(function SessionTreeItem({
   selectedSessionId,
   runningSessionIds,
   unreadSessionIds,
+  relativeTimeNow,
   onSelectSession,
   onRenamed,
   onSessionDeleted,
@@ -1881,6 +1873,7 @@ const SessionTreeItem = memo(function SessionTreeItem({
   selectedSessionId: string | null;
   runningSessionIds: Set<string>;
   unreadSessionIds: Set<string>;
+  relativeTimeNow: number;
   onSelectSession: (s: SessionInfo) => void;
   onRenamed?: () => void;
   onSessionDeleted?: (id: string) => void;
@@ -1927,6 +1920,7 @@ const SessionTreeItem = memo(function SessionTreeItem({
           isSelected={isSelected}
           isRunning={isRunning}
           isUnread={isUnread}
+          relativeTimeNow={relativeTimeNow}
           onClick={handleClick}
           onRenamed={onRenamed}
           onDeleted={handleDeleted}
@@ -1945,6 +1939,7 @@ const SessionTreeItem = memo(function SessionTreeItem({
               selectedSessionId={selectedSessionId}
               runningSessionIds={runningSessionIds}
               unreadSessionIds={unreadSessionIds}
+              relativeTimeNow={relativeTimeNow}
               onSelectSession={onSelectSession}
               onRenamed={onRenamed}
               onSessionDeleted={onSessionDeleted}
@@ -1971,6 +1966,7 @@ const SessionTreeItem = memo(function SessionTreeItem({
     const id = prev.node.session.id;
     if (prev.unreadSessionIds.has(id) !== next.unreadSessionIds.has(id)) return false;
   }
+  if (prev.relativeTimeNow !== next.relativeTimeNow) return false;
   if (prev.onSelectSession !== next.onSelectSession
     || prev.onRenamed !== next.onRenamed
     || prev.onSessionDeleted !== next.onSessionDeleted) return false;
@@ -2059,6 +2055,7 @@ const SessionItem = memo(function SessionItem({
   depth = 0,
   hasChildren = false,
   collapsed = false,
+  relativeTimeNow,
   onToggleCollapse,
 }: {
   session: SessionInfo;
@@ -2070,12 +2067,12 @@ const SessionItem = memo(function SessionItem({
   onDeleted?: (id: string) => void;
   depth?: number;
   hasChildren?: boolean;
+  relativeTimeNow: number;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [hovered, setHovered] = useState(false);
-  // Mirrors :focus-within so the hover-only action cluster is reachable by keyboard.
   const [focusWithin, setFocusWithin] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -2084,44 +2081,35 @@ const SessionItem = memo(function SessionItem({
   const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const contentButtonRef = useRef<HTMLButtonElement>(null);
-
   const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
+  const relativeTime = formatRelativeTime(session.modified, locale, relativeTimeNow);
+  const rowBackground = confirmDelete
+    ? "color-mix(in srgb, var(--accent) 6%, transparent)"
+    : isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent";
 
-  const startRename = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const startRename = useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
     setRenameValue(session.name ?? "");
     setRenaming(true);
     setTimeout(() => inputRef.current?.select(), 0);
   }, [session.name]);
-
   const commitRename = useCallback(async () => {
     const name = renameValue.trim();
     setRenaming(false);
     if (name === (session.name ?? "")) return;
     try {
-      await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
+      if (!response.ok) throw new Error("Session rename failed");
       onRenamed?.();
     } catch {
-      // ignore
+      // The next refresh remains authoritative if the rename fails.
     }
   }, [renameValue, session.id, session.name, onRenamed]);
-
-  const handleDeleteClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmDelete(true);
-  }, []);
-
-  const handleArchiveClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmArchive(true);
-  }, []);
-
-  const handleArchiveConfirm = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleArchive = useCallback(async () => {
     setConfirmArchive(false);
     setDeleting(true);
     try {
@@ -2132,344 +2120,89 @@ const SessionItem = memo(function SessionItem({
       setDeleting(false);
     }
   }, [session.id, onDeleted]);
-
-  const handleArchiveCancel = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmArchive(false);
-    requestAnimationFrame(() => contentButtonRef.current?.focus());
-  }, []);
-
-  const handleDeleteConfirm = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = useCallback(async () => {
     setConfirmDelete(false);
     setDeleting(true);
     try {
-      await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Session deletion failed");
       onDeleted?.(session.id);
     } catch {
       setDeleting(false);
     }
   }, [session.id, onDeleted]);
-
-  const handleDeleteCancel = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const closeConfirmation = useCallback(() => {
+    setConfirmArchive(false);
     setConfirmDelete(false);
     requestAnimationFrame(() => contentButtonRef.current?.focus());
   }, []);
 
-  // Fixed-height outer wrapper — content swaps in place so the list never reflows
-  const ITEM_HEIGHT = 40;
-
   return (
     <div
-      onClick={confirmDelete || renaming ? undefined : onClick}
+      onClick={confirmArchive || confirmDelete || renaming ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); }}
+      onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocusWithin(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false);
       }}
-      onKeyDown={(e) => {
-        if (confirmDelete && e.key === "Escape") {
-          e.stopPropagation();
-          setConfirmDelete(false);
-          requestAnimationFrame(() => contentButtonRef.current?.focus());
+      onKeyDown={(event) => {
+        if ((confirmArchive || confirmDelete) && event.key === "Escape") {
+          event.stopPropagation();
+          closeConfirmation();
         }
       }}
       style={{
-        height: ITEM_HEIGHT,
+        height: 38,
         display: "flex",
         alignItems: "center",
-        paddingLeft: depth > 0 ? depth * 12 + 12 : 12,
-        paddingRight: 8,
-        position: "relative",
-        cursor: confirmDelete || renaming ? "default" : "pointer",
-        background: confirmDelete
-          ? "color-mix(in srgb, var(--accent) 6%, transparent)"
-          : isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent",
-        borderLeft: confirmDelete
-          ? "3px solid var(--accent)"
-          : isSelected ? "3px solid var(--accent)" : "3px solid transparent",
-        transition: "background var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
-        opacity: deleting ? 0.5 : 1,
         gap: 6,
+        width: "100%",
+        margin: "1px 0",
+        padding: `0 8px 0 ${depth > 0 ? depth * 12 + 10 : 8}px`,
+        position: "relative",
         overflow: "hidden",
-        margin: "2px 8px",
-        width: "calc(100% - 16px)",
-        borderRadius: "var(--radius-control)",
+        borderRadius: 6,
+        borderLeft: confirmDelete || isSelected ? "2px solid var(--accent)" : "2px solid transparent",
+        background: rowBackground,
+        opacity: deleting ? 0.5 : 1,
+        cursor: confirmArchive || confirmDelete || renaming ? "default" : "pointer",
+        transition: "background var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
       }}
     >
-      {confirmArchive ? (
-        /* ── Archive confirmation: same height, two flat buttons ── */
+      {confirmArchive || confirmDelete ? (
         <>
-          <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {t("sessionSidebar.archiveConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })}
-          </div>
-          <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-            <button
-              onClick={handleArchiveConfirm}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                height: 30, padding: "0 11px",
-                background: "var(--accent-strong)", border: "none",
-                borderRadius: "var(--radius-control)", color: "var(--on-accent)",
-                cursor: "pointer", fontSize: 12, fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <Archive size={12} strokeWidth={2} aria-hidden="true" />
-              {t("sessionSidebar.archive")}
-            </button>
-            <button
-              onClick={handleArchiveCancel}
-              autoFocus
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                height: 30, padding: "0 11px",
-                background: "var(--bg)", border: "1px solid var(--border)",
-                borderRadius: "var(--radius-control)", color: "var(--text-muted)",
-                cursor: "pointer", fontSize: 12, fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {t("sessionSidebar.cancel")}
-            </button>
-          </div>
-        </>
-      ) : confirmDelete ? (
-        /* ── Delete confirmation: same height, two flat buttons ── */
-        <>
-          <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {t("sessionSidebar.deleteConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })}
-          </div>
-          <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-            <button
-              onClick={handleDeleteConfirm}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                height: 30, padding: "0 11px",
-                background: "var(--accent-strong)", border: "none",
-                borderRadius: "var(--radius-control)", color: "var(--on-accent)",
-                cursor: "pointer", fontSize: 12, fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <Trash2 size={12} strokeWidth={2} aria-hidden="true" />
-              {t("sessionSidebar.delete")}
-            </button>
-            <button
-              onClick={handleDeleteCancel}
-              autoFocus
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                height: 30, padding: "0 11px",
-                background: "var(--bg)", border: "1px solid var(--border)",
-                borderRadius: "var(--radius-control)", color: "var(--text-muted)",
-                cursor: "pointer", fontSize: 12, fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {t("sessionSidebar.cancel")}
-            </button>
-          </div>
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, color: "var(--text)" }}>
+            {confirmArchive
+              ? t("sessionSidebar.archiveConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })
+              : t("sessionSidebar.deleteConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })}
+          </span>
+          <button onClick={(event) => { event.stopPropagation(); if (confirmArchive) handleArchive(); else handleDelete(); }} style={{ height: 28, padding: "0 9px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+            {confirmArchive ? t("sessionSidebar.archive") : t("sessionSidebar.delete")}
+          </button>
+          <button onClick={(event) => { event.stopPropagation(); closeConfirmation(); }} autoFocus style={{ height: 28, padding: "0 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}>
+            {t("sessionSidebar.cancel")}
+          </button>
         </>
       ) : renaming ? (
-        /* ── Rename: input fills the same row ── */
-        <input
-          ref={inputRef}
-          value={renameValue}
-          onChange={(e) => setRenameValue(e.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitRename();
-            if (e.key === "Escape") setRenaming(false);
-          }}
-          autoFocus
-          style={{
-            flex: 1,
-            fontSize: 12,
-            padding: "5px 8px",
-            border: "1px solid var(--accent)",
-            borderRadius: "var(--radius-control)",
-            outline: "none",
-            background: "var(--bg)",
-            color: "var(--text)",
-            height: 30,
-          }}
-        />
+        <input ref={inputRef} autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onBlur={commitRename} onKeyDown={(event) => { if (event.key === "Enter") void commitRename(); if (event.key === "Escape") setRenaming(false); }} style={{ flex: 1, height: 28, padding: "4px 7px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", outline: "none", background: "var(--bg)", color: "var(--text)", fontSize: 12 }} />
       ) : (
-        /* ── Normal view ── */
         <>
-          {/* Fork indicator for child sessions */}
-          {depth > 0 && (
-            <GitBranch size={11} strokeWidth={2} style={{ flexShrink: 0, color: "var(--text-dim)" }} aria-hidden="true" />
-          )}
-          <button
-            ref={contentButtonRef}
-            type="button"
-            className="session-item-button"
-            aria-current={isSelected ? "true" : undefined}
-            onKeyDown={(e) => {
-              if (e.key === "Delete") {
-                e.preventDefault();
-                setConfirmDelete(true);
-              }
-            }}
-            style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}
-          >
-            <span
-              className="display-serif"
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                minWidth: 0,
-                fontSize: 13,
-                fontWeight: isSelected ? 600 : 500,
-                lineHeight: 1.4,
-                color: "var(--text)",
-              }}
-              title={title}
-            >
+          {depth > 0 && <GitBranch size={11} strokeWidth={2} style={{ flexShrink: 0, color: "var(--text-dim)" }} aria-hidden="true" />}
+          <button ref={contentButtonRef} type="button" className="session-item-button" aria-current={isSelected ? "true" : undefined} onKeyDown={(event) => { if (event.key === "Delete") { event.preventDefault(); setConfirmDelete(true); } }} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
+            <span className="display-serif" title={title} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 13, fontWeight: isSelected ? 600 : 500, lineHeight: 1.35 }}>
               {title}
             </span>
           </button>
-          {session.worktreeBranch && (
-            <span
-              title={t("sessionSidebar.worktreeTitle", { path: session.cwd })}
-              style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--accent)", fontSize: 10, flexShrink: 0, maxWidth: 88, overflow: "hidden" }}
-            >
-              <GitBranch size={10} strokeWidth={2.4} style={{ flexShrink: 0 }} aria-hidden="true" />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.worktreeBranch}</span>
-            </span>
-          )}
+          {session.worktreeBranch && <span title={t("sessionSidebar.worktreeTitle", { path: session.cwd })} style={{ display: "flex", alignItems: "center", gap: 3, maxWidth: 70, overflow: "hidden", color: "var(--accent)", fontSize: 10, flexShrink: 0 }}><GitBranch size={10} strokeWidth={2.4} aria-hidden="true" /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.worktreeBranch}</span></span>}
+          {relativeTime && <span title={new Date(session.modified).toLocaleString(locale)} style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10, fontVariantNumeric: "tabular-nums" }}>{relativeTime}</span>}
           {isRunning ? <RunningSessionIndicator /> : isUnread ? <UnreadSessionIndicator /> : null}
-
-          {/* Collapse toggle — always visible when has children */}
-          {hasChildren && (
-            <button
-              className="session-item-icon-button"
-              onClick={(e) => { e.stopPropagation(); onToggleCollapse?.(); }}
-              title={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")}
-              aria-label={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")}
-              aria-expanded={!collapsed}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 20, height: 20, padding: 0, flexShrink: 0,
-                background: "none", border: "none",
-                color: "var(--text-dim)", cursor: "pointer",
-                transform: collapsed ? "rotate(-90deg)" : "none",
-                transition: "transform var(--dur-fast) var(--ease-out-warm)",
-              }}
-            >
-              <ChevronDown size={12} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-          )}
-
-          {/* Action buttons — overlaid on the right with a fade so the title
-              never reflows; shown on hover or keyboard focus within the row */}
+          {hasChildren && <button className="session-item-icon-button" onClick={(event) => { event.stopPropagation(); onToggleCollapse?.(); }} title={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")} aria-label={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, padding: 0, flexShrink: 0, border: "none", background: "none", color: "var(--text-dim)", cursor: "pointer", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)" }}><ChevronDown size={12} strokeWidth={1.8} aria-hidden="true" /></button>}
           {(hovered || focusWithin) && (
-            <div
-              style={{
-                position: "absolute",
-                right: 8,
-                top: 0,
-                bottom: 0,
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-                paddingLeft: 16,
-                background: "linear-gradient(90deg, transparent, var(--bg-panel) 16px)",
-              }}
-            >
-              <Tooltip content={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} side="top">
-              <button
-                className="session-item-icon-button"
-                onClick={handleArchiveClick}
-                disabled={hasChildren}
-                title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")}
-                aria-label={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 28, height: 28, padding: 0,
-                  background: "var(--bg-hover)", border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-control)", color: "var(--text-muted)",
-                  cursor: hasChildren ? "not-allowed" : "pointer", flexShrink: 0,
-                  opacity: hasChildren ? 0.45 : 1,
-                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
-                }}
-                onMouseEnter={(e) => {
-                  if (hasChildren) return;
-                  e.currentTarget.style.background = "var(--bg-selected)";
-                  e.currentTarget.style.color = "var(--accent)";
-                  e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 35%, transparent)";
-                }}
-                onMouseLeave={(e) => {
-                  if (hasChildren) return;
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
-                }}
-              >
-                <Archive size={14} strokeWidth={2} aria-hidden="true" />
-              </button>
-              </Tooltip>
-              <Tooltip content={t("sessionSidebar.rename")} side="top">
-              <button
-                className="session-item-icon-button"
-                onClick={startRename}
-                title={t("sessionSidebar.rename")}
-                aria-label={t("sessionSidebar.rename")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 28, height: 28, padding: 0,
-                  background: "var(--bg-hover)", border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-control)", color: "var(--text-muted)",
-                  cursor: "pointer", flexShrink: 0,
-                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-selected)";
-                  e.currentTarget.style.color = "var(--accent)";
-                  e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 35%, transparent)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
-                }}
-              >
-                <Pencil size={14} strokeWidth={2} aria-hidden="true" />
-              </button>
-              </Tooltip>
-              <Tooltip content={t("sessionSidebar.delete")} side="top">
-              <button
-                className="session-item-icon-button"
-                onClick={handleDeleteClick}
-                title={t("sessionSidebar.delete")}
-                aria-label={t("sessionSidebar.delete")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 28, height: 28, padding: 0,
-                  background: "var(--bg-hover)", border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-control)", color: "var(--text-muted)",
-                  cursor: "pointer", flexShrink: 0,
-                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 8%, transparent)";
-                  e.currentTarget.style.color = "var(--accent)";
-                  e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 35%, transparent)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
-                }}
-              >
-                <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-              </button>
-              </Tooltip>
+            <div style={{ position: "absolute", right: 8, top: 0, bottom: 0, display: "flex", alignItems: "center", gap: 2, paddingLeft: 16, background: `linear-gradient(90deg, transparent, ${rowBackground} 16px)` }}>
+              <button className="session-item-icon-button" onClick={(event) => { event.stopPropagation(); setConfirmArchive(true); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} aria-label={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 27, height: 27, padding: 0, lineHeight: 0, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-hover)", color: "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", opacity: hasChildren ? 0.45 : 1 }}><Archive size={13} strokeWidth={2} aria-hidden="true" /></button>
+              <button className="session-item-icon-button" onClick={startRename} title={t("sessionSidebar.rename")} aria-label={t("sessionSidebar.rename")} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 27, height: 27, padding: 0, lineHeight: 0, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-hover)", color: "var(--text-muted)", cursor: "pointer" }}><Pencil size={13} strokeWidth={2} aria-hidden="true" /></button>
+              <button className="session-item-icon-button" onClick={(event) => { event.stopPropagation(); setConfirmDelete(true); }} title={t("sessionSidebar.delete")} aria-label={t("sessionSidebar.delete")} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 27, height: 27, padding: 0, lineHeight: 0, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-hover)", color: "var(--text-muted)", cursor: "pointer" }}><Trash2 size={13} strokeWidth={2} aria-hidden="true" /></button>
             </div>
           )}
         </>

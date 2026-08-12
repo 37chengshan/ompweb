@@ -19,6 +19,7 @@ import { getToolNamesForPreset, type ToolPreset } from "@/lib/tool-presets";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { toast } from "@/components/ui/toast";
 import { expandWebSlashCommand } from "@/lib/web-slash-commands";
+import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } from "@/lib/web-mode-state";
 import type { RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 
 export interface SessionData {
@@ -496,7 +497,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
   const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
+  const [subagentTranscriptVersions, setSubagentTranscriptVersions] = useState<Record<string, number>>({});
   const [todoPhases, setTodoPhases] = useState<TodoPhase[]>([]);
+  const [activeGoal, setActiveGoal] = useState<ActiveGoal | null>(null);
+  const [activePlan, setActivePlan] = useState<ActivePlan | null>(null);
   const activeSubagentCount = subagents.filter((subagent) => subagent.status === "started").length;
 
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -571,6 +575,23 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       ...(contextUsage ? { contextUsage } : {}),
     } satisfies SessionStatsInfo;
   }, [messages, sessionStatsOverride, contextUsage, data?.filePath, session?.id, session?.name]);
+
+  // Goal mode is web-hosted because omp's native /goal is TUI-only. Keep it
+  // scoped to its session so switching conversations never leaks objectives.
+  useEffect(() => {
+    const sid = session?.id;
+    setActivePlan(null);
+    if (!sid) {
+      setActiveGoal(null);
+      return;
+    }
+    setActiveGoal(parseActiveGoal(sessionStorage.getItem(`omp-web:goal:${sid}`)));
+  }, [session?.id]);
+
+  // A plan request is in progress only for its current agent turn.
+  useEffect(() => {
+    if (!agentRunning) setActivePlan(null);
+  }, [agentRunning]);
 
   // First phase that still has unfinished work; null once everything is done
   // (or no todo list exists), which hides the status-line suffix.
@@ -1321,6 +1342,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
       }
+      case "subagent_event": {
+        // An events-level subscription embeds raw child-session events here.
+        // The transcript remains paged on the server; a per-child revision
+        // tells an open dialog to fetch only the appended byte range.
+        const payload = event.payload as { id?: unknown } | undefined;
+        const subagentId = typeof payload?.id === "string" ? payload.id : null;
+        if (subagentId) {
+          setSubagentTranscriptVersions((prev) => ({ ...prev, [subagentId]: (prev[subagentId] ?? 0) + 1 }));
+        }
+        break;
+      }
       case "extension_ui_request":
         handleExtensionUiRequest(event as unknown as IncomingExtensionUiRequest);
         break;
@@ -1697,11 +1729,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               }),
             });
           }
+          if (commandName === "plan") setActivePlan({ objective: args });
           const sent = await handleSend(expansion.prompt);
-          // A failed send (transport/session) already surfaced its own notice;
-          // retainInput keeps the original /command text for a retry instead
-          // of letting ChatInput clear it.
-          return sent ? { handled: true } : { handled: true, retainInput: true };
+          if (!sent) {
+            if (commandName === "plan") setActivePlan(null);
+            return { handled: true, retainInput: true };
+          }
+          if (commandName === "goal") {
+            const goal = createActiveGoal(args);
+            setActiveGoal(goal);
+            const activeSessionId = sessionIdRef.current;
+            if (activeSessionId) sessionStorage.setItem(`omp-web:goal:${activeSessionId}`, JSON.stringify(goal));
+          }
+          return { handled: true };
         }
       }
     } catch (e) {
@@ -2018,10 +2058,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
-    subagents, activeSubagentCount, currentTodoPhase, todoPhases,
+    subagents, subagentTranscriptVersions, activeSubagentCount, currentTodoPhase, todoPhases,
+    activeGoal, activePlan,
     isNew,
     // Refs
-    sessionIdRef, eventSourceRef, messagesEndRef, scrollContainerRef,
+    sessionIdRef, messagesEndRef, scrollContainerRef,
     pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange,

@@ -229,8 +229,8 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
-    agentPhase,
-    subagents, activeSubagentCount, currentTodoPhase, todoPhases,
+    agentPhase, activeGoal, activePlan,
+    subagents, subagentTranscriptVersions, activeSubagentCount, currentTodoPhase, todoPhases,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
@@ -402,6 +402,9 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}
       retryInfo={retryInfo}
+      activeGoal={activeGoal}
+      activePlan={activePlan}
+      advisorEnabled={advisorEnabled}
       queuedMessages={queuedMessages}
       inputHistory={inputHistory}
       onRecallQueue={handleRecallQueue}
@@ -486,6 +489,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
       <SubagentTranscriptDialog
         subagent={selectedSubagent}
         sessionId={session?.id ?? sessionIdRef.current ?? null}
+        transcriptVersion={selectedSubagent ? (subagentTranscriptVersions[selectedSubagent.id] ?? 0) : 0}
         onClose={() => setSelectedSubagent(null)}
       />
 

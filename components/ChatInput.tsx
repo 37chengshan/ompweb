@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import { ListChecks, Sparkles, Target } from "lucide-react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
+import type { ActiveGoal, ActivePlan } from "@/lib/web-mode-state";
+import { formatGoalElapsed } from "@/lib/web-mode-state";
+import { toast } from "@/components/ui/toast";
 import { clearDraft, getDraft, setDraft, type ChatDraftFile, type ChatDraftImage } from "@/lib/draft-store";
 import { WEB_SLASH_COMMANDS, expandWebSlashCommand } from "@/lib/web-slash-commands";
-import { toast } from "@/components/ui/toast";
 import {
   composeMessageWithTextAttachments,
   isTextAttachmentFile,
@@ -81,6 +84,9 @@ interface Props {
   draftKey?: string;
   /** Session working directory — enables the @ file autocomplete menu */
   cwd?: string | null;
+  activeGoal?: ActiveGoal | null;
+  activePlan?: ActivePlan | null;
+  advisorEnabled?: boolean;
 }
 
 export interface ChatInputHandle {
@@ -303,6 +309,58 @@ export function ModelErrorBanner({ error }: { error?: string | null }) {
   );
 }
 
+function ComposerModeStatus({ goal, plan }: { goal?: ActiveGoal | null; plan?: ActivePlan | null }) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!goal) return;
+    setExpanded(false);
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [goal]);
+
+  if (!goal && !plan) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+      {goal && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          title={expanded ? t("chatInput.collapseGoal") : t("chatInput.expandGoal")}
+          style={{
+            display: "flex", alignItems: expanded ? "flex-start" : "center", gap: 8,
+            width: "100%", padding: "6px 9px",
+            border: "1px solid color-mix(in srgb, var(--accent) 32%, var(--border))",
+            borderRadius: "var(--radius-control)",
+            background: "color-mix(in srgb, var(--accent) 7%, var(--bg-panel))",
+            color: "var(--text)", cursor: "pointer", textAlign: "left",
+            transition: "background var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
+          }}
+        >
+          <Target size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: expanded ? 1 : 0, color: "var(--accent)" }} aria-hidden="true" />
+          <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {t("chatInput.goalActive")} · {formatGoalElapsed(now - goal.startedAt)}
+          </span>
+          <span style={{ minWidth: 0, flex: 1, overflow: expanded ? "visible" : "hidden", textOverflow: expanded ? undefined : "ellipsis", whiteSpace: expanded ? "pre-wrap" : "nowrap", fontSize: 12, lineHeight: 1.4 }}>
+            {goal.objective}
+          </span>
+        </button>
+      )}
+      {plan && (
+        <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text-muted)", fontSize: 12 }}>
+          <ListChecks size={14} strokeWidth={2} style={{ flexShrink: 0, color: "var(--accent)" }} aria-hidden="true" />
+          <span style={{ fontWeight: 600 }}>{t("chatInput.planningInProgress")}</span>
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)" }}>{plan.objective}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelsLoading, onModelChange, fastModeEnabled, fastModeSupported, onFastModeChange,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
@@ -314,6 +372,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onPromptWithStreamingBehavior,
   draftKey,
   cwd,
+  activeGoal,
+  activePlan,
+  advisorEnabled,
 }: Props, ref) {
   const isMobile = useIsMobile();
   const { t, tn, locale } = useI18n();
@@ -1273,6 +1334,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       />
       <div style={{ maxWidth: 820, margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
+        <ComposerModeStatus goal={activeGoal} plan={activePlan} />
         {/* Queued steering / follow-up messages (delivered by pi on upcoming turns) */}
         {((queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0)) > 0 && (
           <div style={{
@@ -1345,8 +1407,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         {retryInfo && (
           <div style={{
             marginBottom: 8, padding: "5px 10px",
-            background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)",
-            borderRadius: 6, fontSize: 12, color: "rgba(180,130,0,0.9)",
+            background: "color-mix(in srgb, var(--status-warning) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--status-warning) 25%, transparent)",
+            borderRadius: 6, fontSize: 12, color: "var(--status-warning)",
             display: "flex", alignItems: "center", gap: 6,
           }}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -1359,8 +1421,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         {compactResultText && (
           <div style={{
             marginBottom: 8, padding: "5px 10px",
-            background: "color-mix(in srgb, var(--status-success) 8%, transparent)", border: "1px solid rgba(16,185,129,0.24)",
-            borderRadius: 6, fontSize: 12, color: "rgba(5,150,105,0.95)",
+            background: "color-mix(in srgb, var(--status-success) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--status-success) 24%, transparent)",
+            borderRadius: 6, fontSize: 12, color: "var(--status-success)",
             display: "flex", alignItems: "center", gap: 6,
           }}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -1373,7 +1435,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         {attachError && (
           <div role="alert" style={{
             marginBottom: 8, padding: "5px 10px",
-            background: "color-mix(in srgb, var(--status-error) 7%, transparent)", border: "1px solid rgba(239,68,68,0.3)",
+            background: "color-mix(in srgb, var(--status-error) 7%, transparent)", border: "1px solid color-mix(in srgb, var(--status-error) 30%, transparent)",
             borderRadius: 6, fontSize: 12, color: "var(--status-error)",
           }}>
             {attachError}
@@ -1798,7 +1860,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               alignItems: "center",
               background: "var(--bg)",
               border: `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
-                ? "rgba(234,179,8,0.4)"
+                ? "color-mix(in srgb, var(--status-warning) 40%, transparent)"
                 : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
               borderRadius: "var(--radius-card)",
               padding: "10px 10px 10px 14px",
@@ -1863,10 +1925,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
                     padding: "7px 12px",
-                    background: canQueueStreamingMessage ? "rgba(234,179,8,0.12)" : "none",
-                    border: "1px solid rgba(234,179,8,0.35)",
+                    background: canQueueStreamingMessage ? "color-mix(in srgb, var(--status-warning) 12%, transparent)" : "none",
+                    border: "1px solid color-mix(in srgb, var(--status-warning) 35%, transparent)",
                     borderRadius: 8,
-                    color: canQueueStreamingMessage ? "rgba(180,130,0,1)" : "var(--text-dim)",
+                    color: canQueueStreamingMessage ? "var(--status-warning)" : "var(--text-dim)",
                     cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
                     fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
                     transition: "background var(--dur-fast) var(--ease-out-warm)",
@@ -1886,10 +1948,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
                     padding: "7px 12px",
-                    background: canQueueStreamingMessage ? "rgba(129,140,248,0.12)" : "none",
-                    border: "1px solid rgba(129,140,248,0.35)",
+                    background: canQueueStreamingMessage ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "none",
+                    border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
                     borderRadius: 8,
-                    color: canQueueStreamingMessage ? "rgba(99,102,241,1)" : "var(--text-dim)",
+                    color: canQueueStreamingMessage ? "var(--accent)" : "var(--text-dim)",
                     cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
                     fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
                     transition: "background var(--dur-fast) var(--ease-out-warm)",
@@ -1920,7 +1982,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 fontSize: 13,
                 fontWeight: 600,
                 letterSpacing: "-0.01em",
-                boxShadow: (value.trim() || attachedImages.length || attachedTextFiles.length) ? "0 1px 3px rgba(176,62,34,0.25)" : "none",
+                boxShadow: (value.trim() || attachedImages.length || attachedTextFiles.length) ? "var(--shadow-card)" : "none",
                 transition: "background var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm)",
               }}
             >
@@ -2030,6 +2092,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
                       <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
                     </svg>
+                    {advisorEnabled && (
+                      <span title={t("chatInput.advisorEnabled")} aria-label={t("chatInput.advisorEnabled")} style={{ display: "flex", flexShrink: 0, color: "var(--accent)" }}>
+                        <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
+                      </span>
+                    )}
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                       {currentName ?? (modelOptions.length > 0
                         ? t("chatInput.selectModel")
@@ -2385,7 +2452,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   }}
                   onMouseEnter={(e) => {
                     if (isStreaming && !isCompacting) return;
-                    e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.16)" : "var(--bg-hover)";
+                    e.currentTarget.style.background = isCompacting ? "color-mix(in srgb, var(--status-error) 16%, transparent)" : "var(--bg-hover)";
                     e.currentTarget.style.color = isCompacting ? "var(--status-error)" : "var(--text)";
                   }}
                   onMouseLeave={(e) => {
@@ -2416,7 +2483,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   padding: "8px 14px",
                   height: 32,
                   background: "color-mix(in srgb, var(--status-error) 8%, transparent)",
-                  border: "1px solid rgba(239,68,68,0.3)",
+                  border: "1px solid color-mix(in srgb, var(--status-error) 30%, transparent)",
                   borderRadius: 9,
                   color: "var(--status-error)",
                   cursor: "pointer",
@@ -2424,7 +2491,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   whiteSpace: "nowrap", letterSpacing: "-0.01em",
                   transition: "background var(--dur-fast) var(--ease-out-warm)",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.16)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--status-error) 16%, transparent)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--status-error) 8%, transparent)"; }}
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

@@ -404,24 +404,39 @@ function forEachFileLineSync(filePath: string, onLine: (line: string) => void): 
   try {
     const buffer = Buffer.allocUnsafe(SESSION_READ_CHUNK_BYTES);
     const decoder = new StringDecoder("utf8");
-    let pending = "";
+    // Fragments of the current unterminated line, joined only when a chunk
+    // actually contains a newline (or EOF completes the file). Appending to a
+    // single `pending` string per 1 MiB chunk copies the whole accumulated
+    // prefix every chunk — quadratic on single-line files (17ms @8MiB → 149ms
+    // @32MiB). With fragments, a newline-free file is joined exactly once at
+    // EOF; a file with newlines joins only the (small) tail since the last
+    // newline, so the total cost stays linear in file size.
+    const fragments: string[] = [];
+    let hasNewline = false;
     for (;;) {
       const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
       if (bytesRead === 0) break;
-      pending += decoder.write(buffer.subarray(0, bytesRead));
-      // Index-walk the buffered text and slice once per chunk — slicing per
-      // line would copy the whole pending window for every line.
+      const decoded = decoder.write(buffer.subarray(0, bytesRead));
+      hasNewline = hasNewline || decoded.includes("\n");
+      fragments.push(decoded);
+      if (!hasNewline) continue;
+      // Materialize the accumulated buffer once, emit every completed line,
+      // and keep only the unterminated tail (bounded by the largest line).
+      const joined = fragments.join("");
+      fragments.length = 0;
+      hasNewline = false;
       let start = 0;
-      let newlineIndex = pending.indexOf("\n", start);
+      let newlineIndex = joined.indexOf("\n", start);
       while (newlineIndex !== -1) {
-        onLine(pending.slice(start, newlineIndex));
+        onLine(joined.slice(start, newlineIndex));
         start = newlineIndex + 1;
-        newlineIndex = pending.indexOf("\n", start);
+        newlineIndex = joined.indexOf("\n", start);
       }
-      if (start > 0) pending = pending.slice(start);
+      if (start < joined.length) fragments.push(joined.slice(start));
     }
-    pending += decoder.end();
-    if (pending) onLine(pending);
+    const tail = decoder.end();
+    if (tail) fragments.push(tail);
+    if (fragments.length > 0) onLine(fragments.join(""));
   } finally {
     closeSync(fd);
   }

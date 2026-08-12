@@ -43,6 +43,34 @@ test("MCP mount notices stay out of the transcript", () => {
   assert.equal(html, "");
 });
 
+test("streaming tool calls start collapsed when the interface preference is enabled", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    isStreaming: true,
+    toolCallsDefaultCollapsed: true,
+    message: {
+      role: "assistant",
+      content: [{ type: "toolCall", toolCallId: "call-1", toolName: "read", input: { path: "foo.ts" } }],
+    },
+  }));
+
+  assert.match(html, /aria-expanded="false"/);
+  assert.doesNotMatch(html, /<pre/);
+});
+
+test("streaming tool calls can still start expanded when the preference is disabled", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    isStreaming: true,
+    toolCallsDefaultCollapsed: false,
+    message: {
+      role: "assistant",
+      content: [{ type: "toolCall", toolCallId: "call-1", toolName: "read", input: { path: "foo.ts" } }],
+    },
+  }));
+
+  assert.match(html, /aria-expanded="true"/);
+  assert.match(html, /<pre/);
+});
+
 
 test("task tool results render a per-subagent summary panel", () => {
   const html = renderToStaticMarkup(React.createElement(TaskResultPanel, {
@@ -102,5 +130,4 @@ test("advisor custom messages use the localized advisor label", () => {
   assert.match(html, /Consider handling the edge case/);
   assert.doesNotMatch(html, /customType/);
 });
-
 

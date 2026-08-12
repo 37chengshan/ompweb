@@ -107,6 +107,7 @@ interface Props {
   showTimestamp?: boolean;
   prevTimestamp?: number;
   sessionId?: string;
+  toolCallsDefaultCollapsed?: boolean;
 }
 
 function formatTime(ts: number | undefined, locale: Locale): string | null {
@@ -136,12 +137,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, toolCallsDefaultCollapsed = true }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -175,7 +176,8 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.onEditContent === next.onEditContent
     && prev.showTimestamp === next.showTimestamp
     && prev.prevTimestamp === next.prevTimestamp
-    && prev.sessionId === next.sessionId;
+    && prev.sessionId === next.sessionId
+    && prev.toolCallsDefaultCollapsed === next.toolCallsDefaultCollapsed;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {  message: UserMessage;
@@ -388,6 +390,7 @@ function AssistantMessageView({
   prevTimestamp,
   sessionId,
   entryId,
+  toolCallsDefaultCollapsed,
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
@@ -399,6 +402,7 @@ function AssistantMessageView({
   prevTimestamp?: number;
   sessionId?: string;
   entryId?: string;
+  toolCallsDefaultCollapsed: boolean;
 }) {
   const { t, locale } = useI18n();
   const time = showTimestamp ? formatTime(message.timestamp, locale) : null;
@@ -441,10 +445,14 @@ function AssistantMessageView({
     return map;
   }, [toolResults, message.timestamp]);
 
-  const textContent = blocks
-    .filter((b): b is TextContent => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
+  // The copy control (the only consumer) is hidden while streaming — don't
+  // re-join the growing text blocks on every token frame.
+  const textContent = isStreaming
+    ? ""
+    : blocks
+        .filter((b): b is TextContent => b.type === "text")
+        .map((b) => b.text)
+        .join("\n");
 
   const copyContent = () => {
     copyText(textContent).then(() => {
@@ -567,7 +575,7 @@ function AssistantMessageView({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
+          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} />
         ))}
       </div>
 
@@ -615,7 +623,7 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex, toolCallsDefaultCollapsed }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number; toolCallsDefaultCollapsed: boolean }) {
   if (block.type === "text") {
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -626,7 +634,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} isStreaming={isStreaming} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} isStreaming={isStreaming} defaultCollapsed={toolCallsDefaultCollapsed} />;
   }
   return null;
 }
@@ -745,11 +753,9 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
 ));
 
 
-const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isStreaming }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean }) {
+const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isStreaming, defaultCollapsed = true }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean; defaultCollapsed?: boolean }) {
   const { t } = useI18n();
-  // Streamed tool calls start expanded so their input stays visible as it
-  // grows; settled transcript calls collapse to the header until clicked.
-  const [expanded, setExpanded] = useState(isStreaming ?? false);
+  const [expanded, setExpanded] = useState(Boolean(isStreaming) && !defaultCollapsed);
   const isEditTool = isEditToolName(block.toolName);
   const resultDiff = expanded && result && !result.isError ? getResultDiff(result) : null;
 
@@ -866,6 +872,7 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
   && prev.block.input === next.block.input
   && prev.result === next.result
   && prev.duration === next.duration
+  && prev.defaultCollapsed === next.defaultCollapsed
 ));
 
 interface ResultDiff {

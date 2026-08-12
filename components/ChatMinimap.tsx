@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo, RefObject } from "react";
+import { memo, useEffect, useRef, useState, useCallback, useMemo, RefObject } from "react";
 import type { AgentMessage, AssistantMessage, TextContent } from "@/lib/types";
 
 interface Props {
   messages: AgentMessage[];
-  streamingMessage: Partial<AgentMessage> | null;
   scrollContainer: RefObject<HTMLDivElement | null>;
   messageRefs: RefObject<(HTMLDivElement | null)[]>;
 }
@@ -64,7 +63,7 @@ interface NodeInfo {
   index: number;
 }
 
-export function ChatMinimap({ messages, streamingMessage, scrollContainer, messageRefs }: Props) {
+export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer, messageRefs }: Props) {
   const [scrollRatio, setScrollRatio] = useState(0);
   const [viewportRatio, setViewportRatio] = useState(1);
   const [visible, setVisible] = useState(false);
@@ -78,10 +77,10 @@ export function ChatMinimap({ messages, streamingMessage, scrollContainer, messa
   const mouseMoveRafRef = useRef<number | null>(null);
   const pendingMouseYRef = useRef<number | null>(null);
 
-  const allMessages = useMemo(
-    () => (streamingMessage ? [...messages, streamingMessage] : messages) as (AgentMessage | Partial<AgentMessage>)[],
-    [messages, streamingMessage]
-  );
+  // Historical nodes only: the live streaming bubble is rendered outside the
+  // ref'd message list, so it has no DOM entry to measure — excluding it here
+  // also keeps the minimap from re-rendering on every token frame.
+  const allMessages = messages as (AgentMessage | Partial<AgentMessage>)[];
   const allMessagesRef = useRef(allMessages);
   allMessagesRef.current = allMessages;
 
@@ -118,6 +117,9 @@ export function ChatMinimap({ messages, streamingMessage, scrollContainer, messa
       const newNodes: NodeInfo[] = [];
       let refIndex = 0;
       const allMessages = allMessagesRef.current;
+      // Same scroll container for every node — read its geometry once instead
+      // of per message (the loop scales with transcript length).
+      const containerRect = scrollEl.getBoundingClientRect();
 
       for (let i = 0; i < allMessages.length; i++) {
         const msg = allMessages[i];
@@ -127,7 +129,6 @@ export function ChatMinimap({ messages, streamingMessage, scrollContainer, messa
         if (!hasTextContent(msg)) continue;
         if (el) {
           const elRect = el.getBoundingClientRect();
-          const containerRect = scrollEl.getBoundingClientRect();
           const top = elRect.top - containerRect.top + scrollEl.scrollTop;
           const h = elRect.height;
           newNodes.push({
@@ -429,7 +430,7 @@ export function ChatMinimap({ messages, streamingMessage, scrollContainer, messa
       })}
     </div>
   );
-}
+});
 
 // Hook to create a stable array of refs for messages
 export function useMessageRefs(count: number): RefObject<(HTMLDivElement | null)[]> {

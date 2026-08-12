@@ -1,6 +1,6 @@
 "use client";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, CustomMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
 import { translate, useI18n } from "@/lib/i18n";
 import { countToolCallBlocks, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
@@ -30,6 +30,7 @@ interface Props {
   session: SessionInfo | null;
   newSessionCwd: string | null;
   advisorEnabled?: boolean;
+  toolCallsDefaultCollapsed?: boolean;
   onAgentEnd?: () => void;
   onSessionCreated?: (session: SessionInfo) => void;
   onSessionForked?: (newSessionId: string) => void;
@@ -57,8 +58,7 @@ function phaseLabel(phase: AgentPhase): string {
 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
-const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;
-// Trigger the next history page while the sentinel is still this far below
+const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;// Trigger the next history page while the sentinel is still this far below
 // the top edge, so a normal upward scroll seamlessly continues into the newly
 // loaded messages. Triggering only at the very top made the load invisible:
 // the restore anchored the viewport to the old content, so the user parked on
@@ -203,7 +203,197 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
+interface CommittedTranscriptProps {
+  messages: AgentMessage[];
+  entryIds: string[];
+  conversationMeta: { toolResultsMap: Map<string, ToolResultMessage>; lastAnchorIdx: number; visibleRefIndexByMessage: Map<number, number> };
+  messageRefs: React.RefObject<(HTMLDivElement | null)[]>;
+  isStreaming: boolean;
+  sessionBusy: boolean;
+  isNew: boolean;
+  forkingEntryId: string | null;
+  handleFork: (entryId: string) => void;
+  handleNavigate: (entryId: string) => void;
+  handleEditContent: (content: string) => void;
+  modelNames: Record<string, string>;
+  messageCwd: string | undefined;
+  onOpenFile?: (filePath: string) => void;
+  sessionId: string | undefined;
+  toolCallsDefaultCollapsed: boolean;
+  visibleCount: number;
+  sentinelRef: React.RefObject<HTMLButtonElement | null>;
+  handleLoadMoreClick: () => void;
+}
+
+/**
+ * The committed (non-streaming) transcript. Extracted from ChatWindow and
+ * memoized over the committed messages so token-streaming updates (which only
+ * change `streamingMessage`, rendered separately) do not re-run the O(history)
+ * grouping/splitting work at display-frame cadence.
+ */
+const CommittedTranscript = memo(function CommittedTranscript({
+  messages, entryIds, conversationMeta, messageRefs, isStreaming, sessionBusy, isNew, forkingEntryId,
+  handleFork, handleNavigate, handleEditContent, modelNames, messageCwd, onOpenFile, sessionId,
+  toolCallsDefaultCollapsed, visibleCount, sentinelRef, handleLoadMoreClick,
+}: CommittedTranscriptProps) {
+  const { t } = useI18n();
+  const { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
+
+  const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
+    messageRefs.current[refIndex] = el;
+  };
+
+  const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean } = {}): ReactNode => {
+    const msg = options.messageOverride ?? messages[idx];
+    const prevAssistantEntryId =
+      msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
+        ? entryIds[idx - 1]
+        : undefined;
+    const isVisible = msg.role === "user" || msg.role === "assistant";
+    const currentRefIdx = visibleRefIndexByMessage.get(idx);
+    const keyPrefix = options.keyPrefix ?? "message";
+    let showTimestamp = false;
+    if (msg.role === "assistant") {
+      showTimestamp = true;
+      for (let j = idx + 1; j < messages.length; j++) {
+        const r = messages[j].role;
+        if (r === "user") break;
+        if (r === "assistant") { showTimestamp = false; break; }
+      }
+      // Hide on the currently-streaming tail (the streaming bubble owns the live timestamp)
+      if (showTimestamp && isStreaming && idx === messages.length - 1) {
+        showTimestamp = false;
+      }
+    }
+    if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
+    const view = (
+      <MessageView
+        key={`${keyPrefix}-view-${idx}`}
+        message={msg}
+        toolResults={toolResultsMap}
+        modelNames={modelNames}
+        cwd={messageCwd}
+        onOpenFile={onOpenFile}
+        entryId={entryIds[idx]}
+        onFork={sessionBusy || isNew || (idx === 0 && msg.role === "user") ? undefined : handleFork}
+        forking={forkingEntryId === entryIds[idx]}
+        onNavigate={sessionBusy ? undefined : handleNavigate}
+        prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
+        onEditContent={handleEditContent}
+        showTimestamp={showTimestamp}
+        prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
+        sessionId={sessionId}
+        toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
+      />
+    );
+    if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
+    return (
+      <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
+        {view}
+      </div>
+    );
+  };
+
+  const rendered: ReactNode[] = [];
+  for (let idx = 0; idx < messages.length;) {
+    const msg = messages[idx];
+    if (!isGroupAnchor(msg)) {
+      rendered.push(renderMessage(idx));
+      idx += 1;
+      continue;
+    }
+
+    const userIdx = idx;
+    let endIdx = userIdx + 1;
+    while (endIdx < messages.length && !isGroupAnchor(messages[endIdx])) endIdx += 1;
+
+    const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
+
+    if (finalAssistantIdx === -1) {
+      for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+        rendered.push(renderMessage(renderIdx));
+      }
+      idx = endIdx;
+      continue;
+    }
+
+    const isLiveTail = (sessionBusy || isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
+    if (isLiveTail) {
+      for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+        rendered.push(renderMessage(renderIdx));
+      }
+      idx = endIdx;
+      continue;
+    }
+
+    rendered.push(renderMessage(userIdx));
+
+    const processIndices: number[] = [];
+    for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
+      processIndices.push(processIdx);
+    }
+    const visibleProcessIndices = processIndices.filter((processIdx) => hasDisplayableProcessMessage(messages[processIdx]));
+    const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
+    const finalSplit = splitFinalAssistantBlocks(finalAssistant);
+    const finalProcessMessage = finalSplit.processBlocks.length > 0
+      ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, { omitUsage: true })
+      : null;
+    const finalAnswerMessage = finalSplit.answerBlocks.length > 0
+      ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
+      : null;
+
+    const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
+    if (processCount > 0) {
+      const processRefIdx = visibleProcessIndices
+        .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
+        .find((value): value is number => typeof value === "number")
+        ?? (finalAnswerMessage ? undefined : visibleRefIndexByMessage.get(finalAssistantIdx));
+      const processGroup = (
+        <ProcessDetailsGroup
+          messageCount={processCount}
+          toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
+        >
+          {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }))}
+          {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false })}
+        </ProcessDetailsGroup>
+      );
+      rendered.push(
+        <div
+          key={`process-group-${userIdx}-${finalAssistantIdx}`}
+          ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
+        >
+          {processGroup}
+        </div>,
+      );
+    }
+
+    if (finalAnswerMessage) {
+      rendered.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }));
+    }
+    for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
+      rendered.push(renderMessage(renderIdx));
+    }
+    idx = endIdx;
+  }
+  const { startIndex, hasMore } = getVisibleRenderWindow(rendered.length, visibleCount);
+  return (
+    <>
+      {hasMore && (
+        <button
+          ref={sentinelRef}
+          type="button"
+          onClick={handleLoadMoreClick}
+          className="py-3 w-full text-center text-xs text-text-muted hover:text-text transition-colors cursor-pointer"
+        >
+          {t("chatWindow.scrollUpToLoad", { count: startIndex })}
+        </button>
+      )}
+      {rendered.slice(startIndex)}
+    </>
+  );
+});
+
+export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
   const { t, tn } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
@@ -404,6 +594,19 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
 
     return { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage };
   }, [messages]);
+  const pendingToolHeaders = useMemo(() => {
+    if (agentPhase?.kind !== "running_tools") return [];
+    const renderedIds = new Set<string>();
+    const collect = (message: Partial<AgentMessage> | null) => {
+      if (message?.role !== "assistant") return;
+      for (const block of (message as Partial<AssistantMessage>).content ?? []) {
+        if (block.type === "toolCall") renderedIds.add(block.toolCallId);
+      }
+    };
+    for (const message of messages) collect(message);
+    collect(streamState.streamingMessage);
+    return agentPhase.tools.filter((tool) => !renderedIds.has(tool.id));
+  }, [agentPhase, messages, streamState.streamingMessage]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
@@ -605,166 +808,51 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
               <ExtensionStatusBar statuses={extensionStatuses} />
               <ExtensionWidgets widgets={aboveEditorWidgets} />
 
-            {(() => {
-              const { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
-
-              const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
-                messageRefs.current[refIndex] = el;
-              };
-
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean } = {}): ReactNode => {
-                const msg = options.messageOverride ?? messages[idx];
-                const prevAssistantEntryId =
-                  msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
-                    ? entryIds[idx - 1]
-                    : undefined;
-                const isVisible = msg.role === "user" || msg.role === "assistant";
-                const currentRefIdx = visibleRefIndexByMessage.get(idx);
-                const keyPrefix = options.keyPrefix ?? "message";
-                let showTimestamp = false;
-                if (msg.role === "assistant") {
-                  showTimestamp = true;
-                  for (let j = idx + 1; j < messages.length; j++) {
-                    const r = messages[j].role;
-                    if (r === "user") break;
-                    if (r === "assistant") { showTimestamp = false; break; }
-                  }
-                  // Hide on the currently-streaming tail (the streaming bubble owns the live timestamp)
-                  if (showTimestamp && streamState.isStreaming && idx === messages.length - 1) {
-                    showTimestamp = false;
-                  }
-                }
-                if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
-                const view = (
-                  <MessageView
-                    key={`${keyPrefix}-view-${idx}`}
-                    message={msg}
-                    toolResults={toolResultsMap}
-                    modelNames={modelNames}
-                    cwd={messageCwd}
-                    onOpenFile={onOpenFile}
-                    entryId={entryIds[idx]}
-                    onFork={sessionBusy || isNew || (idx === 0 && msg.role === "user") ? undefined : handleFork}
-                    forking={forkingEntryId === entryIds[idx]}
-                    onNavigate={sessionBusy ? undefined : handleNavigate}
-                    prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
-                    onEditContent={handleEditContent}
-                    showTimestamp={showTimestamp}
-                    prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
-                    sessionId={session?.id ?? sessionIdRef.current ?? undefined}
-                  />
-                );
-                if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
-                return (
-                  <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
-                    {view}
-                  </div>
-                );
-              };
-
-              const rendered: ReactNode[] = [];
-              for (let idx = 0; idx < messages.length;) {
-                const msg = messages[idx];
-                if (!isGroupAnchor(msg)) {
-                  rendered.push(renderMessage(idx));
-                  idx += 1;
-                  continue;
-                }
-
-                const userIdx = idx;
-                let endIdx = userIdx + 1;
-                while (endIdx < messages.length && !isGroupAnchor(messages[endIdx])) endIdx += 1;
-
-                const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
-
-                if (finalAssistantIdx === -1) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
-                  }
-                  idx = endIdx;
-                  continue;
-                }
-
-                const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
-                if (isLiveTail) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
-                  }
-                  idx = endIdx;
-                  continue;
-                }
-
-                rendered.push(renderMessage(userIdx));
-
-                const processIndices: number[] = [];
-                for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
-                  processIndices.push(processIdx);
-                }
-                const visibleProcessIndices = processIndices.filter((processIdx) => hasDisplayableProcessMessage(messages[processIdx]));
-                const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
-                const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalProcessMessage = finalSplit.processBlocks.length > 0
-                  ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, { omitUsage: true })
-                  : null;
-                const finalAnswerMessage = finalSplit.answerBlocks.length > 0
-                  ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
-                  : null;
-
-                const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
-                if (processCount > 0) {
-                  const processRefIdx = visibleProcessIndices
-                    .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
-                    .find((value): value is number => typeof value === "number")
-                    ?? (finalAnswerMessage ? undefined : visibleRefIndexByMessage.get(finalAssistantIdx));
-                  const processGroup = (
-                    <ProcessDetailsGroup
-                      messageCount={processCount}
-                      toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
-                    >
-                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }))}
-                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false })}
-                    </ProcessDetailsGroup>
-                  );
-                  rendered.push(
-                    <div
-                      key={`process-group-${userIdx}-${finalAssistantIdx}`}
-                      ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
-                    >
-                      {processGroup}
-                    </div>,
-                  );
-                }
-
-                if (finalAnswerMessage) {
-                  rendered.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }));
-                }
-                for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
-                  rendered.push(renderMessage(renderIdx));
-                }
-                idx = endIdx;
-              }
-              const { startIndex, hasMore } = getVisibleRenderWindow(rendered.length, visibleCount);
-              return (
-                <>
-                  {hasMore && (
-                    <button
-                      ref={sentinelRef}
-                      type="button"
-                      onClick={handleLoadMoreClick}
-                      className="py-3 w-full text-center text-xs text-text-muted hover:text-text transition-colors cursor-pointer"
-                    >
-                      {t("chatWindow.scrollUpToLoad", { count: startIndex })}
-                    </button>
-                  )}
-                  {rendered.slice(startIndex)}
-                </>
-              );
-            })()}
+            <CommittedTranscript
+              messages={messages}
+              entryIds={entryIds}
+              conversationMeta={conversationMeta}
+              messageRefs={messageRefs}
+              isStreaming={streamState.isStreaming}
+              sessionBusy={sessionBusy}
+              isNew={isNew}
+              forkingEntryId={forkingEntryId}
+              handleFork={handleFork}
+              handleNavigate={handleNavigate}
+              handleEditContent={handleEditContent}
+              modelNames={modelNames}
+              messageCwd={messageCwd}
+              onOpenFile={onOpenFile}
+              sessionId={session?.id ?? sessionIdRef.current ?? undefined}
+              toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
+              visibleCount={visibleCount}
+              sentinelRef={sentinelRef}
+              handleLoadMoreClick={handleLoadMoreClick}
+            />
             {streamState.isStreaming && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} />
+              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} />
             )}
 
-            {agentRunning && !streamState.streamingMessage && (
+            {toolCallsDefaultCollapsed && pendingToolHeaders.map((tool) => (
+              <div
+                key={tool.id}
+                role="status"
+                aria-label={t("chatWindow.runningNamed", { names: tool.name })}
+                style={{
+                  display: "flex", alignItems: "center", gap: 7,
+                  marginBottom: 8, padding: "6px 10px",
+                  border: "1px solid color-mix(in srgb, var(--status-success) 25%, transparent)",
+                  borderRadius: 7,
+                  background: "color-mix(in srgb, var(--status-success) 4%, transparent)",
+                  color: "var(--text-muted)", fontSize: 12,
+                }}
+              >
+                <span aria-hidden className="live-status-dot live-pulse inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                <span style={{ color: "var(--status-success)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11 }}>{tool.name}</span>
+              </div>
+            ))}
+
+            {agentRunning && !streamState.streamingMessage && pendingToolHeaders.length === 0 && (
               <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">
                 <span
                   aria-hidden
@@ -815,7 +903,6 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
         {isMobile ? null : (
           <ChatMinimap
             messages={messages}
-            streamingMessage={streamState.streamingMessage}
             scrollContainer={scrollContainerRef}
             messageRefs={messageRefs}
           />

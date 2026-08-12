@@ -8,7 +8,7 @@
 // page reload without the live RPC registry (get_subagent_messages is
 // registry-gated and rejects unknown session files).
 
-import { existsSync, readFileSync, statSync } from "fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, realpathSync, statSync } from "fs";
 import { basename, dirname, join } from "path";
 import { getSessionEntries, entryToUiMessage } from "./session-reader";
 import { parseJsonlLenient } from "./omp/session-files";
@@ -26,6 +26,39 @@ export function subagentTranscriptPath(sessionFilePath: string, subagentId: stri
   return join(siblingDirForSession(sessionFilePath), `${subagentId}.jsonl`);
 }
 
+/**
+ * Resolve a subagent artifact (`.jsonl` transcript or `.md` completion) inside
+ * the parent session's sibling artifacts dir, with symlink confinement:
+ * the candidate's REAL path must land directly inside the REAL artifacts dir
+ * and be a regular file. Returns the real path (readable target) or null.
+ */
+export function resolveSubagentArtifact(
+  sessionFilePath: string,
+  subagentId: string,
+  extension: ".jsonl" | ".md",
+): string | null {
+  let realDir: string;
+  try {
+    realDir = realpathSync(siblingDirForSession(sessionFilePath));
+  } catch {
+    return null;
+  }
+  const candidate = join(realDir, `${subagentId}${extension}`);
+  let realCandidate: string;
+  try {
+    realCandidate = realpathSync(candidate);
+  } catch {
+    return null;
+  }
+  if (dirname(realCandidate) !== realDir) return null;
+  try {
+    if (!statSync(realCandidate).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return realCandidate;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -36,6 +69,19 @@ function asString(value: unknown): string | undefined {
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** Settled cost lives in `usage.cost` on SingleResult, not a top-level field. */
+function usageTotalCost(usage: unknown): number | undefined {
+  if (!isRecord(usage)) return undefined;
+  const cost = isRecord(usage.cost) ? usage.cost : undefined;
+  if (!cost) return undefined;
+  const total = asNumber(cost.total);
+  if (total !== undefined) return total;
+  const input = asNumber(cost.input);
+  const output = asNumber(cost.output);
+  if (input !== undefined && output !== undefined) return input + output;
+  return undefined;
 }
 
 function asAgentSource(value: unknown): SubagentAgentSource | undefined {
@@ -139,9 +185,11 @@ export function extractSubagentHistory(sessionFilePath: string): SubagentHistory
       const result: SubagentHistoryResult = {};
       const exitCode = asNumber(raw.exitCode);
       if (exitCode !== undefined) result.exitCode = exitCode;
-      const output = asString(raw.output);
-      if (output !== undefined) result.output = output;
+      // NOTE: `output`/`stderr` are deliberately NOT copied — the roster route
+      // must stay telemetry-only (task outputs can be ~500KB per agent).
       if (raw.truncated === true) result.truncated = true;
+      const cost = asNumber(raw.cost) ?? usageTotalCost(raw.usage);
+      if (cost !== undefined) result.cost = cost;
       const structured = structuredOutput(raw.structuredOutput);
       if (structured !== undefined) result.structuredOutput = structured;
       const error = asString(raw.error);
@@ -176,7 +224,7 @@ export function extractSubagentHistory(sessionFilePath: string): SubagentHistory
         tokens: asNumber(raw.tokens) ?? prior?.tokens,
         contextTokens: asNumber(raw.contextTokens) ?? prior?.contextTokens,
         contextWindow: asNumber(raw.contextWindow) ?? prior?.contextWindow,
-        cost: asNumber(raw.cost) ?? prior?.cost,
+        cost: asNumber(raw.cost) ?? usageTotalCost(raw.usage) ?? prior?.cost,
         durationMs: asNumber(raw.durationMs) ?? prior?.durationMs,
         modelOverride: typeof raw.modelOverride === "string" || Array.isArray(raw.modelOverride) ? raw.modelOverride : prior?.modelOverride,
         modelRole: asString(raw.modelRole) ?? prior?.modelRole,
@@ -298,11 +346,16 @@ export const MAX_SUBAGENT_COMPLETION_BYTES = 1024 * 1024;
  * running, aborted before producing output, or the session predates it).
  * Output files can exceed the transcript cap, so the read is bounded.
  */
-export function readSubagentCompletion(
-  sessionFilePath: string,
-  subagentId: string,
+/**
+ * Read a subagent's final output artifact (`<id>.md`) from an ALREADY-RESOLVED
+ * path (the route confines via resolveSubagentArtifact first — reading the raw
+ * derived path here would reopen a symlink swapped after the check). Reads at
+ * most MAX_SUBAGENT_COMPLETION_BYTES bytes, trimming a trailing incomplete
+ * UTF-8 sequence before decoding.
+ */
+export function readCompletionArtifact(
+  outputFile: string,
 ): { completion: string; truncated: boolean } | null {
-  const outputFile = join(siblingDirForSession(sessionFilePath), `${subagentId}.md`);
   let size: number;
   try {
     size = statSync(outputFile).size;
@@ -311,13 +364,30 @@ export function readSubagentCompletion(
   }
   if (size <= 0) return null;
   const truncated = size > MAX_SUBAGENT_COMPLETION_BYTES;
+  const readBytes = Math.min(size, MAX_SUBAGENT_COMPLETION_BYTES);
+  const fd = openSync(outputFile, "r");
   try {
-    const completion = readFileSync(outputFile, "utf8");
-    return {
-      completion: truncated ? completion.slice(0, MAX_SUBAGENT_COMPLETION_BYTES) : completion,
-      truncated,
-    };
-  } catch {
-    return null;
+    const buffer = Buffer.alloc(readBytes);
+    const bytesRead = readSync(fd, buffer, 0, readBytes, 0);
+    const slice = buffer.subarray(0, bytesRead);
+    // Trim a trailing INCOMPLETE UTF-8 sequence before decoding. A complete
+    // multibyte char may also end in continuation bytes, so walk back over the
+    // trailing continuations to the lead and keep the char only when its full
+    // width fits inside the buffer.
+    let end = slice.length;
+    let trailing = 0;
+    while (end - trailing > 0 && (slice[end - 1 - trailing] & 0xc0) === 0x80) trailing += 1;
+    const leadPos = end - 1 - trailing;
+    if (leadPos >= 0) {
+      const lead = slice[leadPos];
+      const need = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc0 ? 2 : 1;
+      if (leadPos + need > slice.length) end = leadPos;
+    } else {
+      // Continuation bytes with no lead at the tail — garbage.
+      end = 0;
+    }
+    return { completion: slice.subarray(0, end).toString("utf8"), truncated };
+  } finally {
+    closeSync(fd);
   }
 }

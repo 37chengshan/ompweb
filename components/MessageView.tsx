@@ -907,13 +907,22 @@ export function TaskResultPanel({ details }: { details: unknown }) {
   const asyncInfo = isRecord(details.async) ? details.async : null;
   if (results.length === 0 && progress.length === 0 && !asyncInfo) return null;
 
-  const rows = results.length > 0 ? results : progress;
+  // Settled results win; otherwise the mid-run progress snapshot; a bare
+  // async marker (spawn recorded, no rows yet) still names the job.
+  const rows = results.length > 0
+    ? results
+    : progress.length > 0
+      ? progress
+      : asyncInfo && typeof asyncInfo.jobId === "string"
+        ? [{ id: asyncInfo.jobId, agent: "task", status: "started", task: asyncInfo.jobId } as TaskResultRowLike]
+        : [];
   const totalTokens = rows.reduce((sum, row) => sum + (typeof row.tokens === "number" ? row.tokens : 0), 0);
   const totalCost = rows.reduce((sum, row) => sum + (typeof row.cost === "number" ? row.cost : 0), 0);
   const totalDurationMs = typeof details.totalDurationMs === "number" ? details.totalDurationMs : undefined;
+  const totalTokensLabel = formatTokens(totalTokens);
   const totalParts = [
     tn("chatWindow.subagentCount", rows.length),
-    formatTokens(totalTokens) ? `${formatTokens(totalTokens)} tok` : null,
+    totalTokensLabel ? t("chatWindow.tokensUnit", { count: totalTokensLabel }) : null,
     formatCost(totalCost),
     formatDuration(totalDurationMs),
   ].filter(Boolean);
@@ -941,8 +950,9 @@ export function TaskResultPanel({ details }: { details: unknown }) {
         const id = typeof row.id === "string" ? row.id : `row-${index}`;
         const status = taskRowStatus(row);
         const task = typeof row.task === "string" && row.task ? row.task : (typeof row.assignment === "string" ? row.assignment : null);
+        const rowTokens = formatTokens(typeof row.tokens === "number" ? row.tokens : undefined);
         const rowParts = [
-          formatTokens(typeof row.tokens === "number" ? row.tokens : undefined) ? `${formatTokens(typeof row.tokens === "number" ? row.tokens : undefined)} tok` : null,
+          rowTokens ? t("chatWindow.tokensUnit", { count: rowTokens }) : null,
           formatCost(typeof row.cost === "number" ? row.cost : undefined),
           status !== "started" ? formatDuration(typeof row.durationMs === "number" ? row.durationMs : undefined) : null,
           shortModel(typeof row.resolvedModel === "string" ? row.resolvedModel : undefined),

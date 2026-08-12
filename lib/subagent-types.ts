@@ -55,8 +55,8 @@ export interface SubagentActivityEvent {
 /** Settled per-subagent result from a parent task toolResult (SingleResult). */
 export interface SubagentHistoryResult {
   exitCode?: number;
-  output?: string;
   truncated?: boolean;
+  cost?: number;
   structuredOutput?: { source?: string; mode?: string; status?: string; error?: string };
   error?: string;
   aborted?: boolean;
@@ -189,14 +189,13 @@ export function parseSubagentProgress(value: unknown): SubagentProgress | undefi
   if (isRecord(value.retryState)) {
     const attempt = asNumber(value.retryState.attempt);
     const maxAttempts = asNumber(value.retryState.maxAttempts);
-    if (attempt !== undefined && maxAttempts !== undefined) {
-      out.retryState = {
-        attempt,
-        maxAttempts,
-        delayMs: asNumber(value.retryState.delayMs) ?? 0,
-        errorMessage: asString(value.retryState.errorMessage) ?? "",
-        startedAtMs: asNumber(value.retryState.startedAtMs) ?? Date.now(),
-      };
+    const delayMs = asNumber(value.retryState.delayMs);
+    const errorMessage = asString(value.retryState.errorMessage);
+    const startedAtMs = asNumber(value.retryState.startedAtMs);
+    // All fields are documented as required upstream; fabricating defaults for
+    // a partial frame would render a false "retrying" state.
+    if (attempt !== undefined && maxAttempts !== undefined && delayMs !== undefined && errorMessage !== undefined && startedAtMs !== undefined) {
+      out.retryState = { attempt, maxAttempts, delayMs, errorMessage, startedAtMs };
     }
   }
   if (isRecord(value.retryFailure)) {
@@ -217,11 +216,16 @@ export function parseSubagentSnapshot(value: unknown): SubagentInfo | undefined 
   const id = asString(value.id);
   const agent = asString(value.agent);
   if (!id || !agent) return undefined;
-  const status = value.status === "started" || value.status === "completed" || value.status === "failed" || value.status === "aborted"
-    ? value.status
-    : value.status === "pending" || value.status === "running"
-      ? "started"
-      : "started";
+  let status: SubagentInfo["status"];
+  if (value.status === "started" || value.status === "completed" || value.status === "failed" || value.status === "aborted") {
+    status = value.status;
+  } else if (value.status === "pending" || value.status === "running") {
+    status = "started";
+  } else {
+    // Unknown/future lifecycle status — a malformed frame must not fabricate a
+    // live chip.
+    return undefined;
+  }
   const info: SubagentInfo = {
     id,
     agent,

@@ -17,10 +17,8 @@ export function formatCost(cost: number | undefined): string | null {
 
 export function formatDuration(ms: number | undefined): string | null {
   if (ms == null || !Number.isFinite(ms) || ms <= 0) return null;
-  if (ms < 60_000) {
-    const seconds = Math.round(ms / 1000);
-    return seconds > 0 ? `${seconds}s` : null;
-  }
+  if (ms < 1_000) return null;
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
   return `${Math.round(ms / 60_000)}m`;
 }
 
@@ -42,9 +40,15 @@ export function countNestedSubagents(progress: { inflightTaskDetails?: unknown; 
     if (Array.isArray(details.progress)) count += details.progress.length;
   }
   const extracted = progress.extractedToolData?.task;
-  if (extracted && typeof extracted === "object" && !Array.isArray(extracted)) {
-    const details = extracted as Record<string, unknown>;
-    if (Array.isArray(details.progress)) count += details.progress.length;
+  if (Array.isArray(extracted)) {
+    // Upstream records one TaskToolDetails per task call:
+    // extractedToolData.task = [TaskToolDetails], each with progress[].
+    for (const item of extracted) {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const details = item as Record<string, unknown>;
+        if (Array.isArray(details.progress)) count += details.progress.length;
+      }
+    }
   }
   return count;
 }

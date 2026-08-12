@@ -57,6 +57,12 @@ function phaseLabel(phase: AgentPhase): string {
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
 const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;
+// Trigger the next history page while the sentinel is still this far below
+// the top edge, so a normal upward scroll seamlessly continues into the newly
+// loaded messages. Triggering only at the very top made the load invisible:
+// the restore anchored the viewport to the old content, so the user parked on
+// the banner and the load looked like a no-op.
+const LOAD_MORE_ROOT_MARGIN = "400px 0px 0px 0px";
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
@@ -254,11 +260,16 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
   // top, load another page while keeping the scroll position stable.
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
   const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLButtonElement>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
+  // "auto" (observer fired while scrolling) anchors the viewport to the old
+  // content; "click" (user pressed the banner) reveals the loaded messages at
+  // the top of the viewport instead.
+  const loadMoreModeRef = useRef<"auto" | "click">("auto");
 
-  // IntersectionObserver on the sentinel div at the top of the message list.
-  // When it becomes visible, load the next page of older messages.
+  // IntersectionObserver on the sentinel banner at the top of the message
+  // list. When the user scrolls near the top, load the next page of older
+  // messages.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const container = scrollContainerRef.current;
@@ -268,10 +279,14 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
         if (entries[0]?.isIntersecting) {
           // Save distance from top before prepending to restore scroll later
           prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
+          loadMoreModeRef.current = "auto";
           setVisibleCount((prev) => getNextVisibleCount(prev));
         }
       },
-      { root: container, threshold: 0 }
+      // Expand the root upward so the page loads while the banner is still
+      // below the top edge — by the time the user reaches the top, the loaded
+      // messages are already there and the scroll continues into them.
+      { root: container, rootMargin: LOAD_MORE_ROOT_MARGIN, threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -283,9 +298,37 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
     if (prevScrollDistanceRef.current == null) return;
     const container = scrollContainerRef.current;
     if (!container) return;
-    container.scrollTop = restoreScrollTop(container.scrollHeight, prevScrollDistanceRef.current);
+    if (loadMoreModeRef.current === "click") {
+      // Explicit request: reveal the loaded page. The browser's scroll
+      // anchoring already kept the previous content in view, so move the
+      // viewport up to the loaded messages.
+      const sentinel = sentinelRef.current;
+      if (sentinel) {
+        // More pages remain: place the banner's bottom edge just above the
+        // viewport so the newest loaded message is at the top.
+        const containerRect = container.getBoundingClientRect();
+        const sentinelRect = sentinel.getBoundingClientRect();
+        container.scrollTop = container.scrollTop + (sentinelRect.bottom - containerRect.top) + 1;
+      } else {
+        // Everything loaded — the banner unmounted; show the top of the session.
+        container.scrollTop = 0;
+      }
+    } else {
+      container.scrollTop = restoreScrollTop(container.scrollHeight, prevScrollDistanceRef.current);
+    }
+    loadMoreModeRef.current = "auto";
     prevScrollDistanceRef.current = null;
   }, [visibleCount, scrollContainerRef]);
+
+  const handleLoadMoreClick = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      // Sentinel value so the restore effect above runs and reveals the page.
+      prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
+    }
+    loadMoreModeRef.current = "click";
+    setVisibleCount((prev) => getNextVisibleCount(prev));
+  }, [scrollContainerRef]);
   // Push session stats up to AppShell for the top bar.
   // Compare scalar fields to avoid loops from new object identity each render.
   const statsKey = sessionStats
@@ -697,9 +740,14 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
               return (
                 <>
                   {hasMore && (
-                    <div ref={sentinelRef} className="py-3 text-center text-xs text-text-muted">
+                    <button
+                      ref={sentinelRef}
+                      type="button"
+                      onClick={handleLoadMoreClick}
+                      className="py-3 w-full text-center text-xs text-text-muted hover:text-text transition-colors cursor-pointer"
+                    >
                       {t("chatWindow.scrollUpToLoad", { count: startIndex })}
-                    </div>
+                    </button>
                   )}
                   {rendered.slice(startIndex)}
                 </>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Ban, CheckCircle2, ChevronDown, Circle, CircleAlert, Network } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import type { SubagentInfo } from "@/hooks/useAgentSession";
@@ -36,6 +36,7 @@ function SubagentStatusIcon({ subagent }: { subagent: SubagentInfo }) {
 
 /** Compact live/secondary line under a chip label (tool, retry, telemetry). */
 function SubagentActivityLine({ subagent }: { subagent: SubagentInfo }) {
+  const { t } = useI18n();
   const progress = subagent.progress;
   const retryActive = Boolean(progress?.retryState ?? progress?.retryFailure);
   const parts: string[] = [];
@@ -43,7 +44,9 @@ function SubagentActivityLine({ subagent }: { subagent: SubagentInfo }) {
   if (retryActive) {
     const attempt = progress?.retryState?.attempt ?? progress?.retryFailure?.attempt ?? 0;
     const maxAttempts = progress?.retryState?.maxAttempts ?? 0;
-    parts.push(`⟳ retrying ${maxAttempts > 0 ? `${attempt}/${maxAttempts}` : `attempt ${attempt}`}`);
+    parts.push(maxAttempts > 0
+      ? t("chatWindow.subagentRetrying", { attempt, max: maxAttempts })
+      : t("chatWindow.subagentRetryAttempt", { attempt }));
   } else if (subagent.status === "started") {
     const activity = progress?.currentTool
       ? `⚙ ${progress.currentTool}${progress.lastIntent ? ` — ${progress.lastIntent}` : ""}`
@@ -55,12 +58,18 @@ function SubagentActivityLine({ subagent }: { subagent: SubagentInfo }) {
   const source = subagent.agentSource && subagent.agentSource !== "bundled" ? subagent.agentSource : null;
   const tokens = formatTokens(progress?.tokens);
   const cost = formatCost(progress?.cost);
-  const context = progress?.contextTokens != null
-    ? `${formatTokens(progress.contextTokens)}${progress.contextWindow != null ? `/${formatTokens(progress.contextWindow)}` : ""} ctx`
+  const ctxTokens = formatTokens(progress?.contextTokens);
+  const context = ctxTokens
+    ? t("chatWindow.contextGauge", { used: ctxTokens, total: formatTokens(progress?.contextWindow) ?? "?" })
     : null;
   const model = shortModel(progress?.resolvedModel);
   const duration = subagent.source === "history" ? formatDuration(progress?.durationMs) : null;
-  const meta = [source, nested > 0 ? `${nested} nested` : null, tokens ? `${tokens} tok` : null, cost, context, model, duration].filter(Boolean);
+  const meta = [
+    source,
+    nested > 0 ? t("chatWindow.subagentNestedCount", { count: nested }) : null,
+    tokens ? t("chatWindow.tokensUnit", { count: tokens }) : null,
+    cost, context, model, duration,
+  ].filter(Boolean);
   if (meta.length > 0) parts.push(meta.join(" · "));
 
   if (parts.length === 0) return null;
@@ -83,20 +92,15 @@ function SubagentActivityLine({ subagent }: { subagent: SubagentInfo }) {
   );
 }
 
-function SubagentsPanel({ subagents, onSelectSubagent }: {
+function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }: {
   subagents: SubagentInfo[];
   onSelectSubagent: (subagent: SubagentInfo) => void;
+  /** Initial expansion (default: collapsed — the header still shows the live summary). */
+  defaultExpanded?: boolean;
 }) {
   const { t } = useI18n();
-  const [collapsed, setCollapsed] = useState(false);
-  const prevRunningRef = useRef(0);
+  const [collapsed, setCollapsed] = useState(!defaultExpanded);
   const runningCount = subagents.filter((subagent) => subagent.source !== "history" && subagent.status === "started").length;
-
-  // Surface newly-spawned subagents: expand the panel when a run starts.
-  useEffect(() => {
-    if (runningCount > 0 && prevRunningRef.current === 0) setCollapsed(false);
-    prevRunningRef.current = runningCount;
-  }, [runningCount]);
 
   if (subagents.length === 0) return null;
 
@@ -136,12 +140,13 @@ function SubagentsPanel({ subagents, onSelectSubagent }: {
         >
           {subagents.map((subagent) => {
             const stateLabel = t(SUBAGENT_STATE_KEYS[subagent.status]);
-            const label = `${subagent.agent} · ${subagent.task ?? subagent.description ?? stateLabel}`;
+            const label = `${subagent.agent} · ${stateLabel} · ${subagent.task ?? subagent.description ?? ""}`.replace(/\s+$/, "");
             const live = subagent.source !== "history";
             return (
               <button
                 key={subagent.id}
                 type="button"
+                role="listitem"
                 onClick={() => onSelectSubagent(subagent)}
                 aria-label={label}
                 title={`${label}${subagent.detached ? " (async)" : ""}`}
@@ -195,18 +200,21 @@ function SubagentsPanel({ subagents, onSelectSubagent }: {
 }
 
 /** Session panels attached to the composer: live todo plan + running
- * subagent roster. Each is independently collapsible and expands itself when
- * new work appears. Rendered pinned above the chat input. */
-export function ComposerPanels({ todoPhases, subagents, onSelectSubagent }: {
+ * subagent roster. Each is independently collapsible via its header row
+ * (`chevron`) and starts collapsed; the headers always show live progress /
+ * running-summary. Rendered pinned above the chat input. */
+export function ComposerPanels({ todoPhases, subagents, onSelectSubagent, defaultExpanded = false }: {
   todoPhases: TodoPhase[];
   subagents: SubagentInfo[];
   onSelectSubagent: (subagent: SubagentInfo) => void;
+  /** Initial expansion of both panels (default: collapsed). */
+  defaultExpanded?: boolean;
 }) {
   if (todoPhases.length === 0 && subagents.length === 0) return null;
   return (
     <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
-      <TodoList phases={todoPhases} collapsible />
-      <SubagentsPanel subagents={subagents} onSelectSubagent={onSelectSubagent} />
+      <TodoList phases={todoPhases} collapsible defaultExpanded={defaultExpanded} />
+      <SubagentsPanel subagents={subagents} onSelectSubagent={onSelectSubagent} defaultExpanded={defaultExpanded} />
     </div>
   );
 }

@@ -28,6 +28,7 @@ test("attaches todo plan and subagent roster with live states", () => {
       { id: "s2", agent: "worker", status: "completed", task: "Write the code", index: 1 },
     ],
     onSelectSubagent: noop,
+    defaultExpanded: true,
   }));
 
   assert.match(html, /Tasks/);
@@ -39,13 +40,21 @@ test("attaches todo plan and subagent roster with live states", () => {
   assert.match(html, /1 running · 2 total/);
 });
 
-test("subagent panel collapses to its header when toggled", () => {
+test("panels start collapsed with live summary in their headers", () => {
   const html = renderToStaticMarkup(React.createElement(ComposerPanels, {
-    todoPhases: [],
-    subagents: [{ id: "s1", agent: "scout", status: "started", index: 0 }],
+    todoPhases: [{ name: "Implementation", tasks: [{ content: "Wire panels", status: "in_progress" }] }],
+    subagents: [{ id: "s1", agent: "scout", status: "started", task: "Map the surface", index: 0 }],
     onSelectSubagent: noop,
   }));
-  assert.match(html, /aria-expanded="true"/);
+  // Headers (with live counts) are visible...
+  assert.match(html, /Tasks/);
+  assert.match(html, /0\/1 complete/);
+  assert.match(html, /Subagents/);
+  assert.match(html, /1 running · 1 total/);
+  // ...but both panels start collapsed: toggle headers only, no content.
+  assert.match(html, /aria-expanded="false"/);
+  assert.doesNotMatch(html, /Wire panels/);
+  assert.doesNotMatch(html, /Map the surface/);
 });
 
 test("live chips show current tool, telemetry, and async marker", () => {
@@ -69,6 +78,7 @@ test("live chips show current tool, telemetry, and async marker", () => {
       },
     }],
     onSelectSubagent: noop,
+    defaultExpanded: true,
   }));
 
   assert.match(html, /Map the surface/);
@@ -91,6 +101,7 @@ test("retrying chips surface retry state instead of the activity line", () => {
       progress: { retryState: { attempt: 2, maxAttempts: 5, delayMs: 1000, errorMessage: "429", startedAtMs: 1 } },
     }],
     onSelectSubagent: noop,
+    defaultExpanded: true,
   }));
   assert.match(html, /retrying 2\/5/);
 });
@@ -108,6 +119,7 @@ test("history chips render terminal telemetry without pulsing state", () => {
       progress: { status: "completed", tokens: 999000, cost: 1.23, durationMs: 360000, resolvedModel: "provider/gpt-5.6:medium" },
     }],
     onSelectSubagent: noop,
+    defaultExpanded: true,
   }));
   assert.match(html, /Map the surface/);
   assert.match(html, /999k tok/);
@@ -133,6 +145,7 @@ test("chips show agent source, nested count, and async marker", () => {
       },
     }],
     onSelectSubagent: noop,
+    defaultExpanded: true,
   }));
   assert.match(html, /Inspect foo.ts/);
   assert.match(html, /user/);
@@ -153,6 +166,27 @@ test("history chips mark detached async spawns", () => {
       detached: true,
     }],
     onSelectSubagent: noop,
+    defaultExpanded: true,
   }));
   assert.match(html, /⤴/);
 });
+
+
+test("zero context tokens never print a null gauge", () => {
+  const html = renderToStaticMarkup(React.createElement(ComposerPanels, {
+    todoPhases: [],
+    subagents: [{
+      id: "s1",
+      agent: "scout",
+      status: "started",
+      task: "Map the surface",
+      index: 0,
+      progress: { currentTool: "read", contextTokens: 0, contextWindow: 32000 },
+    }],
+    onSelectSubagent: noop,
+    defaultExpanded: true,
+  }));
+  assert.doesNotMatch(html, /null/);
+  assert.match(html, /read/);
+});
+

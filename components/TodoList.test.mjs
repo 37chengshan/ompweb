@@ -68,6 +68,7 @@ test("collapsible mode collapses to a toggle header and expands again", () => {
   const expandedHtml = renderToStaticMarkup(React.createElement(TodoList, {
     phases,
     collapsible: true,
+    defaultExpanded: true,
   }));
   assert.match(expandedHtml, /aria-expanded="true"/);
   assert.match(expandedHtml, /Wire panels/);

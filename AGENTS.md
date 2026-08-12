@@ -166,9 +166,9 @@ handled or safely ignored.
 - The live todo plan (`TodoList`) and the subagent roster live **pinned above
   the chat input**, not inside the scrollable message list. `ComposerPanels`
   renders both, each independently collapsible via its header row (`chevron`);
-  panels auto-expand when a plan or running subagent first appears. Subagent
-  chips carry live state (pulsing dot while `started`, check/alert/ban for
-  terminal states) fed by the same `subagent_lifecycle`/`subagent_progress`
+  panels start collapsed (headers always show live progress / running-summary).
+  Subagent chips carry live state (pulsing dot while `started`, check/alert/ban
+  for terminal states) fed by the same `subagent_lifecycle`/`subagent_progress`
   SSE frames; clicking a chip opens the transcript dialog. `TodoList` keeps a
   non-collapsible default (`collapsible` prop) for SSR tests.
 

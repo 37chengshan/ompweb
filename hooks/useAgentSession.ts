@@ -80,8 +80,21 @@ interface AgentEvent {
   [key: string]: unknown;
 }
 
-const SUBAGENT_TERMINAL_STATUSES = new Set(["completed", "failed", "aborted"]);
+const SUBAGENT_LIFECYCLE_STATUSES = new Set(["started", "completed", "failed", "aborted"]);
 const SUBAGENT_ACTIVITY_BUFFER_MAX = 50;
+// Distinct subagent ids retained in the activity/version maps. Each per-id
+// array is already capped, but a long turn can spawn unbounded ids (repeated
+// or recursive task calls) — the OUTER maps must be bounded too.
+const SUBAGENT_ACTIVITY_MAX_IDS = 64;
+
+/** Keep only the most recently inserted entries of an id-keyed map. */
+function pruneSubagentIdMap<T>(map: Record<string, T>): Record<string, T> {
+  const keys = Object.keys(map);
+  if (keys.length <= SUBAGENT_ACTIVITY_MAX_IDS) return map;
+  const next = { ...map };
+  for (const key of keys.slice(0, keys.length - SUBAGENT_ACTIVITY_MAX_IDS)) delete next[key];
+  return next;
+}
 
 /** Convert a recovered on-disk history entry into roster form. */
 function historyEntryToSubagentInfo(entry: SubagentHistoryEntry): SubagentInfo {
@@ -543,7 +556,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [todoPhases, setTodoPhases] = useState<TodoPhase[]>([]);
   const [activeGoal, setActiveGoal] = useState<ActiveGoal | null>(null);
   const [activePlan, setActivePlan] = useState<ActivePlan | null>(null);
-  const activeSubagentCount = subagents.filter((subagent) => subagent.status === "started").length;
+  const activeSubagentCount = subagents.filter((subagent) => subagent.source !== "history" && subagent.status === "started").length;
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
@@ -570,6 +583,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // so a stale get_subagents cannot target a session that was switched away.
   const rosterRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promptRunIdRef = useRef(0);
+  // Bumped on every roster clear (run end): in-flight get_subagents/history
+  // responses from the finished run must not merge into the cleared (or next
+  // run's) roster. The prompt runId alone is not enough — it is not
+  // invalidated on terminal.
+  const subagentRosterGenerationRef = useRef(0);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
   // True once this mount has persisted a non-empty queue: gates removal so a
   // just-mounted empty state cannot wipe a stored queue before restore runs.
@@ -658,12 +676,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [todoPhases]);
 
   // Merge a batch of roster entries, keeping live frames over history.
-  const mergeSubagents = useCallback((incoming: SubagentInfo[]) => {
+  // Merge a batch of roster entries, keeping live frames over history.
+  // `skipNewerThan` lets callers refuse to overwrite entries updated by live
+  // frames after a point-in-time snapshot was requested (a snapshot taken
+  // while a child ran must not regress its later terminal lifecycle status).
+  const mergeSubagents = useCallback((incoming: SubagentInfo[], options?: { skipNewerThan?: number }) => {
     if (!incoming.length) return;
+    const skipNewerThan = options?.skipNewerThan;
     setSubagents((prev) => {
       const byId = new Map(prev.map((subagent) => [subagent.id, subagent]));
       for (const entry of incoming) {
         const existing = byId.get(entry.id);
+        if (existing && skipNewerThan !== undefined && (existing.lastUpdate ?? 0) >= skipNewerThan) continue;
         if (!existing) {
           byId.set(entry.id, entry);
           continue;
@@ -679,43 +703,76 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     });
   }, []);
 
-  // Hydrate the LIVE roster from get_subagents. The registry only holds
-  // currently-running subagents, so this fills gaps after an SSE reconnect or
-  // a missed lifecycle frame; it never reports finished runs.
-  const refreshSubagentRoster = useCallback(async (sid: string) => {
-    try {
-      const result = await sendAgentCommand<{ subagents?: SubagentSnapshotLike[] }>(sid, { type: "get_subagents" });
-      const snapshots = (result.subagents ?? [])
-        .map(parseSubagentSnapshot)
-        .filter((subagent): subagent is SubagentInfo => subagent !== undefined);
-      mergeSubagents(snapshots);
-      // The registry deletes a subagent before get_subagents returns once its
-      // lifecycle is terminal, so a live entry missing from the snapshot means
-      // a terminal frame was missed over SSE. Drop it; history recovery and
-      // fresh lifecycle frames remain authoritative for other entries.
-      const liveIds = new Set(snapshots.map((s) => s.id));
-      setSubagents((prev) => {
-        const next = prev.filter((s) => s.source !== "live" || liveIds.has(s.id));
-        return next.length === prev.length ? prev : next;
-      });
-    } catch {
-      // Best effort: subagent_lifecycle/progress frames are the primary source.
-    }
-  }, [mergeSubagents]);
-
   // Recover the ON-DISK roster from the parent session's task toolResults.
   // Survives page reloads and shows finished runs from previous sessions.
   const refreshSubagentHistory = useCallback(async (sid: string) => {
+    const generation = subagentRosterGenerationRef.current;
     try {
       const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/subagents`);
       if (!res.ok) return;
       const data = await res.json() as { subagents?: SubagentHistoryEntry[] };
+      // Fence AFTER the awaited json: the session or roster generation may
+      // have changed while the response was in flight.
+      if (sessionIdRef.current !== sid || subagentRosterGenerationRef.current !== generation) return;
       const entries = (data.subagents ?? []).map(historyEntryToSubagentInfo);
       mergeSubagents(entries);
     } catch {
       // Best effort; live frames take precedence while a run is active.
     }
   }, [mergeSubagents]);
+
+  // Hydrate the LIVE roster from get_subagents. The registry only holds
+  // currently-running subagents, so this fills gaps after an SSE reconnect or
+  // a missed lifecycle frame; it never reports finished runs.
+  const refreshSubagentRoster = useCallback(async (sid: string) => {
+    const requestedAt = Date.now();
+    const runId = promptRunIdRef.current;
+    const generation = subagentRosterGenerationRef.current;
+    try {
+      const result = await sendAgentCommand<{ subagents?: SubagentSnapshotLike[] }>(sid, { type: "get_subagents" });
+      // Fence: the request may resolve after the user switched sessions, the
+      // run ended and a new prompt started, or the roster was cleared — its
+      // snapshot belongs to a different roster generation and must not merge
+      // or prune the new one.
+      if (sessionIdRef.current !== sid || promptRunIdRef.current !== runId || subagentRosterGenerationRef.current !== generation) return;
+      const snapshots = (result.subagents ?? [])
+        .map(parseSubagentSnapshot)
+        .filter((subagent): subagent is SubagentInfo => subagent !== undefined);
+      // The snapshot is a point-in-time view: never overwrite entries that
+      // live frames updated after the request was made (their state is newer).
+      mergeSubagents(snapshots, { skipNewerThan: requestedAt });
+      // The registry deletes a subagent before get_subagents returns once its
+      // lifecycle is terminal, so a live entry missing from the snapshot means
+      // a terminal frame was missed over SSE. Drop it; history recovery and
+      // fresh lifecycle frames remain authoritative for other entries. Entries
+      // updated AFTER the snapshot was requested are newer than the registry
+      // state we got and must survive the prune.
+      const liveIds = new Set(snapshots.map((s) => s.id));
+      setSubagents((prev) => {
+        const next = prev.filter((s) => s.source !== "live" || liveIds.has(s.id) || (s.lastUpdate ?? 0) >= requestedAt);
+        return next.length === prev.length ? prev : next;
+      });
+      // Mid-run disk history can gain completed task calls that live frames
+      // missed (a child finishing before the subscription attached is deleted
+      // from the registry) — re-check so such children appear before agent_end.
+      void refreshSubagentHistory(sid);
+    } catch {
+      // Best effort: subagent_lifecycle/progress frames are the primary source.
+    }
+  }, [mergeSubagents, refreshSubagentHistory]);
+
+  // Clear per-run activity state at run end. MUST also cancel the pending
+  // version-flush rAF: a queued subagent_event flush would otherwise repopulate
+  // the version map for dead subagent ids right after the clear.
+  const resetSubagentActivityState = useCallback(() => {
+    if (subagentVersionFlushFrameRef.current !== null) {
+      cancelAnimationFrame(subagentVersionFlushFrameRef.current);
+      subagentVersionFlushFrameRef.current = null;
+    }
+    subagentVersionFlushRef.current = null;
+    setSubagentEvents({});
+    setSubagentTranscriptVersions({});
+  }, []);
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
     let messagesLoaded = false;
@@ -1086,10 +1143,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentPhase(null);
       setRetryInfo(null);
       setSubagents([]);
+      subagentRosterGenerationRef.current += 1;
+      // Bound per-run activity state: without this, subagentEvents and the
+      // transcript-version map retain one entry per subagent id forever.
+      resetSubagentActivityState();
+      // loadSession above already hydrated on-disk history, but it may have
+      // resolved BEFORE this clear — re-issue so finished runs repopulate the
+      // roster (merge is idempotent).
+      if (sid) void refreshSubagentHistory(sid);
       dispatch({ type: "end" });
       onAgentEnd?.();
     }
-  }, [loadSession, onAgentEnd]);
+  }, [loadSession, onAgentEnd, refreshSubagentHistory, resetSubagentActivityState]);
 
   const waitForPromptSettlement = useCallback(async (sid: string, runId?: number) => {
     await delay(PROMPT_SETTLE_INITIAL_DELAY_MS);
@@ -1253,6 +1318,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setAgentPhase(null);
         setRetryInfo(null);
         setSubagents([]);
+      subagentRosterGenerationRef.current += 1;
+        resetSubagentActivityState();
         dispatch({ type: "end" });
         if (sessionIdRef.current) {
           loadSession(sessionIdRef.current);
@@ -1419,12 +1486,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (!payload || typeof payload.id !== "string" || typeof payload.status !== "string") break;
         const id = payload.id;
         const status = payload.status;
+        // The wire only allows started/completed/failed/aborted — an unknown
+        // value is a malformed frame and must not fabricate a live chip.
+        if (!SUBAGENT_LIFECYCLE_STATUSES.has(status)) break;
         const info: SubagentInfo = {
           id,
           agent: typeof payload.agent === "string" ? payload.agent : "subagent",
           agentSource: payload.agentSource === "bundled" || payload.agentSource === "user" || payload.agentSource === "project" ? payload.agentSource : undefined,
           description: typeof payload.description === "string" ? payload.description : undefined,
-          status: SUBAGENT_TERMINAL_STATUSES.has(status) ? status as SubagentInfo["status"] : "started",
+          status: status as SubagentInfo["status"],
           sessionFile: typeof payload.sessionFile === "string" ? payload.sessionFile : undefined,
           parentToolCallId: typeof payload.parentToolCallId === "string" ? payload.parentToolCallId : undefined,
           index: typeof payload.index === "number" ? payload.index : -1,
@@ -1434,10 +1504,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         };
         setSubagents((prev) => {
           const existingIndex = prev.findIndex((subagent) => subagent.id === id);
-          if (existingIndex === -1) return [...prev, info];
-          const next = [...prev];
-          next[existingIndex] = { ...next[existingIndex], ...info };
-          return next;
+          const next = existingIndex === -1 ? [...prev, info] : (() => {
+            const updated = [...prev];
+            updated[existingIndex] = { ...updated[existingIndex], ...info };
+            return updated;
+          })();
+          // Lifecycle frames arrive at spawn/completion — keep the roster in
+          // ordinal order (parallel/batch starts can arrive out of order).
+          return next.sort((a, b) => a.index - b.index || a.id.localeCompare(b.id));
         });
         break;
       }
@@ -1456,9 +1530,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setSubagents((prev) => {
           if (prev.length === 0) return prev;
           let target = -1;
-          if (progressId) target = prev.findIndex((subagent) => subagent.id === progressId);
-          if (target === -1 && parentToolCallId) target = prev.findIndex((subagent) => subagent.parentToolCallId === parentToolCallId);
-          if (target === -1 && index >= 0) target = prev.findIndex((subagent) => subagent.index === index);
+          if (progressId) {
+            // A valid progress frame names its subagent; if that id is gone the
+            // frame is stale (terminal frame was missed, then cleared) — falling
+            // back to parentToolCallId/index could overwrite a DIFFERENT child.
+            target = prev.findIndex((subagent) => subagent.id === progressId);
+          } else {
+            // ID-less fallback frames: prefer the exact (parent, index) pair
+            // (batch children share parentToolCallId), then each key alone.
+            if (parentToolCallId && index >= 0) {
+              target = prev.findIndex((subagent) => subagent.parentToolCallId === parentToolCallId && subagent.index === index);
+            }
+            if (target === -1 && parentToolCallId) target = prev.findIndex((subagent) => subagent.parentToolCallId === parentToolCallId);
+            if (target === -1 && index >= 0) target = prev.findIndex((subagent) => subagent.index === index);
+          }
           if (target === -1) return prev;
           const current = prev[target];
           const nextEntry: SubagentInfo = {
@@ -1508,7 +1593,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               setSubagentTranscriptVersions((prev) => {
                 let next = prev;
                 for (const id of queued) next = { ...next, [id]: (next[id] ?? 0) + 1 };
-                return next;
+                return pruneSubagentIdMap(next);
               });
             });
           }
@@ -1519,7 +1604,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               const nextEvents = existing.length >= SUBAGENT_ACTIVITY_BUFFER_MAX
                 ? [...existing.slice(existing.length - SUBAGENT_ACTIVITY_BUFFER_MAX + 1), activity]
                 : [...existing, activity];
-              return { ...prev, [subagentId]: nextEvents };
+              return pruneSubagentIdMap({ ...prev, [subagentId]: nextEvents });
             });
           }
         }
@@ -1529,7 +1614,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as unknown as IncomingExtensionUiRequest);
         break;
     }
-  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, onAgentEnd, reconcileAgentState]);
+  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, onAgentEnd, reconcileAgentState, resetSubagentActivityState]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
@@ -1601,6 +1686,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       } else if (session) {
         sentSessionId = session.id;
         await ensureEventsConnected(session.id);
+        void refreshSubagentRoster(session.id);
         await sendAgentCommand(session.id, {
           type: "prompt",
           message,

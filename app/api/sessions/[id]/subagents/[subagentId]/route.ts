@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
-import { existsSync } from "fs";
 import { resolveSessionPath } from "@/lib/session-reader";
-import { readSubagentCompletion, readSubagentTranscriptPage, subagentTranscriptPath } from "@/lib/subagent-history";
+import { readCompletionArtifact, readSubagentTranscriptPage, resolveSubagentArtifact, subagentTranscriptPath } from "@/lib/subagent-history";
 
 export const dynamic = "force-dynamic";
 
-// Subagent ids are AdjectiveNoun names ([A-Za-z0-9_-]); the regex both bounds
-// the value and guarantees the joined path cannot escape the sibling dir.
-const SUBAGENT_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
+// Subagent ids are AdjectiveNoun names, optionally dotted for nested spawns
+// (OMP allocates hierarchical ids like `Parent.Child`). The grammar bounds the
+// value, rejects empty segments and traversal forms, and guarantees the joined
+// path cannot escape the sibling dir; symlink escapes are additionally blocked
+// by realpath confinement (resolveSubagentArtifact).
+const SUBAGENT_ID_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
+const SUBAGENT_ID_MAX_LENGTH = 100;
 
 /**
  * GET /api/sessions/[id]/subagents/[subagentId]?fromByte=N
@@ -26,7 +29,7 @@ export async function GET(
 ) {
   const { id, subagentId } = await params;
   try {
-    if (!SUBAGENT_ID_RE.test(subagentId)) {
+    if (!SUBAGENT_ID_RE.test(subagentId) || subagentId.length > SUBAGENT_ID_MAX_LENGTH) {
       return NextResponse.json({ error: "Invalid subagent id", code: "invalid_subagent_id" }, { status: 400 });
     }
     const filePath = await resolveSessionPath(id);
@@ -35,20 +38,26 @@ export async function GET(
     }
     const searchParams = new URL(req.url).searchParams;
     if (searchParams.get("mode") === "completion") {
-      const completion = readSubagentCompletion(filePath, subagentId);
+      const resolved = resolveSubagentArtifact(filePath, subagentId, ".md");
+      if (!resolved) {
+        return NextResponse.json({ error: "Subagent completion not found", code: "transcript_not_found" }, { status: 404 });
+      }
+      // Read the RESOLVED path: re-deriving from the raw session path here
+      // would reopen whatever the symlink points at after the check.
+      const completion = readCompletionArtifact(resolved);
       return NextResponse.json({
         sessionFile: subagentTranscriptPath(filePath, subagentId),
         completion: completion?.completion ?? null,
         truncated: completion?.truncated ?? false,
       });
     }
-    const transcriptFile = subagentTranscriptPath(filePath, subagentId);
-    if (!existsSync(transcriptFile)) {
+    const resolved = resolveSubagentArtifact(filePath, subagentId, ".jsonl");
+    if (!resolved) {
       return NextResponse.json({ error: "Subagent transcript not found", code: "transcript_not_found" }, { status: 404 });
     }
     const fromByteRaw = searchParams.get("fromByte");
     const fromByte = fromByteRaw !== null ? Number(fromByteRaw) : 0;
-    const page = readSubagentTranscriptPage(transcriptFile, fromByte);
+    const page = readSubagentTranscriptPage(resolved, fromByte);
     return NextResponse.json(page);
   } catch (error) {
     return NextResponse.json(

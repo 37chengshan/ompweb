@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Ban, CheckCircle2, ChevronDown, Circle, CircleAlert, CircleDotDashed, ListChecks } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import type { TodoItem, TodoPhase } from "@/lib/pi-types";
@@ -19,23 +19,14 @@ interface TodoListProps {
   /** Render as a composer-attached panel: the header row becomes a
    * collapse/expand toggle and the section margin is dropped. */
   collapsible?: boolean;
-  /** Initial expansion when `collapsible` (default: expanded). */
+  /** Initial expansion when `collapsible` (default: collapsed). */
   defaultExpanded?: boolean;
 }
 
-export function TodoList({ phases = [], collapsible = false, defaultExpanded = true }: TodoListProps) {
+export function TodoList({ phases = [], collapsible = false, defaultExpanded = false }: TodoListProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [collapsed, setCollapsed] = useState(collapsible ? !defaultExpanded : false);
-  const prevPhasesLengthRef = useRef(phases.length);
-
-  // A plan arriving mid-run should surface itself: auto-expand the panel the
-  // first time phases appear (e.g. when /goal or /plan starts executing).
-  useEffect(() => {
-    const hadPhases = prevPhasesLengthRef.current > 0;
-    prevPhasesLengthRef.current = phases.length;
-    if (!hadPhases && phases.length > 0) setCollapsed(false);
-  }, [phases.length]);
 
   if (phases.length === 0) return null;
 

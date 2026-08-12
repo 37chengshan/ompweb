@@ -441,9 +441,56 @@ function base64ImageInfo(block: unknown): { bytes: number; mime?: string } | nul
  * keeps full details.
  */
 const TASK_DETAIL_MAX_TEXT = 240;
+const TASK_DETAIL_MAX_ROWS = 50;
 
 function truncateTaskDetailText(value: string): string {
-  return value.length <= TASK_DETAIL_MAX_TEXT ? value : `${value.slice(0, TASK_DETAIL_MAX_TEXT)}…`;
+  if (value.length <= TASK_DETAIL_MAX_TEXT) return value;
+  // Cut by code point so a boundary can never split a surrogate pair.
+  return `${[...value].slice(0, TASK_DETAIL_MAX_TEXT).join("")}…`;
+}
+
+/** Settled cost rides `usage.cost` on SingleResult; top-level `cost` is absent. */
+function taskDetailUsageCost(usage: unknown): number | undefined {
+  if (!isRecord(usage)) return undefined;
+  const cost = isRecord(usage.cost) ? usage.cost : undefined;
+  if (!cost) return undefined;
+  const total = typeof cost.total === "number" ? cost.total : undefined;
+  if (total !== undefined) return total;
+  const input = typeof cost.input === "number" ? cost.input : undefined;
+  const output = typeof cost.output === "number" ? cost.output : undefined;
+  if (input !== undefined && output !== undefined) return input + output;
+  return undefined;
+}
+
+function taskDetailRetryFailure(value: unknown): { attempt: number; errorMessage: string } | undefined {
+  if (!isRecord(value)) return undefined;
+  const attempt = typeof value.attempt === "number" ? value.attempt : undefined;
+  const errorMessage = typeof value.errorMessage === "string" ? value.errorMessage : undefined;
+  if (attempt === undefined || errorMessage === undefined) return undefined;
+  return { attempt, errorMessage: truncateTaskDetailText(errorMessage) };
+}
+
+function taskDetailStructuredOutput(value: unknown): Record<string, string> | undefined {
+  // Project to the UI fields only — `data` is arbitrary upstream payload and
+  // must never ride the bounded history response.
+  if (!isRecord(value)) return undefined;
+  const out: Record<string, string> = {};
+  for (const key of ["source", "mode", "status"] as const) {
+    if (typeof value[key] === "string") out[key] = truncateTaskDetailText(value[key]);
+  }
+  if (typeof value.error === "string") out.error = truncateTaskDetailText(value.error);
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function taskDetailAsync(value: unknown): Record<string, string> | undefined {
+  // Project async to its documented fields only (state/jobId/type) — extra
+  // payload fields must not ride the bounded history response.
+  if (!isRecord(value)) return undefined;
+  const out: Record<string, string> = {};
+  for (const key of ["state", "jobId", "type"] as const) {
+    if (typeof value[key] === "string") out[key] = truncateTaskDetailText(value[key]);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 const TASK_DETAIL_PROGRESS_KEYS = [
@@ -466,7 +513,10 @@ function keepTaskToolResultDetails(details: Record<string, unknown>): Record<str
   if (results.length === 0 && progress.length === 0 && !isRecord(details.async)) return null;
 
   if (typeof details.totalDurationMs === "number") kept.totalDurationMs = details.totalDurationMs;
-  if (isRecord(details.async)) kept.async = details.async;
+  if (isRecord(details.async)) {
+    const asyncInfo = taskDetailAsync(details.async);
+    if (asyncInfo) kept.async = asyncInfo;
+  }
 
   const pickRecord = (raw: unknown, keys: readonly string[]): Record<string, unknown> | null => {
     if (!isRecord(raw)) return null;
@@ -474,19 +524,38 @@ function keepTaskToolResultDetails(details: Record<string, unknown>): Record<str
     for (const key of keys) {
       if (raw[key] !== undefined) out[key] = raw[key];
     }
-    for (const key of ["task", "assignment", "error", "abortReason"] as const) {
+    // Bound every string field that rides the history payload.
+    for (const key of ["task", "assignment", "error", "abortReason", "lastIntent", "agent", "modelRole", "resolvedModel", "outputPath", "patchPath", "branchName"] as const) {
       if (typeof out[key] === "string") out[key] = truncateTaskDetailText(out[key]);
+    }
+    // Settled results carry cost in `usage.cost`, not top-level `cost`.
+    if (typeof out.cost !== "number") {
+      const usageCost = taskDetailUsageCost(raw.usage);
+      if (usageCost !== undefined) out.cost = usageCost;
+    }
+    // Project nested objects to bounded, UI-only shapes.
+    if (raw.retryFailure !== undefined) {
+      const retryFailure = taskDetailRetryFailure(raw.retryFailure);
+      if (retryFailure) out.retryFailure = retryFailure;
+      else delete out.retryFailure;
+    }
+    if (raw.structuredOutput !== undefined) {
+      const structuredOutput = taskDetailStructuredOutput(raw.structuredOutput);
+      if (structuredOutput) out.structuredOutput = structuredOutput;
+      else delete out.structuredOutput;
     }
     return out;
   };
 
   if (progress.length > 0) {
     kept.progress = progress
+      .slice(0, TASK_DETAIL_MAX_ROWS)
       .map((raw) => pickRecord(raw, TASK_DETAIL_PROGRESS_KEYS))
       .filter((entry): entry is Record<string, unknown> => entry !== null);
   }
   if (results.length > 0) {
     kept.results = results
+      .slice(0, TASK_DETAIL_MAX_ROWS)
       .map((raw) => pickRecord(raw, TASK_DETAIL_RESULT_KEYS))
       .filter((entry): entry is Record<string, unknown> => entry !== null);
   }

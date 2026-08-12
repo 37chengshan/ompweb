@@ -70,3 +70,13 @@ test("task panel renders nothing without task details", () => {
   assert.equal(renderToStaticMarkup(React.createElement(TaskResultPanel, { details: { patch: "p" } })), "");
 });
 
+
+test("async-only task details render the job as one started row", () => {
+  const html = renderToStaticMarkup(React.createElement(TaskResultPanel, {
+    details: { async: { state: "running", jobId: "AsyncAudit", type: "task" } },
+  }));
+  assert.match(html, /1 subagent/);
+  assert.match(html, /AsyncAudit/);
+  assert.doesNotMatch(html, /0 subagents/);
+});
+

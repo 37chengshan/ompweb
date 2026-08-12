@@ -312,7 +312,7 @@ export interface UseAgentSessionOptions {
   setToolPreset?: (preset: "none" | "default" | "full") => void;
 }
 
-export type ThinkingLevelOption = "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ThinkingLevelOption = string;
 
 const PROGRAMMATIC_SCROLL_IGNORE_MS = 700;
 const USER_SCROLL_INTENT_MS = 1200;
@@ -851,7 +851,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [applyAuthoritativeModel, beginAuthoritativeModelSync]);
 
-  const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
+  const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false, fenceRunId?: number) => {
     let messagesLoaded = false;
     try {
       if (showLoading) setLoading(true);
@@ -869,6 +869,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as SessionData;
       if (sessionIdRef.current !== sid) return null;
+      // A terminal reload for a finished run must not overwrite the messages
+      // of a run that started while this fetch was in flight (it would delete
+      // the new run's optimistic user bubble).
+      if (fenceRunId !== undefined && promptRunIdRef.current !== fenceRunId) return null;
       setData(d);
       setActiveLeafId(d.leafId);
       setMessages(d.context.messages);
@@ -898,6 +902,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
         const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse };
         if (sessionIdRef.current !== sid) {
+          if (showLoading) setLoading(false);
+          return null;
+        }
+        if (fenceRunId !== undefined && promptRunIdRef.current !== fenceRunId) {
           if (showLoading) setLoading(false);
           return null;
         }
@@ -1222,7 +1230,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // must not overwrite the messages of the run currently streaming.
     if (runId !== undefined && promptRunIdRef.current !== runId) return;
     try {
-      if (sid) await loadSession(sid, false, true);
+      // Pass the fence into loadSession: the pre-check above only guards the
+      // start — a next prompt that begins while the reload is in flight must
+      // not be overwritten by the finished run's snapshot.
+      if (sid) await loadSession(sid, false, true, runId);
     } finally {
       if (runId !== undefined && promptRunIdRef.current !== runId) return;
       optimisticUserMessageKeyRef.current = null;
@@ -1402,6 +1413,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // A late agent_end can arrive over SSE after reconcileAgentState
         // already finished this run — don't re-trigger completion.
         if (!agentRunningRef.current) break;
+        // Capture sid + runId BEFORE clearing: the terminal reload below is
+        // async, and a next prompt (or session switch) that starts while it is
+        // in flight must not be overwritten by this finished run's snapshot.
+        const endedSid = sessionIdRef.current;
+        const endedRunId = promptRunIdRef.current;
         agentRunningRef.current = false;
         setAgentRunning(false);
         setAgentPhase(null);
@@ -1410,15 +1426,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       subagentRosterGenerationRef.current += 1;
         resetSubagentActivityState();
         dispatch({ type: "end" });
-        if (sessionIdRef.current) {
-          loadSession(sessionIdRef.current);
-          const endSid = sessionIdRef.current;
+        if (endedSid) {
+          void loadSession(endedSid, false, false, endedRunId);
           const endToken = beginAuthoritativeModelSync();
-          fetch(`/api/agent/${encodeURIComponent(endSid)}`)
-            .then((r) => r.json())
-            .then((d: { state?: AgentStateResponse }) => {
-              if (sessionIdRef.current !== endSid) return;
+          fetch(`/api/agent/${encodeURIComponent(endedSid)}`)
+            .then((r) => (r.ok ? r.json() as Promise<{ state?: AgentStateResponse }> : null))
+            .then((d) => {
               if (!d?.state?.model) return;
+              // Stale terminal snapshot: the user switched sessions or started
+              // the next run while this request was in flight — drop it.
+              if (sessionIdRef.current !== endedSid || promptRunIdRef.current !== endedRunId) return;
               const applied = applyAuthoritativeModel(toThinkingModelMeta(d.state.model), endToken);
               if (!applied) return; // stale snapshot — drop everything derived from it
               if (d.state?.contextUsage !== undefined) setContextUsage(d.state.contextUsage ?? null);
@@ -1483,6 +1500,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             const applied = applyAuthoritativeModel(toThinkingModelMeta(d.state.model), token);
             if (!applied) return; // stale snapshot — drop its thinking level too
             if (d.state.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(d.state.thinkingLevel));
+            if (d.state.fastModeEnabled !== undefined) setFastModeEnabled(d.state.fastModeEnabled);
           })
           .catch(() => {});
         break;

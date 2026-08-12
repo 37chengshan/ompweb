@@ -81,6 +81,12 @@ async function runVerifiedOmpUpdate(): Promise<string> {
   if (!bin) throw new Error("omp binary not found. Install oh-my-pi or set OMP_WEB_OMP_BIN.");
 
   const before = await probeOmpVersion(bin);
+  if (!before) {
+    // The binary is already broken — an update has nothing to verify against
+    // and a rollback would restore a broken install. Fail fast instead of
+    // snapshotting/updating into a worse state.
+    throw new Error(`omp binary at ${bin} does not answer --version before the update`);
+  }
   const scopeDir = resolveOmpScopeDir();
   let backupDir: string | null = null;
   if (scopeDir) {

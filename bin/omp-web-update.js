@@ -23,7 +23,7 @@ const { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, wri
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { spawn, spawnSync } = require("child_process");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { dirname, join } = require("path");
+const { dirname, join, relative, sep: pathSep } = require("path");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { homedir, tmpdir } = require("os");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -78,7 +78,6 @@ async function waitForExit(pid) {
  * source itself may live under a global node_modules root, so the filter is
  * measured relative to the source, not the absolute path. */
 function copyPackageTree(source, target) {
-  const { relative, sep: pathSep } = require("path");
   mkdirSync(target, { recursive: true });
   cpSync(source, target, {
     recursive: true,

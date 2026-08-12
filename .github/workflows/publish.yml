@@ -15,6 +15,8 @@ jobs:
     environment: npm
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
 
       - name: Verify tag matches package version
         run: |
@@ -38,7 +40,36 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes --draft
+            VERSION="${TAG#v}"
+            PREVIOUS_TAG="$(git describe --tags --abbrev=0 "$TAG^" --match 'v*' 2>/dev/null || true)"
+
+            if [ -n "$PREVIOUS_TAG" ]; then
+              RANGE="$PREVIOUS_TAG..$TAG"
+              CHANGELOG_URL="https://github.com/$GITHUB_REPOSITORY/compare/$PREVIOUS_TAG...$TAG"
+            else
+              RANGE="$TAG"
+              CHANGELOG_URL="https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+            fi
+
+            CHANGES="$(
+              git log --no-merges --format='• %s' "$RANGE" |
+                grep -Eiv '^• ((chore: )?release( ompweb)? v?[0-9]|v?[0-9]+\.[0-9]+\.[0-9]+$)' || true
+            )"
+            if [ -z "$CHANGES" ]; then
+              CHANGES='• Internal release maintenance.'
+            fi
+
+            {
+              printf '%s\n\n' '## Changes'
+              printf '%s\n\n' "$CHANGES"
+              printf '%s\n\n' '## Upgrade'
+              printf '%s\n' '```bash'
+              printf 'npm install -g @kahme247/ompweb@%s\n' "$VERSION"
+              printf '%s\n\n' '```'
+              printf '**Full changelog:** %s\n' "$CHANGELOG_URL"
+            } > release-notes.md
+
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file release-notes.md --draft
           fi
 
       - name: Publish to npm
@@ -56,3 +87,35 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+  notify-discord:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post release notes to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          RELEASE_JSON="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body,url)"
+
+          jq -n \
+            --arg body "$(jq -r '.body' <<<"$RELEASE_JSON")" \
+            --arg title "OMPWEB $TAG" \
+            --arg url "$(jq -r '.url' <<<"$RELEASE_JSON")" \
+            '{
+              username: "OMPWEB Releases",
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $body[0:3800],
+                color: 15105570,
+                footer: {text: "GitHub Release"}
+              }]
+            }' > discord-release.json
+
+          curl --fail-with-body \
+            --header "Content-Type: application/json" \
+            --data @discord-release.json \
+            "$DISCORD_WEBHOOK_URL"

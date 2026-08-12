@@ -1,5 +1,7 @@
 {
     "pendant.autoGenerateSessionNames": true,
     "pendant.context.autoAttach": true,
-    "pendant.subagents.enabled": true
+    "pendant.subagents.enabled": true,
+    "pendant.runtimeSource": "external",
+    "pendant.binaryPath": "OMP"
 }

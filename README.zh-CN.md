@@ -2,6 +2,8 @@
 
 [English](./README.md) | [日本語](./README.ja.md)
 
+社区：[加入 OMPWEB Discord](https://discord.gg/evqgGzRfM5)
+
 [oh-my-pi (omp) 编程智能体](https://github.com/can1357/oh-my-pi)的本地 Web UI。ompweb 读取本机的 omp 会话文件，在浏览器中提供一个工作区，支持会话浏览、实时对话、模型配置、技能管理和项目文件预览。
 
 ![ompweb — 浅色主题](docs/screenshot-light.png)

@@ -19,7 +19,7 @@ const nextConfig = (phase: string): NextConfig => {
     // user-profile junctions while compiling.
     outputFileTracingRoot: process.cwd(),
     serverExternalPackages: ["undici"],
-    webpack(config: any) {
+    webpack(config: Parameters<NonNullable<NextConfig["webpack"]>>[0]) {
       // Next's entrypoint tracer does not automatically reject dynamic paths
       // outside the project root. Add parent/profile patterns to its ignore list
       // so user filesystem discovery remains request-time only during builds.

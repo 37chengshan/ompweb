@@ -2,6 +2,8 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja.md)
 
+Community: [Join the OMPWEB Discord](https://discord.gg/evqgGzRfM5)
+
 Local web UI for the [oh-my-pi (omp) coding agent](https://github.com/can1357/oh-my-pi). ompweb reads your local omp session files and gives you a browser workspace for session browsing, real-time chat, model configuration, skill management, and project file preview.
 
 ![ompweb — light theme](docs/screenshot-light.png)

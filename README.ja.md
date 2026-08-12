@@ -2,6 +2,8 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
+コミュニティ：[OMPWEB Discord に参加](https://discord.gg/evqgGzRfM5)
+
 [oh-my-pi (omp) コーディングエージェント](https://github.com/can1357/oh-my-pi)のローカル Web UI です。ompweb はローカルの omp セッションファイルを読み込み、セッションの閲覧、リアルタイムチャット、モデル設定、スキル管理、プロジェクトファイルのプレビューを行えるブラウザワークスペースを提供します。
 
 ![ompweb — ライトテーマ](docs/screenshot-light.png)

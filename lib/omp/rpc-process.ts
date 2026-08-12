@@ -76,6 +76,11 @@ export class RpcProcess {
   private protocolVersion: RpcProtocolVersion = 1;
   private nextChunkId = 1;
   private readonly spawnProcess: typeof spawn;
+  // Serializes physical stdin writes: a v2 logical frame can span multiple
+  // `rpc_chunk` records (>1 MiB payloads), and two frames written concurrently
+  // would interleave their chunk sequences on stdin, which RpcFrameDecoder
+  // rejects. Each logical frame is enqueued whole.
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: RpcProcessOptions) {
     const resolveBin = options.dependencies?.resolveOmpBin ?? resolveOmpBin;
@@ -271,15 +276,27 @@ export class RpcProcess {
       callback(error instanceof Error ? error : new Error(String(error)));
       return;
     }
-    let index = 0;
-    const writeNext = (error?: Error | null) => {
-      if (error || index === lines.length) {
-        callback(error);
-        return;
-      }
-      this.child.stdin.write(lines[index++], writeNext);
-    };
-    writeNext();
+    // Enqueue the entire encoded logical frame; the next frame's physical
+    // records only start after this frame's last write callback completes.
+    this.writeQueue = this.writeQueue.then(
+      () => new Promise<void>((resolve) => {
+        if (this.exited || this.child.stdin.destroyed) {
+          callback(new Error("RPC process is not running"));
+          resolve();
+          return;
+        }
+        let index = 0;
+        const writeNext = (error?: Error | null) => {
+          if (error || index === lines.length) {
+            callback(error ?? null);
+            resolve();
+            return;
+          }
+          this.child.stdin.write(lines[index++], writeNext);
+        };
+        writeNext();
+      }),
+    );
   }
 
   private handleResponse(response: RpcResponseFrame): void {

@@ -1022,7 +1022,11 @@ export async function startRpcSession(
     try {
       await created.waitUntilReady();
     } catch (error) {
-      created.destroy();
+      // Await the child's full exit before the `finally` releases the startup
+      // lock: a fire-and-forget destroy() would let a retry spawn a second
+      // OMP child while the failed one is still flushing/exiting, and
+      // concurrent resume/delete/archive paths could race that old child.
+      await created.destroyAndWait();
       throw error;
     }
 

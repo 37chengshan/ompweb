@@ -1255,6 +1255,20 @@ html.dark .dropdown-surface :is(select, option) {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* Live status pulse: the accent ring breathes outward while the dot itself
+   stays at full opacity. An opacity pulse (the old `animate-[pulse_1.5s]`
+   utility) dims the halo together with the dot, which reads as a broken
+   blink; the ring expansion keeps the indicator alive without flicker.
+   Token duration/easing keep it consistent with the motion system, and the
+   global prefers-reduced-motion block collapses it to a static dot. */
+@keyframes live-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 32%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.live-pulse {
+  animation: live-dot-pulse 1.6s var(--ease-out-warm) infinite;
+}
+
 .mcp-editor-grid > :first-child { min-width: 0; }
 .empty-chat-brand { }
 @media (max-width: 640px) {

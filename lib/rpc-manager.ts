@@ -578,7 +578,11 @@ export class AgentSessionWrapper {
       contextUsage: state.contextUsage ?? null,
       systemPrompt: state.systemPrompt?.join("\n\n") ?? "",
       thinkingLevel: state.thinkingLevel ?? "off",
-      fastModeEnabled: this.fastModeEnabled,
+      // The child's per-family tier map is authoritative: it changes when the
+      // model switches families (isFastModeEnabled is family-scoped) or when
+      // the runtime auto-disables priority (e.g. after an Anthropic reject).
+      // The wrapper's own flag is only the spawn-time cache.
+      fastModeEnabled: state.fastModeEnabled ?? state.fastMode ?? this.fastModeEnabled,
       todoPhases: state.todoPhases ?? [],
       extensionStatuses: Array.from(this.extensionStatuses, ([key, text]) => ({ key, text })),
       extensionWidgets: Array.from(this.extensionWidgets.values()),
@@ -738,9 +742,9 @@ export class AgentSessionWrapper {
 
       case "set_fast_mode": {
         const enabled = command.enabled === true;
-        await this.proc.sendCommand({ type: "set_fast_mode", enabled });
-        this.fastModeEnabled = enabled;
-        return { enabled };
+        const result = await this.proc.sendCommand<{ enabled?: boolean; active?: boolean }>({ type: "set_fast_mode", enabled });
+        this.fastModeEnabled = result?.enabled ?? enabled;
+        return { enabled: this.fastModeEnabled, active: result?.active ?? false };
       }
 
       case "fork": {

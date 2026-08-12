@@ -130,7 +130,7 @@ test("history chips render terminal telemetry without pulsing state", () => {
   assert.match(html, /data-subagent-metric="999k tok"/);
   assert.match(html, /data-subagent-metric="6m"/);
   // History chips must not show the pulsing live dot.
-  assert.doesNotMatch(html, /animate-\[pulse/);
+  assert.doesNotMatch(html, /live-pulse/);
 });
 
 test("chips show agent source, nested count, and async marker", () => {

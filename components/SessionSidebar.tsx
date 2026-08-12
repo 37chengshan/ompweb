@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
+import { memo, useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, type CSSProperties, type Dispatch, type ReactNode, type Ref, type RefObject, type SetStateAction } from "react";
 import type { ManagedProject, SessionInfo } from "@/lib/types";
 import { translate, useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
@@ -179,7 +179,7 @@ const SIDEBAR_BUTTON_TRANSITION = "background var(--dur-fast) var(--ease-out-war
 
 const DROPDOWN_ANIMATION_MS = 140;
 
-function AnimatedDropdown({ open, children, style }: { open: boolean; children: ReactNode; style: CSSProperties }) {
+function AnimatedDropdown({ open, children, style, innerRef }: { open: boolean; children: ReactNode; style: CSSProperties; innerRef?: Ref<HTMLDivElement> }) {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(open);
 
@@ -208,6 +208,7 @@ function AnimatedDropdown({ open, children, style }: { open: boolean; children: 
 
   return (
     <div
+      ref={innerRef}
       style={{
         ...style,
         opacity: visible ? 1 : 0,
@@ -1660,9 +1661,58 @@ function ProjectWorktreeSwitcher({
   const currentWt = worktreeState.worktrees.find((w) => w.path === selectedCwd)
     ?? worktreeState.worktrees.find((w) => w.isMain);
   const compactLabel = currentWt?.branch?.trim() || displayCwd(worktreeState.projectRoot, homeDir);
+
+  // The sidebar container clips overflow, so the absolutely-positioned panel
+  // gets cut at the viewport edge when the trigger sits near it (compact
+  // switcher is right-aligned in a ~260px sidebar). Anchor the panel to the
+  // trigger's measured rect instead: centered on the button, clamped to the
+  // viewport, escaped from the clipping container via position:fixed.
+  const wtTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const wtPanelRef = useRef<HTMLDivElement | null>(null);
+  const [wtPanelPos, setWtPanelPos] = useState<{ left: number; top: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!wtDropdownOpen) return;
+    // AnimatedDropdown mounts its panel in its own effect (one render after
+    // `open` flips), so the panel ref is null on the first measurement pass —
+    // retry each frame until it exists, then keep the position fresh on
+    // window resizes. The panel starts at opacity 0, so the fixed position
+    // lands before the entrance animation is visible.
+    let frame = 0;
+    const measure = () => {
+      const trigger = wtTriggerRef.current;
+      const panel = wtPanelRef.current;
+      if (!trigger || !panel) return false;
+      const triggerRect = trigger.getBoundingClientRect();
+      const panelWidth = panel.getBoundingClientRect().width;
+      const margin = 8;
+      const width = Math.min(panelWidth, window.innerWidth - margin * 2);
+      const center = triggerRect.left + triggerRect.width / 2;
+      const left = Math.max(margin, Math.min(center - width / 2, window.innerWidth - width - margin));
+      const next = { left, top: triggerRect.bottom + 4, width };
+      setWtPanelPos((prev) => (
+        prev && Math.abs(prev.left - next.left) < 0.5 && Math.abs(prev.top - next.top) < 0.5 && Math.abs(prev.width - next.width) < 0.5
+          ? prev
+          : next
+      ));
+      return true;
+    };
+    const attempt = () => {
+      if (measure()) return;
+      if (wtDropdownOpen) frame = requestAnimationFrame(attempt);
+    };
+    frame = requestAnimationFrame(attempt);
+    window.addEventListener("resize", measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", measure);
+    };
+  }, [wtDropdownOpen]);
+
   return (
     <div ref={dropdownRef} style={{ position: "relative", marginTop: compact ? 4 : 6, alignSelf: compact ? "flex-start" : undefined, flexShrink: 0 }}>
       <button
+        ref={wtTriggerRef}
         onClick={() => setWtDropdownOpen((v) => !v)}
         title={currentWt ? t("sessionSidebar.switchWorktreeTo", { path: currentWt.path }) : t("sessionSidebar.switchWorktree")}
         style={{
@@ -1705,12 +1755,12 @@ function ProjectWorktreeSwitcher({
 
       <AnimatedDropdown
         open={wtDropdownOpen}
+        innerRef={wtPanelRef}
         style={{
-          position: "absolute",
-          top: "calc(100% + 4px)",
-          left: compact ? "auto" : 0,
-          right: 0,
-          minWidth: compact ? 220 : undefined,
+          position: "fixed",
+          top: wtPanelPos?.top ?? 0,
+          left: wtPanelPos?.left ?? 0,
+          width: wtPanelPos?.width ?? (compact ? 220 : undefined),
           zIndex: 100,
           background: "var(--bg-panel)",
           border: "1px solid var(--border)",

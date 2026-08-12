@@ -840,6 +840,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (agentState.state?.thinkingLevel !== undefined) {
         setThinkingLevel(normalizeThinkingLevel(agentState.state.thinkingLevel));
       }
+      // Fast mode is family-scoped in omp: switching to a fast-supported
+      // model flips the child's state without any event, so the composer
+      // toggle must re-sync from the refreshed state.
+      if (agentState.state?.fastModeEnabled !== undefined) {
+        setFastModeEnabled(agentState.state.fastModeEnabled);
+      }
     } catch {
       // Best effort; the next loadSession/reconcile re-syncs.
     }
@@ -1956,16 +1962,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [isNew, setNewSessionModel, refreshLiveModelState]);
 
   const handleFastModeChange = useCallback(async (enabled: boolean) => {
-    const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+    // A brand-new session has no runtime yet: the model picker updates local
+    // state (so the Fast button appears), but set_fast_mode is a live-process
+    // command — without spawning the session the click silently no-ops.
+    const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current ?? await ensureNewSession();
     if (!sid) return;
     try {
-      await sendAgentCommand(sid, { type: "set_fast_mode", enabled });
-      setFastModeEnabled(enabled);
+      const result = await sendAgentCommand<{ enabled?: boolean }>(sid, { type: "set_fast_mode", enabled });
+      setFastModeEnabled(result?.enabled ?? enabled);
       void refreshLiveModelState(sid);
     } catch (error) {
       console.error("Failed to change Fast mode:", error);
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [refreshLiveModelState]);
+  }, [addNotice, ensureNewSession, refreshLiveModelState]);
 
   const handleCompact = useCallback(async () => {
     const sid = sessionIdRef.current;

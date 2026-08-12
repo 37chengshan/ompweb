@@ -768,7 +768,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
               <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">
                 <span
                   aria-hidden
-                  className="live-status-dot inline-block h-2 w-2 shrink-0 rounded-full bg-accent animate-[pulse_1.5s_infinite]"
+                  className="live-status-dot live-pulse inline-block h-2 w-2 shrink-0 rounded-full bg-accent"
                 />
                 <span>
                   {[
@@ -790,7 +790,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
               <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">
                 <span
                   aria-hidden
-                  className="live-status-dot inline-block h-2 w-2 shrink-0 rounded-full bg-accent animate-[pulse_1.5s_infinite]"
+                  className="live-status-dot live-pulse inline-block h-2 w-2 shrink-0 rounded-full bg-accent"
                 />
                 <span>{t("chatWindow.runningCommand")}</span>
               </div>

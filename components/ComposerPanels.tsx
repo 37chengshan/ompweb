@@ -26,7 +26,7 @@ function SubagentStatusIcon({ subagent }: { subagent: SubagentInfo }) {
       return (
         <span
           aria-hidden
-          className="live-status-dot inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent animate-[pulse_1.5s_infinite]"
+          className="live-status-dot live-pulse inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
         />
       );
     }

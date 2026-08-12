@@ -626,6 +626,9 @@ export class AgentSessionWrapper {
       try {
         const ready = await proc.waitReady(READY_TIMEOUT_MS);
         await proc.negotiateProtocol(ready);
+        // The replacement process starts with subscriptions disabled; restore
+        // the live roster/transcript event stream before reading its state.
+        await proc.sendCommand({ type: "set_subagent_subscription", level: "events" }).catch(() => {});
         const state = await proc.sendCommand<RpcSessionState>({ type: "get_state" });
         this.applyIdentity(state);
       } catch (error) {

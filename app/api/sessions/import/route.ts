@@ -5,8 +5,13 @@ import { randomUUID } from "crypto";
 import { getSessionsDir, getSessionDirNameForCwd } from "@/lib/omp/paths";
 import { invalidateSessionListCache } from "@/lib/session-reader";
 import { invalidateSessionFileListCache } from "@/lib/omp/session-files";
-
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+
+// JSON escapes a session's newlines and quotes on the wire. Bound the request
+// separately while preserving the 10 MB limit for decoded session content.
+const MAX_IMPORT_REQUEST_BYTES = MAX_IMPORT_BYTES * 2 + 64 * 1024;
 
 /** omp session file timestamps: ISO-8601 with `:` and `.` replaced by `-`. */
 function isoSessionTimestamp(): string {
@@ -14,11 +19,11 @@ function isoSessionTimestamp(): string {
 }
 
 // POST /api/sessions/import — import a native omp session .jsonl file.
-// The file keeps its original entries and cwd; it is written under the
-// sessions root in the cwd's project directory with a fresh name.
+// The session keeps its original entries but can only target a workspace the
+// user previously authorized through projects, sessions, or cwd selection.
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as { fileName?: unknown; content?: unknown };
+    const body = await parseJsonWithinLimit<{ fileName?: unknown; content?: unknown }>(req, MAX_IMPORT_REQUEST_BYTES);
     const fileName = typeof body.fileName === "string" ? body.fileName.trim() : "";
     const content = typeof body.content === "string" ? body.content : "";
     if (!fileName || fileName.includes("/") || fileName.includes("\\")) {
@@ -75,6 +80,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not a valid omp session file (missing session header with cwd)", code: "invalid_session_file" }, { status: 400 });
     }
 
+    const allowedRoots = await getAllowedFileRoots();
+    if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
+      return NextResponse.json({ error: "Imported session workspace is not authorized", code: "import_cwd_not_authorized" }, { status: 403 });
+    }
+
     const sessionDir = path.join(getSessionsDir(), getSessionDirNameForCwd(cwd));
     mkdirSync(sessionDir, { recursive: true });
     const sessionFile = path.join(sessionDir, `${isoSessionTimestamp()}_${randomUUID()}.jsonl`);
@@ -87,6 +97,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, sessionFile });
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ error: "Session import request is too large", code: "session_import_request_too_large" }, { status: 413 });
+    }
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

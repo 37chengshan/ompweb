@@ -18,8 +18,8 @@ import type { ManagedProject } from "./types";
 export interface ProjectRegistryEntry {
   /** Canonical project path (worktrees resolve to their main repo root). */
   path: string;
-  /** ISO timestamp of the most recent explicit add. Used to order projects
-   *  without sessions by most-recently-added. */
+  /** ISO timestamp of the most recent explicit add. Used to order projects by
+   *  most-recently-added (stable; never session activity). */
   addedAt: string;
   /** True when the user removed the project from the sidebar. Hidden entries
    *  suppress session re-discovery until the project is added again. */

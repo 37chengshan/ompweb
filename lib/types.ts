@@ -426,7 +426,8 @@ export interface SessionInfo {
 export interface ManagedProject {
   path: string;
   /** ISO timestamp of the last explicit add; present only for registered
-   *  projects and used to order projects without sessions. */
+   *  projects and used to order the project list (most recently added
+   *  first). The order is stable and never driven by session activity. */
   addedAt?: string;
 }
 

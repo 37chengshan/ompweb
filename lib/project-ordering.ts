@@ -4,19 +4,31 @@ import type { ManagedProject, SessionInfo } from "./types";
 // Pure ordering/grouping helpers shared between the sidebar and unit tests.
 // All keys are canonical projectRoot paths (worktrees collapse into their main
 // repo via resolveProject), so worktree sessions group under their project.
+//
+// The project list is ordered by when each project was added (addedAt desc =
+// most recently added first), NOT by session activity: activity changes on
+// every session refresh (agent runs, message edits, unread transitions) and
+// would make project rows jump around constantly. Registration order is
+// stable — it only changes when the user explicitly adds a project.
+// Session-discovered projects (no addedAt) follow the registered ones in
+// path order, which is also stable.
 // ============================================================================
 
-/** Latest `modified` timestamp per project (projectRoot), used for the
- *  by-activity ordering of the project list. */
-export function projectActivityByPath(sessions: SessionInfo[]): Map<string, string> {
-  const latest = new Map<string, string>();
-  for (const session of sessions) {
-    const key = session.projectRoot ?? session.cwd;
-    if (!key) continue;
-    const prev = latest.get(key);
-    if (!prev || session.modified > prev) latest.set(key, session.modified);
-  }
-  return latest;
+/** Sort projects by most-recently-added (addedAt desc), then by path for a
+ *  deterministic order. Projects without addedAt (session-discovered) always
+ *  sort below registered ones. The order never depends on session activity,
+ *  so project rows stay put while sessions refresh. */
+export function sortManagedProjects(projects: ManagedProject[]): ManagedProject[] {
+  return [...projects].sort((a, b) => {
+    const aHas = a.addedAt !== undefined;
+    const bHas = b.addedAt !== undefined;
+    if (aHas !== bHas) return aHas ? -1 : 1;
+    if (aHas && bHas) {
+      const byAdded = b.addedAt!.localeCompare(a.addedAt!);
+      if (byAdded !== 0) return byAdded;
+    }
+    return a.path.localeCompare(b.path);
+  });
 }
 
 /** Running/unread session counts per project, for the activity indicators on
@@ -38,24 +50,6 @@ export function projectActivityCounts(
     result.set(key, current);
   }
   return result;
-}
-
-/** Sort projects by latest session activity (desc); projects without sessions
- *  follow in most-recently-added (addedAt desc) order. Projects with activity
- *  always rank above projects without. */
-export function sortManagedProjects(
-  projects: ManagedProject[],
-  sessions: SessionInfo[],
-): ManagedProject[] {
-  const activity = projectActivityByPath(sessions);
-  return [...projects].sort((a, b) => {
-    const aActivity = activity.get(a.path);
-    const bActivity = activity.get(b.path);
-    if (aActivity && bActivity) return bActivity.localeCompare(aActivity);
-    if (aActivity) return -1;
-    if (bActivity) return 1;
-    return (b.addedAt ?? "").localeCompare(a.addedAt ?? "");
-  });
 }
 
 /** Group sessions under their project. Every project in `projects` gets an

@@ -17,7 +17,8 @@ import type { ManagedProject } from "@/lib/types";
 // GET /api/projects  →  { projects: ManagedProject[] }
 // Registered (non-hidden) projects plus session-discovered projects, excluding
 // hidden entries. Session-discovered paths get no addedAt; the client orders
-// the merged list by session activity, then most-recently-added.
+// the merged list by most-recently-added (registration order), then by path —
+// deliberately not by session activity, which would reorder rows on refresh.
 export async function GET() {
   try {
     const registry = loadProjectRegistry();

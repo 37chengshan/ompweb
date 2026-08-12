@@ -658,7 +658,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // ---- Derived project list ---------------------------------------------------
   const selectedProject = useMemo(() => projectRootFor(selectedCwd), [projectRootFor, selectedCwd]);
-  const sortedProjects = useMemo(() => sortManagedProjects(projects, allSessions), [projects, allSessions]);
+  // Stable order: most-recently-added first, then session-discovered by path.
+  // Deliberately does NOT depend on session activity — re-sorting on every
+  // session refresh made project rows jump around while working.
+  const sortedProjects = useMemo(() => sortManagedProjects(projects), [projects]);
   const sessionsByProject = useMemo(
     () => groupSessionsByProject(sortedProjects, allSessions),
     [sortedProjects, allSessions],
@@ -684,8 +687,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     });
   }, [expandedProjects, sortedProjects]);
 
-  // True while the auto-selected project was chosen before sessions loaded
-  // (activity ordering unknown); cleared by any manual activation.
+  // True while the auto-selected project was chosen before projects loaded
+  // (ordering incomplete); cleared by any manual activation.
   const provisionalSelectionRef = useRef(false);
 
   // Auto-select cwd and restore session from URL on first load
@@ -706,10 +709,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       // Session not found — notify parent so it can show the placeholder
       onInitialRestoreDone?.();
     }
-    // No restore target: activate the top project (by activity, then
-    // most-recently-added) so New Session and Explorer have a context. When
-    // sessions have not loaded yet the ordering is provisional — re-pick once
-    // they arrive, unless the user already activated a project by hand.
+    // No restore target: activate the top project (most recently added) so New
+    // Session and Explorer have a context. When projects have not loaded yet
+    // the ordering is provisional — re-pick once they arrive, unless the user
+    // already activated a project by hand.
     if (selectedCwd !== null && !provisionalSelectionRef.current) return;
     const top = sortedProjects[0];
     if (!top) return;

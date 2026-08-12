@@ -179,8 +179,11 @@ handled or safely ignored.
 - `GET /api/projects` re-authorizes registered roots with `allowFileRoot()` —
   the in-memory browse allowlist does not survive restarts, and empty managed
   projects derive no root from sessions.
-- The client sorts the merged list by latest session activity, then
-  most-recently-added (`lib/project-ordering.ts`); expanded project paths live
+- The client sorts the merged list by most-recently-added (registration
+  order), then by path for session-discovered projects
+  (`lib/project-ordering.ts`); the order deliberately does NOT depend on
+  session activity, so project rows never jump around while sessions refresh.
+  Expanded project paths live
   in `localStorage` (`omp-web:expanded-projects`), defaulting to only the
   active/restored project expanded, and stale keys are pruned against the
   current project list (only after the first project fetch — an empty

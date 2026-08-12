@@ -363,12 +363,12 @@ export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersio
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent
-        key={subagent?.id ?? "none"}
-        ariaLabel={t("subagentTranscript.title")}
-        style={{ width: "min(94vw, 920px)", maxWidth: "min(94vw, 920px)" }}
-      >
-        {subagent && (
+      {subagent && (
+        <DialogContent
+          key={subagent.id}
+          ariaLabel={t("subagentTranscript.title")}
+          style={{ width: "min(94vw, 920px)", maxWidth: "min(94vw, 920px)" }}
+        >
           <>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -503,8 +503,8 @@ export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersio
               </div>
             )}
           </>
-        )}
-      </DialogContent>
+        </DialogContent>
+      )}
     </Dialog>
   );
 }

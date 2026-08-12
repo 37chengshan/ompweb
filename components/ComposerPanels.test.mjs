@@ -37,7 +37,8 @@ test("attaches todo plan and subagent roster with live states", () => {
   assert.match(html, /scout/);
   assert.match(html, /Map the surface/);
   assert.match(html, /worker/);
-  assert.match(html, /1 running · 2 total/);
+  assert.match(html, /aria-label="1 running · 2 total"/);
+  assert.doesNotMatch(html, />1 running · 2 total</);
 });
 
 test("panels start collapsed with live summary in their headers", () => {
@@ -50,7 +51,8 @@ test("panels start collapsed with live summary in their headers", () => {
   assert.match(html, /Tasks/);
   assert.match(html, /0\/1 complete/);
   assert.match(html, /Subagents/);
-  assert.match(html, /1 running · 1 total/);
+  assert.match(html, /aria-label="1 running · 1 total"/);
+  assert.doesNotMatch(html, />1 running · 1 total</);
   // ...but both panels start collapsed: toggle headers only, no content.
   assert.match(html, /aria-expanded="false"/);
   assert.doesNotMatch(html, /Wire panels/);
@@ -82,10 +84,12 @@ test("live chips show current tool, telemetry, and async marker", () => {
   }));
 
   assert.match(html, /Map the surface/);
-  assert.match(html, /read — Inspect foo.ts/);
-  assert.match(html, /2.2k tok/);
-  assert.match(html, /8k\/32k ctx/);
-  assert.match(html, /gpt-x/);
+  assert.match(html, /read — Inspect foo\.ts/);
+  assert.match(html, /data-subagent-metric="2\.2k tok"/);
+  assert.match(html, /data-subagent-metric="8k\/32k ctx"/);
+  assert.match(html, /data-subagent-metric="gpt-x"/);
+  assert.doesNotMatch(html, />2\.2k tok</);
+  assert.doesNotMatch(html, />8k\/32k ctx</);
   assert.match(html, /⤴/);
 });
 
@@ -103,7 +107,8 @@ test("retrying chips surface retry state instead of the activity line", () => {
     onSelectSubagent: noop,
     defaultExpanded: true,
   }));
-  assert.match(html, /retrying 2\/5/);
+  assert.match(html, /data-subagent-metric="retrying 2\/5"/);
+  assert.doesNotMatch(html, />retrying 2\/5</);
 });
 
 test("history chips render terminal telemetry without pulsing state", () => {
@@ -122,8 +127,8 @@ test("history chips render terminal telemetry without pulsing state", () => {
     defaultExpanded: true,
   }));
   assert.match(html, /Map the surface/);
-  assert.match(html, /999k tok/);
-  assert.match(html, /6m/);
+  assert.match(html, /data-subagent-metric="999k tok"/);
+  assert.match(html, /data-subagent-metric="6m"/);
   // History chips must not show the pulsing live dot.
   assert.doesNotMatch(html, /animate-\[pulse/);
 });
@@ -147,9 +152,9 @@ test("chips show agent source, nested count, and async marker", () => {
     onSelectSubagent: noop,
     defaultExpanded: true,
   }));
-  assert.match(html, /Inspect foo.ts/);
-  assert.match(html, /user/);
-  assert.match(html, /2 nested/);
+  assert.match(html, /Inspect foo\.ts/);
+  assert.match(html, /data-subagent-metric="user"/);
+  assert.match(html, /data-subagent-metric="2 nested"/);
   assert.match(html, /⤴/);
 });
 

@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Ban, CheckCircle2, ChevronDown, Circle, CircleAlert, Network } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import {
+  Activity, Ban, Bot, CheckCircle2, ChevronDown, Circle, CircleAlert,
+  CircleDollarSign, Clock3, Cpu, Gauge, GitBranch, Network, RefreshCw,
+  UserRound, Wrench, type LucideIcon,
+} from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import type { SubagentInfo } from "@/hooks/useAgentSession";
 import type { TodoPhase } from "@/lib/pi-types";
@@ -34,24 +38,54 @@ function SubagentStatusIcon({ subagent }: { subagent: SubagentInfo }) {
   return <Ban {...props} color="var(--text-dim)" />;
 }
 
+/** Icon-first telemetry keeps the compact roster scannable without label noise. */
+function SubagentMetric({ icon: Icon, label, children }: {
+  icon: LucideIcon;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      aria-label={label}
+      title={label}
+      data-subagent-metric={label}
+      style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
+    >
+      <Icon size={11} strokeWidth={1.8} aria-hidden />
+      <span>{children}</span>
+    </span>
+  );
+}
+
 /** Compact live/secondary line under a chip label (tool, retry, telemetry). */
 function SubagentActivityLine({ subagent }: { subagent: SubagentInfo }) {
   const { t } = useI18n();
   const progress = subagent.progress;
   const retryActive = Boolean(progress?.retryState ?? progress?.retryFailure);
-  const parts: string[] = [];
+  const parts: ReactNode[] = [];
 
   if (retryActive) {
     const attempt = progress?.retryState?.attempt ?? progress?.retryFailure?.attempt ?? 0;
     const maxAttempts = progress?.retryState?.maxAttempts ?? 0;
-    parts.push(maxAttempts > 0
+    const label = maxAttempts > 0
       ? t("chatWindow.subagentRetrying", { attempt, max: maxAttempts })
-      : t("chatWindow.subagentRetryAttempt", { attempt }));
+      : t("chatWindow.subagentRetryAttempt", { attempt });
+    parts.push(
+      <SubagentMetric key="retry" icon={RefreshCw} label={label}>
+        {maxAttempts > 0 ? `${attempt}/${maxAttempts}` : attempt}
+      </SubagentMetric>,
+    );
   } else if (subagent.status === "started") {
     const activity = progress?.currentTool
-      ? `⚙ ${progress.currentTool}${progress.lastIntent ? ` — ${progress.lastIntent}` : ""}`
+      ? `${progress.currentTool}${progress.lastIntent ? ` — ${progress.lastIntent}` : ""}`
       : progress?.lastIntent;
-    if (activity) parts.push(activity);
+    if (activity) {
+      parts.push(
+        <SubagentMetric key="activity" icon={progress?.currentTool ? Wrench : Activity} label={activity}>
+          {activity}
+        </SubagentMetric>,
+      );
+    }
   }
 
   const nested = countNestedSubagents(progress);
@@ -60,34 +94,43 @@ function SubagentActivityLine({ subagent }: { subagent: SubagentInfo }) {
   const cost = formatCost(progress?.cost);
   const ctxTokens = formatTokens(progress?.contextTokens);
   const context = ctxTokens
-    ? t("chatWindow.contextGauge", { used: ctxTokens, total: formatTokens(progress?.contextWindow) ?? "?" })
+    ? `${ctxTokens}/${formatTokens(progress?.contextWindow) ?? "?"}`
     : null;
   const model = shortModel(progress?.resolvedModel);
   const duration = subagent.source === "history" ? formatDuration(progress?.durationMs) : null;
-  const meta = [
-    source,
-    nested > 0 ? t("chatWindow.subagentNestedCount", { count: nested }) : null,
-    tokens ? t("chatWindow.tokensUnit", { count: tokens }) : null,
-    cost, context, model, duration,
+  const meta: ReactNode[] = [
+    source ? <SubagentMetric key="source" icon={UserRound} label={source}>{source === "user" ? null : source}</SubagentMetric> : null,
+    nested > 0 ? <SubagentMetric key="nested" icon={GitBranch} label={t("chatWindow.subagentNestedCount", { count: nested })}>{nested}</SubagentMetric> : null,
+    tokens ? <SubagentMetric key="tokens" icon={Cpu} label={t("chatWindow.tokensUnit", { count: tokens })}>{tokens}</SubagentMetric> : null,
+    cost ? <SubagentMetric key="cost" icon={CircleDollarSign} label={cost}>{cost}</SubagentMetric> : null,
+    context ? <SubagentMetric key="context" icon={Gauge} label={t("chatWindow.contextGauge", { used: ctxTokens ?? "?", total: formatTokens(progress?.contextWindow) ?? "?" })}>{context}</SubagentMetric> : null,
+    model ? <SubagentMetric key="model" icon={Bot} label={model}>{model}</SubagentMetric> : null,
+    duration ? <SubagentMetric key="duration" icon={Clock3} label={duration}>{duration}</SubagentMetric> : null,
   ].filter(Boolean);
-  if (meta.length > 0) parts.push(meta.join(" · "));
+  if (meta.length > 0) {
+    parts.push(
+      <span key="meta" style={{ display: "inline-flex", flexWrap: "wrap", gap: "2px 7px" }}>
+        {meta}
+      </span>,
+    );
+  }
 
   if (parts.length === 0) return null;
   return (
     <span
       style={{
-        display: "block",
+        display: "flex",
         minWidth: 0,
         overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
         fontSize: 10.5,
         fontFamily: "var(--font-mono)",
         color: retryActive ? "var(--accent-strong)" : "var(--text-dim)",
         lineHeight: 1.4,
+        gap: 7,
+        flexWrap: "wrap",
       }}
     >
-      {parts.join(" · ")}
+      {parts}
     </span>
   );
 }
@@ -120,7 +163,16 @@ function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }
       >
         <Network size={14} strokeWidth={1.8} aria-hidden />
         <strong className="font-medium text-text">{t("chatWindow.subagentsPanel")}</strong>
-        <span className="ml-auto">{t("chatWindow.subagentSummary", { running: runningCount, total: subagents.length })}</span>
+        <span
+          className="ml-auto inline-flex items-center gap-1.5"
+          aria-label={t("chatWindow.subagentSummary", { running: runningCount, total: subagents.length })}
+          title={t("chatWindow.subagentSummary", { running: runningCount, total: subagents.length })}
+        >
+          <Activity size={12} strokeWidth={1.8} aria-hidden />
+          <span>{runningCount}</span>
+          <Network size={12} strokeWidth={1.8} aria-hidden />
+          <span>{subagents.length}</span>
+        </span>
         <ChevronDown
           size={14}
           strokeWidth={1.8}

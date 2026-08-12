@@ -60,6 +60,12 @@ interface WorktreeState {
   worktrees: WorktreeEntry[];
 }
 
+// Bounded retry window for restoring a brand-new session from its URL before
+// omp flushes the JSONL (typically appears within a second or two of the
+// first prompt, so 8 × 1s covers it without hanging a dead link forever).
+const INITIAL_RESTORE_RETRY_MS = 1000;
+const INITIAL_RESTORE_MAX_ATTEMPTS = 8;
+
 const UNREAD_SESSIONS_STORAGE_KEY = "omp-web:unread-session-ids";
 
 function loadUnreadSessionIds(): Set<string> {
@@ -711,6 +717,18 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
   // (ordering incomplete); cleared by any manual activation.
   const provisionalSelectionRef = useRef(false);
 
+  // A just-started session's JSONL is not flushed until its first turn makes
+  // progress, so a URL reopened in that window has no list entry yet. Retry
+  // the list a few times before declaring the restore failed.
+  const restoreRetryRef = useRef(0);
+  const restoreRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (restoreRetryTimerRef.current) {
+      clearTimeout(restoreRetryTimerRef.current);
+      restoreRetryTimerRef.current = null;
+    }
+  }, []);
+
   // Auto-select cwd and restore session from URL on first load
   useEffect(() => {
     if (skipInitialProjectSelection) return;
@@ -718,14 +736,29 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     // If restoring a session, set cwd to match that session
     if (initialSessionId && !restoredRef.current) {
       if (allSessions.length === 0) return; // wait for sessions to load
-      restoredRef.current = true;
       const target = allSessions.find((s) => s.id === initialSessionId);
       if (target) {
+        restoreRetryRef.current = 0;
+        restoredRef.current = true;
         setSelectedCwd(target.cwd);
         expandProject(workspaceKeyOf(target));
         onSelectSession(target, true);
         return;
       }
+      if (restoreRetryRef.current < INITIAL_RESTORE_MAX_ATTEMPTS) {
+        restoreRetryRef.current += 1;
+        if (restoreRetryTimerRef.current) {
+          clearTimeout(restoreRetryTimerRef.current);
+          restoreRetryTimerRef.current = null;
+        }
+        restoreRetryTimerRef.current = setTimeout(() => {
+          restoreRetryTimerRef.current = null;
+          void loadSessions(false);
+        }, INITIAL_RESTORE_RETRY_MS);
+        return;
+      }
+      restoreRetryRef.current = 0;
+      restoredRef.current = true;
       // Session not found — notify parent so it can show the placeholder
       onInitialRestoreDone?.();
     }
@@ -739,7 +772,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     setSelectedCwd(top.path);
     expandProject(top.path);
     provisionalSelectionRef.current = allSessions.length === 0;
-  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone, sortedProjects, expandProject]);
+  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone, sortedProjects, expandProject, loadSessions]);
 
   // Default expansion: when the user has never stored an expansion choice,
   // expand only the active project.

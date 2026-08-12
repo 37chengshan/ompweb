@@ -27,6 +27,7 @@ import {
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/lib/i18n";
+import { selectableThinkingLevels } from "@/lib/thinking-levels";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -66,8 +67,8 @@ interface Props {
   compactResult?: CompactResultInfo | null;
   toolPreset?: "none" | "default" | "full";
   onToolPresetChange?: (preset: "none" | "default" | "full") => void;
-  thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-  onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
+  thinkingLevel?: string;
+  onThinkingLevelChange?: (level: string) => void;
   availableThinkingLevels?: string[] | null;
   thinkingLevelMap?: Record<string, string | null> | null;
   /** Display name for the current model when the catalog does not know it. */
@@ -118,8 +119,7 @@ function compareModelOptions(collator: Intl.Collator, a: ModelOption, b: ModelOp
     || collator.compare(a.modelId, b.modelId);
 }
 
-const THINKING_LEVELS = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-const THINKING_LEVEL_DESC_KEYS: Record<typeof THINKING_LEVELS[number], string> = {
+const THINKING_LEVEL_DESC_KEYS: Record<string, string> = {
   auto: "chatInput.thinkingAuto",
   off: "chatInput.thinkingOff",
   minimal: "chatInput.thinkingMinimal",
@@ -1226,7 +1226,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     return () => window.removeEventListener("omp-composer-models-change", refresh);
   }, []);
 
-  const modelOptions: ModelOption[] = (() => {
+  const modelOptions: ModelOption[] = React.useMemo(() => {
     if (modelList && modelList.length > 0) {
       return modelList.map((m) => ({ provider: m.provider, modelId: m.id, name: m.name }))
         .filter((m) => visibleModelKeys === null || visibleModelKeys.has(`${m.provider}:${m.modelId}`))
@@ -1237,15 +1237,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       modelId,
       name,
     })).sort((a, b) => compareModelOptions(modelCollator, a, b));
-  })();
+  }, [modelList, modelNames, model?.provider, visibleModelKeys, modelCollator]);
 
   // Group options by provider, preserving insertion order
-  const modelsByProvider: { provider: string; options: ModelOption[] }[] = [];
-  for (const opt of modelOptions) {
-    const group = modelsByProvider.find((g) => g.provider === opt.provider);
-    if (group) group.options.push(opt);
-    else modelsByProvider.push({ provider: opt.provider, options: [opt] });
-  }
+  const modelsByProvider: { provider: string; options: ModelOption[] }[] = React.useMemo(() => {
+    const groups: { provider: string; options: ModelOption[] }[] = [];
+    for (const opt of modelOptions) {
+      const group = groups.find((g) => g.provider === opt.provider);
+      if (group) group.options.push(opt);
+      else groups.push({ provider: opt.provider, options: [opt] });
+    }
+    return groups;
+  }, [modelOptions]);
 
   const displayModelName = model
     ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name
@@ -1280,6 +1283,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (lvl === "auto" || !thinkingLevelMap) return lvl;
     return thinkingLevelMap[lvl] ?? lvl;
   })();
+  const thinkingLevelOptions = React.useMemo(
+    () => selectableThinkingLevels(availableThinkingLevels),
+    [availableThinkingLevels],
+  );
   const toolPresetLabel = Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? "default"))?.[0] ?? "default";
 
   // Close dropdowns on outside click
@@ -2296,13 +2303,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     position: "absolute", bottom: "calc(100% + 6px)", right: 0,
                     zIndex: 100, minWidth: 180,
                   }}>
-                    {THINKING_LEVELS.filter((lvl) => {
-                      if (!availableThinkingLevels) return true;
-                      if (lvl === "auto") return true;
-                      return availableThinkingLevels.includes(lvl);
-                    }).map((lvl) => {
+                    {thinkingLevelOptions.map((lvl) => {
                       const isActive = (thinkingLevel ?? "auto") === lvl;
-                      const desc = t(THINKING_LEVEL_DESC_KEYS[lvl]);
+                      const descKey = THINKING_LEVEL_DESC_KEYS[lvl];
+                      const desc = descKey ? t(descKey) : "";
                       const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
                       const displayLabel = (mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl;
                       const showOriginal = mappedVal != null && mappedVal !== lvl;

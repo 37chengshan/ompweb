@@ -19,6 +19,17 @@ export interface ThinkingModelMeta {
   thinking?: { efforts?: string[] };
 }
 
+const DEFAULT_THINKING_LEVELS = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** Keep familiar levels ordered while preserving provider-defined additions. */
+export function selectableThinkingLevels(available: readonly string[] | null | undefined): string[] {
+  if (!available) return [...DEFAULT_THINKING_LEVELS];
+
+  const remaining = new Set(available.filter((level) => level && level !== "auto"));
+  const ordered = DEFAULT_THINKING_LEVELS.filter((level) => level === "auto" || remaining.delete(level));
+  return [...ordered, ...remaining];
+}
+
 /** "off" is always a valid selector; concrete efforts come from the model. */
 export function thinkingLevelsForMeta(meta: ThinkingModelMeta): string[] {
   if (!meta.reasoning) return ["off"];

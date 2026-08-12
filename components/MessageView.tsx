@@ -3,6 +3,7 @@
 import { memo, useState, useRef, useEffect, useMemo, useCallback, type ComponentProps } from "react";
 import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, Brain, Ban, CheckCircle2, CircleAlert } from "lucide-react";
 import { MarkdownBody } from "./MarkdownBody";
+import { ClickableImage } from "./ImageLightbox";
 import { copyText } from "@/lib/clipboard";
 import { translate, useI18n, type Locale } from "@/lib/i18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
@@ -253,8 +254,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     ? `data:${flat.mimeType};base64,${flat.data}`
                     : "";
                 return (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <ClickableImage
                     key={i}
                     src={src}
                     alt=""
@@ -1407,8 +1407,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
                   const src = imageSource(img);
                   if (!src) return null;
                   return (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <ClickableImage
                       key={i}
                       src={src}
                       alt=""

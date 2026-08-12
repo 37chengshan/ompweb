@@ -731,6 +731,165 @@ pre, code {
   }
 }
 
+/* Image lightbox — click-to-preview for images in chat messages */
+.image-clickable {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+  line-height: 0;
+}
+/* Markdown images were intrinsic-width block elements with their own
+   margins; keep that flow without letting the button stretch full-width. */
+.markdown-body .image-clickable {
+  display: block;
+  width: fit-content;
+}
+.image-clickable:hover img {
+  opacity: 0.85;
+}
+.image-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.image-lightbox-dialog {
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+.image-lightbox-dialog::backdrop {
+  background: var(--overlay-backdrop);
+}
+.image-lightbox-layout {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+.image-lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 7px 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+.image-lightbox-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.image-lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.image-lightbox-stepper {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+}
+.image-lightbox-stepper button,
+.image-lightbox-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.image-lightbox-stepper button {
+  height: 22px;
+}
+.image-lightbox-stepper button + .image-lightbox-zoom-value,
+.image-lightbox-zoom-value + button {
+  border-left: 1px solid var(--border);
+}
+.image-lightbox-icon-button {
+  flex: 0 0 24px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.image-lightbox-stepper button:hover:not(:disabled),
+.image-lightbox-icon-button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.image-lightbox-stepper button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.image-lightbox-stepper button:focus-visible,
+.image-lightbox-icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.image-lightbox-zoom-value {
+  min-width: 48px;
+  height: 22px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 22px;
+  text-align: center;
+  user-select: none;
+}
+.image-lightbox-viewport {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  background: var(--bg);
+  -webkit-overflow-scrolling: touch;
+}
+.image-lightbox-dialog .image-lightbox-img {
+  display: block;
+  margin: auto;
+  max-width: none;
+  height: auto;
+  transition: zoom var(--dur-fast) var(--ease-out-warm);
+}
+
+@media (max-width: 480px) {
+  .image-lightbox-toolbar {
+    padding-inline: 8px;
+  }
+
+  .image-lightbox-title {
+    font-size: 10px;
+  }
+
+  .image-lightbox-viewport {
+    padding: 12px;
+  }
+}
+
 /* File viewer toolbar */
 .file-viewer-toolbar {
   min-width: 0;

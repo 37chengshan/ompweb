@@ -1174,7 +1174,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const level = event.level as string | undefined;
         const message = (event.message as string | undefined)?.trim() ?? "";
         if (/^xd:\/\/:\s*mounted\s+mcp__/i.test(message)) {
-          toast.info("MCP tools updated", message);
+          toast.info("MCP tools updated", message, { clamp: true });
         } else {
           addNotice({
             type: level === "error" ? "error" : level === "warning" ? "warning" : "info",
@@ -1185,7 +1185,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       case "command_output": {
         const text = (event.text as string | undefined)?.trim() ?? "";
-        if (/^xd:\/\/:\s*mounted\s+mcp__/i.test(text)) toast.info("MCP tools updated", text);
+        if (/^xd:\/\/:\s*mounted\s+mcp__/i.test(text)) toast.info("MCP tools updated", text, { clamp: true });
         else if (text) addNotice({ type: "info", message: text });
         break;
       }
@@ -1240,7 +1240,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             return [...prev, delivered];
           });
         } else if (completed?.role === "custom" && (completed as CustomMessage).customType === "xdev-mount-notice") {
-          toast.info("MCP tools updated", describeMcpMountNotice(completed as CustomMessage));
+          toast.info("MCP tools updated", describeMcpMountNotice(completed as CustomMessage), { clamp: true });
         } else if (completed) {
           setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
         }

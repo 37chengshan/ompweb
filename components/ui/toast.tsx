@@ -12,29 +12,40 @@
  */
 import { Toast } from "@base-ui/react/toast";
 import { AlertCircle, Check, Info, X } from "lucide-react";
+import { useState } from "react";
 import type React from "react";
 
 type ToastKind = "success" | "error" | "info";
 
 interface ToastData {
   kind?: ToastKind;
+  /** Clamp the description to 2 lines; click the description to expand it. */
+  clamp?: boolean;
+}
+
+interface ToastOptions {
+  /** Clamp the description to 2 lines; click the description to expand it. */
+  clamp?: boolean;
 }
 
 const manager = Toast.createToastManager<ToastData>();
 
-function add(kind: ToastKind, title: React.ReactNode, description?: React.ReactNode) {
+function add(kind: ToastKind, title: React.ReactNode, description?: React.ReactNode, options?: ToastOptions) {
   return manager.add({
     title,
     description,
     type: kind,
-    data: { kind },
+    data: { kind, clamp: options?.clamp },
   });
 }
 
 export const toast = {
-  success: (title: React.ReactNode, description?: React.ReactNode) => add("success", title, description),
-  error: (title: React.ReactNode, description?: React.ReactNode) => add("error", title, description),
-  info: (title: React.ReactNode, description?: React.ReactNode) => add("info", title, description),
+  success: (title: React.ReactNode, description?: React.ReactNode, options?: ToastOptions) =>
+    add("success", title, description, options),
+  error: (title: React.ReactNode, description?: React.ReactNode, options?: ToastOptions) =>
+    add("error", title, description, options),
+  info: (title: React.ReactNode, description?: React.ReactNode, options?: ToastOptions) =>
+    add("info", title, description, options),
   close: (id?: string) => manager.close(id),
 };
 
@@ -43,6 +54,50 @@ function KindIcon({ kind }: { kind?: ToastKind }) {
   if (kind === "success") return <Check {...common} style={{ ...common.style, color: "var(--accent)" }} aria-hidden />;
   if (kind === "error") return <AlertCircle {...common} style={{ ...common.style, color: "var(--accent-strong)" }} aria-hidden />;
   return <Info {...common} style={{ ...common.style, color: "var(--text-muted)" }} aria-hidden />;
+}
+
+const descriptionBaseStyle = {
+  fontSize: 12,
+  color: "var(--text-muted)",
+  lineHeight: 1.5,
+  marginTop: 2,
+} as const;
+
+/** Inline styles for a clamped description: 2-line ellipsis when collapsed, full content when expanded. */
+export function clampDescriptionStyle(expanded: boolean): React.CSSProperties {
+  return {
+    ...descriptionBaseStyle,
+    cursor: expanded ? "default" : "pointer",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    ...(expanded
+      ? {}
+      : {
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }),
+  };
+}
+
+/**
+ * Clamped text block: 2 lines with an ellipsis until clicked, then the full
+ * content. Rendered inside a Toast.Description for long notices (e.g. the MCP
+ * tool inventory) via toast.info(..., { clamp: true }).
+ */
+export function ClampedDescription({ children }: { children: React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <span
+      onClick={() => setExpanded((v) => !v)}
+      aria-expanded={expanded}
+      title={expanded ? undefined : "Click to expand"}
+      style={clampDescriptionStyle(expanded)}
+    >
+      {children}
+    </span>
+  );
 }
 
 function Toaster() {
@@ -83,7 +138,13 @@ function Toaster() {
             <KindIcon kind={t.type as ToastKind | undefined} />
             <Toast.Content style={{ flex: 1, minWidth: 0 }}>
               <Toast.Title className="display-serif" style={{ fontSize: 13, lineHeight: 1.4 }} />
-              <Toast.Description style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 2 }} />
+              {t.data?.clamp ? (
+                <Toast.Description style={descriptionBaseStyle}>
+                  <ClampedDescription>{t.description}</ClampedDescription>
+                </Toast.Description>
+              ) : (
+                <Toast.Description style={descriptionBaseStyle} />
+              )}
             </Toast.Content>
             <Toast.Close
               aria-label="Dismiss"

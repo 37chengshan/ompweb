@@ -434,6 +434,7 @@
   "messageView.editFromHere": "編集",
   "messageView.editFromHereTitle": "ここに戻ってこのメッセージを編集します",
   "messageView.estimatedTokens": "推定出力トークン数",
+  "messageView.advisorLabel": "アドバイザー",
   "messageView.expand": "展開",
   "messageView.extensionType": "拡張機能",
   "messageView.fileContext": "ファイルコンテキスト: {parts}",

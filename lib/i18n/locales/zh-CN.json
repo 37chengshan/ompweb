@@ -434,6 +434,7 @@
   "messageView.editFromHere": "编辑",
   "messageView.editFromHereTitle": "跳回此处并编辑这条消息",
   "messageView.estimatedTokens": "估算输出 token 数",
+  "messageView.advisorLabel": "顾问",
   "messageView.expand": "展开",
   "messageView.extensionType": "扩展",
   "messageView.fileContext": "文件上下文：{parts}",

@@ -434,6 +434,7 @@
   "messageView.editFromHere": "Edit",
   "messageView.editFromHereTitle": "Jump back here and edit this message",
   "messageView.estimatedTokens": "Estimated output tokens",
+  "messageView.advisorLabel": "Advisor",
   "messageView.expand": "Expand",
   "messageView.extensionType": "extension",
   "messageView.fileContext": "File context: {parts}",

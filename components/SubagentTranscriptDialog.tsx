@@ -197,6 +197,7 @@ export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersio
   const requestSeqRef = useRef(0);
   const transcriptRequestSeqRef = useRef(0);
   const refetchedVersionRef = useRef(0);
+  const refetchedTranscriptVersionRef = useRef(0);
   const latestVersionRef = useRef(0);
   const versionDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -316,18 +317,24 @@ export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersio
   // timer, and the already-processed guard prevents same-version loops.
   useEffect(() => {
     if (!open || !sessionId || transcriptVersion === 0 || loading) return;
-    if (transcriptVersion === refetchedVersionRef.current && transcriptVersion === latestVersionRef.current) return;
+    const completionDone = transcriptVersion === refetchedVersionRef.current && transcriptVersion === latestVersionRef.current;
+    const transcriptDone = transcriptVersion === refetchedTranscriptVersionRef.current;
+    if (completionDone && transcriptDone) return;
     latestVersionRef.current = transcriptVersion;
     if (versionDebounceTimerRef.current) clearTimeout(versionDebounceTimerRef.current);
     versionDebounceTimerRef.current = setTimeout(() => {
       versionDebounceTimerRef.current = null;
-      if (refetchedVersionRef.current === latestVersionRef.current) return;
-      refetchedVersionRef.current = latestVersionRef.current;
-      void load();
-      // An open LIVE transcript keeps appending: the pager re-derives
-      // exhaustion from the actual page, so a file that grew past a previous
-      // EOF is not blocked by a stale exhausted flag.
-      if (transcriptOpen && !transcriptLoading) {
+      // Completion fetch: consume the version only when actually fired.
+      if (refetchedVersionRef.current !== latestVersionRef.current) {
+        refetchedVersionRef.current = latestVersionRef.current;
+        void load();
+      }
+      // Open transcript append: if an older page is still in flight, DO NOT
+      // consume the version — when transcriptLoading flips false this effect
+      // re-runs and pages the latest (a consumed version would leave the
+      // open transcript stale forever with no Load-more button).
+      if (transcriptOpen && !transcriptLoading && refetchedTranscriptVersionRef.current !== latestVersionRef.current) {
+        refetchedTranscriptVersionRef.current = latestVersionRef.current;
         void loadTranscriptPage(transcriptNextByte);
       }
     }, 600);

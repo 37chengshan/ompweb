@@ -70,7 +70,6 @@ test("task panel renders nothing without task details", () => {
   assert.equal(renderToStaticMarkup(React.createElement(TaskResultPanel, { details: { patch: "p" } })), "");
 });
 
-
 test("async-only task details render the job as one started row", () => {
   const html = renderToStaticMarkup(React.createElement(TaskResultPanel, {
     details: { async: { state: "running", jobId: "AsyncAudit", type: "task" } },
@@ -79,4 +78,29 @@ test("async-only task details render the job as one started row", () => {
   assert.match(html, /AsyncAudit/);
   assert.doesNotMatch(html, /0 subagents/);
 });
+
+test("irc:incoming custom messages title with the sender name", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    message: {
+      role: "custom",
+      customType: "irc:incoming",
+      content: "<irc>\nIncoming IRC message from agent `AuditUiComponents`:\n\nPlease review the current tree.\nThanks.",
+      display: true,
+    },
+  }));
+  assert.match(html, /AuditUiComponents/);
+  assert.doesNotMatch(html, /irc:incoming/);
+  assert.match(html, /Please review the current tree/);
+  assert.doesNotMatch(html, /Incoming IRC message from agent/);
+});
+
+test("advisor custom messages use the localized advisor label", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    message: { role: "custom", customType: "advisor", content: "Consider handling the edge case.", display: true },
+  }));
+  assert.match(html, /Advisor/);
+  assert.match(html, /Consider handling the edge case/);
+  assert.doesNotMatch(html, /customType/);
+});
+
 

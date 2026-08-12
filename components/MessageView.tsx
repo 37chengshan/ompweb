@@ -1352,11 +1352,18 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
   const images = getMessageImages(message.content);
   const hasDetails = message.details !== undefined;
   const detailsText = hasDetails ? safeJson(message.details) : "";
-  const title = formatCustomType(message.customType);
+  const isIrc = IRC_CUSTOM_TYPES.has(message.customType);
+  const ircEnvelope = isIrc ? parseIrcEnvelope(text) : null;
+  const displayText = ircEnvelope ? ircEnvelope.body : text;
+  const title = isIrc
+    ? (ircEnvelope?.sender ?? formatCustomType(message.customType))
+    : message.customType === "advisor"
+      ? t("messageView.advisorLabel")
+      : formatCustomType(message.customType);
   const time = formatTime(message.timestamp, locale);
 
   const copyContent = () => {
-    copyText(text || detailsText).then(() => {
+    copyText(displayText || detailsText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
@@ -1386,7 +1393,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
           }}
         >
           <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
-            {title}
+            {isIrc && message.customType === "irc:incoming" ? `← ${title}` : title}
           </span>
           {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{t("messageView.hiddenExtensionMessage")}</span>}
           {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
@@ -1395,7 +1402,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
         {contentExpanded ? (
           <div style={{ padding: "6px 9px" }}>
             {images.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: text ? 8 : 0 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: displayText ? 8 : 0 }}>
                 {images.map((img, i) => {
                   const src = imageSource(img);
                   if (!src) return null;
@@ -1411,7 +1418,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
                 })}
               </div>
             )}
-            {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("messageView.noMessage")}</span>}
+            {displayText ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{displayText}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("messageView.noMessage")}</span>}
           </div>
         ) : (
           <button
@@ -1428,7 +1435,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
               textAlign: "left",
             }}
           >
-            {text ? previewText(text) : t("messageView.showExtensionMessage")}
+            {displayText ? previewText(displayText) : t("messageView.showExtensionMessage")}
           </button>
         )}
 
@@ -1538,6 +1545,26 @@ function safeJson(value: unknown): string {
 
 function formatCustomType(type: string): string {
   return type || translate("messageView.extensionType");
+}
+
+// Peer IRC messages are persisted as custom_message entries whose content is
+// an envelope: "<irc>\nIncoming IRC message from agent `Name`:\n<body>". The
+// card title must show the SENDER, not the raw customType.
+const IRC_CUSTOM_TYPES = new Set(["irc:incoming", "irc:autoreply", "irc:relay"]);
+
+function parseIrcEnvelope(content: string): { sender: string | null; body: string } {
+  const lines = content.split("\n");
+  let sender: string | null = null;
+  let bodyStart = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = lines[i].match(/agent\s*`([^`]+)`/);
+    if (match) {
+      sender = match[1];
+      bodyStart = i + 1;
+      break;
+    }
+  }
+  return { sender, body: lines.slice(bodyStart).join("\n").trim() };
 }
 
 function previewText(text: string): string {

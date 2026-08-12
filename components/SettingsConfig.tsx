@@ -63,10 +63,12 @@ function NativeSetting({ label, description, children }: { label: string; descri
   );
 }
 
-export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onOmpUpdateAvailabilityChange, onSelectTab, onClose }: {
+export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onOmpUpdateAvailabilityChange, onSelectTab, onClose }: {
   activeTab: SettingsTab;
   advisorEnabled: boolean;
   onAdvisorChange: (enabled: boolean) => void;
+  toolCallsDefaultCollapsed: boolean;
+  onToolCallsDefaultCollapsedChange: (collapsed: boolean) => void;
   cwd: string | null;
   sessionId: string | null;
   onModelsSaved: () => void;
@@ -209,6 +211,11 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
         <div role="tabpanel" id="settings-panel-general" aria-labelledby="settings-tab-general" style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <div style={{ display: activeTab === "general" ? "flex" : "none", height: "100%", overflowY: "auto", padding: 20, flexDirection: "column", gap: 20 }}>
            {nativeSavesInFlight > 0 && <div role="status" style={{ position: "sticky", top: 0, zIndex: 5, alignSelf: "flex-start", padding: "5px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text-muted)", fontSize: 11 }}>Saving to OMP config…</div>}
+           <section style={{ padding: "16px", border: "1px solid var(--border)", borderRadius: "var(--radius-modal)", background: "var(--bg-subtle)" }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Interface</div>
+            <p style={{ margin: "6px 0 10px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>Controls how ompweb presents live agent activity.</p>
+            <NativeSetting label="Keep tool calls collapsed" description="Show only the compact tool-call header while tools are running."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={toolCallsDefaultCollapsed} onChange={(event) => onToolCallsDefaultCollapsedChange(event.target.checked)} /></NativeSetting>
+           </section>
            <section style={{ padding: "16px", border: "1px solid var(--border)", borderRadius: "var(--radius-modal)", background: "var(--bg-subtle)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600 }}><Sparkles size={15} aria-hidden="true" /> Advisor</div>
             <p style={{ margin: "6px 0 10px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>Native OMP setting. The configured <code>advisor</code> model role passively reviews turns and injects notes.</p>

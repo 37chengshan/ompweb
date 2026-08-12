@@ -370,16 +370,12 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
           {!compact && <span>{t("branchNavigator.branches")}</span>}
         </button>
         {open && dropdownPos && (
-          <div data-branch-panel style={{
+          <div data-branch-panel className="dropdown-surface" style={{
             position: "fixed",
             top: dropdownPos.top,
             left: dropdownPos.left,
             width: dropdownPos.width,
             maxHeight: dropdownPos.height,
-            background: "var(--bg-panel)",
-            border: "1px solid var(--border)",
-            borderBottom: "1px solid var(--border)",
-            boxShadow: "var(--shadow-pop)",
             overflowY: "auto",
             zIndex: 600,
           }}>

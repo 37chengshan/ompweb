@@ -23,6 +23,8 @@ declare global {
 
 interface Props {
   selectedSessionId: string | null;
+  /** The active session can exist in memory before its JSONL file is flushed. */
+  optimisticSession?: SessionInfo | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
@@ -360,8 +362,7 @@ function OmpWebTitle() {
     </button>
   );
 }
-
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions }: Props) {
+export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -656,19 +657,38 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     return () => { cancelled = true; };
   }, [selectedCwd, wtRefreshKey, refreshKey]);
 
+  // Keep a just-created session and its project visible while omp is still
+  // flushing the JSONL file. The server list remains authoritative once it
+  // contains the same id.
+  const optimisticProjectRoot = optimisticSession
+    ? optimisticSession.projectRoot ?? projectRootFor(optimisticSession.cwd) ?? optimisticSession.cwd
+    : null;
+  const visibleSessions = useMemo(() => {
+    if (!optimisticSession || allSessions.some((session) => session.id === optimisticSession.id)) {
+      return allSessions;
+    }
+    return [...allSessions, { ...optimisticSession, projectRoot: optimisticProjectRoot ?? optimisticSession.cwd }];
+  }, [allSessions, optimisticProjectRoot, optimisticSession]);
+  const visibleProjects = useMemo(() => {
+    if (!optimisticProjectRoot || projects.some((project) => project.path === optimisticProjectRoot)) {
+      return projects;
+    }
+    return [...projects, { path: optimisticProjectRoot }];
+  }, [optimisticProjectRoot, projects]);
+
   // ---- Derived project list ---------------------------------------------------
   const selectedProject = useMemo(() => projectRootFor(selectedCwd), [projectRootFor, selectedCwd]);
   // Stable order: most-recently-added first, then session-discovered by path.
   // Deliberately does NOT depend on session activity — re-sorting on every
   // session refresh made project rows jump around while working.
-  const sortedProjects = useMemo(() => sortManagedProjects(projects), [projects]);
+  const sortedProjects = useMemo(() => sortManagedProjects(visibleProjects), [visibleProjects]);
   const sessionsByProject = useMemo(
-    () => groupSessionsByProject(sortedProjects, allSessions),
-    [sortedProjects, allSessions],
+    () => groupSessionsByProject(sortedProjects, visibleSessions),
+    [sortedProjects, visibleSessions],
   );
   const projectActivity = useMemo(
-    () => projectActivityCounts(allSessions, runningSessionIds, unreadSessionIds),
-    [allSessions, runningSessionIds, unreadSessionIds],
+    () => projectActivityCounts(visibleSessions, runningSessionIds, unreadSessionIds),
+    [visibleSessions, runningSessionIds, unreadSessionIds],
   );
 
   // Drop persisted expansion keys whose project no longer exists (removed or
@@ -1659,7 +1679,7 @@ function ProjectWorktreeSwitcher({
           right: 0,
           minWidth: compact ? 220 : undefined,
           zIndex: 100,
-          background: "var(--bg)",
+          background: "var(--bg-panel)",
           border: "1px solid var(--border)",
           borderRadius: "var(--radius-control)",
           boxShadow: "var(--shadow-pop)",

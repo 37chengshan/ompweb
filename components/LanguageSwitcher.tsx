@@ -122,7 +122,7 @@ export function LanguageSwitcher() {
         <ul
           id={listboxId}
           role="menu"
-          className="animate-slide-down"
+          className="dropdown-surface animate-slide-down"
           style={{
             position: "absolute",
             top: "calc(100% + 4px)",
@@ -132,9 +132,9 @@ export function LanguageSwitcher() {
             margin: 0,
             padding: 4,
             listStyle: "none",
-            background: "var(--bg)",
+            background: "var(--bg-panel)",
             border: "1px solid var(--border)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-control)",
             boxShadow: "var(--shadow-pop)",
           }}
         >
@@ -142,7 +142,7 @@ export function LanguageSwitcher() {
             const selected = l.value === locale;
             return (
               <li key={l.value} role="none">
-                <button
+                <button className="dropdown-item"
                   ref={(el) => { itemRefs.current[i] = el; }}
                   type="button"
                   role="menuitem"

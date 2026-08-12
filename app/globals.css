@@ -412,6 +412,36 @@ pre, code {
   margin: 6px 0;
 }
 
+/* Subagent transcript dialog — compact text sizing for raw agent output */
+.markdown-subagent-text {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.markdown-subagent-text p { margin: 0 0 6px; }
+.markdown-subagent-text p:last-child { margin-bottom: 0; }
+.markdown-subagent-text h1,
+.markdown-subagent-text h2,
+.markdown-subagent-text h3,
+.markdown-subagent-text h4,
+.markdown-subagent-text h5,
+.markdown-subagent-text h6 {
+  margin: 7px 0 3px;
+  line-height: 1.25;
+}
+.markdown-subagent-text ul,
+.markdown-subagent-text ol {
+  margin: 3px 0 6px;
+}
+.markdown-subagent-text li { margin: 1px 0; }
+.markdown-subagent-text blockquote {
+  margin: 4px 0;
+  padding: 4px 8px;
+}
+.markdown-subagent-text .markdown-table-wrap,
+.markdown-subagent-text .markdown-code-block {
+  margin: 5px 0;
+}
+
 .compaction-file-details {
   margin-top: 10px;
   padding-top: 8px;
@@ -977,6 +1007,38 @@ span.linenumber {
 .animate-scale-in   { animation: ui-scale-in var(--dur-med) var(--ease-out-warm) both; }
 .animate-slide-down { animation: ui-slide-down var(--dur-med) var(--ease-out-warm) both; }
 .animate-slide-up   { animation: ui-slide-up   var(--dur-med) var(--ease-out-warm) both; }
+.dropdown-surface {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  overflow: hidden;
+  animation: ui-scale-in var(--dur-fast) var(--ease-out-warm) both;
+}
+.dropdown-item {
+  color: var(--text-muted);
+  transition: background-color var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);
+}
+.dropdown-item:hover,
+.dropdown-item:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text);
+  outline: none;
+}
+.dropdown-item[aria-current="true"],
+.dropdown-item[aria-selected="true"],
+.dropdown-item[data-active="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+.dropdown-surface :is(select, option) {
+  color-scheme: light;
+}
+html.dark .dropdown-surface :is(select, option) {
+  color-scheme: dark;
+}
 
 /* Conversational motion: new turns settle into place while an active turn
    gets a quiet accent pulse on the unboxed message. These classes only

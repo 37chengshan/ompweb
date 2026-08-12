@@ -663,6 +663,7 @@ export function AppShell() {
       />
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
+        optimisticSession={selectedSession?.path === "" ? selectedSession : null}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
@@ -813,6 +814,7 @@ export function AppShell() {
           style={{
             width: 5,
             flexShrink: 0,
+            marginLeft: -5,
             cursor: "col-resize",
             background: "transparent",
             zIndex: 205,
@@ -1161,7 +1163,7 @@ export function AppShell() {
           })()}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
-            <div style={{
+            <div className="dropdown-surface" style={{
               position: "fixed",
               top: topPanelPos.top,
               left: topPanelPos.left,

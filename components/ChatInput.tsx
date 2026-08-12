@@ -1537,17 +1537,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {historyMenuOpen && inputHistory.length > 0 && (
             <div
               ref={historyMenuRef}
+              className="dropdown-surface"
               style={{
                 position: "absolute",
                 left: 0,
                 right: 0,
                 bottom: "calc(100% + 8px)",
                 zIndex: 120,
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                boxShadow: "var(--shadow-pop)",
-                overflow: "hidden",
                 maxHeight: "min(44vh, 360px)",
               }}
             >
@@ -1623,17 +1619,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           )}
           {slashMenuOpen && slashQuery !== null && (
             <div
+              className="dropdown-surface"
               style={{
                 position: "absolute",
                 left: 0,
                 right: 0,
                 bottom: "calc(100% + 8px)",
                 zIndex: 120,
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                boxShadow: "var(--shadow-pop)",
-                overflow: "hidden",
                 maxHeight: "min(56vh, 460px)",
               }}
             >
@@ -1765,17 +1757,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               : "";
             return (
               <div
+                className="dropdown-surface"
                 style={{
                   position: "absolute",
                   left: 0,
                   right: 0,
                   bottom: "calc(100% + 8px)",
                   zIndex: 120,
-                  background: "var(--bg)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  boxShadow: "var(--shadow-pop)",
-                  overflow: "hidden",
                   maxHeight: "min(48vh, 400px)",
                 }}
               >
@@ -2113,12 +2101,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       ? { left: 8, right: 8, maxWidth: "calc(100vw - 16px)" }
                       : { left: modelDropdownRect.left, width: "max-content", minWidth: modelDropdownRect.width };
                     return (
-                      <div ref={modelDropdownPanelRef} style={{
+                      <div ref={modelDropdownPanelRef} className="dropdown-surface" style={{
                       position: "fixed",
                       bottom,
                       ...panelPos,
-                      zIndex: 500, background: "var(--bg)", border: "1px solid var(--border)",
-                      borderRadius: 8, boxShadow: "var(--shadow-pop)",
+                      zIndex: 500,
                       overflow: "hidden", maxHeight: maxH, overflowY: "auto",
                       }}>
                       {modelsByProvider.length === 0 ? (
@@ -2141,12 +2128,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             const isActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
                             return (
                               <button
+                                className="dropdown-item"
                                 key={`${opt.provider}:${opt.modelId}`}
                                 onClick={() => { setModelDropdownOpen(false); if (!isActive || isAutoModelSelection) onModelChange(opt.provider, opt.modelId); }}
                                 style={{
                                   display: "flex", alignItems: "center", gap: 8,
                                   width: "100%", padding: "7px 12px",
-                                  background: isActive ? "var(--bg-selected)" : "none",
+                                  background: isActive ? "var(--bg-selected)" : "transparent",
                                   border: "none",
                                   color: isActive ? "var(--text)" : "var(--text-muted)",
                                   cursor: "pointer", fontSize: 12, textAlign: "left",
@@ -2299,11 +2287,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>}
                 </button>
                 {thinkingDropdownOpen && (
-                  <div style={{
+                  <div className="dropdown-surface" style={{
                     position: "absolute", bottom: "calc(100% + 6px)", right: 0,
-                    zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
-                    borderRadius: 8, boxShadow: "var(--shadow-pop)",
-                    overflow: "hidden", minWidth: 180,
+                    zIndex: 100, minWidth: 180,
                   }}>
                     {THINKING_LEVELS.filter((lvl) => {
                       if (!availableThinkingLevels) return true;
@@ -2317,12 +2303,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       const showOriginal = mappedVal != null && mappedVal !== lvl;
                       return (
                         <button
+                          className="dropdown-item"
                           key={lvl}
                           onClick={() => { setThinkingDropdownOpen(false); if (!isActive) onThinkingLevelChange(lvl); }}
                           style={{
                             display: "flex", alignItems: "center", gap: 8,
                             width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "none",
+                            background: isActive ? "var(--bg-selected)" : "transparent",
                             border: "none",
                             color: isActive ? "var(--text)" : "var(--text-muted)",
                             cursor: "pointer", fontSize: 12, textAlign: "left",
@@ -2330,7 +2317,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             whiteSpace: "nowrap",
                           }}
                           onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
+                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                         >
                           {isActive
                             ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
@@ -2381,11 +2368,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{toolPresetLabel}</span>}
                 </button>
                 {toolDropdownOpen && (
-                  <div style={{
+                  <div className="dropdown-surface" style={{
                     position: "absolute", bottom: "calc(100% + 6px)", right: 0,
-                    zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
-                    borderRadius: 8, boxShadow: "var(--shadow-pop)",
-                    overflow: "hidden", minWidth: 120,
+                    zIndex: 100, minWidth: 120,
                   }}>
                     {TOOL_PRESETS.map((lvl) => {
                       const preset = TOOL_PRESET_MAP[lvl];
@@ -2393,12 +2378,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       const desc = lvl === "off" ? t("chatInput.toolsOff") : lvl === "default" ? t("chatInput.toolsDefault") : t("chatInput.toolsFull");
                       return (
                         <button
+                          className="dropdown-item"
                           key={lvl}
                           onClick={() => { setToolDropdownOpen(false); if (!isActive) onToolPresetChange(preset); }}
                           style={{
                             display: "flex", alignItems: "center", gap: 8,
                             width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "none",
+                            background: isActive ? "var(--bg-selected)" : "transparent",
                             border: "none",
                             color: isActive ? "var(--text)" : "var(--text-muted)",
                             cursor: "pointer", fontSize: 12, textAlign: "left",

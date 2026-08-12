@@ -98,6 +98,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          DISCORD_WEBHOOK_URL="$(printf '%s' "$DISCORD_WEBHOOK_URL" | tr -d '\r\n')"
+          case "$DISCORD_WEBHOOK_URL" in
+            https://discord.com/api/webhooks/*/*) ;;
+            *) echo 'DISCORD_RELEASES_WEBHOOK is not a valid Discord webhook URL' >&2; exit 1 ;;
+          esac
+
           RELEASE_JSON="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body,url)"
 
           jq -n \

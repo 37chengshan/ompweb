@@ -1,7 +1,7 @@
 import packageJson from "../package.json";
 import { spawn } from "child_process";
 import { existsSync, readFileSync } from "fs";
-import { tmpdir } from "os";
+import { homedir, tmpdir } from "os";
 import { join, normalize, sep } from "path";
 
 const NPM_PACKAGE = "@kahme247/ompweb";
@@ -69,12 +69,19 @@ export async function checkNpmUpdate(force = false): Promise<NpmUpdateStatus> {
 
 /** Which package manager owns a given install dir, so updates always run
  * through the manager that manages it (bun global root, npm global root,
- * anything else → npm as the fallback). */
+ * anything else → npm as the fallback). Separators are normalized so the
+ * classification is deterministic even when a Windows-style path is passed
+ * on a POSIX host (e.g. in CI tests). */
 export function detectInstallMethod(packageDir: string): "bun" | "npm" {
-  const normalized = normalize(packageDir);
-  const bunRoot = normalize(join(process.env.USERPROFILE ?? "", "node_modules"));
-  if (normalized.startsWith(bunRoot + sep)) return "bun";
-  return "npm";
+  const toPlatformPath = (value: string): string => normalize(value).replaceAll("\\", sep);
+  const normalized = toPlatformPath(packageDir);
+  const bunRoots = [
+    // bun 1.3.x globals on Windows live in ~/node_modules; POSIX uses the
+    // standard ~/.bun/install/global/node_modules.
+    join(process.env.USERPROFILE ?? process.env.HOME ?? "", "node_modules"),
+    join(homedir(), ".bun", "install", "global", "node_modules"),
+  ].map(toPlatformPath);
+  return bunRoots.some((root) => normalized.startsWith(root + sep)) ? "bun" : "npm";
 }
 
 /** Absolute path of the persistent status file the detached updater writes. */

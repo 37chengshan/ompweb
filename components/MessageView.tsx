@@ -765,8 +765,8 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
         borderRadius: 7,
         overflow: "hidden",
         fontSize: 12,
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
-        background: isError ? "rgba(248,113,113,0.05)" : "rgba(34,197,94,0.04)",
+        border: isError ? "1px solid color-mix(in srgb, var(--status-error) 45%, transparent)" : "1px solid color-mix(in srgb, var(--status-success) 25%, transparent)",
+        background: isError ? "color-mix(in srgb, var(--status-error) 5%, transparent)" : "color-mix(in srgb, var(--status-success) 4%, transparent)",
       }}
     >
       <Collapsible
@@ -822,7 +822,7 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
               lineHeight: 1.5,
               overflow: "auto",
               backgroundColor: "var(--bg-subtle)",
-              borderTop: isError ? "1px solid rgba(248,113,113,0.25)" : "1px solid rgba(34,197,94,0.2)",
+              borderTop: isError ? "1px solid color-mix(in srgb, var(--status-error) 25%, transparent)" : "1px solid color-mix(in srgb, var(--status-success) 20%, transparent)",
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
             }}
@@ -869,7 +869,7 @@ function PairedDiffResult({ diff }: {
   return (
     <div
       style={{
-        borderTop: "1px solid rgba(34,197,94,0.15)",
+        borderTop: "1px solid color-mix(in srgb, var(--status-success) 15%, transparent)",
         background: "var(--bg)",
       }}
     >
@@ -955,9 +955,9 @@ function SplitDiffHeader({ title, side }: { title: string; side: "left" | "right
 function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" | "right" }) {
   const bg =
     cell.type === "added"
-      ? "rgba(34,197,94,0.12)"
+      ? "color-mix(in srgb, var(--status-success) 12%, transparent)"
       : cell.type === "removed"
-      ? "rgba(248,113,113,0.13)"
+      ? "color-mix(in srgb, var(--status-error) 13%, transparent)"
       : cell.type === "empty"
       ? "var(--bg-subtle)"
       : "transparent";
@@ -1029,9 +1029,9 @@ function PatchTextView({ text }: { text: string }) {
           line.startsWith("-") && !line.startsWith("---") ? "removed" :
           "context";
         const bg =
-          kind === "added" ? "rgba(34,197,94,0.12)" :
-          kind === "removed" ? "rgba(248,113,113,0.13)" :
-          kind === "hunk" ? "rgba(96,165,250,0.12)" :
+          kind === "added" ? "color-mix(in srgb, var(--status-success) 12%, transparent)" :
+          kind === "removed" ? "color-mix(in srgb, var(--status-error) 13%, transparent)" :
+          kind === "hunk" ? "color-mix(in srgb, var(--accent) 12%, transparent)" :
           "transparent";
         const color =
           kind === "added" ? "var(--status-success)" :
@@ -1114,8 +1114,8 @@ function PairedResult({ text, isEmpty, isError }: {
   return (
     <div
       style={{
-        borderTop: `1px solid ${isError ? "rgba(248,113,113,0.3)" : "rgba(34,197,94,0.15)"}`,
-        background: isError ? "rgba(248,113,113,0.04)" : "var(--bg-subtle)",
+        borderTop: `1px solid ${isError ? "color-mix(in srgb, var(--status-error) 30%, transparent)" : "color-mix(in srgb, var(--status-success) 15%, transparent)"}`,
+        background: isError ? "color-mix(in srgb, var(--status-error) 4%, transparent)" : "var(--bg-subtle)",
       }}
     >
       <pre

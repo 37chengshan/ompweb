@@ -345,9 +345,9 @@ function DiffView({ patch }: { patch: string }) {
         const lines = seg.lines.map((line, li) => {
           const bg =
             line.type === "added"
-              ? "rgba(0,200,80,0.12)"
+              ? "color-mix(in srgb, var(--status-success) 12%, transparent)"
               : line.type === "removed"
-              ? "rgba(240,60,60,0.14)"
+              ? "color-mix(in srgb, var(--status-error) 14%, transparent)"
               : "transparent";
           const prefix =
             line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";

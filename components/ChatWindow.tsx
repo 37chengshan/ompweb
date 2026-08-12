@@ -978,7 +978,7 @@ function ExtensionCustomPanel({
         alignItems: "center",
         justifyContent: "center",
         padding: 20,
-        background: "rgba(0,0,0,0.18)",
+        background: "var(--overlay-backdrop)",
       }}
     >
       <div

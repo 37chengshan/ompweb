@@ -658,7 +658,7 @@ function AddSkillPanel({
                       isInstalled || isInstalling || installing !== null
                         ? "not-allowed"
                         : "pointer",
-                    background: isInstalled ? "rgba(34,197,94,0.1)" : "none",
+                    background: isInstalled ? "color-mix(in srgb, var(--status-success) 10%, transparent)" : "none",
                     color: isInstalled
                       ? "var(--status-success)"
                       : isInstalling
@@ -1100,7 +1100,7 @@ export function SkillsConfig({
                                     ? "none"
                                     : "0 0 4px var(--accent)",
                                   transition:
-                                    "background 0.15s, box-shadow 0.15s",
+                                    "background var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm)",
                                 }}
                               />
                               <span

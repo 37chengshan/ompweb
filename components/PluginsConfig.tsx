@@ -490,7 +490,7 @@ function PackageDetail({
                 fontSize: 10,
                 padding: "1px 5px",
                 borderRadius: 3,
-                background: "rgba(245,158,11,0.12)",
+                background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
                 color: "var(--status-warning)",
               }}
             >

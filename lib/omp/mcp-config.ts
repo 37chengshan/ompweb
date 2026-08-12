@@ -1,5 +1,5 @@
 import { execFileSync } from "child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join, relative, resolve, sep } from "path";
 import { stripAnsi } from "../ansi";
@@ -232,30 +232,99 @@ export function validateMcpServer(name: unknown, server: unknown): asserts serve
   if (server.requestIdFormat !== undefined && server.requestIdFormat !== "number" && server.requestIdFormat !== "string") throw new Error("requestIdFormat must be number or string");
 }
 
+// Cross-process mutex for MCP config read-modify-write cycles. The dev server
+// (30178) and the installed production app (30177) can edit the same project's
+// mcp.json at the same time; without a lock the later rename would silently
+// overwrite the earlier mutation (add vs delete lost update). A lockfile with
+// exclusive create (`wx`) is atomic on every platform; the holder writes its
+// PID and deletes the file on completion. Stale locks (writer crashed) are
+// broken after a grace period.
+const MCP_LOCK_TIMEOUT_MS = 3_000;
+const MCP_LOCK_STALE_MS = 10_000;
+const MCP_LOCK_RETRY_MS = 25;
+
+function sleepSync(ms: number): void {
+  const sab = new SharedArrayBuffer(4);
+  Atomics.wait(new Int32Array(sab), 0, 0, ms);
+}
+
+function withMcpConfigLock<T>(configPath: string, fn: () => T): T {
+  const lockPath = `${configPath}.lock`;
+  const deadline = Date.now() + MCP_LOCK_TIMEOUT_MS;
+  // The config file may not exist yet (first write) — the lockfile needs its
+  // parent dir to exist before exclusive-create can succeed.
+  mkdirSync(dirname(lockPath), { recursive: true });
+  for (;;) {
+    let fd: number | null = null;
+    try {
+      fd = openSync(lockPath, "wx");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw error;
+      // Held by another process — break it if stale, otherwise wait and retry.
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs > MCP_LOCK_STALE_MS) {
+          unlinkSync(lockPath);
+          continue;
+        }
+      } catch {
+        // Lock vanished between open and stat — retry immediately.
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for ${lockPath} (another process holds the MCP config lock)`);
+      }
+      sleepSync(MCP_LOCK_RETRY_MS);
+      continue;
+    }
+    try {
+      writeSync(fd, String(process.pid));
+    } finally {
+      closeSync(fd);
+    }
+    try {
+      return fn();
+    } finally {
+      try {
+        unlinkSync(lockPath);
+      } catch {
+        // Already removed (e.g. by cleanup) — the critical section is done.
+      }
+    }
+  }
+}
+
 export function writeMcpServer(cwd: string, name: string, server: McpServer, previousName?: string): { path: string } {
   validateMcpServer(name, server);
   if (previousName !== undefined && !SERVER_NAME.test(previousName)) throw new Error("Invalid previous server name");
   const current = readMcpConfig(cwd);
-  const servers = { ...(current.config.mcpServers ?? {}) };
-  if (previousName && previousName !== name) delete servers[previousName];
-  servers[name] = server;
-  const config: McpFile = { ...current.config, mcpServers: servers };
-  mkdirSync(dirname(current.path), { recursive: true });
-  const temp = `${current.path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-  renameSync(temp, current.path);
-  return { path: current.path };
+  return withMcpConfigLock(current.path, () => {
+    // Re-read INSIDE the lock so a concurrent writer's mutation is not lost.
+    const locked = readMcpConfig(cwd);
+    const servers = { ...(locked.config.mcpServers ?? {}) };
+    if (previousName && previousName !== name) delete servers[previousName];
+    servers[name] = server;
+    const config: McpFile = { ...locked.config, mcpServers: servers };
+    mkdirSync(dirname(locked.path), { recursive: true });
+    const temp = `${locked.path}.tmp-${process.pid}-${Date.now()}`;
+    writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    renameSync(temp, locked.path);
+    return { path: locked.path };
+  });
 }
 
 export function deleteMcpServer(cwd: string, name: string): { path: string } {
   if (!SERVER_NAME.test(name)) throw new Error("Invalid server name");
   const current = readMcpConfig(cwd);
-  const servers = { ...(current.config.mcpServers ?? {}) };
-  if (!(name in servers)) throw new Error("MCP server was not found");
-  delete servers[name];
-  const config: McpFile = { ...current.config, mcpServers: servers };
-  const temp = `${current.path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-  renameSync(temp, current.path);
-  return { path: current.path };
+  return withMcpConfigLock(current.path, () => {
+    const locked = readMcpConfig(cwd);
+    const servers = { ...(locked.config.mcpServers ?? {}) };
+    if (!(name in servers)) throw new Error("MCP server was not found");
+    delete servers[name];
+    const config: McpFile = { ...locked.config, mcpServers: servers };
+    const temp = `${locked.path}.tmp-${process.pid}-${Date.now()}`;
+    writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    renameSync(temp, locked.path);
+    return { path: locked.path };
+  });
 }

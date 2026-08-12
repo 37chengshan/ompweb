@@ -19,6 +19,13 @@ type UpdateState = {
   updateAvailable: boolean;
 };
 
+type LastUpdateInfo = {
+  status: "ok" | "failed" | "running";
+  version?: string;
+  error?: string;
+  updatedAt?: string;
+};
+
 type NativeSettings = {
   defaultThinkingLevel?: "auto" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   hideThinkingBlock?: boolean;
@@ -74,6 +81,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
   const [checking, setChecking] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [appUpdate, setAppUpdate] = useState<UpdateState | null>(null);
+  const [appLastUpdate, setAppLastUpdate] = useState<LastUpdateInfo | null>(null);
   const [checkingAppUpdate, setCheckingAppUpdate] = useState(true);
   const [updatingApp, setUpdatingApp] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -132,9 +140,10 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
     setCheckingAppUpdate(true);
     try {
       const response = await fetch(force ? "/api/app-update?force=1" : "/api/app-update");
-      const data = await response.json() as UpdateState & { error?: string };
+      const data = await response.json() as UpdateState & { error?: string; lastUpdate?: LastUpdateInfo | null };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       setAppUpdate(data);
+      setAppLastUpdate(data.lastUpdate ?? null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -264,6 +273,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, cwd
               <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate} aria-label="Check ompweb updates" style={{ padding: 7, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: checkingAppUpdate ? "wait" : "pointer" }}><RefreshCw size={14} aria-hidden="true" /></button>
             </div>
             {appUpdate?.updateAvailable && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}><button type="button" onClick={() => void installAppUpdate()} disabled={updatingApp} style={{ padding: "7px 11px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--on-accent)", cursor: updatingApp ? "wait" : "pointer", fontSize: 12 }}>{updatingApp ? "Updating..." : "Update ompweb"}</button></div>}
+            {appLastUpdate?.status === "failed" && <p role="alert" style={{ margin: "10px 0 0", color: "var(--status-error)", fontSize: 12, lineHeight: 1.5 }}>Last update attempt failed and the previous version was restored: {appLastUpdate.error ?? "unknown error"}</p>}
           </section>
           <section style={{ borderTop: "1px solid var(--border)", paddingTop: 18 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>

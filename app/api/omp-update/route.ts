@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { invalidateOmpCliCache } from "@/lib/omp/omp-cli";
 import { checkOmpUpdate, installOmpUpdate } from "@/lib/omp/updates";
+import { disposeUtilityRpc } from "@/lib/omp/rpc-utility";
 import { restartAllRpcSessions } from "@/lib/rpc-manager";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,10 @@ export async function POST(request: Request) {
     if (body.action === "update") {
       const output = await installOmpUpdate();
       invalidateOmpCliCache();
+      // The utility process was already verified against the new binary, but
+      // drop it so the next request starts clean instead of reusing a process
+      // that may hold the old install's modules in memory.
+      disposeUtilityRpc();
       return NextResponse.json({ success: true, output });
     }
     if (body.action === "restart") {

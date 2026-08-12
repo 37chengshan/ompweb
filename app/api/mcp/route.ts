@@ -36,6 +36,30 @@ export async function GET(request: Request) {
       ...Object.entries(file?.config.mcpServers ?? {}).map(([name, config]) => ({ name, source: "Project level", status: config.enabled === false ? "disabled" as const : "configured" as const, type: typeof config.type === "string" ? config.type : typeof config.url === "string" ? "http" : "stdio" })),
       ...readDiscoveredMcpServers(cwd ?? undefined, user.disabledServers),
     ];
+    // The user-level config may carry bearer tokens/API keys in `headers` and
+    // credentials in `env`. The UI only renders name/status/type/enabled —
+    // never serialize the raw user-level server configs to the client.
+    const safeUser = {
+      path: user.path,
+      disabledServers: user.disabledServers,
+      error: user.error,
+      servers: user.servers.map(({ name, config }) => {
+        const type = typeof config.type === "string" && config.type !== "stdio" ? config.type
+          : typeof config.url === "string" ? "http" : "stdio";
+        const command = typeof config.command === "string" ? config.command.trim() : "";
+        const url = typeof config.url === "string" ? config.url.trim() : "";
+        const hasCommand = command.length > 0;
+        const hasUrl = url.length > 0;
+        const valid = (hasCommand || hasUrl) && !(hasCommand && hasUrl) && (type === "http" || type === "sse" ? hasUrl : hasCommand);
+        return {
+          name,
+          status: config.enabled === false ? ("disabled" as const) : ("configured" as const),
+          type,
+          enabled: config.enabled !== false,
+          valid,
+        };
+      }),
+    };
     const sessionId = params.get("sessionId");
     let liveServers: ReturnType<typeof parseMcpListOutput> | undefined;
     let liveError: string | undefined;
@@ -52,7 +76,7 @@ export async function GET(request: Request) {
         liveError = error instanceof Error ? error.message : String(error);
       }
     }
-    return NextResponse.json({ root: file?.root ?? null, path: file?.path ?? null, exists: file?.exists ?? false, servers: Object.entries(file?.config.mcpServers ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, config]) => ({ name, config })), user, inventory, liveServers, liveError });
+    return NextResponse.json({ root: file?.root ?? null, path: file?.path ?? null, exists: file?.exists ?? false, servers: Object.entries(file?.config.mcpServers ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, config]) => ({ name, config })), user: safeUser, inventory, liveServers, liveError });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
   }

@@ -318,9 +318,9 @@ export function ChatMinimap({ messages, streamingMessage, scrollContainer, messa
           right: 0,
           top: `${viewportBoxTop}%`,
           height: `${viewportBoxHeight}%`,
-          background: "rgba(100,100,100,0.1)",
-          borderTop: "1px solid rgba(100,100,100,0.2)",
-          borderBottom: "1px solid rgba(100,100,100,0.2)",
+          background: "color-mix(in srgb, var(--text-dim) 10%, transparent)",
+          borderTop: "1px solid color-mix(in srgb, var(--text-dim) 20%, transparent)",
+          borderBottom: "1px solid color-mix(in srgb, var(--text-dim) 20%, transparent)",
           pointerEvents: "none",
           zIndex: 1,
         }}

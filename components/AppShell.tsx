@@ -75,7 +75,7 @@ function PanelLoadingFallback() {
 function ModalLoadingFallback() {
   const { t } = useI18n();
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "var(--overlay-backdrop)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
       {t("appShell.loading")}
     </div>
   );

@@ -96,7 +96,7 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
       onClick={(event) => {
         if (event.target === event.currentTarget && !busy) onCancel();
       }}
-      style={{ position: "fixed", inset: 0, zIndex: 1002, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.32)" }}
+      style={{ position: "fixed", inset: 0, zIndex: 1002, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--overlay-backdrop)" }}
     >
       <div className="directory-picker-panel animate-scale-in" ref={dialogRef} role="dialog" aria-modal="true" aria-label={t("directoryPicker.selectDirectory")} tabIndex={-1} style={{ width: 520, maxWidth: "calc(100vw - 16px)", height: "min(620px, calc(100dvh - 16px))", maxHeight: "calc(100dvh - 16px)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-modal)", boxShadow: "var(--shadow-modal)", outline: "none" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, padding: "12px 18px", borderBottom: "1px solid var(--border)" }}>

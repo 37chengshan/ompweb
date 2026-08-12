@@ -771,7 +771,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
             src={previewUrl}
             sandbox={isPdf ? undefined : ""}
             title={t("fileViewer.previewTitle", { name: getFileName(filePath) })}
-            style={{ width: "100%", height: "100%", border: "none", background: isPdf ? "var(--bg)" : "#eef1f5" }}
+            style={{ width: "100%", height: "100%", border: "none", background: isPdf ? "var(--bg)" : "var(--bg-subtle)" }}
           />
         )}
       </div>

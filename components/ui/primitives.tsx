@@ -35,7 +35,7 @@ export function DialogContent({ children, className, style, ariaLabel }: {
       <BaseDialog.Backdrop
         style={{
           position: "fixed", inset: 0,
-          background: "color-mix(in srgb, var(--text) 22%, transparent)",
+          background: "var(--overlay-backdrop)",
           backdropFilter: "blur(2px)",
           zIndex: 1000,
         }}

@@ -6,11 +6,17 @@ export function normalizeFilePathSlashes(filePath: string): string {
 }
 
 export function encodeFilePathForApi(filePath: string): string {
-  return normalizeFilePathSlashes(filePath)
-    .split("/")
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join("/");
+  const normalized = normalizeFilePathSlashes(filePath);
+  const isUnc = normalized.startsWith("//");
+  const segments = normalized.split("/").filter(Boolean);
+  if (isUnc && segments.length > 0) {
+    // Preserve the UNC `//` prefix: folding it into the first segment
+    // (encoded as %2F%2Fserver, decoded back to `//server` by the route's
+    // catch-all param) keeps `isWindowsAbsolutePath` round-tripping, so
+    // browsing/reading UNC-rooted workspaces keeps working.
+    segments[0] = `//${segments[0]}`;
+  }
+  return segments.map(encodeURIComponent).join("/");
 }
 
 export function getFileName(filePath: string): string {

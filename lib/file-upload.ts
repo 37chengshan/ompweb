@@ -29,8 +29,12 @@ export function validateUploadFileNames(fileNames: string[]): string | null {
     if (fileName.includes("/") || fileName.includes("\\") || path.basename(fileName) !== fileName) {
       return `File names must not contain a path: ${fileName}`;
     }
-    if (seen.has(fileName)) return `Duplicate file name in upload: ${fileName}`;
-    seen.add(fileName);
+    // On Windows `A.txt` and `a.txt` address the same filesystem object —
+    // key the dedupe case-insensitively or an overwrite batch would unlink
+    // and replace that object twice, discarding the first payload.
+    const seenKey = process.platform === "win32" ? fileName.toLocaleLowerCase() : fileName;
+    if (seen.has(seenKey)) return `Duplicate file name in upload: ${fileName}`;
+    seen.add(seenKey);
   }
 
   return null;

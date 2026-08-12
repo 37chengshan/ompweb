@@ -564,7 +564,15 @@ export class AgentSessionWrapper {
       isBashRunning: this.bashRunning,
       isCompacting: state.isCompacting,
       autoCompactionEnabled: state.autoCompactionEnabled,
-      model: state.model ? { id: state.model.id, provider: state.model.provider, name: state.model.name } : undefined,
+      model: state.model
+        ? {
+            id: state.model.id,
+            provider: state.model.provider,
+            name: state.model.name,
+            reasoning: state.model.reasoning,
+            thinking: state.model.thinking ? { efforts: state.model.thinking.efforts } : undefined,
+          }
+        : undefined,
       messageCount: state.messageCount,
       queuedMessageCount: state.queuedMessageCount,
       contextUsage: state.contextUsage ?? null,

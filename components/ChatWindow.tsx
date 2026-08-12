@@ -16,6 +16,7 @@ import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
+import { resolveAvailableThinkingLevels } from "@/lib/thinking-levels";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import {
   captureScrollDistance,
@@ -230,6 +231,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
   const {
     loading, error, messages, entryIds, streamState,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel, fastModeEnabled,
+    liveModelMeta,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -407,7 +409,11 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
 
   const availableThinkingLevels = displayModelValue
-    ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
+    ? resolveAvailableThinkingLevels(
+        modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`],
+        displayModelValue,
+        liveModelMeta,
+      )
     : null;
 
   const currentThinkingLevelMap = displayModelValue
@@ -444,6 +450,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
       onFastModeChange={session || isNew ? handleFastModeChange : undefined}
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}
+      modelNameOverride={liveModelMeta?.name ?? null}
       retryInfo={retryInfo}
       activeGoal={activeGoal}
       activePlan={activePlan}

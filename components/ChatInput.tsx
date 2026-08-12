@@ -70,6 +70,8 @@ interface Props {
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
   availableThinkingLevels?: string[] | null;
   thinkingLevelMap?: Record<string, string | null> | null;
+  /** Display name for the current model when the catalog does not know it. */
+  modelNameOverride?: string | null;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
   queuedMessages?: QueuedMessages | null;
   inputHistory?: string[];
@@ -364,7 +366,7 @@ function ComposerModeStatus({ goal, plan }: { goal?: ActiveGoal | null; plan?: A
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelsLoading, onModelChange, fastModeEnabled, fastModeSupported, onFastModeChange,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
-  thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
+  thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap, modelNameOverride,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
@@ -1246,7 +1248,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }
 
   const displayModelName = model
-    ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name ?? model.modelId)
+    ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name
+        ?? modelNameOverride
+        ?? modelNames?.[`${model.provider}:${model.modelId}`]
+        ?? model.modelId)
     : null;
   const currentName = displayModelName;
   // A failed load surfaces modelError; only an in-flight load shows the

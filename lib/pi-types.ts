@@ -86,7 +86,7 @@ export interface WebSessionState {
   isBashRunning: boolean;
   isCompacting: boolean;
   autoCompactionEnabled: boolean;
-  model?: ModelLike & { name?: string };
+  model?: ModelLike & { name?: string; reasoning?: boolean; thinking?: { efforts?: string[] } };
   messageCount: number;
   queuedMessageCount: number;
   contextUsage: ContextUsage | null;

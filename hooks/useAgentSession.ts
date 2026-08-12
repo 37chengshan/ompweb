@@ -11,6 +11,7 @@ import type {
   SessionTreeNode,
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
+import type { ThinkingModelMeta } from "@/lib/thinking-levels";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { translate } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
@@ -146,6 +147,8 @@ interface LastAssistantTextResponse {
 
 // Shape of lib/rpc-manager's WebSessionState as seen over HTTP.
 type AgentStateResponse = {
+  // Raw get_state passthrough: the resolved model omp is actually running.
+  model?: { provider: string; id: string; name?: string; reasoning?: boolean; thinking?: { efforts?: string[] } };
   contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
   systemPrompt?: string;
   thinkingLevel?: string;
@@ -231,6 +234,12 @@ function normalizeThinkingLevel(level: string | undefined): ThinkingLevelOption 
   // omp's "inherit" sentinel means "no explicit selection" — show as auto.
   if (!level || level === "inherit") return "auto";
   return level as ThinkingLevelOption;
+}
+
+/** Narrow the live state's model (OmpModel: id-based) to the composer's shape. */
+function toThinkingModelMeta(model: { provider?: string; id?: string; name?: string; reasoning?: boolean; thinking?: { efforts?: string[] } } | null | undefined): ThinkingModelMeta | null {
+  if (!model?.provider || !model.id) return null;
+  return { provider: model.provider, modelId: model.id, name: model.name, reasoning: model.reasoning, thinking: model.thinking };
 }
 
 type ExtensionUiDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
@@ -524,6 +533,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [modelList, setModelList] = useState<ModelEntry[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [liveModelMeta, setLiveModelMeta] = useState<ThinkingModelMeta | null>(null);
   const [modelThinkingLevels, setModelThinkingLevels] = useState<Record<string, string[]>>({});
   const [modelThinkingLevelMaps, setModelThinkingLevelMaps] = useState<Record<string, Record<string, string | null>>>({});
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
@@ -603,7 +613,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const setToolPresetState = opts.setToolPreset ?? setToolPreset;
 
   const currentModel = currentModelOverride ?? data?.context.model ?? pendingModel ?? null;
-  const displayModel = isNew ? (newSessionModel ?? newSessionDefaultModel) : currentModel;
+  // For existing sessions, the live state's resolved model wins over the
+  // session file's entry: omp may have fallen back to the default model when
+  // the recorded one is gone (disabled provider, renamed id), and the file
+  // entry then describes a model that is not actually running. pendingModel
+  // stays at the bottom (below the file entry) — it only fills the gap while
+  // a brand-new session has no file data yet, and a failed new-session
+  // set_model must not mask omp's actual resolved model.
+  const displayModel = isNew
+    ? (newSessionModel ?? newSessionDefaultModel)
+    : (currentModelOverride ?? (liveModelMeta
+        ? { provider: liveModelMeta.provider, modelId: liveModelMeta.modelId }
+        : data?.context.model ?? pendingModel));
 
   const sessionStats = useMemo(() => {
     if (sessionStatsOverride) return sessionStatsOverride;
@@ -774,6 +795,56 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setSubagentTranscriptVersions({});
   }, []);
 
+  // Monotonic sequence for authoritative model syncs. Every async sync
+  // (state fetch, model_changed GET) captures a token at START and only
+  // applies its snapshot if it is still the newest — a slow stale response
+  // can never clobber a newer one (e.g. an old model_changed GET landing
+  // after the user picked another model).
+  const authoritativeModelSeqRef = useRef(0);
+  const beginAuthoritativeModelSync = useCallback((): number => {
+    authoritativeModelSeqRef.current += 1;
+    return authoritativeModelSeqRef.current;
+  }, []);
+
+  // Authoritative resolved-model sync (model_changed / config_update events,
+  // post-command refreshes). A runtime model switch (retry-fallback, prewalk
+  // hand-off, /model) supersedes the user's last explicit pick — the composer
+  // must reflect the model actually running. `token` guards stale async
+  // snapshots; synchronous event payloads apply unconditionally. Returns
+  // whether the snapshot was applied — callers must drop ALL state derived
+  // from a stale response (including its thinking level), not just the model.
+  const applyAuthoritativeModel = useCallback((model: ThinkingModelMeta | null, token?: number): boolean => {
+    if (token !== undefined && token !== authoritativeModelSeqRef.current) return false;
+    authoritativeModelSeqRef.current += 1;
+    setLiveModelMeta(model);
+    if (!model) return true;
+    setCurrentModelOverride((prev) =>
+      prev && (prev.provider !== model.provider || prev.modelId !== model.modelId) ? null : prev
+    );
+    return true;
+  }, []);
+
+  // Lightweight live-state sync after composer commands. A command against an
+  // idle-disposed session restarts omp, which re-resolves the model from the
+  // session file — the freshly resolved model (and clamped thinking level)
+  // must reach the composer so the ladder/active level match reality.
+  const refreshLiveModelState = useCallback(async (sid: string) => {
+    const token = beginAuthoritativeModelSync();
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/state`);
+      if (!res.ok) return;
+      const agentState = await res.json() as { running: boolean; state?: AgentStateResponse };
+      if (sessionIdRef.current !== sid) return;
+      const applied = applyAuthoritativeModel(toThinkingModelMeta(agentState.state?.model), token);
+      if (!applied) return; // stale snapshot — drop its thinking level too
+      if (agentState.state?.thinkingLevel !== undefined) {
+        setThinkingLevel(normalizeThinkingLevel(agentState.state.thinkingLevel));
+      }
+    } catch {
+      // Best effort; the next loadSession/reconcile re-syncs.
+    }
+  }, [applyAuthoritativeModel, beginAuthoritativeModelSync]);
+
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
     let messagesLoaded = false;
     try {
@@ -807,20 +878,30 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
 
       messagesLoaded = true;
-      if (showLoading) setLoading(false);
-      if (!includeState) return null;
+      if (!includeState) {
+        if (showLoading) setLoading(false);
+        return null;
+      }
 
       try {
+        // Capture the sequence token BEFORE the fetch: a response snapshotted
+        // earlier must not mint a fresh token on arrival and clobber a newer
+        // sync that started while this request was in flight.
+        const token = beginAuthoritativeModelSync();
         const stateRes = await fetch(`/api/sessions/${encodeURIComponent(sid)}/state`);
         if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
         const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse };
-        if (sessionIdRef.current !== sid) return null;
+        if (sessionIdRef.current !== sid) {
+          if (showLoading) setLoading(false);
+          return null;
+        }
 
         const liveState = agentState.state;
+        const modelApplied = applyAuthoritativeModel(toThinkingModelMeta(liveState?.model), token);
         if (liveState) {
           if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt || null);
-          if (liveState.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(liveState.thinkingLevel));
+          if (modelApplied && liveState.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(liveState.thinkingLevel));
           if (liveState.fastModeEnabled !== undefined) setFastModeEnabled(liveState.fastModeEnabled);
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
@@ -829,9 +910,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else if (!agentState.running) {
           setQueuedMessages(EMPTY_QUEUE);
         }
+        if (showLoading) setLoading(false);
         return agentState;
       } catch (e) {
         console.error("Failed to load agent state:", e);
+        if (showLoading) setLoading(false);
         return null;
       }
     } catch (e) {
@@ -840,7 +923,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       if (showLoading && !messagesLoaded) setLoading(false);
     }
-  }, [refreshSubagentHistory]);
+  }, [refreshSubagentHistory, applyAuthoritativeModel, beginAuthoritativeModelSync]);
 
   const loadContext = useCallback(async (sid: string, leafId: string | null) => {
     try {
@@ -1323,9 +1406,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         dispatch({ type: "end" });
         if (sessionIdRef.current) {
           loadSession(sessionIdRef.current);
-          fetch(`/api/agent/${encodeURIComponent(sessionIdRef.current)}`)
+          const endSid = sessionIdRef.current;
+          const endToken = beginAuthoritativeModelSync();
+          fetch(`/api/agent/${encodeURIComponent(endSid)}`)
             .then((r) => r.json())
             .then((d: { state?: AgentStateResponse }) => {
+              if (sessionIdRef.current !== endSid) return;
+              if (!d?.state?.model) return;
+              const applied = applyAuthoritativeModel(toThinkingModelMeta(d.state.model), endToken);
+              if (!applied) return; // stale snapshot — drop everything derived from it
               if (d.state?.contextUsage !== undefined) setContextUsage(d.state.contextUsage ?? null);
               if (d.state?.systemPrompt !== undefined) setSystemPrompt(d.state.systemPrompt || null);
               if (d.state?.extensionStatuses !== undefined) setExtensionStatuses(d.state.extensionStatuses ?? []);
@@ -1374,6 +1463,32 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "thinking_level_changed":
         setThinkingLevel(normalizeThinkingLevel(event.thinkingLevel as string | undefined));
         break;
+      case "model_changed": {
+        // Bare event: omp switched the resolved model (explicit /model,
+        // retry-fallback, prewalk hand-off). No payload — sync from state.
+        const sid = sessionIdRef.current;
+        if (!sid) break;
+        const token = beginAuthoritativeModelSync();
+        void fetch(`/api/agent/${encodeURIComponent(sid)}`)
+          .then((r) => (r.ok ? r.json() as Promise<{ state?: AgentStateResponse }> : null))
+          .then((d) => {
+            if (!d?.state?.model) return;
+            if (sessionIdRef.current !== sid) return;
+            const applied = applyAuthoritativeModel(toThinkingModelMeta(d.state.model), token);
+            if (!applied) return; // stale snapshot — drop its thinking level too
+            if (d.state.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(d.state.thinkingLevel));
+          })
+          .catch(() => {});
+        break;
+      }
+      case "config_update": {
+        // Payload event: model + thinkingLevel snapshot after a
+        // config-affecting slash command (e.g. /model).
+        const model = event.model as { provider?: string; id?: string; name?: string; reasoning?: boolean; thinking?: { efforts?: string[] } } | undefined;
+        if (model) applyAuthoritativeModel(toThinkingModelMeta(model));
+        if (event.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(event.thinkingLevel as string | undefined));
+        break;
+      }
       case "available_commands_update": {
         const commands = (event.commands as RpcAvailableSlashCommand[] | undefined) ?? [];
         setSlashCommands(commands.map(toSlashCommandInfo).filter((c): c is SlashCommandInfo => c !== null));
@@ -1614,7 +1729,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as unknown as IncomingExtensionUiRequest);
         break;
     }
-  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, onAgentEnd, reconcileAgentState, resetSubagentActivityState]);
+  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
@@ -1834,10 +1949,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       await sendAgentCommand(sid, { type: "set_model", provider, modelId });
       setCurrentModelOverride({ provider, modelId });
+      void refreshLiveModelState(sid);
     } catch (e) {
       console.error("Failed to set model:", e);
     }
-  }, [isNew, setNewSessionModel]);
+  }, [isNew, setNewSessionModel, refreshLiveModelState]);
 
   const handleFastModeChange = useCallback(async (enabled: boolean) => {
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
@@ -1845,10 +1961,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       await sendAgentCommand(sid, { type: "set_fast_mode", enabled });
       setFastModeEnabled(enabled);
+      void refreshLiveModelState(sid);
     } catch (error) {
       console.error("Failed to change Fast mode:", error);
     }
-  }, []);
+  }, [refreshLiveModelState]);
 
   const handleCompact = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -1860,13 +1977,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const result = await sendAgentCommand<CompactCommandResult>(sid, { type: "compact" });
       setCompactResult(readCompactResult(result, "manual"));
       await loadSession(sid, true);
+      void refreshLiveModelState(sid);
     } catch (e) {
       setCompactError(e instanceof Error ? e.message : String(e));
       setCompactResult(null);
     } finally {
       setIsCompacting(false);
     }
-  }, [isCompacting, loadSession]);
+  }, [isCompacting, loadSession, refreshLiveModelState]);
 
   const loadModels = useCallback(async (signal?: AbortSignal) => {
     setModelsLoading(true);
@@ -2101,10 +2219,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!sid) return;
     try {
       await sendAgentCommand(sid, { type: "set_thinking_level", level });
+      void refreshLiveModelState(sid);
     } catch (e) {
       console.error("Failed to set thinking level:", e);
     }
-  }, []);
+  }, [refreshLiveModelState]);
 
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
     setToolPresetState(preset);
@@ -2185,10 +2304,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           }
         }
         if (agentState?.state) {
+          // Model + thinking level are owned by loadSession (token-guarded);
+          // re-applying this same snapshot here would mint a fresh token and
+          // bypass the stale-response guard.
           if (agentState.state.isCompacting !== undefined) setIsCompacting(agentState.state.isCompacting);
           if (agentState.state.contextUsage !== undefined) setContextUsage(agentState.state.contextUsage ?? null);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt || null);
-          if (agentState.state.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(agentState.state.thinkingLevel));
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
           if (agentState.state.queuedMessageCount === 0) {
@@ -2335,6 +2456,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // State
     data, loading, error, activeLeafId, messages, entryIds, streamState,
     agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled,
+    liveModelMeta,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,

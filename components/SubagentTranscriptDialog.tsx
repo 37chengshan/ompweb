@@ -3,186 +3,245 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { useI18n } from "@/lib/i18n";
+import { formatCost, formatDuration, formatTokens } from "@/lib/subagent-format";
+import { MarkdownBody } from "./MarkdownBody";
 import { Dialog, DialogContent, DialogTitle, DialogClose } from "./ui/primitives";
 import type { SubagentInfo } from "@/hooks/useAgentSession";
-import type { AgentMessage, AssistantContentBlock, ToolResultMessage } from "@/lib/types";
+import type { SubagentActivityEvent, SubagentSnapshotLike } from "@/lib/subagent-types";
 
-interface SubagentSnapshotLike {
-  id: string;
-  agent?: string;
-  description?: string;
-  status?: string;
-  task?: string;
-  assignment?: string;
-  sessionFile?: string;
-}
+const BLOCK_LABEL_STYLE: React.CSSProperties = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: 0.4,
+  textTransform: "uppercase",
+  color: "var(--text-dim)",
+};
 
-interface SubagentMessagesPage {
-  sessionFile: string;
-  fromByte: number;
-  nextByte: number;
-  reset?: boolean;
-  messages: AgentMessage[];
-}
-
-function SubagentBlock({ block }: { block: AssistantContentBlock }) {
-  if (block.type === "text") {
-    return <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{block.text}</div>;
-  }
-  if (block.type === "toolCall") {
+/** Recursive renderer for structured completions: string values keep their
+ * line breaks (JSON.parse already unescapes them), arrays become bullet
+ * lists, nested objects become aligned key/value rows. */
+function JsonValue({ value }: { value: unknown }) {
+  if (typeof value === "string") {
     return (
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-        <span style={{ color: "var(--accent)" }}>→ {block.toolName}</span>{" "}
-        {JSON.stringify(block.input ?? {})}
+      <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.55 }}>
+        {value}
       </div>
     );
   }
-  if (block.type === "thinking") {
-    return <div style={{ fontSize: 11, color: "var(--text-dim)", fontStyle: "italic" }}>…</div>;
+  if (Array.isArray(value)) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {value.map((item, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+            <span style={{ color: "var(--text-dim)", flexShrink: 0 }}>•</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <JsonValue value={item} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   }
-  return null;
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {Object.keys(record).map((key) => (
+          <div key={key} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+            <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--text-dim)", minWidth: 110, textAlign: "right", paddingTop: 2 }}>{key}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <JsonValue value={record[key]} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{String(value)}</span>;
 }
 
-function SubagentMessageRow({ message }: { message: AgentMessage }) {
-  if (message.role === "user") {
-    return (
-      <div style={{ display: "flex", gap: 8 }}>
-        <span style={{ flexShrink: 0, fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent)", paddingTop: 2 }}>U</span>
-        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 12.5, lineHeight: 1.55 }}>
-          {typeof message.content === "string" ? message.content : message.content.map((block, i) => (
-            <SubagentBlock key={i} block={block as AssistantContentBlock} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-  if (message.role === "assistant") {
-    return (
-      <div style={{ display: "flex", gap: 8 }}>
-        <span style={{ flexShrink: 0, fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", paddingTop: 2 }}>A</span>
-        <div style={{ fontSize: 12.5, lineHeight: 1.55, minWidth: 0 }}>
-          {message.content.map((block, i) => (
-            <SubagentBlock key={i} block={block} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-  const toolResult = message as ToolResultMessage;
-  const text = (toolResult.content ?? [])
-    .filter((block): block is { type: "text"; text: string } => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .slice(0, 400);
+/** The subagent's assignment, rendered as markdown. Exported for SSR tests. */
+export function TaskBlock({ task }: { task: string }) {
+  const { t } = useI18n();
+  if (!task) return null;
   return (
-    <div style={{ display: "flex", gap: 8 }}>
-      <span style={{ flexShrink: 0, fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", paddingTop: 2 }}>R</span>
-      <div style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.5, fontFamily: "var(--font-mono)" }}>
-        {toolResult.isError ? `⚠ ${text || "(error)"}` : text || "(no output)"}
+    <section style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", padding: "10px 12px" }}>
+      <span style={BLOCK_LABEL_STYLE}>{t("subagentTranscript.taskLabel")}</span>
+      <div style={{ marginTop: 6 }}>
+        <MarkdownBody className="markdown-subagent-text">{task}</MarkdownBody>
       </div>
-    </div>
+    </section>
   );
 }
 
-export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersion, onClose }: {
+/** The subagent's final output (`<id>.md`). Exported for SSR tests. */
+export function CompletionBlock({ completion, truncated }: { completion: string | null; truncated: boolean }) {
+  const { t } = useI18n();
+  let parsed: Record<string, unknown> | null = null;
+  if (completion) {
+    try {
+      const candidate = JSON.parse(completion) as unknown;
+      if (candidate !== null && typeof candidate === "object" && !Array.isArray(candidate)) {
+        parsed = candidate as Record<string, unknown>;
+      }
+    } catch {
+      parsed = null;
+    }
+  }
+  const keys = parsed ? Object.keys(parsed) : [];
+  const singleText = parsed && keys.length === 1 && typeof parsed[keys[0]] === "string" ? parsed[keys[0]] as string : null;
+  return (
+    <section style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", padding: "10px 12px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={BLOCK_LABEL_STYLE}>{t("subagentTranscript.resultLabel")}</span>
+        {truncated && <span style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{t("subagentTranscript.completionTruncated")}</span>}
+      </div>
+      {singleText ? (
+        <div style={{ marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-word", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.55 }}>
+          {singleText}
+        </div>
+      ) : parsed ? (
+        <div style={{ marginTop: 6 }}>
+          <JsonValue value={parsed} />
+        </div>
+      ) : completion ? (
+        <div style={{ marginTop: 6 }}>
+          <MarkdownBody className="markdown-subagent-text">{completion}</MarkdownBody>
+        </div>
+      ) : (
+        <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>
+          {t("subagentTranscript.noCompletion")}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersion, events, onClose }: {
   subagent: SubagentInfo | null;
   sessionId: string | null;
   transcriptVersion: number;
+  events?: SubagentActivityEvent[];
   onClose: () => void;
 }) {
   const { t } = useI18n();
   const [detail, setDetail] = useState<SubagentSnapshotLike | null>(null);
-  const [messages, setMessages] = useState<AgentMessage[]>([]);
-  const [nextByte, setNextByte] = useState(0);
+  const [completion, setCompletion] = useState<string | null>(null);
+  const [completionTruncated, setCompletionTruncated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [exhausted, setExhausted] = useState(false);
   const requestSeqRef = useRef(0);
-  const refreshedTranscriptVersionRef = useRef(0);
+  const lastRefetchRef = useRef(0);
 
   const open = subagent !== null;
+  const fromDisk = subagent?.source === "history";
+  const live = !fromDisk;
 
-  const loadPage = useCallback(async (startByte: number, sessionFile: string | undefined) => {
-    if (!sessionId) return;
+  const fetchCompletion = useCallback(async (): Promise<{ completion: string | null; truncated: boolean }> => {
+    if (!sessionId || !subagent?.id) throw new Error("No session");
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagent.id)}?mode=completion`);
+    if (res.status === 404) return { completion: null, truncated: false };
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json() as { completion: string | null; truncated: boolean };
+  }, [sessionId, subagent?.id]);
+
+  const load = useCallback(async () => {
+    if (!sessionId || !subagent?.id) return;
     const seq = ++requestSeqRef.current;
     setLoading(true);
     setError(null);
     try {
-      const page = await sendAgentCommand<SubagentMessagesPage>(sessionId, {
-        type: "get_subagent_messages",
-        subagentId: subagent?.id,
-        sessionFile,
-        fromByte: startByte,
-      });
-      if (seq !== requestSeqRef.current) return;
-      if (page.reset) {
-        setMessages(page.messages);
-      } else {
-        setMessages((prev) => [...prev, ...page.messages]);
+      const found = await fetchCompletion();
+      // Live snapshots enrich the header (resolved model etc.) but carry no
+      // settled output — the on-disk `<id>.md` is the completion source.
+      if (found.completion === null && live) {
+        const result = await sendAgentCommand<{ subagents?: SubagentSnapshotLike[] }>(sessionId, { type: "get_subagents" });
+        const snap = (result.subagents ?? []).find((s) => s.id === subagent?.id);
+        if (seq !== requestSeqRef.current) return;
+        if (snap) setDetail(snap);
       }
-      setNextByte(page.nextByte);
-      setExhausted(page.nextByte <= page.fromByte || page.messages.length === 0);
+      if (seq !== requestSeqRef.current) return;
+      setCompletion(found.completion);
+      setCompletionTruncated(found.truncated);
     } catch (e) {
       if (seq !== requestSeqRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (seq === requestSeqRef.current) setLoading(false);
     }
-  }, [sessionId, subagent?.id]);
+  }, [sessionId, subagent?.id, live, fetchCompletion]);
 
-  // Load the snapshot + first page whenever the dialog opens for a subagent.
+  // Load the completion whenever the dialog opens for a subagent.
   useEffect(() => {
     if (!open || !sessionId) return;
     requestSeqRef.current += 1;
-    setMessages([]);
-    setNextByte(0);
-    setExhausted(false);
+    lastRefetchRef.current = Date.now();
+    setCompletion(null);
+    setCompletionTruncated(false);
     setError(null);
     setDetail(null);
-    refreshedTranscriptVersionRef.current = transcriptVersion;
-    let cancelled = false;
+    void load();
+  }, [open, sessionId, load]);
 
-    void (async () => {
-      // Enrich the header from get_subagents when the snapshot is still live.
-      try {
-        const result = await sendAgentCommand<{ subagents?: SubagentSnapshotLike[] }>(sessionId, { type: "get_subagents" });
-        const found = (result.subagents ?? []).find((s) => s.id === subagent?.id);
-        if (!cancelled && found) setDetail(found);
-      } catch {
-        // Snapshot lookup is best-effort; the roster entry already has basics.
-      }
-      await loadPage(0, subagent?.sessionFile);
-    })();
-
-    return () => { cancelled = true; };
-  }, [open, sessionId, subagent?.id, subagent?.sessionFile, transcriptVersion, loadPage]);
-
-  // Child events arrive as an invalidation signal. Continue from nextByte
-  // instead of replaying the transcript on every streamed child event.
+  // Live child events mean the final output may have just landed — refetch,
+  // throttled so streaming batches don't hammer the route.
   useEffect(() => {
     if (!open || !sessionId || transcriptVersion === 0 || loading) return;
-    if (refreshedTranscriptVersionRef.current === transcriptVersion) return;
-    refreshedTranscriptVersionRef.current = transcriptVersion;
-    void loadPage(nextByte, subagent?.sessionFile);
-  }, [open, sessionId, transcriptVersion, loading, loadPage, nextByte, subagent?.sessionFile]);
+    const now = Date.now();
+    if (now - lastRefetchRef.current < 600) return;
+    lastRefetchRef.current = now;
+    void load();
+  }, [open, sessionId, transcriptVersion, loading, load]);
 
-  const loadMore = () => { void loadPage(nextByte, subagent?.sessionFile); };
+  const agent = detail?.agent ?? subagent?.agent ?? "";
+  const description = detail?.description ?? subagent?.description ?? "";
+  const task = detail?.task ?? subagent?.task ?? subagent?.assignment ?? "";
+  const progress = subagent?.progress;
+  const historyMeta = subagent?.source === "history"
+    ? [
+        formatTokens(progress?.tokens) ? `${formatTokens(progress?.tokens)} tok` : null,
+        formatCost(progress?.cost),
+        formatDuration(progress?.durationMs),
+        progress?.resolvedModel ? progress.resolvedModel.replace(/:.*$/, "") : null,
+      ].filter(Boolean).join(" · ")
+    : null;
+  const outcomeError = subagent?.source === "history"
+    ? subagent?.result?.abortReason ?? subagent?.result?.error
+    : undefined;
+  const recentEvents = live && !completion && events && events.length > 0 ? events.slice(-4) : null;
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent ariaLabel={t("subagentTranscript.title")} style={{ width: 640 }}>
+      <DialogContent
+        ariaLabel={t("subagentTranscript.title")}
+        style={{ width: "min(94vw, 920px)", maxWidth: "min(94vw, 920px)" }}
+      >
         {subagent && (
           <>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <DialogTitle style={{ marginBottom: 4, fontSize: 16 }}>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent)", fontSize: 14 }}>{detail?.agent ?? subagent.agent}</span>
-                  {" "}
-                  {detail?.task ?? subagent.task ?? subagent.description ?? ""}
+                <DialogTitle style={{ marginBottom: 2, fontSize: 16, lineHeight: 1.3 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent)", fontSize: 14 }}>{agent}</span>
                 </DialogTitle>
+                {description && (
+                  <div style={{ fontSize: 12.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 4 }}>
+                    {description}
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {detail?.sessionFile ?? subagent.sessionFile ?? subagent.id}
                 </div>
+                {historyMeta && (
+                  <div style={{ fontSize: 10.5, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                    {historyMeta}
+                  </div>
+                )}
+                {outcomeError && (
+                  <div style={{ fontSize: 11, color: "var(--accent-strong)", marginTop: 2, wordBreak: "break-word" }}>
+                    {outcomeError}
+                  </div>
+                )}
               </div>
               <DialogClose
                 style={{ flexShrink: 0, background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "2px 6px" }}
@@ -192,31 +251,47 @@ export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersio
               </DialogClose>
             </div>
 
-            <div style={{ maxHeight: "60dvh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)" }}>
-              {error ? (
-                <div style={{ fontSize: 12, color: "var(--status-error)" }}>{error}</div>
-              ) : messages.length === 0 && !loading ? (
-                <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>{t("subagentTranscript.noMessages")}</div>
-              ) : (
-                messages.map((message, i) => <SubagentMessageRow key={i} message={message} />)
-              )}
-              {loading && <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("subagentTranscript.loading")}</div>}
-            </div>
+            {recentEvents && (
+              <div
+                aria-live="polite"
+                style={{
+                  display: "grid",
+                  gap: 2,
+                  marginBottom: 8,
+                  padding: "6px 10px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-control)",
+                  background: "var(--bg-panel)",
+                }}
+              >
+                {recentEvents.map((event, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      fontSize: 11,
+                      fontFamily: "var(--font-mono)",
+                      color: event.kind === "tool" ? "var(--accent)" : "var(--text-muted)",
+                      minWidth: 0,
+                    }}
+                  >
+                    <span style={{ color: "var(--text-dim)", flexShrink: 0 }}>
+                      {event.kind === "tool" ? "→" : event.kind === "notice" ? "!" : "»"}
+                    </span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{event.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            {!exhausted && !error && (
-              <div style={{ marginTop: 10, textAlign: "center" }}>
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={loading}
-                  style={{
-                    padding: "6px 14px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)",
-                    background: "transparent", color: "var(--text-muted)", cursor: loading ? "wait" : "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  {t("subagentTranscript.loadMore")}
-                </button>
+            {error ? (
+              <div style={{ fontSize: 12, color: "var(--status-error)", padding: "8px 2px" }}>{error}</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <TaskBlock task={task} />
+                <CompletionBlock completion={completion} truncated={completionTruncated} />
+                {loading && <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("subagentTranscript.loading")}</div>}
               </div>
             )}
           </>

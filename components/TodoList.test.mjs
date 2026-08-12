@@ -55,3 +55,20 @@ test("counts only completed tasks and collapses long plans", () => {
   assert.doesNotMatch(html, /Six/);
   assert.match(html, /Show all tasks/);
 });
+
+test("collapsible mode collapses to a toggle header and expands again", () => {
+  const phases = [{ name: "Tasks", tasks: [{ content: "Wire panels", status: "in_progress" }] }];
+  const collapsedHtml = renderToStaticMarkup(React.createElement(TodoList, {
+    phases,
+    collapsible: true,
+    defaultExpanded: false,
+  }));
+  assert.match(collapsedHtml, /aria-expanded="false"/);
+  assert.doesNotMatch(collapsedHtml, /Wire panels/);
+  const expandedHtml = renderToStaticMarkup(React.createElement(TodoList, {
+    phases,
+    collapsible: true,
+  }));
+  assert.match(expandedHtml, /aria-expanded="true"/);
+  assert.match(expandedHtml, /Wire panels/);
+});

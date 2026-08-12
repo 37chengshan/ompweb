@@ -1,0 +1,323 @@
+// On-disk subagent history + transcript reading for omp-web.
+//
+// omp writes each subagent's session transcript to the PARENT session's
+// sibling artifacts directory: `<session-dir>/<subagent-id>.jsonl` (plus
+// `<id>.md` outputs and `<id>.<tool>.log` artifact spills). The parent's task
+// toolResult `details` persist `progress: AgentProgress[]` and
+// `results: SingleResult[]` snapshots, so the roster can be recovered after a
+// page reload without the live RPC registry (get_subagent_messages is
+// registry-gated and rejects unknown session files).
+
+import { existsSync, readFileSync, statSync } from "fs";
+import { basename, dirname, join } from "path";
+import { getSessionEntries, entryToUiMessage } from "./session-reader";
+import { parseJsonlLenient } from "./omp/session-files";
+import { parseSubagentProgress } from "./subagent-types";
+import type { SubagentHistoryEntry, SubagentHistoryResult, SubagentAgentSource } from "./subagent-types";
+import type { AgentMessage, SessionEntry } from "./types";
+
+/** Sibling artifacts directory for a parent session file. */
+export function siblingDirForSession(sessionFilePath: string): string {
+  return join(dirname(sessionFilePath), basename(sessionFilePath, ".jsonl"));
+}
+
+/** Subagent transcript path for a roster id within a parent session. */
+export function subagentTranscriptPath(sessionFilePath: string, subagentId: string): string {
+  return join(siblingDirForSession(sessionFilePath), `${subagentId}.jsonl`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function asAgentSource(value: unknown): SubagentAgentSource | undefined {
+  return value === "bundled" || value === "user" || value === "project" ? value : undefined;
+}
+
+function progressStatusToRoster(status: string | undefined): SubagentHistoryEntry["status"] {
+  if (status === "completed") return "completed";
+  if (status === "failed") return "failed";
+  if (status === "aborted") return "aborted";
+  return "started";
+}
+
+function resultStatus(value: Record<string, unknown>): SubagentHistoryEntry["status"] {
+  if (value.aborted === true) return "aborted";
+  if (typeof value.error === "string" && value.error) return "failed";
+  if (typeof value.exitCode === "number") return value.exitCode === 0 ? "completed" : "failed";
+  return "started";
+}
+
+function structuredOutput(value: unknown): SubagentHistoryResult["structuredOutput"] {
+  if (!isRecord(value)) return undefined;
+  const out: NonNullable<SubagentHistoryResult["structuredOutput"]> = {};
+  const source = asString(value.source);
+  if (source !== undefined) out.source = source;
+  const mode = asString(value.mode);
+  if (mode !== undefined) out.mode = mode;
+  const status = asString(value.status);
+  if (status !== undefined) out.status = status;
+  const error = asString(value.error);
+  if (error !== undefined) out.error = error;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Recover the subagent roster from a parent session file. Walks task
+ * toolResults, merging `progress` (live-snapshot fields) with `results`
+ * (settled per-subagent telemetry), then resolves sibling transcript files.
+ */
+export function extractSubagentHistory(sessionFilePath: string): SubagentHistoryEntry[] {
+  let entries: SessionEntry[];
+  try {
+    entries = getSessionEntries(sessionFilePath);
+  } catch {
+    return [];
+  }
+
+  const byId = new Map<string, SubagentHistoryEntry>();
+  const upsert = (entry: SubagentHistoryEntry) => {
+    const existing = byId.get(entry.id);
+    if (!existing) {
+      byId.set(entry.id, entry);
+      return;
+    }
+    byId.set(entry.id, { ...existing, ...entry, result: entry.result ?? existing.result });
+  };
+
+  for (const entry of entries) {
+    if (entry.type !== "message" || entry.message?.role !== "toolResult") continue;
+    const message = entry.message as { toolName?: unknown; details?: unknown };
+    if (message.toolName !== "task") continue;
+    const details = isRecord(message.details) ? message.details : {};
+    const progressArr = Array.isArray(details.progress) ? details.progress : [];
+    const resultsArr = Array.isArray(details.results) ? details.results : [];
+    const asyncInfo = isRecord(details.async) ? details.async : undefined;
+
+    for (const raw of progressArr) {
+      const progress = parseSubagentProgress(raw);
+      if (!progress?.id) continue;
+      upsert({
+        id: progress.id,
+        agent: progress.agent ?? "subagent",
+        agentSource: progress.agentSource,
+        status: progressStatusToRoster(progress.status),
+        task: progress.task,
+        assignment: progress.assignment,
+        description: progress.description,
+        index: progress.index ?? 0,
+        lastIntent: progress.lastIntent,
+        toolCount: progress.toolCount,
+        requests: progress.requests,
+        tokens: progress.tokens,
+        contextTokens: progress.contextTokens,
+        contextWindow: progress.contextWindow,
+        cost: progress.cost,
+        durationMs: progress.durationMs,
+        modelOverride: progress.modelOverride,
+        modelRole: progress.modelRole,
+        resolvedModel: progress.resolvedModel,
+        resolvedModelIsFallback: progress.resolvedModelIsFallback,
+        retryFailure: progress.retryFailure,
+        transcriptAvailable: false,
+      });
+    }
+
+    for (const raw of resultsArr) {
+      if (!isRecord(raw)) continue;
+      const id = asString(raw.id);
+      if (!id) continue;
+      const prior = byId.get(id);
+      const result: SubagentHistoryResult = {};
+      const exitCode = asNumber(raw.exitCode);
+      if (exitCode !== undefined) result.exitCode = exitCode;
+      const output = asString(raw.output);
+      if (output !== undefined) result.output = output;
+      if (raw.truncated === true) result.truncated = true;
+      const structured = structuredOutput(raw.structuredOutput);
+      if (structured !== undefined) result.structuredOutput = structured;
+      const error = asString(raw.error);
+      if (error !== undefined) result.error = error;
+      if (raw.aborted === true) result.aborted = true;
+      const abortReason = asString(raw.abortReason);
+      if (abortReason !== undefined) result.abortReason = abortReason;
+      const outputPath = asString(raw.outputPath);
+      if (outputPath !== undefined) result.outputPath = outputPath;
+      const patchPath = asString(raw.patchPath);
+      if (patchPath !== undefined) result.patchPath = patchPath;
+      const branchName = asString(raw.branchName);
+      if (branchName !== undefined) result.branchName = branchName;
+      const retryFailure = isRecord(raw.retryFailure)
+        ? {
+            attempt: asNumber(raw.retryFailure.attempt) ?? 0,
+            errorMessage: asString(raw.retryFailure.errorMessage) ?? "",
+          }
+        : prior?.retryFailure;
+      upsert({
+        id,
+        agent: asString(raw.agent) ?? prior?.agent ?? "subagent",
+        agentSource: asAgentSource(raw.agentSource) ?? prior?.agentSource,
+        status: resultStatus(raw),
+        task: asString(raw.task) ?? prior?.task,
+        assignment: asString(raw.assignment) ?? prior?.assignment,
+        description: asString(raw.description) ?? prior?.description,
+        index: asNumber(raw.index) ?? prior?.index ?? 0,
+        lastIntent: asString(raw.lastIntent) ?? prior?.lastIntent,
+        toolCount: asNumber(raw.toolCount) ?? prior?.toolCount,
+        requests: asNumber(raw.requests) ?? prior?.requests,
+        tokens: asNumber(raw.tokens) ?? prior?.tokens,
+        contextTokens: asNumber(raw.contextTokens) ?? prior?.contextTokens,
+        contextWindow: asNumber(raw.contextWindow) ?? prior?.contextWindow,
+        cost: asNumber(raw.cost) ?? prior?.cost,
+        durationMs: asNumber(raw.durationMs) ?? prior?.durationMs,
+        modelOverride: typeof raw.modelOverride === "string" || Array.isArray(raw.modelOverride) ? raw.modelOverride : prior?.modelOverride,
+        modelRole: asString(raw.modelRole) ?? prior?.modelRole,
+        resolvedModel: asString(raw.resolvedModel) ?? prior?.resolvedModel,
+        resolvedModelIsFallback: typeof raw.resolvedModelIsFallback === "boolean" ? raw.resolvedModelIsFallback : prior?.resolvedModelIsFallback,
+        retryFailure,
+        transcriptAvailable: false,
+        result: Object.keys(result).length > 0 ? result : undefined,
+      });
+    }
+
+    // Detached async spawns can persist with an empty results[] while still
+    // running — async.jobId still names the agent.
+    if (asyncInfo) {
+      const jobId = asString(asyncInfo.jobId);
+      if (jobId && !byId.has(jobId)) {
+        upsert({
+          id: jobId,
+          agent: "task",
+          status: asyncInfo.state === "completed" ? "completed" : asyncInfo.state === "failed" ? "failed" : "started",
+          index: byId.size,
+          transcriptAvailable: false,
+        });
+      }
+    }
+  }
+
+  // Resolve sibling transcript files and async/detached markers.
+  const dir = siblingDirForSession(sessionFilePath);
+  const detachedIds = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type !== "message" || entry.message?.role !== "toolResult") continue;
+    const message = entry.message as { toolName?: unknown; details?: unknown };
+    if (message.toolName !== "task") continue;
+    const details = isRecord(message.details) ? message.details : {};
+    const asyncInfo = isRecord(details.async) ? details.async : undefined;
+    const jobId = asyncInfo ? asString(asyncInfo.jobId) : undefined;
+    if (jobId) detachedIds.add(jobId);
+  }
+  const roster = [...byId.values()];
+  for (const entry of roster) {
+    if (detachedIds.has(entry.id)) entry.detached = true;
+    const candidate = join(dir, `${entry.id}.jsonl`);
+    const available = existsSync(candidate);
+    if (available) {
+      entry.sessionFile = candidate;
+      entry.transcriptAvailable = true;
+    }
+  }
+  return roster.sort((a, b) => a.index - b.index || a.id.localeCompare(b.id));
+}
+
+/** Cap on transcript bytes materialized for the dialog (files are small). */
+export const MAX_SUBAGENT_TRANSCRIPT_BYTES = 16 * 1024 * 1024;
+
+export interface SubagentTranscriptPage {
+  sessionFile: string;
+  fromByte: number;
+  nextByte: number;
+  reset: boolean;
+  messages: AgentMessage[];
+  error?: string;
+  /** Full file size — lets the dialog hide Load more once fully read. */
+  totalBytes?: number;
+}
+
+/**
+ * Byte-window transcript paging mirroring omp's readRpcSubagentTranscript:
+ * parse complete lines from `fromByte`, return UI messages + nextByte.
+ */
+export function readSubagentTranscriptPage(sessionFilePath: string, fromByte = 0): SubagentTranscriptPage {
+  const empty: SubagentTranscriptPage = {
+    sessionFile: sessionFilePath,
+    fromByte: typeof fromByte === "number" && Number.isFinite(fromByte) ? Math.max(0, Math.trunc(fromByte)) : 0,
+    nextByte: typeof fromByte === "number" && Number.isFinite(fromByte) ? Math.max(0, Math.trunc(fromByte)) : 0,
+    reset: false,
+    messages: [],
+  };
+  let size: number;
+  try {
+    size = statSync(sessionFilePath).size;
+  } catch {
+    return empty;
+  }
+  let startByte = empty.fromByte;
+  let reset = false;
+  if (startByte > size) {
+    startByte = 0;
+    reset = true;
+  }
+  if (size > MAX_SUBAGENT_TRANSCRIPT_BYTES) {
+    return { ...empty, fromByte: startByte, nextByte: startByte, reset, error: "Subagent transcript exceeds the readable size limit" };
+  }
+  let body: string;
+  try {
+    // Slice the BYTE buffer, not the decoded string: `startByte` is a UTF-8
+    // offset, while string indices are UTF-16 code units — slicing the string
+    // misaligns every later page once non-ASCII text precedes the offset.
+    body = readFileSync(sessionFilePath).subarray(startByte).toString("utf8");
+  } catch {
+    return { ...empty, fromByte: startByte, nextByte: startByte, reset };
+  }
+  const lastNewline = body.lastIndexOf("\n");
+  const completeText = lastNewline >= 0 ? body.slice(0, lastNewline + 1) : "";
+  const entries = completeText.length > 0 ? parseJsonlLenient<SessionEntry>(completeText) : [];
+  const messages = entries
+    .map((entry) => entryToUiMessage(entry, {}))
+    .filter((message): message is AgentMessage => message !== null);
+  const nextByte = startByte + Buffer.byteLength(completeText, "utf8");
+  return { sessionFile: sessionFilePath, fromByte: startByte, nextByte, reset, messages, totalBytes: size };
+}
+
+/** Cap on completion bytes materialized for the dialog (final outputs are small). */
+export const MAX_SUBAGENT_COMPLETION_BYTES = 1024 * 1024;
+
+/**
+ * Read a subagent's final output — the `<id>.md` sibling artifact omp writes
+ * when the task settles. Returns null when no output file exists yet (still
+ * running, aborted before producing output, or the session predates it).
+ * Output files can exceed the transcript cap, so the read is bounded.
+ */
+export function readSubagentCompletion(
+  sessionFilePath: string,
+  subagentId: string,
+): { completion: string; truncated: boolean } | null {
+  const outputFile = join(siblingDirForSession(sessionFilePath), `${subagentId}.md`);
+  let size: number;
+  try {
+    size = statSync(outputFile).size;
+  } catch {
+    return null;
+  }
+  if (size <= 0) return null;
+  const truncated = size > MAX_SUBAGENT_COMPLETION_BYTES;
+  try {
+    const completion = readFileSync(outputFile, "utf8");
+    return {
+      completion: truncated ? completion.slice(0, MAX_SUBAGENT_COMPLETION_BYTES) : completion,
+      truncated,
+    };
+  } catch {
+    return null;
+  }
+}

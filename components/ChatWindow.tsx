@@ -9,7 +9,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ExtensionDialog } from "./ExtensionDialog";
 import { SubagentTranscriptDialog } from "./SubagentTranscriptDialog";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
-import { TodoList } from "./TodoList";
+import { ComposerPanels } from "./ComposerPanels";
 import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentInfo } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -230,7 +230,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase, activeGoal, activePlan,
-    subagents, subagentTranscriptVersions, activeSubagentCount, currentTodoPhase, todoPhases,
+    subagents, subagentEvents, subagentTranscriptVersions, activeSubagentCount, currentTodoPhase, todoPhases,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
@@ -490,6 +490,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
         subagent={selectedSubagent}
         sessionId={session?.id ?? sessionIdRef.current ?? null}
         transcriptVersion={selectedSubagent ? (subagentTranscriptVersions[selectedSubagent.id] ?? 0) : 0}
+        events={selectedSubagent ? (subagentEvents[selectedSubagent.id] ?? []) : undefined}
         onClose={() => setSelectedSubagent(null)}
       />
 
@@ -708,8 +709,6 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
               <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} />
             )}
 
-            <TodoList phases={todoPhases} />
-
             {agentRunning && !streamState.streamingMessage && (
               <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">
                 <span
@@ -729,38 +728,6 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
                       : null,
                   ].filter(Boolean).join(" · ")}
                 </span>
-              </div>
-            )}
-            {subagents.length > 0 && (
-              <div role="list" aria-label={tn("chatWindow.subagentCount", subagents.length)} style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
-                {subagents.map((subagent) => (
-                  <button
-                    key={subagent.id}
-                    type="button"
-                    onClick={() => setSelectedSubagent(subagent)}
-                    title={`${subagent.agent} · ${subagent.description ?? subagent.task ?? subagent.status}`}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 6,
-                      padding: "2px 9px",
-                      border: "1px solid var(--border)",
-                      borderRadius: 999,
-                      background: "var(--bg-panel)",
-                      fontSize: 11,
-                      color: subagent.status === "started" ? "var(--text)" : "var(--text-dim)",
-                      opacity: subagent.status === "started" ? 1 : 0.65,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      transition: "border-color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 40%, var(--border))"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
-                  >
-                    <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 10.5, color: "var(--accent)" }}>{subagent.agent}</span>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
-                      {subagent.task ?? subagent.description ?? subagent.status}
-                    </span>
-                  </button>
-                ))}
               </div>
             )}
 
@@ -808,6 +775,11 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, onAgentEnd,
           }}
         >
           <div style={{ maxWidth: 820, margin: "0 auto" }}>
+            <ComposerPanels
+              todoPhases={todoPhases}
+              subagents={subagents}
+              onSelectSubagent={setSelectedSubagent}
+            />
             <ExtensionWidgets widgets={belowEditorWidgets} />
           </div>
         </div>

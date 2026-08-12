@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Ban, CheckCircle2, Circle, CircleAlert, CircleDotDashed, ListChecks } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Ban, CheckCircle2, ChevronDown, Circle, CircleAlert, CircleDotDashed, ListChecks } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import type { TodoItem, TodoPhase } from "@/lib/pi-types";
 
@@ -14,9 +14,29 @@ function TodoStatusIcon({ status }: { status: TodoItem["status"] }) {
   return <Circle {...props} color="var(--text-dim)" />;
 }
 
-export function TodoList({ phases = [] }: { phases?: TodoPhase[] }) {
+interface TodoListProps {
+  phases?: TodoPhase[];
+  /** Render as a composer-attached panel: the header row becomes a
+   * collapse/expand toggle and the section margin is dropped. */
+  collapsible?: boolean;
+  /** Initial expansion when `collapsible` (default: expanded). */
+  defaultExpanded?: boolean;
+}
+
+export function TodoList({ phases = [], collapsible = false, defaultExpanded = true }: TodoListProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const [collapsed, setCollapsed] = useState(collapsible ? !defaultExpanded : false);
+  const prevPhasesLengthRef = useRef(phases.length);
+
+  // A plan arriving mid-run should surface itself: auto-expand the panel the
+  // first time phases appear (e.g. when /goal or /plan starts executing).
+  useEffect(() => {
+    const hadPhases = prevPhasesLengthRef.current > 0;
+    prevPhasesLengthRef.current = phases.length;
+    if (!hadPhases && phases.length > 0) setCollapsed(false);
+  }, [phases.length]);
+
   if (phases.length === 0) return null;
 
   const tasks = phases.flatMap((phase) => phase.tasks);
@@ -29,17 +49,48 @@ export function TodoList({ phases = [] }: { phases?: TodoPhase[] }) {
   }).filter((phase) => phase.tasks.length > 0);
   const isTruncated = displayedPhases.reduce((count, phase) => count + phase.tasks.length, 0) < tasks.length;
 
+  const headerRowClass = "flex items-center gap-2 px-3 py-2 text-xs text-text-muted";
+  const headerBorderClass = collapsed ? "" : "border-b border-border";
+  const progress = t("chatWindow.todoProgress", { done, total: tasks.length });
+
   return (
     <section
       aria-label={t("chatWindow.todoList")}
-      className="my-2 overflow-hidden border border-border bg-bg-subtle"
+      className={`overflow-hidden border border-border bg-bg-subtle ${collapsible ? "" : "my-2"}`}
       style={{ borderRadius: "var(--radius-card)" }}
     >
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs text-text-muted">
-        <ListChecks size={15} strokeWidth={1.8} aria-hidden />
-        <strong className="font-medium text-text">{t("chatWindow.todoList")}</strong>
-        <span className="ml-auto">{t("chatWindow.todoProgress", { done, total: tasks.length })}</span>
-      </div>
+      {collapsible ? (
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((value) => !value)}
+          title={collapsed ? t("chatWindow.expandPanel") : t("chatWindow.collapsePanel")}
+          className={`${headerRowClass} ${headerBorderClass} w-full cursor-pointer text-left`}
+          style={{ background: "none" }}
+        >
+          <ListChecks size={15} strokeWidth={1.8} aria-hidden />
+          <strong className="font-medium text-text">{t("chatWindow.todoList")}</strong>
+          <span className="ml-auto">{progress}</span>
+          <ChevronDown
+            size={14}
+            strokeWidth={1.8}
+            aria-hidden
+            style={{
+              color: "var(--text-dim)",
+              transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+              transition: "transform var(--dur-fast) var(--ease-out-warm)",
+            }}
+          />
+        </button>
+      ) : (
+        <div className={`${headerRowClass} ${headerBorderClass}`}>
+          <ListChecks size={15} strokeWidth={1.8} aria-hidden />
+          <strong className="font-medium text-text">{t("chatWindow.todoList")}</strong>
+          <span className="ml-auto">{progress}</span>
+        </div>
+      )}
+      {!collapsed && (
+        <>
       <div className="grid gap-3 px-3 py-2.5">
         {displayedPhases.map((phase, phaseIndex) => (
           <div key={phase.id ?? `${phase.name}-${phaseIndex}`} className="grid gap-1.5">
@@ -76,6 +127,8 @@ export function TodoList({ phases = [] }: { phases?: TodoPhase[] }) {
         >
           {expanded ? t("chatWindow.todoShowLess") : t("chatWindow.todoShowAll")}
         </button>
+      )}
+        </>
       )}
     </section>
   );

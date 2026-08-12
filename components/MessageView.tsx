@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState, useRef, useEffect, useMemo, useCallback, type ComponentProps } from "react";
-import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, Brain } from "lucide-react";
+import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, Brain, Ban, CheckCircle2, CircleAlert } from "lucide-react";
 import { MarkdownBody } from "./MarkdownBody";
 import { copyText } from "@/lib/clipboard";
 import { translate, useI18n, type Locale } from "@/lib/i18n";
@@ -9,6 +9,7 @@ import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { isEmptyThinkingBlock } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { Tooltip, Collapsible, CollapsibleTrigger, CollapsiblePanel } from "./ui/primitives";
+import { formatCost, formatDuration, formatTokens, shortModel } from "@/lib/subagent-format";
 import type {
   AgentMessage,
   UserMessage,
@@ -754,7 +755,12 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
 
   // Result display
   const resultText = result
-    ? result.content.filter((b): b is { type: "text"; text: string } => b.type === "text").map((b) => b.text).join("\n")
+    ? (typeof result.content === "string"
+        ? result.content
+        : (Array.isArray(result.content) ? result.content : [])
+            .filter((b): b is { type: "text"; text: string } => b.type === "text" && typeof b.text === "string")
+            .map((b) => b.text)
+            .join("\n"))
     : null;
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
@@ -838,11 +844,14 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
               diff={resultDiff}
             />
           ) : (
-            <PairedResult
-              text={resultText ?? ""}
-              isEmpty={resultIsEmpty}
-              isError={isError}
-            />
+            <>
+              <TaskResultPanel details={result.details} />
+              <PairedResult
+                text={resultText ?? ""}
+                isEmpty={resultIsEmpty}
+                isError={isError}
+              />
+            </>
           )
         )}
       </Collapsible>
@@ -861,6 +870,102 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
 
 interface ResultDiff {
   text: string;
+}
+
+type TaskResultRowLike = Record<string, unknown>;
+
+function taskRowStatus(row: TaskResultRowLike): "started" | "completed" | "failed" | "aborted" {
+  if (row.aborted === true) return "aborted";
+  if (typeof row.error === "string" && row.error) return "failed";
+  if (typeof row.exitCode === "number") return row.exitCode === 0 ? "completed" : "failed";
+  const status = row.status;
+  if (status === "completed") return "completed";
+  if (status === "failed") return "failed";
+  if (status === "aborted") return "aborted";
+  return "started";
+}
+
+function TaskResultStatusIcon({ status }: { status: "started" | "completed" | "failed" | "aborted" }) {
+  const props = { size: 12, strokeWidth: 2, "aria-hidden": true as const };
+  if (status === "completed") return <CheckCircle2 {...props} color="var(--accent)" />;
+  if (status === "failed") return <CircleAlert {...props} color="var(--accent-strong)" />;
+  if (status === "aborted") return <Ban {...props} color="var(--text-dim)" />;
+  return <span aria-hidden className="live-status-dot inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />;
+}
+
+/**
+ * Compact per-subagent summary rendered inside an expanded `task` tool call.
+ * Feeds off the size-bounded task details allowlisted by the session reader
+ * (lib/session-reader.ts stripToolResultDetails): settled results when
+ * present, otherwise the mid-run progress snapshot.
+ */
+export function TaskResultPanel({ details }: { details: unknown }) {
+  const { t, tn } = useI18n();
+  if (!isRecord(details)) return null;
+  const results = (Array.isArray(details.results) ? details.results : []).filter(isRecord);
+  const progress = (Array.isArray(details.progress) ? details.progress : []).filter(isRecord);
+  const asyncInfo = isRecord(details.async) ? details.async : null;
+  if (results.length === 0 && progress.length === 0 && !asyncInfo) return null;
+
+  const rows = results.length > 0 ? results : progress;
+  const totalTokens = rows.reduce((sum, row) => sum + (typeof row.tokens === "number" ? row.tokens : 0), 0);
+  const totalCost = rows.reduce((sum, row) => sum + (typeof row.cost === "number" ? row.cost : 0), 0);
+  const totalDurationMs = typeof details.totalDurationMs === "number" ? details.totalDurationMs : undefined;
+  const totalParts = [
+    tn("chatWindow.subagentCount", rows.length),
+    formatTokens(totalTokens) ? `${formatTokens(totalTokens)} tok` : null,
+    formatCost(totalCost),
+    formatDuration(totalDurationMs),
+  ].filter(Boolean);
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--border)",
+        background: "var(--bg-subtle)",
+        padding: "8px 10px",
+        display: "grid",
+        gap: 4,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-muted)" }}>
+        <span style={{ fontWeight: 600, color: "var(--text)" }}>{t("messageView.taskSubagents")}</span>
+        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", color: "var(--text-dim)", fontSize: 10.5 }}>
+          {totalParts.join(" · ")}
+        </span>
+        {asyncInfo && (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-dim)" }}>⤴</span>
+        )}
+      </div>
+      {rows.map((row, index) => {
+        const id = typeof row.id === "string" ? row.id : `row-${index}`;
+        const status = taskRowStatus(row);
+        const task = typeof row.task === "string" && row.task ? row.task : (typeof row.assignment === "string" ? row.assignment : null);
+        const rowParts = [
+          formatTokens(typeof row.tokens === "number" ? row.tokens : undefined) ? `${formatTokens(typeof row.tokens === "number" ? row.tokens : undefined)} tok` : null,
+          formatCost(typeof row.cost === "number" ? row.cost : undefined),
+          status !== "started" ? formatDuration(typeof row.durationMs === "number" ? row.durationMs : undefined) : null,
+          shortModel(typeof row.resolvedModel === "string" ? row.resolvedModel : undefined),
+        ].filter(Boolean);
+        return (
+          <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 11.5 }}>
+            <TaskResultStatusIcon status={status} />
+            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 10.5, color: "var(--accent)", flexShrink: 0 }}>
+              {typeof row.agent === "string" ? row.agent : "subagent"}
+            </span>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, color: "var(--text)" }}>
+              {task ?? ""}
+            </span>
+            {rowParts.length > 0 && (
+              <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-dim)" }}>
+                {rowParts.join(" · ")}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function PairedDiffResult({ diff }: {

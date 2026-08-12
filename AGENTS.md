@@ -106,6 +106,9 @@ components/
   SessionSidebar.tsx  session tree + FileExplorer
   ChatWindow.tsx      chat composition + completion sound wrapper
   ChatInput.tsx       input bar + model/thinking/tools/compact controls
+  ComposerPanels.tsx  composer-attached todo + subagent panels (collapsible, live states)
+  TodoList.tsx        todo phase grid with preview/show-all (used by ComposerPanels)
+  SubagentTranscriptDialog.tsx  task + final output summary dialog (wide, screen-adaptive)
   MessageView.tsx     renders one message (user/assistant/toolCall/toolResult)
   CommandPalette.tsx  ⌘K/Ctrl+K palette (cmdk): session switch, new session, theme
   BranchNavigator.tsx in-session branch switcher
@@ -158,6 +161,54 @@ handled or safely ignored.
 - The sidebar listens to `/api/agent/running/events`, backed by `subscribeRunningSessions()` in `lib/rpc-manager.ts`, so running badges update without polling.
 - `useAgentSession` still treats per-session SSE as primary for chat events, but while a run is active it periodically calls `GET /api/agent/[id]` and also reconciles on `visibilitychange`/`online`. This fixes missed `agent_end` events from background tabs or half-open connections.
 - Prompt runs use a monotonic run id; late SSE or slow reconciliation responses from an old run must be ignored so they cannot resurrect stale streaming bubbles.
+
+### Composer-attached panels (`components/ComposerPanels.tsx`)
+- The live todo plan (`TodoList`) and the subagent roster live **pinned above
+  the chat input**, not inside the scrollable message list. `ComposerPanels`
+  renders both, each independently collapsible via its header row (`chevron`);
+  panels auto-expand when a plan or running subagent first appears. Subagent
+  chips carry live state (pulsing dot while `started`, check/alert/ban for
+  terminal states) fed by the same `subagent_lifecycle`/`subagent_progress`
+  SSE frames; clicking a chip opens the transcript dialog. `TodoList` keeps a
+  non-collapsible default (`collapsible` prop) for SSR tests.
+
+### Subagent integration (`lib/subagent-types.ts`, `lib/subagent-history.ts`)
+- **Live detail**: `subagent_progress` frames carry the full `AgentProgress`
+  object — `lib/subagent-types.ts` parses it defensively into
+  `SubagentInfo.progress` (current tool/intent, tokens, cost, context
+  gauge, resolved model, retry state, detached flag, agentSource). The
+  composer chips surface the current activity + telemetry line; retry
+  (`⟳ retrying N/M`) takes precedence over the tool line. `subagent_event`
+  frames also feed a bounded per-subagent activity buffer shown in the
+  transcript dialog.
+- **Roster hydration**: `get_subagents` snapshots (which carry progress)
+  rehydrate the roster after SSE reconnect (`refreshSubagentRoster`, wired
+  into mount, send, and the reconcile poll). Terminal subagents vanish from
+  the RPC registry — history fills that gap.
+- **On-disk history** (`lib/subagent-history.ts`, `/api/sessions/[id]/subagents*`):
+  omp persists each subagent's transcript to the parent session's sibling
+  artifacts dir (`<session-dir>/<subagent-id>.jsonl`) and the parent file's
+  task toolResults keep `progress[]`/`results[]` snapshots. omp-web recovers
+  the roster from disk (`extractSubagentHistory`, result fields win over the
+  mid-run snapshot), so past/finished runs show in the composer panel after a
+  reload. The transcript route pages the sibling file byte-wise (mirroring
+  `get_subagent_messages`, which is RPC-registry-gated and refuses files it
+  doesn't know). The dialog reads only the final output — `<id>.md` via
+  `?mode=completion` (bounded tail read that also works for transcripts
+  beyond the 16MB paging cap) with a live `get_subagents` snapshot fallback
+  for header enrichment; it never pages the raw transcript. Subagent ids are
+  `[A-Za-z0-9_-]{1,80}` — the route validates before joining to confine reads
+  to the sibling dir.
+- **In-message task summary** (`components/MessageView.tsx` TaskResultPanel):
+  the session reader allowlists a SIZE-BOUNDED subset of `task` toolResult
+  details (telemetry only — no `output`/`stderr`, long text truncated to
+  240 chars, `lib/session-reader.ts` `keepTaskToolResultDetails`), and
+  expanded `task` tool calls render a per-subagent summary (status, agent,
+  task, tokens/cost/duration/model, async marker) above the raw result text.
+- **Chip extras**: agent-source labels (`user`/`project`), nested-subagent
+  count (`inflightTaskDetails`/`extractedToolData.task` progress), and the
+  `⤴` async marker (live `detached` flag or history `details.async`
+  presence). Shared formatters live in `lib/subagent-format.ts`.
 
 ### Worktrees and project grouping
 - `lib/worktree.ts` resolves linked worktree top-levels back to the main repo `projectRoot`; `listAllSessions()` attaches that to each `SessionInfo` so all worktrees for one repo are grouped together in the sidebar.

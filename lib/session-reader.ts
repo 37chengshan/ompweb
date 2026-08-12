@@ -435,8 +435,64 @@ function base64ImageInfo(block: unknown): { bytes: number; mime?: string } | nul
  * and the history UI reads exactly two keys from it: details.patch and
  * details.diff (components/MessageView.tsx getResultDiff). Serialization
  * allowlists those keys — extend the allowlist if MessageView ever reads more.
- * On-disk parsing (loadSessionFile/getSessionEntries) keeps full details.
+ * Task toolResults additionally keep a SIZE-BOUNDED subset of their
+ * results/progress (telemetry, no full output) so the message flow can render
+ * a per-subagent summary. On-disk parsing (loadSessionFile/getSessionEntries)
+ * keeps full details.
  */
+const TASK_DETAIL_MAX_TEXT = 240;
+
+function truncateTaskDetailText(value: string): string {
+  return value.length <= TASK_DETAIL_MAX_TEXT ? value : `${value.slice(0, TASK_DETAIL_MAX_TEXT)}…`;
+}
+
+const TASK_DETAIL_PROGRESS_KEYS = [
+  "index", "id", "agent", "agentSource", "status", "task", "assignment", "lastIntent",
+  "toolCount", "requests", "tokens", "contextTokens", "contextWindow", "cost", "durationMs",
+  "modelRole", "resolvedModel", "resolvedModelIsFallback", "retryFailure",
+] as const;
+
+const TASK_DETAIL_RESULT_KEYS = [
+  "index", "id", "agent", "agentSource", "status", "task", "assignment", "exitCode",
+  "truncated", "structuredOutput", "durationMs", "tokens", "requests", "contextTokens",
+  "contextWindow", "modelRole", "resolvedModel", "resolvedModelIsFallback", "error",
+  "aborted", "abortReason", "outputPath", "patchPath", "branchName", "retryFailure",
+] as const;
+
+function keepTaskToolResultDetails(details: Record<string, unknown>): Record<string, unknown> | null {
+  const kept: Record<string, unknown> = {};
+  const results = Array.isArray(details.results) ? details.results : [];
+  const progress = Array.isArray(details.progress) ? details.progress : [];
+  if (results.length === 0 && progress.length === 0 && !isRecord(details.async)) return null;
+
+  if (typeof details.totalDurationMs === "number") kept.totalDurationMs = details.totalDurationMs;
+  if (isRecord(details.async)) kept.async = details.async;
+
+  const pickRecord = (raw: unknown, keys: readonly string[]): Record<string, unknown> | null => {
+    if (!isRecord(raw)) return null;
+    const out: Record<string, unknown> = {};
+    for (const key of keys) {
+      if (raw[key] !== undefined) out[key] = raw[key];
+    }
+    for (const key of ["task", "assignment", "error", "abortReason"] as const) {
+      if (typeof out[key] === "string") out[key] = truncateTaskDetailText(out[key]);
+    }
+    return out;
+  };
+
+  if (progress.length > 0) {
+    kept.progress = progress
+      .map((raw) => pickRecord(raw, TASK_DETAIL_PROGRESS_KEYS))
+      .filter((entry): entry is Record<string, unknown> => entry !== null);
+  }
+  if (results.length > 0) {
+    kept.results = results
+      .map((raw) => pickRecord(raw, TASK_DETAIL_RESULT_KEYS))
+      .filter((entry): entry is Record<string, unknown> => entry !== null);
+  }
+  return Object.keys(kept).length > 0 ? kept : null;
+}
+
 function stripToolResultDetails(message: AgentMessage): AgentMessage {
   if (message.role !== "toolResult" || message.details === undefined) return message;
   const { details, ...rest } = message;
@@ -444,6 +500,10 @@ function stripToolResultDetails(message: AgentMessage): AgentMessage {
     const kept: Record<string, unknown> = {};
     if (typeof details.patch === "string") kept.patch = details.patch;
     if (typeof details.diff === "string") kept.diff = details.diff;
+    if (message.toolName === "task") {
+      const taskDetails = keepTaskToolResultDetails(details);
+      if (taskDetails) Object.assign(kept, taskDetails);
+    }
     if (Object.keys(kept).length > 0) return { ...rest, details: kept };
   }
   return rest;
@@ -489,7 +549,7 @@ function compactionUiMessage(entry: CompactionEntry, active: boolean): CustomMes
 
 // Convert a session entry on the active branch into a UI message.
 // Returns null for entries that do not map to chat history (metadata, non-message types).
-function entryToUiMessage(
+export function entryToUiMessage(
   entry: SessionEntry,
   options: { deferThinking?: boolean; deferToolResultImages?: boolean },
 ): AgentMessage | null {

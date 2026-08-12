@@ -248,6 +248,7 @@
   "subagentTranscript.close": "关闭记录",
   "subagentTranscript.noMessages": "暂无消息",
   "subagentTranscript.loading": "加载中…",
+  "subagentTranscript.loadMore": "加载更多",
   "subagentTranscript.taskLabel": "任务",
   "subagentTranscript.showTranscript": "显示完整记录",
   "subagentTranscript.hideTranscript": "隐藏完整记录",

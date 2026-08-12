@@ -248,6 +248,7 @@
   "subagentTranscript.close": "Close transcript",
   "subagentTranscript.noMessages": "No messages yet",
   "subagentTranscript.loading": "Loading…",
+  "subagentTranscript.loadMore": "Load more",
   "subagentTranscript.taskLabel": "Task",
   "subagentTranscript.showTranscript": "Show transcript",
   "subagentTranscript.hideTranscript": "Hide transcript",

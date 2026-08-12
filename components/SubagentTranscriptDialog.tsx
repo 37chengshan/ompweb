@@ -438,6 +438,8 @@ export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersio
                 {loading && <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("subagentTranscript.loading")}</div>}
                 <button
                   type="button"
+                  aria-expanded={transcriptOpen}
+                  aria-controls="subagent-transcript-panel"
                   onClick={() => {
                     const next = !transcriptOpen;
                     setTranscriptOpen(next);
@@ -460,6 +462,7 @@ export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersio
                 </button>
                 {transcriptOpen && (
                   <div
+                    id="subagent-transcript-panel"
                     style={{
                       display: "grid",
                       gap: 8,

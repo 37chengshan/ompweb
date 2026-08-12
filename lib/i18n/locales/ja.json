@@ -248,6 +248,7 @@
   "subagentTranscript.close": "トランスクリプトを閉じる",
   "subagentTranscript.noMessages": "まだメッセージがありません",
   "subagentTranscript.loading": "読み込み中…",
+  "subagentTranscript.loadMore": "さらに読み込む",
   "subagentTranscript.taskLabel": "タスク",
   "subagentTranscript.showTranscript": "トランスクリプトを表示",
   "subagentTranscript.hideTranscript": "トランスクリプトを隠す",

@@ -614,6 +614,7 @@ export class AgentSessionWrapper {
       isBashRunning: this.bashRunning,
       isCompacting: state.isCompacting,
       autoCompactionEnabled: state.autoCompactionEnabled,
+      interruptMode: state.interruptMode,
       model: state.model
         ? {
             id: state.model.id,

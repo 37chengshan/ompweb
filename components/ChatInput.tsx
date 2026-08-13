@@ -61,6 +61,11 @@ interface Props {
   fastModeEnabled?: boolean;
   fastModeSupported?: boolean;
   onFastModeChange?: (enabled: boolean) => void;
+  /** Runtime session modes (set_interrupt_mode / set_auto_compaction RPC). */
+  interruptMode?: "immediate" | "wait";
+  onInterruptModeChange?: (mode: "immediate" | "wait") => void;
+  autoCompactionEnabled?: boolean;
+  onAutoCompactionChange?: (enabled: boolean) => void;
   onCompact?: () => void;
   onAbortCompaction?: () => void;
   isCompacting?: boolean;
@@ -367,6 +372,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap, modelNameOverride,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
+  interruptMode, onInterruptModeChange, autoCompactionEnabled, onAutoCompactionChange,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
   soundEnabled, onSoundToggle, onAudioUnlock,
@@ -2248,6 +2254,30 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 backdropFilter: "blur(10px)",
               } : null),
             }}>
+            {onInterruptModeChange && (
+              <button
+                type="button"
+                onClick={() => onInterruptModeChange(interruptMode === "immediate" ? "wait" : "immediate")}
+                title={interruptMode === "immediate"
+                  ? "Steering interrupts the agent immediately"
+                  : "Steering waits for the current step to finish"}
+                aria-pressed={interruptMode === "wait"}
+                style={{ height: 32, padding: isMobile ? "0 6px" : "0 10px", border: "1px solid var(--border)", borderRadius: 9, background: interruptMode === "wait" ? "var(--bg-selected)" : "transparent", color: interruptMode === "wait" ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                {isMobile ? `I: ${interruptMode === "immediate" ? "Now" : "Wait"}` : `Interrupt: ${interruptMode === "immediate" ? "Now" : "Wait"}`}
+              </button>
+            )}
+            {onAutoCompactionChange && (
+              <button
+                type="button"
+                onClick={() => onAutoCompactionChange(!autoCompactionEnabled)}
+                title={autoCompactionEnabled ? "Automatic context compaction is on" : "Automatic context compaction is off"}
+                aria-pressed={autoCompactionEnabled}
+                style={{ height: 32, padding: isMobile ? "0 6px" : "0 10px", border: "1px solid var(--border)", borderRadius: 9, background: autoCompactionEnabled ? "var(--bg-selected)" : "transparent", color: autoCompactionEnabled ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                {isMobile ? `AC: ${autoCompactionEnabled ? "On" : "Off"}` : `Auto-Compact: ${autoCompactionEnabled ? "On" : "Off"}`}
+              </button>
+            )}
             {!isStreaming && fastModeSupported && onFastModeChange && (
               <button
                 type="button"

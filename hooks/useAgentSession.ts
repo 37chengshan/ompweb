@@ -154,6 +154,8 @@ type AgentStateResponse = {
   systemPrompt?: string;
   thinkingLevel?: string;
   fastModeEnabled?: boolean;
+  interruptMode?: "immediate" | "wait";
+  autoCompactionEnabled?: boolean;
   isStreaming?: boolean;
   isPromptRunning?: boolean;
   isBashRunning?: boolean;
@@ -545,6 +547,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [toolPreset, setToolPreset] = useState<ToolPreset>(() => getPreferredToolPreset());
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("auto");
   const [fastModeEnabled, setFastModeEnabled] = useState(false);
+  // Runtime session modes returned by get_state and changed via RPC
+  // (set_interrupt_mode / set_auto_compaction).
+  const [interruptMode, setInterruptMode] = useState<"immediate" | "wait">("immediate");
+  const [autoCompactionEnabled, setAutoCompactionEnabled] = useState(true);
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -857,6 +863,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (agentState.state?.fastModeEnabled !== undefined) {
         setFastModeEnabled(agentState.state.fastModeEnabled);
       }
+      if (agentState.state?.interruptMode !== undefined) setInterruptMode(agentState.state.interruptMode);
+      if (agentState.state?.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(agentState.state.autoCompactionEnabled);
     } catch {
       // Best effort; the next loadSession/reconcile re-syncs.
     }
@@ -928,6 +936,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt || null);
           if (modelApplied && liveState.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(liveState.thinkingLevel));
           if (liveState.fastModeEnabled !== undefined) setFastModeEnabled(liveState.fastModeEnabled);
+          if (liveState.interruptMode !== undefined) setInterruptMode(liveState.interruptMode);
+          if (liveState.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(liveState.autoCompactionEnabled);
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.todoPhases !== undefined) setTodoPhases(liveState.todoPhases ?? []);
@@ -1630,6 +1640,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             if (!applied) return; // stale snapshot — drop its thinking level too
             if (d.state.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(d.state.thinkingLevel));
             if (d.state.fastModeEnabled !== undefined) setFastModeEnabled(d.state.fastModeEnabled);
+            if (d.state.interruptMode !== undefined) setInterruptMode(d.state.interruptMode);
+            if (d.state.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(d.state.autoCompactionEnabled);
           })
           .catch(() => {});
         break;
@@ -2111,6 +2123,32 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
   }, [addNotice, ensureNewSession, refreshLiveModelState]);
+
+  /** Change how steering interrupts the running agent (immediate vs wait). */
+  const handleInterruptModeChange = useCallback(async (mode: "immediate" | "wait") => {
+    const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+    if (!sid) return;
+    setInterruptMode(mode);
+    try {
+      await sendAgentCommand(sid, { type: "set_interrupt_mode", mode });
+    } catch (error) {
+      console.error("Failed to change interrupt mode:", error);
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice]);
+
+  /** Toggle automatic context compaction on the live session. */
+  const handleAutoCompactionChange = useCallback(async (enabled: boolean) => {
+    const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+    if (!sid) return;
+    setAutoCompactionEnabled(enabled);
+    try {
+      await sendAgentCommand(sid, { type: "set_auto_compaction", enabled });
+    } catch (error) {
+      console.error("Failed to change auto-compaction:", error);
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice]);
 
   const handleCompact = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -2624,7 +2662,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, streamState,
-    agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled,
+    agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled, interruptMode, autoCompactionEnabled,
     liveModelMeta,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,
@@ -2639,7 +2677,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionIdRef, messagesEndRef, scrollContainerRef,
     pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange,
+    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,

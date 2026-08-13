@@ -139,11 +139,14 @@ function Toaster() {
             <Toast.Content style={{ flex: 1, minWidth: 0 }}>
               <Toast.Title className="display-serif" style={{ fontSize: 13, lineHeight: 1.4 }} />
               {t.data?.clamp ? (
-                <Toast.Description style={descriptionBaseStyle}>
+                <Toast.Description render={<div />} style={descriptionBaseStyle}>
                   <ClampedDescription>{t.description}</ClampedDescription>
                 </Toast.Description>
               ) : (
-                <Toast.Description style={descriptionBaseStyle} />
+                // Rendered as a div (not base-ui's default <p>): descriptions can
+                // carry block-level JSX (e.g. the update toasts' flex rows), and a
+                // <div> inside <p> would throw a hydration error.
+                <Toast.Description render={<div />} style={descriptionBaseStyle} />
               )}
             </Toast.Content>
             <Toast.Close

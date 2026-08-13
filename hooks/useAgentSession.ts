@@ -156,6 +156,8 @@ type AgentStateResponse = {
   fastModeEnabled?: boolean;
   interruptMode?: "immediate" | "wait";
   autoCompactionEnabled?: boolean;
+  steeringMode?: "all" | "one-at-a-time";
+  followUpMode?: "all" | "one-at-a-time";
   isStreaming?: boolean;
   isPromptRunning?: boolean;
   isBashRunning?: boolean;
@@ -551,6 +553,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // (set_interrupt_mode / set_auto_compaction).
   const [interruptMode, setInterruptMode] = useState<"immediate" | "wait">("immediate");
   const [autoCompactionEnabled, setAutoCompactionEnabled] = useState(true);
+  // Queue delivery modes (set_steering_mode / set_follow_up_mode).
+  const [steeringMode, setSteeringMode] = useState<"all" | "one-at-a-time">("all");
+  const [followUpMode, setFollowUpMode] = useState<"all" | "one-at-a-time">("all");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -865,6 +870,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       if (agentState.state?.interruptMode !== undefined) setInterruptMode(agentState.state.interruptMode);
       if (agentState.state?.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(agentState.state.autoCompactionEnabled);
+      if (agentState.state?.steeringMode !== undefined) setSteeringMode(agentState.state.steeringMode);
+      if (agentState.state?.followUpMode !== undefined) setFollowUpMode(agentState.state.followUpMode);
     } catch {
       // Best effort; the next loadSession/reconcile re-syncs.
     }
@@ -938,6 +945,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.fastModeEnabled !== undefined) setFastModeEnabled(liveState.fastModeEnabled);
           if (liveState.interruptMode !== undefined) setInterruptMode(liveState.interruptMode);
           if (liveState.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(liveState.autoCompactionEnabled);
+          if (liveState.steeringMode !== undefined) setSteeringMode(liveState.steeringMode);
+          if (liveState.followUpMode !== undefined) setFollowUpMode(liveState.followUpMode);
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.todoPhases !== undefined) setTodoPhases(liveState.todoPhases ?? []);
@@ -1642,6 +1651,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             if (d.state.fastModeEnabled !== undefined) setFastModeEnabled(d.state.fastModeEnabled);
             if (d.state.interruptMode !== undefined) setInterruptMode(d.state.interruptMode);
             if (d.state.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(d.state.autoCompactionEnabled);
+            if (d.state.steeringMode !== undefined) setSteeringMode(d.state.steeringMode);
+            if (d.state.followUpMode !== undefined) setFollowUpMode(d.state.followUpMode);
           })
           .catch(() => {});
         break;
@@ -2146,6 +2157,32 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       await sendAgentCommand(sid, { type: "set_auto_compaction", enabled });
     } catch (error) {
       console.error("Failed to change auto-compaction:", error);
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice]);
+
+  /** Change how queued steering messages are delivered (all at once / one at a time). */
+  const handleSteeringModeChange = useCallback(async (mode: "all" | "one-at-a-time") => {
+    const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+    if (!sid) return;
+    setSteeringMode(mode);
+    try {
+      await sendAgentCommand(sid, { type: "set_steering_mode", mode });
+    } catch (error) {
+      console.error("Failed to change steering mode:", error);
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice]);
+
+  /** Change how queued follow-up messages are delivered. */
+  const handleFollowUpModeChange = useCallback(async (mode: "all" | "one-at-a-time") => {
+    const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+    if (!sid) return;
+    setFollowUpMode(mode);
+    try {
+      await sendAgentCommand(sid, { type: "set_follow_up_mode", mode });
+    } catch (error) {
+      console.error("Failed to change follow-up mode:", error);
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
   }, [addNotice]);
@@ -2662,7 +2699,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, streamState,
-    agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled, interruptMode, autoCompactionEnabled,
+    agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled, interruptMode, autoCompactionEnabled, steeringMode, followUpMode,
     liveModelMeta,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,
@@ -2677,7 +2714,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionIdRef, messagesEndRef, scrollContainerRef,
     pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange,
+    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,

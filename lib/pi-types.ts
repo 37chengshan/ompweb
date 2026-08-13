@@ -87,6 +87,8 @@ export interface WebSessionState {
   isCompacting: boolean;
   autoCompactionEnabled: boolean;
   interruptMode: "immediate" | "wait";
+  steeringMode: "all" | "one-at-a-time";
+  followUpMode: "all" | "one-at-a-time";
   model?: ModelLike & { name?: string; reasoning?: boolean; thinking?: { efforts?: string[] } };
   messageCount: number;
   queuedMessageCount: number;

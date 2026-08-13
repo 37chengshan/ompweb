@@ -615,6 +615,8 @@ export class AgentSessionWrapper {
       isCompacting: state.isCompacting,
       autoCompactionEnabled: state.autoCompactionEnabled,
       interruptMode: state.interruptMode,
+      steeringMode: state.steeringMode,
+      followUpMode: state.followUpMode,
       model: state.model
         ? {
             id: state.model.id,

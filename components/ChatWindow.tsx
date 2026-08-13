@@ -420,7 +420,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
 
   const {
     loading, error, messages, entryIds, streamState,
-    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel, fastModeEnabled, interruptMode, autoCompactionEnabled,
+    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel, fastModeEnabled, interruptMode, autoCompactionEnabled, steeringMode, followUpMode,
     liveModelMeta,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats,
@@ -435,7 +435,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, loadSlashCommands,
+    handleToolPresetChange, handleThinkingLevelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, loadSlashCommands,
   } = useAgentSession({
     session, newSessionCwd, advisorEnabled, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
@@ -666,6 +666,10 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
       onInterruptModeChange={session ? handleInterruptModeChange : undefined}
       autoCompactionEnabled={autoCompactionEnabled}
       onAutoCompactionChange={session ? handleAutoCompactionChange : undefined}
+      steeringMode={steeringMode}
+      onSteeringModeChange={session ? handleSteeringModeChange : undefined}
+      followUpMode={followUpMode}
+      onFollowUpModeChange={session ? handleFollowUpModeChange : undefined}
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}
       modelNameOverride={liveModelMeta?.name ?? null}

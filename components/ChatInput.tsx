@@ -66,6 +66,11 @@ interface Props {
   onInterruptModeChange?: (mode: "immediate" | "wait") => void;
   autoCompactionEnabled?: boolean;
   onAutoCompactionChange?: (enabled: boolean) => void;
+  /** Queue delivery modes (set_steering_mode / set_follow_up_mode RPC). */
+  steeringMode?: "all" | "one-at-a-time";
+  onSteeringModeChange?: (mode: "all" | "one-at-a-time") => void;
+  followUpMode?: "all" | "one-at-a-time";
+  onFollowUpModeChange?: (mode: "all" | "one-at-a-time") => void;
   onCompact?: () => void;
   onAbortCompaction?: () => void;
   isCompacting?: boolean;
@@ -373,6 +378,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap, modelNameOverride,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   interruptMode, onInterruptModeChange, autoCompactionEnabled, onAutoCompactionChange,
+  steeringMode, onSteeringModeChange, followUpMode, onFollowUpModeChange,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
   soundEnabled, onSoundToggle, onAudioUnlock,
@@ -1377,6 +1383,32 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               }}>
                 {t("chatInput.queuedCount", { count: (queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0) })}
               </span>
+              {(onSteeringModeChange || onFollowUpModeChange) && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  {onSteeringModeChange && (
+                    <select
+                      value={steeringMode}
+                      onChange={(e) => onSteeringModeChange(e.target.value as "all" | "one-at-a-time")}
+                      title="How queued steering messages are delivered"
+                      style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "1px 4px", cursor: "pointer" }}
+                    >
+                      <option value="one-at-a-time">Steer: one</option>
+                      <option value="all">Steer: all</option>
+                    </select>
+                  )}
+                  {onFollowUpModeChange && (
+                    <select
+                      value={followUpMode}
+                      onChange={(e) => onFollowUpModeChange(e.target.value as "all" | "one-at-a-time")}
+                      title="How queued follow-up messages are delivered"
+                      style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "1px 4px", cursor: "pointer" }}
+                    >
+                      <option value="one-at-a-time">Follow: one</option>
+                      <option value="all">Follow: all</option>
+                    </select>
+                  )}
+                </div>
+              )}
               {onRecallQueue && (
                 <button
                   onClick={onRecallQueue}

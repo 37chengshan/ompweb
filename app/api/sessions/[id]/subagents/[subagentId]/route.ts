@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { resolveSessionPathOr404 } from "@/lib/api-utils";
 import { readCompletionArtifact, readSubagentTranscriptPage, resolveSubagentArtifact, subagentTranscriptPath } from "@/lib/subagent-history";
 
 export const dynamic = "force-dynamic";
@@ -32,10 +32,9 @@ export async function GET(
     if (!SUBAGENT_ID_RE.test(subagentId) || subagentId.length > SUBAGENT_ID_MAX_LENGTH) {
       return NextResponse.json({ error: "Invalid subagent id", code: "invalid_subagent_id" }, { status: 400 });
     }
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
-    }
+    const sessionResolved = await resolveSessionPathOr404(id);
+    if ("response" in sessionResolved) return sessionResolved.response;
+    const filePath = sessionResolved.filePath;
     const searchParams = new URL(req.url).searchParams;
     if (searchParams.get("mode") === "completion") {
       const resolved = resolveSubagentArtifact(filePath, subagentId, ".md");

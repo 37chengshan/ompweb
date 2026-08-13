@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/api-utils";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
@@ -165,6 +166,6 @@ export async function GET(req: NextRequest) {
       truncated: hardTruncated || files.length > MAX_FILES,
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

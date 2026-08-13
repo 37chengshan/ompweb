@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { scanSessionInfo, setSessionTitle } from "@/lib/omp/session-files";
 import { deriveSessionTitleFromFirstMessage, sanitizeSessionTitle } from "@/lib/session-title";
 import { getRpcSession } from "@/lib/rpc-manager";
-import { invalidateSessionListCache, resolveSessionPath } from "@/lib/session-reader";
+import { invalidateSessionListCache } from "@/lib/session-reader";
+import { resolveSessionPathOr404 } from "@/lib/api-utils";
 
 /**
  * POST /api/sessions/[id]/auto-name
@@ -38,10 +39,9 @@ export async function POST(
       }
     }
 
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
-    }
+    const resolved = await resolveSessionPathOr404(id);
+    if ("response" in resolved) return resolved.response;
+    const filePath = resolved.filePath;
 
     const info = scanSessionInfo(filePath, false);
     const storedTitle = sanitizeSessionTitle(info?.title);

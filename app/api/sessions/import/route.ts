@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/api-utils";
 import { mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -100,6 +101,6 @@ export async function POST(req: Request) {
     if (error instanceof RequestBodyTooLargeError) {
       return NextResponse.json({ error: "Session import request is too large", code: "session_import_request_too_large" }, { status: 413 });
     }
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

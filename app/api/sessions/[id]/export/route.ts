@@ -6,7 +6,7 @@ import { basename, join } from "path";
 import { promisify } from "util";
 import { NextResponse } from "next/server";
 import { resolveOmpBin } from "@/lib/omp/omp-cli";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
 
 const execFileAsync = promisify(execFile);
 
@@ -50,10 +50,9 @@ export async function GET(
   const inline = new URL(req.url).searchParams.get("inline") === "1";
 
   try {
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
-    }
+    const resolved = await resolveSessionPathOr404(id);
+    if ("response" in resolved) return resolved.response;
+    const filePath = resolved.filePath;
 
     const tempDir = join(tmpdir(), "omp-web-export");
     mkdirSync(tempDir, { recursive: true });
@@ -81,6 +80,6 @@ export async function GET(
     if (message.includes("omp binary not found")) {
       return NextResponse.json({ error: message, code: "omp_not_found" }, { status: 500 });
     }
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

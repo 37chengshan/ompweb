@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/api-utils";
 import fs from "fs";
 import path from "path";
 import {
@@ -191,6 +192,9 @@ export async function POST(
     const uploaded: string[] = [];
     const skipped: string[] = [];
     const errors: Array<{ name: string; error: string }> = [];
+    const recordError = (file: File, error: unknown) => {
+      errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
+    };
 
     for (const file of files) {
       const destination = path.join(directory, file.name);
@@ -207,7 +211,7 @@ export async function POST(
       try {
         bytes = Buffer.from(await file.arrayBuffer());
       } catch (error) {
-        errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
+        recordError(file, error);
         continue;
       }
 
@@ -215,7 +219,7 @@ export async function POST(
         try {
           fs.unlinkSync(destination);
         } catch (error) {
-          errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
+          recordError(file, error);
           continue;
         }
       }
@@ -224,7 +228,7 @@ export async function POST(
         fs.writeFileSync(destination, bytes, { flag: "wx" });
         uploaded.push(file.name);
       } catch (error) {
-        errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
+        recordError(file, error);
       }
     }
 
@@ -603,6 +607,6 @@ export async function GET(
 
     return NextResponse.json({ entries, path: filePath });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

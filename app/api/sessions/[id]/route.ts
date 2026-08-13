@@ -12,14 +12,15 @@ import {
   writeSessionFileAtomicSync,
 } from "@/lib/omp/session-files";
 import {
-  resolveSessionPath,
   resolveParentSessionId,
   resolveSessionIdByPath,
+  resolveSessionPath,
   invalidateSessionPathCache,
   invalidateSessionListCache,
   buildSessionContext,
   readSessionHeader,
 } from "@/lib/session-reader";
+import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
 import { sessionPathKey } from "@/lib/session-path";
 import { getRpcSession } from "@/lib/rpc-manager";
 
@@ -129,10 +130,9 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
-    }
+    const resolved = await resolveSessionPathOr404(id);
+    if ("response" in resolved) return resolved.response;
+    const filePath = resolved.filePath;
 
     const searchParams = new URL(req.url).searchParams;
     const deferThinking = searchParams.has("deferThinking");
@@ -207,7 +207,7 @@ export async function GET(
       ...(agent ? { agent } : {}),
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }
 
@@ -237,16 +237,15 @@ export async function PATCH(
       }
     }
     if (!renamed) {
-      const filePath = await resolveSessionPath(id);
-      if (!filePath) {
-        return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
-      }
+      const resolved = await resolveSessionPathOr404(id);
+      if ("response" in resolved) return resolved.response;
+      const filePath = resolved.filePath;
       setSessionTitle(filePath, name.trim(), "user");
     }
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }
 
@@ -257,10 +256,9 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
-    }
+    const resolved = await resolveSessionPathOr404(id);
+    if ("response" in resolved) return resolved.response;
+    const filePath = resolved.filePath;
 
     // Read only the bounded header before deleting.
     const deletedHeader = readSessionHeader(filePath);
@@ -353,6 +351,6 @@ export async function DELETE(
       ...(skippedChildren.length > 0 ? { skippedChildren } : {}),
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

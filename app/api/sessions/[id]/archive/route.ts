@@ -4,8 +4,8 @@ import {
   invalidateSessionListCache,
   invalidateSessionPathCache,
   listAllSessions,
-  resolveSessionPath,
 } from "@/lib/session-reader";
+import { resolveSessionPathOr404 } from "@/lib/api-utils";
 import { getRpcSession } from "@/lib/rpc-manager";
 
 /** POST /api/sessions/[id]/archive — stop the live child, then archive the
@@ -16,10 +16,9 @@ export async function POST(
 ) {
   const { id } = await params;
   try {
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
-    }
+    const resolved = await resolveSessionPathOr404(id);
+    if ("response" in resolved) return resolved.response;
+    const filePath = resolved.filePath;
     // Parent-session paths are native branch metadata. Moving only a parent
     // would leave active children pointing at a path that no longer exists,
     // flattening their tree in the sidebar. Archive leaves first instead.

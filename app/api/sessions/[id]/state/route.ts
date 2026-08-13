@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRpcSession } from "@/lib/rpc-manager";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
 
 export async function GET(
   _req: Request,
@@ -17,11 +17,10 @@ export async function GET(
       return NextResponse.json({ running: true, state });
     }
 
-    if (!await resolveSessionPath(id)) {
-      return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
-    }
+    const resolved = await resolveSessionPathOr404(id);
+    if ("response" in resolved) return resolved.response;
     return NextResponse.json({ running: false });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

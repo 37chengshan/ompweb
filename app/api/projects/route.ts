@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/api-utils";
 import { allowFileRoot } from "@/lib/file-access";
 import {
   comparableProjectPath,
@@ -33,7 +34,7 @@ export async function GET() {
     for (const project of projects) allowFileRoot(project.path);
     return NextResponse.json({ projects });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }
 
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
     if (error instanceof ProjectPathError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     }
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }
 
@@ -78,6 +79,6 @@ export async function DELETE(req: Request) {
     saveProjectRegistry(hideProject(registry, projectRoot));
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

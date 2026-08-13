@@ -5,7 +5,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { resolveLocalFileHref } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { normalizeDisplayMath, useMarkdownPlugins } from "../lib/markdown";
-import { MermaidBlock, CodeBlock } from "./MermaidBlock";
+import { markdownCodeRenderer } from "./MarkdownCode";
 import { ClickableImage } from "./ImageLightbox";
 
 interface MarkdownBodyProps {
@@ -76,25 +76,7 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
       });
 
     return {
-    code({ className, children, ...props }) {
-      const lang = className?.replace("language-", "").toLowerCase() ?? "";
-      const raw = String(children);
-      const isBlock = className?.includes("language-") || raw.includes("\n");
-      if (isBlock) {
-        if (lang === "mermaid") {
-          return <MermaidBlock code={raw.replace(/\n$/, "")} isStreaming={isStreaming} />;
-        }
-        return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} isStreaming={isStreaming} />;
-      }
-      return (
-        <code
-          className="markdown-inline-code"
-          {...props}
-        >
-          {children}
-        </code>
-      );
-    },
+    code: markdownCodeRenderer({ isStreaming, inlineClassName: "markdown-inline-code" }),
     pre({ children }) {
       return <>{children}</>;
     },

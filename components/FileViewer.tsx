@@ -24,7 +24,7 @@ import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePat
 import { translate, useI18n } from "@/lib/i18n";
 import { resolveLocalFileHref } from "@/lib/file-links";
 import { normalizeDisplayMath, useMarkdownPlugins } from "@/lib/markdown";
-import { CodeBlock, MermaidBlock } from "./MermaidBlock";
+import { markdownCodeRenderer } from "./MarkdownCode";
 import { Tooltip } from "./ui/primitives";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
@@ -1151,22 +1151,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
               remarkPlugins={markdownPlugins.remarkPlugins}
               rehypePlugins={markdownPlugins.rehypePlugins}
               components={{
-                code({ className, children, ...props }) {
-                  const lang = className?.replace("language-", "").toLowerCase() ?? "";
-                  const raw = String(children);
-                  const isBlock = className?.includes("language-") || raw.includes("\n");
-                  if (isBlock) {
-                    if (lang === "mermaid") {
-                      return <MermaidBlock code={raw.replace(/\n$/, "")} defaultPreview />;
-                    }
-                    return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
-                  }
-                  return (
-                    <code className={className} {...props}>
-                      {children}
-                    </code>
-                  );
-                },
+                code: markdownCodeRenderer({ defaultPreview: true }),
                 pre({ children }) {
                   // Render the code block directly — CodeBlock provides its own wrapping.
                   // For non-mermaid blocks, pass through to default pre rendering.

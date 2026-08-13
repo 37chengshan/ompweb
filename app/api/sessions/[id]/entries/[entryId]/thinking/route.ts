@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getSessionEntries, resolveSessionPath } from "@/lib/session-reader";
+import { getSessionEntries } from "@/lib/session-reader";
+import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
 
 export async function GET(
   req: Request,
@@ -13,8 +14,9 @@ export async function GET(
   }
 
   try {
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) return NextResponse.json({ error: "Session not found", code: "session_not_found" }, { status: 404 });
+    const resolved = await resolveSessionPathOr404(id);
+    if ("response" in resolved) return resolved.response;
+    const filePath = resolved.filePath;
 
     // Lenient JSONL parsing keeps omp's malformed-line tolerance.
     const entry = getSessionEntries(filePath).find((candidate) => candidate.id === entryId);
@@ -29,6 +31,6 @@ export async function GET(
 
     return NextResponse.json({ thinking: block.thinking });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

@@ -594,19 +594,29 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
 
     return { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage };
   }, [messages]);
-  const pendingToolHeaders = useMemo(() => {
-    if (agentPhase?.kind !== "running_tools") return [];
+  // Tool-call ids already rendered by COMMITTED messages — memoized away from
+  // the streaming path so a per-token update only re-scans the live bubble.
+  const committedToolCallIds = useMemo(() => {
     const renderedIds = new Set<string>();
-    const collect = (message: Partial<AgentMessage> | null) => {
-      if (message?.role !== "assistant") return;
+    for (const message of messages) {
+      if (message?.role !== "assistant") continue;
       for (const block of (message as Partial<AssistantMessage>).content ?? []) {
         if (block.type === "toolCall") renderedIds.add(block.toolCallId);
       }
-    };
-    for (const message of messages) collect(message);
-    collect(streamState.streamingMessage);
+    }
+    return renderedIds;
+  }, [messages]);
+  const pendingToolHeaders = useMemo(() => {
+    if (agentPhase?.kind !== "running_tools") return [];
+    const renderedIds = new Set(committedToolCallIds);
+    const streaming = streamState.streamingMessage;
+    if (streaming?.role === "assistant") {
+      for (const block of (streaming as Partial<AssistantMessage>).content ?? []) {
+        if (block.type === "toolCall") renderedIds.add(block.toolCallId);
+      }
+    }
     return agentPhase.tools.filter((tool) => !renderedIds.has(tool.id));
-  }, [agentPhase, messages, streamState.streamingMessage]);
+  }, [agentPhase, committedToolCallIds, streamState.streamingMessage]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
@@ -802,7 +812,10 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
             <NoticeShelf notices={notices} floating align="right" />
           </div>
         </div>
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pt-4 [scrollbar-width:none]">
+        {/* Hide the Firefox scrollbar on desktop only: ChatMinimap provides the
+            position indicator there, but on mobile there is no minimap and
+            users need the scrollbar (Chrome's overlay scrollbar still shows). */}
+        <div ref={scrollContainerRef} className={`flex-1 overflow-y-auto pt-4${isMobile ? "" : " [scrollbar-width:none]"}`}>
           <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div style={{ maxWidth: 820, margin: "0 auto" }}>
               <ExtensionStatusBar statuses={extensionStatuses} />

@@ -46,6 +46,10 @@ export function DialogContent({ children, className, style, ariaLabel }: {
         style={{
           position: "fixed", top: "50%", left: "50%",
           transform: "translate(-50%, -50%)",
+          // Entrance animation must include the centering transform in its
+          // keyframes: an animation overrides the inline transform for its
+          // whole (fill: both) lifetime.
+          animation: "dialog-pop-in var(--dur-med) var(--ease-out-warm) both",
            zIndex: 1001,
           background: "var(--bg)",
           color: "var(--text)",

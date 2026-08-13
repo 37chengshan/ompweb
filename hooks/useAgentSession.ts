@@ -24,6 +24,7 @@ import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } f
 import type { RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 import {
   parseSubagentActivityEvent,
+  parseSubagentLifecycle,
   parseSubagentProgress,
   parseSubagentSnapshot,
   type SubagentActivityEvent,
@@ -81,7 +82,6 @@ interface AgentEvent {
   [key: string]: unknown;
 }
 
-const SUBAGENT_LIFECYCLE_STATUSES = new Set(["started", "completed", "failed", "aborted"]);
 const SUBAGENT_ACTIVITY_BUFFER_MAX = 50;
 // Distinct subagent ids retained in the activity/version maps. Each per-id
 // array is already capped, but a long turn can spawn unbounded ids (repeated
@@ -569,7 +569,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const activeSubagentCount = subagents.filter((subagent) => subagent.source !== "history" && subagent.status === "started").length;
 
   const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
+  // Guards stale branch/leaf context responses: two rapid navigate clicks must
+  // not let the older response overwrite the newer branch's messages.
+  const contextRequestSeqRef = useRef(0);
+  // Mirror of the isCompacting state that survives render batching, so two
+  // clicks in the same tick cannot double-send a compact command.
+  const isCompactingRef = useRef(false);
   const agentRunningRef = useRef(false);
   const bashRunningRef = useRef(false);
   const bashRecoveryIdRef = useRef(0);
@@ -940,6 +947,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [refreshSubagentHistory, applyAuthoritativeModel, beginAuthoritativeModelSync]);
 
   const loadContext = useCallback(async (sid: string, leafId: string | null) => {
+    const seq = ++contextRequestSeqRef.current;
     try {
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
       if (leafId) params.set("leafId", leafId);
@@ -947,6 +955,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[]; todoPhases: TodoPhase[] } };
+      // Fence like loadSession: drop the response if the session changed or a
+      // newer navigate started while this request was in flight.
+      if (sessionIdRef.current !== sid || contextRequestSeqRef.current !== seq) return;
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
       setTodoPhases(d.context.todoPhases ?? []);
@@ -954,11 +965,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to load context:", e);
     }
   }, []);
-
-  // omp's RPC protocol has no per-session tool listing; the preset shown for a
-  // resumed session stays at its default. Kept as an exported no-op so callers
-  // (mount, /reload) need no changes.
-  const loadTools = useCallback(async (_sid: string) => { void _sid; }, []);
 
   const promoteNewSession = useCallback((messageCount = 0, firstMessage?: string) => {
     firstMessage ??= translate("agentSession.noMessages");
@@ -1076,12 +1082,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (es.readyState === EventSource.CLOSED) {
           // Fatal error (404/500/content-type mismatch): browser won't
           // auto-reconnect. Settle the Promise and manually reconnect for
-          // already-running sessions.
+          // already-running sessions. Keep the timer in a ref so unmount or a
+          // session switch cancels it — otherwise an orphaned stream respawns
+          // (and can 404-loop) after the hook is torn down.
           settle("closed");
           if (eventSourceRef.current === es && agentRunningRef.current) {
             eventSourceRef.current = null;
-            setTimeout(() => {
-              if (agentRunningRef.current) void connectEvents(sid);
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = setTimeout(() => {
+              reconnectTimerRef.current = null;
+              if (agentRunningRef.current && sessionIdRef.current === sid) void connectEvents(sid);
             }, 1000);
           }
         }
@@ -1327,6 +1337,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Mirror compaction state unconditionally: a missed compaction_end
       // would otherwise leave the "Stop compaction" UI stuck. No state
       // (wrapper destroyed) means nothing is compacting.
+      isCompactingRef.current = state?.isCompacting ?? false;
       setIsCompacting(state?.isCompacting ?? false);
       // Also mid-run: this poll is the only todo-phase refresh while streaming.
       if (state?.todoPhases !== undefined) setTodoPhases(state.todoPhases ?? []);
@@ -1621,37 +1632,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // Roster fed by omp's subagent_lifecycle frames. Payload mirrors
         // SubagentLifecyclePayload (oh-my-pi task/types.ts); defensive
         // parsing degrades to ignoring the frame, never breaking the run.
-        const payload = event.payload as { id?: unknown; agent?: unknown; agentSource?: unknown; description?: unknown; status?: unknown; sessionFile?: unknown; parentToolCallId?: unknown; index?: unknown; detached?: unknown } | undefined;
-        if (!payload || typeof payload.id !== "string" || typeof payload.status !== "string") break;
-        const id = payload.id;
-        const status = payload.status;
-        // The wire only allows started/completed/failed/aborted — an unknown
-        // value is a malformed frame and must not fabricate a live chip.
-        if (!SUBAGENT_LIFECYCLE_STATUSES.has(status)) break;
-        const info: SubagentInfo = {
-          id,
-          agent: typeof payload.agent === "string" ? payload.agent : "subagent",
-          agentSource: payload.agentSource === "bundled" || payload.agentSource === "user" || payload.agentSource === "project" ? payload.agentSource : undefined,
-          description: typeof payload.description === "string" ? payload.description : undefined,
-          status: status as SubagentInfo["status"],
-          sessionFile: typeof payload.sessionFile === "string" ? payload.sessionFile : undefined,
-          parentToolCallId: typeof payload.parentToolCallId === "string" ? payload.parentToolCallId : undefined,
-          index: typeof payload.index === "number" ? payload.index : -1,
-          detached: typeof payload.detached === "boolean" ? payload.detached : undefined,
-          lastUpdate: Date.now(),
-          source: "live",
-        };
-        setSubagents((prev) => {
-          const existingIndex = prev.findIndex((subagent) => subagent.id === id);
-          const next = existingIndex === -1 ? [...prev, info] : (() => {
-            const updated = [...prev];
-            updated[existingIndex] = { ...updated[existingIndex], ...info };
-            return updated;
-          })();
-          // Lifecycle frames arrive at spawn/completion — keep the roster in
-          // ordinal order (parallel/batch starts can arrive out of order).
-          return next.sort((a, b) => a.index - b.index || a.id.localeCompare(b.id));
-        });
+        const info = parseSubagentLifecycle(event.payload);
+        if (!info) break;
+        mergeSubagents([info]);
         break;
       }
       case "subagent_progress": {
@@ -1743,7 +1726,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               const nextEvents = existing.length >= SUBAGENT_ACTIVITY_BUFFER_MAX
                 ? [...existing.slice(existing.length - SUBAGENT_ACTIVITY_BUFFER_MAX + 1), activity]
                 : [...existing, activity];
-              return pruneSubagentIdMap({ ...prev, [subagentId]: nextEvents });
+              // Re-key first so pruning evicts the LEAST recently UPDATED ids
+              // (a plain spread keeps an existing key at its original position
+              // and can evict an actively-updated early id).
+              const next = { ...prev };
+              delete next[subagentId];
+              next[subagentId] = nextEvents;
+              return pruneSubagentIdMap(next);
             });
           }
         }
@@ -1753,7 +1742,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as unknown as IncomingExtensionUiRequest);
         break;
     }
-  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
+  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, mergeSubagents, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
@@ -1997,7 +1986,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const handleCompact = useCallback(async () => {
     const sid = sessionIdRef.current;
-    if (!sid || isCompacting) return;
+    if (!sid || isCompactingRef.current || isCompacting) return;
+    isCompactingRef.current = true;
     setIsCompacting(true);
     setCompactError(null);
     setCompactResult(null);
@@ -2010,6 +2000,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setCompactError(e instanceof Error ? e.message : String(e));
       setCompactResult(null);
     } finally {
+      isCompactingRef.current = false;
       setIsCompacting(false);
     }
   }, [isCompacting, loadSession, refreshLiveModelState]);
@@ -2035,6 +2026,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const displayModel = match ?? nextModelList[0];
         setNewSessionDefaultModel(displayModel ? { provider: displayModel.provider, modelId: displayModel.id } : null);
       }
+    } catch (e) {
+      // Surface fetch/parse failures instead of silently rendering an empty
+      // model list with no error state.
+      if (!signal?.aborted) setModelError(e instanceof Error ? e.message : String(e));
     } finally {
       setModelsLoading(false);
     }
@@ -2061,7 +2056,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       switch (commandName) {
         case "compact": {
-          if (!sid || isCompacting) return complete({ handled: true, error: translate("agentSession.noSessionToCompact") });
+          if (!sid || isCompactingRef.current || isCompacting) return complete({ handled: true, error: translate("agentSession.noSessionToCompact") });
+          isCompactingRef.current = true;
           setIsCompacting(true);
           setCompactError(null);
           setCompactResult(null);
@@ -2071,6 +2067,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           });
           setCompactResult(readCompactResult(result, "manual"));
           await loadSession(sid, true);
+          isCompactingRef.current = false;
+          setIsCompacting(false);
           // loadSession resolves to null unless state was requested, so promote
           // unconditionally — promoteNewSession no-ops for existing sessions and
           // is idempotent via newSessionPromotedRef.
@@ -2083,7 +2081,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           await sendAgentCommand(sid, { type: "reload" });
           await Promise.all([
             loadSession(sid, false, true),
-            loadTools(sid),
             loadSlashCommands(),
             loadModels(),
           ]);
@@ -2154,9 +2151,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       return complete({ handled: true, error: e instanceof Error ? e.message : String(e) });
     } finally {
-      if (commandName === "compact") setIsCompacting(false);
+      if (commandName === "compact") {
+        isCompactingRef.current = false;
+        setIsCompacting(false);
+      }
     }
-  }, [addNotice, ensureNewSession, handleSend, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen]);
+  }, [addNotice, ensureNewSession, handleSend, isCompacting, loadModels, loadSession, loadSlashCommands, promoteNewSession, onSessionStatsPanelOpen]);
 
   // Queued (undelivered) messages live in the queue panel only; the chat gets
   // the real user message when pi delivers it (user message_end event). An
@@ -2269,7 +2269,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const end = messagesEndRef.current;
     if (!container || !end) return;
     ignoreProgrammaticScrollUntilRef.current = Date.now() + PROGRAMMATIC_SCROLL_IGNORE_MS;
-    end.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "auto" : behavior });
+    // `behavior: "auto"` falls back to the container's computed
+    // `scroll-behavior` (which inherits `html { scroll-behavior: smooth }`),
+    // so a per-frame live follow would restart an eased scroll animation
+    // every frame — an endless chase that lags the growing content. Callers
+    // pass "instant" for live follow; "smooth" stays for idle scrolls.
+    end.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "instant" : behavior });
   }, [reducedMotion]);
 
   const markUserScrollIntent = useCallback((event: Event) => {
@@ -2281,7 +2286,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, []);
 
   const handleScrollPositionChange = useCallback(() => {
-    if (!agentRunningRef.current) return;
     const userScrollIntent = Date.now() <= userScrollIntentUntilRef.current;
     // A user wheel, keyboard, touch, or scrollbar scroll must win over the
     // timer used to suppress our own scroll events. During a busy stream that
@@ -2292,6 +2296,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const container = scrollContainerRef.current;
     const end = messagesEndRef.current;
     if (!container || !end) return;
+    // Recompute even while idle: otherwise the flag stays false after a run
+    // ends while the user is scrolled up, and a message that arrives outside
+    // a run (queued follow-up, steering reply) would never auto-scroll.
     completionScrollAllowedRef.current = end.getBoundingClientRect().bottom - container.getBoundingClientRect().bottom <= 24;
   }, []);
 
@@ -2301,7 +2308,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       sessionIdRef.current = session.id;
       loadSession(session.id, true, true).then((agentState) => {
         if (agentState?.running) {
-          loadTools(session.id);
           if (agentState.state?.isStreaming || agentState.state?.isPromptRunning) {
             agentRunningRef.current = true;
             setAgentRunning(true);
@@ -2361,6 +2367,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       eventCoalescerRef.current?.reset();
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       if (rosterRefreshTimerRef.current) {
         clearTimeout(rosterRefreshTimerRef.current);
         rosterRefreshTimerRef.current = null;
@@ -2418,16 +2428,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (pendingScrollToUserRef.current) {
       pendingScrollToUserRef.current = false;
       initialScrollDoneRef.current = true;
-      scrollToBottom(streamState.isStreaming || agentRunningRef.current ? "auto" : "smooth");
+      scrollToBottom(streamState.isStreaming || agentRunningRef.current ? "instant" : "smooth");
     } else if (!initialScrollDoneRef.current) {
       initialScrollDoneRef.current = true;
-      scrollToBottom("auto");
+      scrollToBottom("instant");
     } else if (completionScrollAllowedRef.current) {
       if (followScrollFrameRef.current === null) {
         followScrollFrameRef.current = requestAnimationFrame(() => {
           followScrollFrameRef.current = null;
           if (!completionScrollAllowedRef.current) return;
-          scrollToBottom(agentRunningRef.current || streamState.isStreaming ? "auto" : "smooth");
+          scrollToBottom(agentRunningRef.current || streamState.isStreaming ? "instant" : "smooth");
         });
       }
     }
@@ -2502,7 +2512,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
+    handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, setActiveLeafId, setData, setMessages,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,
     // Subscriptions

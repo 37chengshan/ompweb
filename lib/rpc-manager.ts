@@ -198,6 +198,9 @@ export class AgentSessionWrapper {
   private restarting = false;
   private mcpListWaiter: { resolve: (text: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
   private _alive = true;
+  /** Resolves once an in-flight destroyAndWait finishes; null when idle. Read
+   * by startRpcSession so a replacement spawn awaits the old child's exit. */
+  destroyPromise: Promise<void> | null = null;
   private _sessionId = "";
   private _sessionFile = "";
   private _sessionName: string | undefined;
@@ -524,6 +527,9 @@ export class AgentSessionWrapper {
         this.mcpListWaiter = null;
         rejectOutput(new WebRpcError("Timed out while loading MCP servers", "mcp_list_timeout"));
       }, MCP_LIST_TIMEOUT_MS);
+    // Don't pin the event loop if the caller never awaits (route aborted): the
+    // pending-UI timers already unref, this one should too.
+    waiter.timer.unref?.();
     this.mcpListWaiter = waiter;
 
     try {
@@ -879,6 +885,9 @@ export class AgentSessionWrapper {
    * that delete the session file afterwards must await this — omp flushes
    * session state on shutdown and would otherwise recreate the file. */
   async destroyAndWait(): Promise<void> {
+    // Re-entrant calls join the in-flight dispose; without this a new spawn
+    // can overlap the old child's shutdown (see startRpcSession).
+    if (this.destroyPromise) return this.destroyPromise;
     if (!this._alive) return;
     this._alive = false;
     if (this.idleTimer) clearTimeout(this.idleTimer);
@@ -890,6 +899,7 @@ export class AgentSessionWrapper {
       this.mcpListWaiter = null;
     }
     const disposed = this.proc.dispose().catch(() => {});
+    this.destroyPromise = disposed;
     this.onDestroyCallback?.();
     notifyRunningChange();
     await disposed;
@@ -1003,6 +1013,10 @@ export async function startRpcSession(
 
   const existing = registry.get(sessionId);
   if (existing?.isAlive()) return { session: existing, realSessionId: sessionId };
+  // A wrapper whose omp child is still flushing/exiting must fully dispose
+  // before a replacement spawns — two children touching the same .jsonl would
+  // race on resume/delete/archive.
+  if (existing?.destroyPromise) await existing.destroyPromise;
 
   const inflight = locks.get(sessionId);
   if (inflight) return inflight;

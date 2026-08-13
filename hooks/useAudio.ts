@@ -18,6 +18,12 @@ function playTone(ctx: AudioContext) {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
     osc.start(t);
     osc.stop(t + 0.45);
+    // Connected WebAudio nodes are not garbage-collected; detach them once the
+    // tone finishes so each completion sound does not leak 4 graph nodes.
+    osc.onended = () => {
+      osc.disconnect();
+      gain.disconnect();
+    };
   });
 }
 

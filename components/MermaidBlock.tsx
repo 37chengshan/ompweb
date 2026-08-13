@@ -2,8 +2,8 @@
 
 import { memo, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useTheme } from "@/hooks/useTheme";
-import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/lib/i18n";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 
 interface MermaidBlockProps {
   code: string;
@@ -219,7 +219,10 @@ function MermaidZoomDialog({ svg, onClose }: { svg: string; onClose: () => void 
         >
           <div
             className="mermaid-zoom-canvas"
-            style={{ width: `${zoom * 100}%` }}
+            // Width-based zoom re-lays out the whole SVG on every step;
+            // scale is composited. Top-left origin keeps growth scrollable
+            // and anchored while zoomed.
+            style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         </div>
@@ -241,7 +244,7 @@ interface CodeBlockProps {
  */
 export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback();
   const [HighlightedCode, setHighlightedCode] = useState<ComponentType<{ code: string; lang: string }> | null>(null);
 
   useEffect(() => {
@@ -253,13 +256,6 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
     return () => { cancelled = true; };
   }, [HighlightedCode, isStreaming]);
 
-  const copy = () => {
-    copyText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-
   return (
     <div className="markdown-code-block">
       <div className="markdown-code-header">
@@ -267,7 +263,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
         <div className="markdown-code-actions">
           {headerAction}
           <button
-            onClick={copy}
+            onClick={() => copy(code)}
             className="markdown-code-action"
           >
             {copied ? t("codeBlock.copied") : t("codeBlock.copy")}

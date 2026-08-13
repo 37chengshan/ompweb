@@ -143,13 +143,31 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     }, 150);
   }, [scrollContainer, messageRefs]);
 
-  // scroll 事件 → 只更新视口，不碰 DOM
+  // scroll 事件 → 只更新视口，不碰 DOM。rAF-coalesce like the mousemove
+  // handler: writing three state values on every scroll event re-renders all
+  // nodes + tooltips dozens of times per second.
+  const scrollRafRef = useRef<number | null>(null);
+  const flushScroll = useCallback(() => {
+    scrollRafRef.current = null;
+    updateScroll();
+  }, [updateScroll]);
   useEffect(() => {
     const el = scrollContainer.current;
     if (!el) return;
-    el.addEventListener("scroll", updateScroll, { passive: true });
-    return () => el.removeEventListener("scroll", updateScroll);
-  }, [scrollContainer, updateScroll]);
+    const onScroll = () => {
+      if (scrollRafRef.current === null) {
+        scrollRafRef.current = requestAnimationFrame(flushScroll);
+      }
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
+  }, [scrollContainer, flushScroll]);
 
   // Keep both node positions and viewport ratios in sync with layout changes.
   useEffect(() => {
@@ -435,6 +453,15 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
 // Hook to create a stable array of refs for messages
 export function useMessageRefs(count: number): RefObject<(HTMLDivElement | null)[]> {
   const refs = useRef<(HTMLDivElement | null)[]>([]);
-  refs.current = Array(count).fill(null).map((_, i) => refs.current[i] ?? null);
+  // Reuse the same array object while the count is unchanged: ChatWindow
+  // renders (incl. every streaming token batch) otherwise allocate a fresh
+  // Array per render even though no slot changes.
+  const prevCount = useRef(0);
+  if (prevCount.current !== count) {
+    prevCount.current = count;
+    const next = Array(count);
+    for (let i = 0; i < count; i += 1) next[i] = refs.current[i] ?? null;
+    refs.current = next;
+  }
   return refs;
 }

@@ -12,6 +12,7 @@ import { TabBar, type Tab } from "./TabBar";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useTheme } from "@/hooks/useTheme";
+import { formatCompactNumber, formatPercent } from "@/lib/format";
 import { translate, useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -115,6 +116,11 @@ export function AppShell() {
   const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
   const [toolCallsDefaultCollapsed, setToolCallsDefaultCollapsed] = useState(true);
   const [sidebarResizing, setSidebarResizing] = useState(false);
+  // Active drag handlers so an unmount mid-drag can detach them.
+  const sidebarResizeHandlersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
+  // DOM element + live width during a drag (see handleSidebarResizeStart).
+  const sidebarContainerRef = useRef<HTMLDivElement>(null);
+  const pendingSidebarWidthRef = useRef<number>(SIDEBAR_DEFAULT_WIDTH);
   useEffect(() => {
     setSidebarWidth(loadSidebarWidth());
     try {
@@ -337,20 +343,42 @@ export function AppShell() {
     const startWidth = sidebarWidth;
     setSidebarResizing(true);
     const onMove = (ev: MouseEvent) => {
-      setSidebarWidth(clampSidebarWidth(startWidth + (ev.clientX - startX)));
+      const next = clampSidebarWidth(startWidth + (ev.clientX - startX));
+      // Write the CSS variable straight to the DOM: the flex row follows the
+      // pointer without re-rendering the whole AppShell on every mousemove.
+      sidebarContainerRef.current?.style.setProperty("--sidebar-width", `${next}px`);
+      pendingSidebarWidthRef.current = next;
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      sidebarResizeHandlersRef.current = null;
       setSidebarResizing(false);
+      // Commit the final width so state and the persisted value agree with
+      // what the user actually dragged to.
+      setSidebarWidth(pendingSidebarWidthRef.current);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
+    pendingSidebarWidthRef.current = startWidth;
+    sidebarResizeHandlersRef.current = { onMove, onUp };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [isMobile, sidebarWidth]);
+
+  // If the app unmounts mid-drag, remove the window listeners and restore the
+  // body cursor; otherwise the handlers leak and body stays cursor:col-resize.
+  useEffect(() => () => {
+    const handlers = sidebarResizeHandlersRef.current;
+    if (!handlers) return;
+    window.removeEventListener("mousemove", handlers.onMove);
+    window.removeEventListener("mouseup", handlers.onUp);
+    sidebarResizeHandlersRef.current = null;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
 
   useEffect(() => {
     if (!activeTopPanel || !topBarRef.current) return;
@@ -757,7 +785,7 @@ export function AppShell() {
         position: relative;
         overflow: hidden;
         transform-origin: top right;
-        animation: session-info-pop 360ms ease-out both;
+        animation: session-info-pop var(--dur-slow) var(--ease-out-warm) both;
         will-change: transform, opacity;
       }
       .session-info-popover::after {
@@ -769,7 +797,7 @@ export function AppShell() {
         width: 44%;
         pointer-events: none;
         background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 24%, transparent), transparent);
-        animation: session-info-light-wash 620ms ease-out both;
+        animation: session-info-light-wash var(--dur-slow) var(--ease-out-warm) both;
       }
       @media (prefers-reduced-motion: reduce) {
         .session-info-popover,
@@ -806,6 +834,7 @@ export function AppShell() {
 
       {/* Left sidebar */}
       <div
+        ref={sidebarContainerRef}
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizing ? " sidebar-resizing" : ""}`}
         aria-hidden={mobileSidebarReady && !sidebarOpen ? true : undefined}
         inert={mobileSidebarReady && !sidebarOpen ? true : undefined}
@@ -1084,7 +1113,6 @@ export function AppShell() {
           {showChat && (sessionStats || contextUsage) && (() => {
             const tok = sessionStats?.tokens;
             const c = sessionStats?.cost ?? 0;
-            const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
             const costStr = c > 0 ? (c >= 0.01 ? `$${c.toFixed(2)}` : `<$0.01`) : null;
 
             let ctxColor = "var(--text-muted)";
@@ -1093,7 +1121,7 @@ export function AppShell() {
               const pct = contextUsage.percent;
               if (pct !== null && pct > 90) ctxColor = "var(--status-error)";
               else if (pct !== null && pct > 70) ctxColor = "var(--status-warning)";
-              ctxStr = pct !== null ? `${pct.toFixed(0)}% / ${fmt(contextUsage.contextWindow)}` : `? / ${fmt(contextUsage.contextWindow)}`;
+              ctxStr = pct !== null ? `${formatPercent(pct)} / ${formatCompactNumber(contextUsage.contextWindow)}` : `? / ${formatCompactNumber(contextUsage.contextWindow)}`;
             }
 
             const tooltipParts: string[] = [];
@@ -1124,7 +1152,10 @@ export function AppShell() {
                   marginLeft: "auto",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                   paddingLeft: isMobile ? 0 : 12,
-                  paddingRight: isMobile ? 0 : rightPanelOpen ? 12 : 48,
+                  // Reserve the corner for the always-visible file-panel
+                  // toggle: on mobile it is 44px wide and would otherwise
+                  // cover the session-stats button entirely.
+                  paddingRight: isMobile ? (rightPanelOpen ? 0 : 44) : rightPanelOpen ? 12 : 48,
                   height: "100%",
                   minWidth: isMobile ? 44 : 0,
                   overflow: "hidden",
@@ -1149,7 +1180,7 @@ export function AppShell() {
                     <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="5" y1="8.5" x2="5" y2="1.5" /><polyline points="2 4 5 1.5 8 4" />
                     </svg>
-                    {fmt(tok.input)}
+                    {formatCompactNumber(tok.input)}
                   </span>
                 )}
                 {!isMobile && tok && tok.output > 0 && (
@@ -1157,7 +1188,7 @@ export function AppShell() {
                     <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
                     </svg>
-                    {fmt(tok.output)}
+                    {formatCompactNumber(tok.output)}
                   </span>
                 )}
                 {!isMobile && tok && tok.cacheRead > 0 && (
@@ -1165,7 +1196,7 @@ export function AppShell() {
                     <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M8.5 5a3.5 3.5 0 1 1-1-2.45" /><polyline points="6.5 1.5 8.5 2.5 7.5 4.5" />
                     </svg>
-                    {fmt(tok.cacheRead)}
+                    {formatCompactNumber(tok.cacheRead)}
                   </span>
                 )}
                 {!isMobile && costStr && (
@@ -1252,10 +1283,9 @@ export function AppShell() {
                       [t("appShell.statTotal"), sessionStats.tokens.total.toLocaleString(locale)],
                     ];
                     const ctx = contextUsage ?? sessionStats.contextUsage;
-                    const formatCompact = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
                     const extraTokenRows = [
                       ...(sessionStats.cost > 0 ? [[t("appShell.statCost"), `$${sessionStats.cost.toFixed(4)}`]] : []),
-                      ...(ctx?.contextWindow ? [[t("appShell.statContext"), `${ctx.percent !== null ? `${ctx.percent.toFixed(1)}%` : "?"} / ${formatCompact(ctx.contextWindow)}`]] : []),
+                      ...(ctx?.contextWindow ? [[t("appShell.statContext"), `${ctx.percent !== null ? formatPercent(ctx.percent) : "?"} / ${formatCompactNumber(ctx.contextWindow)}`]] : []),
                     ];
                     const section = (
                       title: string,

@@ -96,13 +96,14 @@ function Toggle({
         style={{
           position: "absolute",
           top: 3,
-          left: enabled ? 21 : 3,
+          left: 3,
           width: 16,
           height: 16,
           borderRadius: "50%",
           background: "var(--bg)",
           boxShadow: "var(--shadow-card)",
-          transition: "left var(--dur-med) var(--ease-out-warm)",
+          transform: enabled ? "translateX(18px)" : "translateX(0)",
+          transition: "transform var(--dur-med) var(--ease-out-warm)",
         }}
       />
     </button>

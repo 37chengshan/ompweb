@@ -180,7 +180,9 @@ function ImageLightbox({ src, alt, onClose }: { src: ClickableImageProps["src"];
             src={src}
             alt={alt}
             className="image-lightbox-img"
-            style={{ zoom }}
+            // `zoom` is non-standard (a no-op in Firefox < 126); transform
+            // scale is composited and supported everywhere.
+            style={{ transform: `scale(${zoom})` }}
           />
         </div>
       </div>

@@ -46,3 +46,6 @@ next-env.d.ts
 
 # editor/agent tooling
 .claude/
+/.vscode/
+.vscode/settings.json
+/.pi/

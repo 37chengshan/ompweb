@@ -216,3 +216,42 @@ export interface HostToolResultFrame {
   result: unknown;
   isError?: boolean;
 }
+
+/**
+ * omp's RPC host-URI bridge: the host registers URL schemes
+ * (set_host_uri_schemes) that the agent's read/write tools resolve through
+ * the UI; the server emits host_uri_request frames the UI satisfies with
+ * host_uri_result. Mirrors oh-my-pi modes/rpc/rpc-types.ts.
+ */
+export interface HostUriSchemeDefinition {
+  scheme: string;
+  description?: string;
+  writable?: boolean;
+  immutable?: boolean;
+}
+
+export type HostUriOperation = "read" | "write";
+
+export interface HostUriRequestFrame {
+  type: "host_uri_request";
+  id: string;
+  operation: HostUriOperation;
+  url: string;
+  /** Present for write operations. */
+  content?: string;
+}
+
+export interface HostUriCancelFrame {
+  type: "host_uri_cancel";
+  id: string;
+  targetId: string;
+}
+
+export interface HostUriResultFrame {
+  type: "host_uri_result";
+  id: string;
+  content?: string;
+  contentType?: "text/markdown" | "application/json" | "text/plain";
+  isError?: boolean;
+  error?: string;
+}

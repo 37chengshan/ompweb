@@ -21,7 +21,7 @@ import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-prese
 import { toast } from "@/components/ui/toast";
 import { expandWebSlashCommand } from "@/lib/web-slash-commands";
 import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } from "@/lib/web-mode-state";
-import type { HostToolDefinition, RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
+import type { HostToolDefinition, HostUriSchemeDefinition, RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 import { isRecord } from "@/lib/type-guards";
 import {
   parseSubagentActivityEvent,
@@ -1193,6 +1193,26 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [HOST_TOOL_DEFINITIONS]);
 
+  /** URI schemes the agent's read/write tools can resolve through the web UI.
+   * `pi-web://clipboard` lets the agent read the user's clipboard (best-effort:
+   * the browser may gate clipboard reads behind a permission prompt) and copy
+   * text back. */
+  const HOST_URI_SCHEMES = useMemo<HostUriSchemeDefinition[]>(() => [
+    {
+      scheme: "pi-web",
+      description: "Browser-integrated resources: pi-web://clipboard reads/writes the user's clipboard via the web UI.",
+      writable: true,
+    },
+  ], []);
+
+  const registerHostUriSchemes = useCallback(async (sid: string) => {
+    try {
+      await sendAgentCommand(sid, { type: "set_host_uri_schemes", schemes: HOST_URI_SCHEMES });
+    } catch {
+      // Older omp builds: no URI bridge, nothing to do.
+    }
+  }, [HOST_URI_SCHEMES]);
+
   /** Answer a host_tool_call with a toolResult payload. */
   const respondHostTool = useCallback(async (sid: string, id: string, text: string, isError = false) => {
     try {
@@ -1256,6 +1276,50 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         await respondHostTool(sid, id, `Host tool \"${toolName}\" is not available in omp-web`, true);
     }
   }, [onOpenFile, respondHostTool]);
+
+  /** Answer a host_uri_request (agent read/write of a registered scheme). */
+  const respondHostUri = useCallback(async (sid: string, id: string, frame: { content?: string; contentType?: "text/markdown" | "application/json" | "text/plain"; isError?: boolean; error?: string }) => {
+    try {
+      await sendAgentCommand(sid, { type: "host_uri_result", id, ...frame });
+    } catch (e) {
+      console.error("Failed to send host URI result:", e);
+    }
+  }, []);
+
+  const handleHostUriRequest = useCallback(async (id: string, operation: "read" | "write", url: string, content?: string) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    const resource = url.replace(/^pi-web:\/\//i, "") || "";
+    if (resource === "clipboard") {
+      if (operation === "read") {
+        if (typeof navigator === "undefined" || !navigator.clipboard?.readText) {
+          await respondHostUri(sid, id, { isError: true, error: "Clipboard read is not available in this browser" });
+          return;
+        }
+        try {
+          const text = await navigator.clipboard.readText();
+          await respondHostUri(sid, id, { content: text || "(clipboard is empty)", contentType: "text/plain" });
+        } catch {
+          // Permission denied / document not focused: surface a readable error.
+          await respondHostUri(sid, id, { isError: true, error: "Clipboard read was denied. Click into the omp-web window and try again." });
+        }
+        return;
+      }
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(content ?? "");
+          await respondHostUri(sid, id, {});
+          return;
+        } catch {
+          await respondHostUri(sid, id, { isError: true, error: "Clipboard write failed in this browser" });
+          return;
+        }
+      }
+      await respondHostUri(sid, id, { isError: true, error: "Clipboard write is not available in this browser" });
+      return;
+    }
+    await respondHostUri(sid, id, { isError: true, error: `Unknown pi-web resource: ${resource}` });
+  }, [respondHostUri]);
 
   const sendExtensionCustomInput = useCallback(async (request: ExtensionUiCustomRequest, data: string) => {
     const sid = sessionIdRef.current;
@@ -1787,6 +1851,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (id && toolName) void handleHostToolCall(id, toolName, args);
         break;
       }
+      case "host_uri_request": {
+        // The wrapper only forwards REGISTERED schemes (see rpc-manager).
+        const id = typeof event.id === "string" ? event.id : "";
+        const url = typeof event.url === "string" ? event.url : "";
+        const operation = event.operation === "write" ? "write" as const : "read" as const;
+        const content = typeof event.content === "string" ? event.content : undefined;
+        if (id && url) void handleHostUriRequest(id, operation, url, content);
+        break;
+      }
       case "subagent_progress": {
         // Progress frames carry the full AgentProgress snapshot (throttled to
         // one per 150ms and flushed at terminal). The reliable key is
@@ -1892,7 +1965,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as unknown as IncomingExtensionUiRequest);
         break;
     }
-  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, handleHostToolCall, loadSession, mergeSubagents, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
+  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, handleHostToolCall, handleHostUriRequest, loadSession, mergeSubagents, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
@@ -1966,6 +2039,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         await ensureEventsConnected(session.id);
         void refreshSubagentRoster(session.id);
         void registerHostTools(session.id);
+        void registerHostUriSchemes(session.id);
         await sendAgentCommand(session.id, {
           type: "prompt",
           message,
@@ -2007,7 +2081,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       dispatch({ type: "end" });
       return false;
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, opts.chatInputRef, refreshSubagentRoster, registerHostTools]);
+  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, opts.chatInputRef, refreshSubagentRoster, registerHostTools, registerHostUriSchemes]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -2556,9 +2630,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             setAgentPhase(agentState.state.isStreaming ? { kind: "waiting_model" } : { kind: "running_command" });
             dispatch({ type: "start" });
             void connectEvents(session.id);
-            // Register the host-tool bridge so the agent can call ask_user /
-            // open_url / notify / open_file while it runs.
+            // Register the host-tool + URI bridges so the agent can call
+            // open_url/notify/open_file and resolve pi-web://clipboard.
             void registerHostTools(session.id);
+            void registerHostUriSchemes(session.id);
             // Rehydrate the live roster (missed lifecycle/progress frames).
             // Tracked + session-guarded: a session switch during the delay must
             // not issue a stale get_subagents against the old session.
@@ -2627,7 +2702,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       subagentVersionFlushRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshSubagentRoster, registerHostTools]);
+  }, [refreshSubagentRoster, registerHostTools, registerHostUriSchemes]);
 
   useEffect(() => {
     onSystemPromptChange?.(systemPrompt);

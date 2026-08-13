@@ -202,6 +202,10 @@ export class AgentSessionWrapper {
   private hostToolNames: Set<string> = new Set();
   /** host_tool_call ids awaiting a host_tool_result from the browser. */
   private pendingHostTools: Map<string, AgentEvent> = new Map();
+  /** URI schemes the web UI registered via set_host_uri_schemes. */
+  private hostUriSchemes: Map<string, { writable?: boolean }> = new Map();
+  /** host_uri_request ids awaiting a host_uri_result from the browser. */
+  private pendingHostUris: Map<string, AgentEvent> = new Map();
   /** Resolves once an in-flight destroyAndWait finishes; null when idle. Read
    * by startRpcSession so a replacement spawn awaits the old child's exit. */
   destroyPromise: Promise<void> | null = null;
@@ -380,6 +384,38 @@ export class AgentSessionWrapper {
         }
         break;
       }
+      case "host_uri_request": {
+        const id = typeof event.id === "string" ? event.id : "";
+        const url = typeof event.url === "string" ? event.url : "";
+        // Route registered schemes to an attached UI (the browser answers via
+        // host_uri_result); unknown schemes / no listener are rejected so the
+        // agent's read/write never hangs.
+        const scheme = url.split(":")[0] ?? "";
+        const operation = event.operation === "write" ? "write" : "read";
+        const registered = this.hostUriSchemes.get(scheme);
+        if (id && scheme && registered && (operation !== "write" || registered.writable) && this.listeners.length > 0) {
+          this.pendingHostUris.set(id, event);
+          this.emit(event);
+          notifyRunningChange();
+          return;
+        }
+        this.proc.sendFrame({
+          type: "host_uri_result",
+          id,
+          isError: true,
+          error: `URI scheme \"${scheme}\" is not registered by omp-web`,
+        });
+        return;
+      }
+      case "host_uri_cancel": {
+        const targetId = typeof event.targetId === "string" ? event.targetId : "";
+        if (targetId && this.pendingHostUris.delete(targetId)) {
+          this.emit(event);
+          notifyRunningChange();
+          return;
+        }
+        break;
+      }
     }
 
     this.emit(event);
@@ -494,6 +530,19 @@ export class AgentSessionWrapper {
     this.pendingHostTools.clear();
   }
 
+  /** Reject every outstanding host URI request (browser disconnected / destroy). */
+  private rejectPendingHostUris(message: string): void {
+    for (const id of this.pendingHostUris.keys()) {
+      this.proc.sendFrame({
+        type: "host_uri_result",
+        id,
+        isError: true,
+        error: message,
+      });
+    }
+    this.pendingHostUris.clear();
+  }
+
   private emit(event: AgentEvent): void {
     for (const l of this.listeners) l(event);
   }
@@ -525,7 +574,10 @@ export class AgentSessionWrapper {
       if (i !== -1) this.listeners.splice(i, 1);
       // No UI attached anymore: reject outstanding host tool calls so the
       // agent never waits forever on a tool nobody will answer.
-      if (this.listeners.length === 0) this.rejectPendingHostTools("The web UI disconnected while the agent was waiting for this host tool");
+      if (this.listeners.length === 0) {
+        this.rejectPendingHostTools("The web UI disconnected while the agent was waiting for this host tool");
+        this.rejectPendingHostUris("The web UI disconnected while the agent was waiting for this URI request");
+      }
     };
   }
 
@@ -927,6 +979,24 @@ export class AgentSessionWrapper {
         return null;
       }
 
+      case "set_host_uri_schemes": {
+        const schemes = Array.isArray(command.schemes) ? command.schemes as Array<{ scheme?: unknown; writable?: unknown; [key: string]: unknown }> : [];
+        this.hostUriSchemes = new Map();
+        for (const entry of schemes) {
+          if (typeof entry.scheme === "string" && entry.scheme) {
+            this.hostUriSchemes.set(entry.scheme, { writable: entry.writable === true });
+          }
+        }
+        await this.proc.sendCommand({ type: "set_host_uri_schemes", schemes });
+        return null;
+      }
+
+      case "host_uri_result": {
+        if (typeof command.id === "string") this.pendingHostUris.delete(command.id);
+        await this.proc.sendCommand(command as { type: string });
+        return null;
+      }
+
       default: {
         if (PASSTHROUGH_COMMANDS.has(type)) {
           const result: unknown = await this.proc.sendCommand(command as { type: string });
@@ -963,6 +1033,8 @@ export class AgentSessionWrapper {
     this.destroyPromise = disposed;
     this.pendingHostTools.clear();
     this.hostToolNames.clear();
+    this.pendingHostUris.clear();
+    this.hostUriSchemes.clear();
     this.onDestroyCallback?.();
     notifyRunningChange();
     await disposed;

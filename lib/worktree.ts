@@ -222,12 +222,16 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
 
 export async function removeWorktree(cwd: string, worktreePath: string, force = false): Promise<void> {
   const worktrees = await listWorktrees(cwd);
-  const target = worktrees.find((w) => w.path === worktreePath);
+  // Compare on the same canonical form listWorktrees produces (resolve +
+  // case-fold on win32): the client body value may use a drive-letter case
+  // variant or forward slashes, and an exact string compare would reject a
+  // legitimate worktree with a misleading not_a_worktree error.
+  const target = worktrees.find((w) => comparablePath(w.path) === comparablePath(worktreePath));
   if (!target) throw new Error(`Not a worktree of this repository: ${worktreePath}`);
   if (target.isMain) throw new Error("Cannot remove the main worktree");
 
   try {
-    await git(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), worktreePath]);
+    await git(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), target.path]);
   } catch (error) {
     throw new Error(extractGitError(error));
   }

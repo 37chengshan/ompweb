@@ -38,7 +38,15 @@ export function getRelativeFilePath(filePath: string, cwd?: string): string {
 
   const normalizedFile = normalizeFilePathSlashes(filePath);
   const normalizedCwd = normalizeFilePathSlashes(cwd).replace(/\/$/, "");
-  if (normalizedFile.startsWith(normalizedCwd + "/")) {
+  // NTFS is case-insensitive: the session header may store the cwd with
+  // different casing than the realpath'd file path (drive letter or directory
+  // case), and a case-sensitive prefix match would wrongly fall back to the
+  // absolute path — breaking the breadcrumb and @-mention line links.
+  const windowsPaths = /^[a-zA-Z]:\//.test(normalizedFile) || normalizedFile.startsWith("//")
+    || /^[a-zA-Z]:\//.test(normalizedCwd) || normalizedCwd.startsWith("//");
+  const fileKey = windowsPaths ? normalizedFile.toLowerCase() : normalizedFile;
+  const cwdKey = windowsPaths ? normalizedCwd.toLowerCase() : normalizedCwd;
+  if (fileKey.startsWith(cwdKey + "/")) {
     return normalizedFile.slice(normalizedCwd.length + 1);
   }
   return filePath;

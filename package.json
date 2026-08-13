@@ -49,6 +49,7 @@
     "next": "16.3.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-syntax-highlighter": "^16.1.1",
     "undici": "8.10.0",
     "yaml": "^2"
   },
@@ -67,7 +68,6 @@
     "mermaid": "^11.14.0",
     "postcss": "^8",
     "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^16.1.1",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",

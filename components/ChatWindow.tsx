@@ -435,7 +435,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, loadSlashCommands,
+    handleToolPresetChange, handleThinkingLevelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, loadSlashCommands,
   } = useAgentSession({
     session, newSessionCwd, advisorEnabled, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
@@ -447,6 +447,26 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
   useEffect(() => {
     registerAbortHandler(sessionBusy ? handleAbort : null);
   }, [sessionBusy, handleAbort]);
+
+  // Cycle model / thinking level via ⌘/Ctrl+Alt+M and ⌘/Ctrl+Alt+T (RPC
+  // cycle_model / cycle_thinking_level). Meta/Alt combos avoid clashing with
+  // ordinary typing in the composer.
+  useEffect(() => {
+    if (!session) return;
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key === "m") {
+        e.preventDefault();
+        void handleCycleModel();
+      } else if (key === "t") {
+        e.preventDefault();
+        void handleCycleThinkingLevel();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [session, handleCycleModel, handleCycleThinkingLevel]);
 
   // --- Lazy-load historical messages ---
   // Only render the last N messages initially. When the user scrolls to the

@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import {
-  Activity, Ban, Bot, CheckCircle2, ChevronDown, Circle, CircleAlert,
+  Activity, Bot, ChevronDown,
   CircleDollarSign, Clock3, Cpu, Gauge, GitBranch, Network, RefreshCw,
   UserRound, Wrench, type LucideIcon,
 } from "lucide-react";
@@ -11,6 +11,7 @@ import type { SubagentInfo } from "@/hooks/useAgentSession";
 import type { TodoPhase } from "@/lib/pi-types";
 import { countNestedSubagents, formatCost, formatDuration, formatTokens, shortModel } from "@/lib/subagent-format";
 import { TodoList } from "./TodoList";
+import { SubagentStatusIcon } from "./SubagentStatusIcon";
 
 const SUBAGENT_STATE_KEYS: Record<SubagentInfo["status"], string> = {
   started: "chatWindow.subagentState.started",
@@ -19,23 +20,8 @@ const SUBAGENT_STATE_KEYS: Record<SubagentInfo["status"], string> = {
   aborted: "chatWindow.subagentState.aborted",
 };
 
-function SubagentStatusIcon({ subagent }: { subagent: SubagentInfo }) {
-  const live = subagent.source !== "history";
-  if (subagent.status === "started") {
-    if (live) {
-      return (
-        <span
-          aria-hidden
-          className="live-status-dot live-pulse inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
-        />
-      );
-    }
-    return <Circle size={12} color="var(--text-dim)" />;
-  }
-  const props = { size: 12, strokeWidth: 2, "aria-hidden": true as const };
-  if (subagent.status === "completed") return <CheckCircle2 {...props} color="var(--accent)" />;
-  if (subagent.status === "failed") return <CircleAlert {...props} color="var(--accent-strong)" />;
-  return <Ban {...props} color="var(--text-dim)" />;
+function SubagentStatusBadge({ subagent }: { subagent: SubagentInfo }) {
+  return <SubagentStatusIcon status={subagent.status} live={subagent.source !== "history"} />;
 }
 
 /** Icon-first telemetry keeps the compact roster scannable without label noise. */
@@ -124,7 +110,7 @@ function SubagentActivityLine({ subagent }: { subagent: SubagentInfo }) {
         overflow: "hidden",
         fontSize: 10.5,
         fontFamily: "var(--font-mono)",
-        color: retryActive ? "var(--accent-strong)" : "var(--text-dim)",
+        color: retryActive ? "var(--accent)" : "var(--text-dim)",
         lineHeight: 1.4,
         gap: 7,
         flexWrap: "wrap",
@@ -225,7 +211,7 @@ function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }
                 }}
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, maxWidth: "100%" }}>
-                  <SubagentStatusIcon subagent={subagent} />
+                  <SubagentStatusBadge subagent={subagent} />
                   <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 10.5, color: "var(--accent)", flexShrink: 0 }}>
                     {subagent.agent}
                   </span>

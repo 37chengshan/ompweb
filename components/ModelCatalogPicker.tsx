@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useI18n } from "@/lib/i18n";
+import { formatCompactNumber } from "@/lib/format";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 
 /** One flattened models.dev entry as served by /api/models-config/catalog. */
@@ -43,7 +44,7 @@ const SEARCH_DEBOUNCE_MS = 250;
 const RESULT_LIMIT = 30;
 
 function formatContext(n: number): string {
-  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : String(n);
+  return formatCompactNumber(n);
 }
 
 function toPickedModel(entry: CatalogModelEntry): CatalogPickedModel {

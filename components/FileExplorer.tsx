@@ -686,7 +686,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
             </div>
             {uploadPhase === "uploading" && (
               <div style={{ height: 3, marginTop: 4, overflow: "hidden", borderRadius: 2, background: "var(--border)" }}>
-                <div style={{ width: `${uploadProgress}%`, height: "100%", background: "var(--text-muted)", transition: `width var(--dur-fast) var(--ease-out-warm)` }} />
+                <div style={{ width: `${uploadProgress}%`, height: "100%", background: "var(--accent)", transition: `width var(--dur-fast) var(--ease-out-warm)` }} />
               </div>
             )}
           </div>

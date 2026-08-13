@@ -1918,7 +1918,7 @@ function ProjectWorktreeSwitcher({
                   style={{
                     flex: 1,
                     padding: "4px 0",
-                    background: "var(--accent)",
+                    background: "var(--accent-strong)",
                     border: "none",
                     borderRadius: "var(--radius-control)",
                     color: "var(--on-accent)",

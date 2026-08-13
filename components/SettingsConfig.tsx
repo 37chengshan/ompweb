@@ -240,7 +240,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             {appUpdate?.updateAvailable && <div style={{ marginTop: 12, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Run this command in terminal to update ompweb:</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent-strong)", wordBreak: "break-all" }}>{appUpdate.updateCommand || "npm install -g @kahme247/ompweb"}</code>
+                <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{appUpdate.updateCommand || "npm install -g @kahme247/ompweb"}</code>
                 <button type="button" onClick={() => { void navigator.clipboard.writeText(appUpdate.updateCommand || "npm install -g @kahme247/ompweb"); setMessage("Copied update command to clipboard."); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}><Copy size={12} aria-hidden="true" /> Copy</button>
               </div>
             </div>}
@@ -258,7 +258,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             {update?.updateAvailable && <div style={{ marginTop: 12, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Run this command in terminal to update OMP runtime:</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent-strong)", wordBreak: "break-all" }}>{update.updateCommand || "omp update"}</code>
+                <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{update.updateCommand || "omp update"}</code>
                 <button type="button" onClick={() => { void navigator.clipboard.writeText(update.updateCommand || "omp update"); setMessage("Copied update command to clipboard."); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}><Copy size={12} aria-hidden="true" /> Copy</button>
               </div>
             </div>}

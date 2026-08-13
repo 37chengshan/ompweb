@@ -1,15 +1,16 @@
 "use client";
 
 import { memo, useState, useRef, useEffect, useMemo, useCallback, type ComponentProps } from "react";
-import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, Brain, Ban, CheckCircle2, CircleAlert } from "lucide-react";
+import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, Brain } from "lucide-react";
 import { MarkdownBody } from "./MarkdownBody";
 import { ClickableImage } from "./ImageLightbox";
-import { copyText } from "@/lib/clipboard";
 import { translate, useI18n, type Locale } from "@/lib/i18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { isEmptyThinkingBlock } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { Tooltip, Collapsible, CollapsibleTrigger, CollapsiblePanel } from "./ui/primitives";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
+import { SubagentStatusIcon } from "./SubagentStatusIcon";
 import { formatCost, formatDuration, formatTokens, shortModel } from "@/lib/subagent-format";
 import type {
   AgentMessage,
@@ -193,7 +194,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const { t, locale } = useI18n();
   const [hovered, setHovered] = useState(false);
   const [actionsActive, setActionsActive] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy: copyContent } = useCopyFeedback();
 
   const content =
     typeof message.content === "string"
@@ -211,13 +212,6 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const time = formatTime(message.timestamp, locale);
   const canFork = !!entryId && !!onFork;
   const canNavigate = !!prevAssistantEntryId && !!onNavigate;
-
-  const copyContent = () => {
-    copyText(content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
 
   return (
     <div
@@ -289,7 +283,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           >
             <Tooltip content={t("messageView.copyMessage")}>
               <button
-                onClick={copyContent}
+                onClick={() => copyContent(content)}
                 aria-label={t("messageView.copyMessage")}
                 style={{
                   display: "flex", alignItems: "center", gap: 4,
@@ -412,7 +406,7 @@ function AssistantMessageView({
   const blocks = blockItems.map(({ block }) => block);
   const [hovered, setHovered] = useState(false);
   const [actionsActive, setActionsActive] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy: copyContent } = useCopyFeedback();
   const streamStartRef = useRef<number | null>(null);
   const [tps, setTps] = useState<number | null>(null);
   const blockItemsRef = useRef(blockItems);
@@ -454,12 +448,6 @@ function AssistantMessageView({
         .map((b) => b.text)
         .join("\n");
 
-  const copyContent = () => {
-    copyText(textContent).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
 
   useEffect(() => {
     if (!isStreaming) {
@@ -559,9 +547,13 @@ function AssistantMessageView({
                     {est}
                   </span>
                   {tps !== null && (() => {
-                    const bg = tps >= 50 ? "#53b3cb" : tps >= 30 ? "#9bc53d" : tps >= 15 ? "#f9c22e" : "#e01a4f";
+                    // Speed tiers use the semantic status tokens as TEXT color
+                    // (theme-adaptive, AA-verified) over a subtle tint — the
+                    // old hardcoded palette failed AA for white-on-fill.
+                    const tier = tps >= 50 ? "success" : tps >= 30 ? "renamed" : tps >= 15 ? "warning" : "error";
+                    const tone = `var(--status-${tier})`;
                     return (
-                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: bg, color: "var(--on-accent)", fontSize: 11, fontWeight: 400 }}>
+                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: `color-mix(in srgb, ${tone} 14%, var(--bg-panel))`, color: tone, fontSize: 11, fontWeight: 400 }}>
                         {t("messageView.tokensPerSecond", { tps: tps.toFixed(1) })}
                       </span>
                     );
@@ -590,7 +582,7 @@ function AssistantMessageView({
         {textContent && !isStreaming && (
           <Tooltip content={t("messageView.copyMessage")}>
             <button
-              onClick={copyContent}
+              onClick={() => copyContent(textContent)}
               aria-label={t("messageView.copyMessage")}
               style={{
                 display: "flex", alignItems: "center", gap: 4,
@@ -893,11 +885,7 @@ function taskRowStatus(row: TaskResultRowLike): "started" | "completed" | "faile
 }
 
 function TaskResultStatusIcon({ status }: { status: "started" | "completed" | "failed" | "aborted" }) {
-  const props = { size: 12, strokeWidth: 2, "aria-hidden": true as const };
-  if (status === "completed") return <CheckCircle2 {...props} color="var(--accent)" />;
-  if (status === "failed") return <CircleAlert {...props} color="var(--accent-strong)" />;
-  if (status === "aborted") return <Ban {...props} color="var(--text-dim)" />;
-  return <span aria-hidden className="live-status-dot inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />;
+  return <SubagentStatusIcon status={status} />;
 }
 
 /**
@@ -1354,7 +1342,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
   const isHiddenDisplay = message.display === false;
   const [contentExpanded, setContentExpanded] = useState(!isHiddenDisplay);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy: copyContent } = useCopyFeedback();
   const text = getMessageText(message.content);
   const images = getMessageImages(message.content);
   const hasDetails = message.details !== undefined;
@@ -1369,12 +1357,6 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
       : formatCustomType(message.customType);
   const time = formatTime(message.timestamp, locale);
 
-  const copyContent = () => {
-    copyText(displayText || detailsText).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -1457,7 +1439,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
         >
           {text || detailsText ? (
             <button
-              onClick={copyContent}
+              onClick={() => copyContent(displayText || detailsText)}
               style={{
                 padding: "3px 7px",
                 border: "none",

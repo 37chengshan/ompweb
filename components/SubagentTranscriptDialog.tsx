@@ -389,7 +389,7 @@ export function SubagentTranscriptDialog({ subagent, sessionId, transcriptVersio
                   </div>
                 )}
                 {outcomeError && (
-                  <div style={{ fontSize: 11, color: "var(--accent-strong)", marginTop: 2, wordBreak: "break-word" }}>
+                  <div style={{ fontSize: 11, color: "var(--status-error)", marginTop: 2, wordBreak: "break-word" }}>
                     {outcomeError}
                   </div>
                 )}

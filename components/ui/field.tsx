@@ -550,10 +550,10 @@ export function ConfirmDialog({
             onClick={onConfirm}
             style={{
               padding: "6px 14px",
-              background: danger ? "var(--accent-strong)" : "var(--accent)",
+              background: "var(--accent-strong)",
               border: "none",
               borderRadius: "var(--radius-control)",
-              color: "white",
+              color: "var(--on-accent)",
               cursor: busy ? "wait" : "pointer",
               fontSize: 13,
               fontWeight: 600,

@@ -171,3 +171,45 @@ export type OmpExtensionUiRequest =
   | { type: "extension_ui_request"; id: string; method: "setTitle"; title: string }
   | { type: "extension_ui_request"; id: string; method: "set_editor_text"; text: string }
   | { type: "extension_ui_request"; id: string; method: "open_url"; url: string; launchUrl?: string; instructions?: string };
+
+/**
+ * omp's RPC host-tool bridge: omp-web registers host tools (set_host_tools)
+ * that the agent can call; the server emits host_tool_call frames the UI
+ * executes, and the UI answers with host_tool_result. Mirrors
+ * oh-my-pi modes/rpc/rpc-types.ts.
+ */
+export interface HostToolParameter {
+  type?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface HostToolDefinition {
+  name: string;
+  label?: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  hidden?: boolean;
+  loadMode?: "always" | "discoverable" | "explicit";
+}
+
+export interface HostToolCallFrame {
+  type: "host_tool_call";
+  id: string;
+  toolCallId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface HostToolCancelFrame {
+  type: "host_tool_cancel";
+  id: string;
+  targetId: string;
+}
+
+export interface HostToolResultFrame {
+  type: "host_tool_result";
+  id: string;
+  result: unknown;
+  isError?: boolean;
+}

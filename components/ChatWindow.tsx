@@ -439,6 +439,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
   } = useAgentSession({
     session, newSessionCwd, advisorEnabled, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    onOpenFile,
   });
   const sessionBusy = agentRunning || bashRunning;
 

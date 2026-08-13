@@ -21,7 +21,8 @@ import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-prese
 import { toast } from "@/components/ui/toast";
 import { expandWebSlashCommand } from "@/lib/web-slash-commands";
 import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } from "@/lib/web-mode-state";
-import type { RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
+import type { HostToolDefinition, RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
+import { isRecord } from "@/lib/type-guards";
 import {
   parseSubagentActivityEvent,
   parseSubagentLifecycle,
@@ -310,6 +311,8 @@ export interface UseAgentSessionOptions {
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsPanelOpen?: () => void;
   setToolPreset?: (preset: "none" | "default" | "full") => void;
+  /** Opens a file in the web UI's file viewer (used by the open_file host tool). */
+  onOpenFile?: (filePath: string, name: string, sessionId?: string) => void;
 }
 
 export type ThinkingLevelOption = string;
@@ -514,6 +517,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, advisorEnabled, onAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    onOpenFile,
   } = opts;
 
   const reducedMotion = usePrefersReducedMotion();
@@ -1120,6 +1124,120 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, []);
 
+  // ---------------------------------------------------------------------
+  // Host-tool bridge: omp-web registers tools the AGENT can call. The server
+  // emits host_tool_call frames; this UI executes them and answers with
+  // host_tool_result (lib/rpc-manager routes registered tools to listeners).
+  // The built-in `ask` tool already covers user questions via the extension
+  // UI protocol, so we only register web-UI-specific capabilities.
+  // ---------------------------------------------------------------------
+  const HOST_TOOL_DEFINITIONS = useMemo<HostToolDefinition[]>(() => [
+    {
+      name: "open_url",
+      description: "Open a URL in the user's browser.",
+      parameters: {
+        type: "object",
+        properties: { url: { type: "string" } },
+        required: ["url"],
+      },
+    },
+    {
+      name: "notify",
+      description: "Show a browser notification to the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          message: { type: "string", description: "Optional notification body." },
+        },
+        required: ["title"],
+      },
+    },
+    {
+      name: "open_file",
+      description: "Open a file in the workspace file viewer.",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string", description: "Absolute or workspace-relative file path." } },
+        required: ["path"],
+      },
+    },
+  ], []);
+
+  /** Re-register host tools on run start / SSE reconnect so the agent always
+   * has them available (set_host_tools is per-wrapper, not persisted). */
+  const registerHostTools = useCallback(async (sid: string) => {
+    try {
+      await sendAgentCommand(sid, { type: "set_host_tools", tools: HOST_TOOL_DEFINITIONS });
+    } catch {
+      // Older omp builds without host tools: the UI simply stays passive.
+    }
+  }, [HOST_TOOL_DEFINITIONS]);
+
+  /** Answer a host_tool_call with a toolResult payload. */
+  const respondHostTool = useCallback(async (sid: string, id: string, text: string, isError = false) => {
+    try {
+      await sendAgentCommand(sid, {
+        type: "host_tool_result",
+        id,
+        isError,
+        result: { content: [{ type: "text", text }] },
+      });
+    } catch (e) {
+      console.error("Failed to send host tool result:", e);
+    }
+  }, []);
+
+  const handleHostToolCall = useCallback(async (id: string, toolName: string, args: Record<string, unknown>) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+    switch (toolName) {
+      case "open_url": {
+        const url = str(args.url) ?? "";
+        if (url && typeof window !== "undefined") {
+          const opened = window.open(url, "_blank", "noopener,noreferrer");
+          opened?.focus?.();
+        }
+        await respondHostTool(sid, id, url ? `Opened ${url}` : "No URL provided", !url);
+        break;
+      }
+      case "notify": {
+        const title = str(args.title) ?? "OMP";
+        const message = str(args.message) ?? "";
+        if (typeof Notification !== "undefined") {
+          try {
+            if (Notification.permission === "granted") {
+              new Notification(title, { body: message });
+            } else if (Notification.permission === "default") {
+              const permission = await Notification.requestPermission();
+              if (permission === "granted") new Notification(title, { body: message });
+            }
+          } catch {
+            // Notification API blocked — the result still succeeds.
+          }
+        }
+        await respondHostTool(sid, id, "Notification shown");
+        break;
+      }
+      case "open_file": {
+        const path = str(args.path) ?? "";
+        if (path && onOpenFile) {
+          try {
+            const name = path.split(/[\\/]/).pop() || path;
+            onOpenFile(path, name, sid);
+          } catch {
+            // ignore navigation failures
+          }
+        }
+        await respondHostTool(sid, id, path ? `Opened ${path}` : "No path provided", !path);
+        break;
+      }
+      default:
+        await respondHostTool(sid, id, `Host tool \"${toolName}\" is not available in omp-web`, true);
+    }
+  }, [onOpenFile, respondHostTool]);
+
   const sendExtensionCustomInput = useCallback(async (request: ExtensionUiCustomRequest, data: string) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
@@ -1637,6 +1755,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         mergeSubagents([info]);
         break;
       }
+      case "host_tool_call": {
+        // The wrapper only forwards REGISTERED host tools (see rpc-manager),
+        // so a frame here is always one this UI can answer.
+        const id = typeof event.id === "string" ? event.id : "";
+        const toolName = typeof event.toolName === "string" ? event.toolName : "";
+        const args = isRecord(event.arguments) ? event.arguments : {};
+        if (id && toolName) void handleHostToolCall(id, toolName, args);
+        break;
+      }
       case "subagent_progress": {
         // Progress frames carry the full AgentProgress snapshot (throttled to
         // one per 150ms and flushed at terminal). The reliable key is
@@ -1742,7 +1869,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as unknown as IncomingExtensionUiRequest);
         break;
     }
-  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, mergeSubagents, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
+  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, handleHostToolCall, loadSession, mergeSubagents, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
@@ -1815,6 +1942,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         sentSessionId = session.id;
         await ensureEventsConnected(session.id);
         void refreshSubagentRoster(session.id);
+        void registerHostTools(session.id);
         await sendAgentCommand(session.id, {
           type: "prompt",
           message,
@@ -1856,7 +1984,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       dispatch({ type: "end" });
       return false;
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, opts.chatInputRef, refreshSubagentRoster]);
+  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, opts.chatInputRef, refreshSubagentRoster, registerHostTools]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -2314,6 +2442,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             setAgentPhase(agentState.state.isStreaming ? { kind: "waiting_model" } : { kind: "running_command" });
             dispatch({ type: "start" });
             void connectEvents(session.id);
+            // Register the host-tool bridge so the agent can call ask_user /
+            // open_url / notify / open_file while it runs.
+            void registerHostTools(session.id);
             // Rehydrate the live roster (missed lifecycle/progress frames).
             // Tracked + session-guarded: a session switch during the delay must
             // not issue a stale get_subagents against the old session.
@@ -2382,7 +2513,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       subagentVersionFlushRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshSubagentRoster]);
+  }, [refreshSubagentRoster, registerHostTools]);
 
   useEffect(() => {
     onSystemPromptChange?.(systemPrompt);

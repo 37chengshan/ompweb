@@ -198,6 +198,10 @@ export class AgentSessionWrapper {
   private restarting = false;
   private mcpListWaiter: { resolve: (text: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
   private _alive = true;
+  /** Host tools the web UI registered via set_host_tools (agent-callable). */
+  private hostToolNames: Set<string> = new Set();
+  /** host_tool_call ids awaiting a host_tool_result from the browser. */
+  private pendingHostTools: Map<string, AgentEvent> = new Map();
   /** Resolves once an in-flight destroyAndWait finishes; null when idle. Read
    * by startRpcSession so a replacement spawn awaits the old child's exit. */
   destroyPromise: Promise<void> | null = null;
@@ -349,9 +353,33 @@ export class AgentSessionWrapper {
         }
         break;
       }
-      case "host_tool_call":
+      case "host_tool_call": {
+        const id = typeof event.id === "string" ? event.id : "";
+        const toolName = typeof event.toolName === "string" ? event.toolName : "";
+        // Route REGISTERED host tools to an attached UI (the browser answers
+        // via host_tool_result); unregistered tools or no attached listener
+        // are rejected immediately so the agent never hangs on a tool nobody
+        // will answer.
+        if (id && toolName && this.hostToolNames.has(toolName) && this.listeners.length > 0) {
+          this.pendingHostTools.set(id, event);
+          this.emit(event);
+          notifyRunningChange();
+          return;
+        }
+        // Unregistered tool / no listener: reject (emits a notice) and do NOT
+        // re-emit the frame — the UI must not answer a call nobody routed.
         this.rejectUnexpectedHostTool(event);
+        return;
+      }
+      case "host_tool_cancel": {
+        const targetId = typeof event.targetId === "string" ? event.targetId : "";
+        if (targetId && this.pendingHostTools.delete(targetId)) {
+          this.emit(event);
+          notifyRunningChange();
+          return;
+        }
         break;
+      }
     }
 
     this.emit(event);
@@ -430,10 +458,10 @@ export class AgentSessionWrapper {
   }
 
   /**
-   * omp-web never registers RPC host tools: allowing a browser-originated host
-   * callback to run a command would bypass the workspace allow-list. Should a
-   * future extension still issue one, settle it explicitly so its agent turn
-   * cannot hang forever waiting for a response.
+   * Settle a host_tool_call the UI did not register (or arrived with no
+   * attached listener) with an explicit error so its agent turn cannot hang
+   * forever waiting for a response. Registered host tools are routed to
+   * listeners in handleFrame (see the host_tool_call case).
    */
   private rejectUnexpectedHostTool(event: AgentEvent): void {
     const id = typeof event.id === "string" ? event.id : "";
@@ -451,6 +479,19 @@ export class AgentSessionWrapper {
       },
     });
     this.emit({ type: "notice", level: "warning", message: `Rejected unavailable host tool: ${toolName}` });
+  }
+
+  /** Reject every outstanding host tool call (browser disconnected / destroy). */
+  private rejectPendingHostTools(message: string): void {
+    for (const id of this.pendingHostTools.keys()) {
+      this.proc.sendFrame({
+        type: "host_tool_result",
+        id,
+        isError: true,
+        result: { content: [{ type: "text", text: message }] },
+      });
+    }
+    this.pendingHostTools.clear();
   }
 
   private emit(event: AgentEvent): void {
@@ -482,6 +523,9 @@ export class AgentSessionWrapper {
     return () => {
       const i = this.listeners.indexOf(listener);
       if (i !== -1) this.listeners.splice(i, 1);
+      // No UI attached anymore: reject outstanding host tool calls so the
+      // agent never waits forever on a tool nobody will answer.
+      if (this.listeners.length === 0) this.rejectPendingHostTools("The web UI disconnected while the agent was waiting for this host tool");
     };
   }
 
@@ -866,6 +910,20 @@ export class AgentSessionWrapper {
         }
       }
 
+      case "set_host_tools": {
+        const tools = Array.isArray(command.tools) ? command.tools as Array<{ name?: unknown; [key: string]: unknown }> : [];
+        const valid = tools.filter((t) => typeof t.name === "string" && t.name);
+        this.hostToolNames = new Set(valid.map((t) => t.name as string));
+        await this.proc.sendCommand({ type: "set_host_tools", tools: valid });
+        return null;
+      }
+
+      case "host_tool_result": {
+        if (typeof command.id === "string") this.pendingHostTools.delete(command.id);
+        await this.proc.sendCommand(command as { type: string });
+        return null;
+      }
+
       default: {
         if (PASSTHROUGH_COMMANDS.has(type)) {
           const result: unknown = await this.proc.sendCommand(command as { type: string });
@@ -900,6 +958,8 @@ export class AgentSessionWrapper {
     }
     const disposed = this.proc.dispose().catch(() => {});
     this.destroyPromise = disposed;
+    this.pendingHostTools.clear();
+    this.hostToolNames.clear();
     this.onDestroyCallback?.();
     notifyRunningChange();
     await disposed;

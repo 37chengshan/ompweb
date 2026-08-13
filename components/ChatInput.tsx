@@ -2328,6 +2328,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               display: isMobile ? (controlsMenuOpen ? "flex" : "none") : "flex",
               alignItems: "center",
               gap: isMobile ? 1 : 2,
+              flexWrap: isMobile ? "nowrap" : "wrap",
+              justifyContent: isMobile ? "flex-end" : "flex-end",
               ...(isMobile ? {
                 position: "absolute",
                 right: 0,

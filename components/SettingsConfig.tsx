@@ -33,6 +33,7 @@ type NativeSettings = {
   autolearn?: { enabled?: boolean; autoContinue?: boolean; minToolCalls?: number };
   mnemopi?: { scoping?: "global" | "per-project" | "per-project-tagged"; autoRecall?: boolean; autoRetain?: boolean; noEmbeddings?: boolean };
   mcp?: { enableProjectConfig?: boolean; renderMarkdownResults?: boolean; notifications?: boolean; notificationDebounceMs?: number };
+  retry?: { enabled?: boolean; maxRetries?: number; modelFallback?: boolean };
 };
 
 const nativeSelectStyle = {
@@ -226,6 +227,15 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                <NativeSetting label="Memory Scope" description="Choose whether Mnemopi knowledge is shared across projects."><select style={nativeSelectStyle} value={nativeSettings?.mnemopi?.scoping ?? "per-project"} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), mnemopi: { ...(nativeSettings?.mnemopi ?? {}), scoping: event.target.value as NonNullable<NativeSettings["mnemopi"]>["scoping"] } })}><option value="per-project">Per project</option><option value="per-project-tagged">Per project, tagged recall</option><option value="global">Global</option></select></NativeSetting>
                <NativeSetting label="Recall on Session Start" description="Load relevant local memories into the first turn."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={nativeSettings?.mnemopi?.autoRecall ?? true} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), mnemopi: { ...(nativeSettings?.mnemopi ?? {}), autoRecall: event.target.checked } })} /></NativeSetting>
                <NativeSetting label="Retain Completed Turns" description="Store completed conversation turns in Mnemopi memory."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={nativeSettings?.mnemopi?.autoRetain ?? true} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), mnemopi: { ...(nativeSettings?.mnemopi ?? {}), autoRetain: event.target.checked } })} /></NativeSetting>
+              </div>
+            </section>
+            <section style={{ padding: "16px", border: "1px solid var(--border)", borderRadius: "var(--radius-modal)", background: "var(--bg-subtle)" }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Retry</div>
+              <p style={{ margin: "6px 0 10px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>Persisted in OMP config and applied to new sessions. The retry banner in the composer can abort a live retry.</p>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 9 }}>
+                <NativeSetting label="Automatic Retry" description="Retry failed turns automatically."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={nativeSettings?.retry?.enabled ?? true} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), retry: { ...(nativeSettings?.retry ?? {}), enabled: event.target.checked } })} /></NativeSetting>
+                <NativeSetting label="Max Attempts" description="Retry limit before the turn is given up."><select style={nativeSelectStyle} value={String(nativeSettings?.retry?.maxRetries ?? 2)} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), retry: { ...(nativeSettings?.retry ?? {}), maxRetries: Number(event.target.value) } })}>{[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}</select></NativeSetting>
+                <NativeSetting label="Model Fallback" description="Fall back to another model when retries exhaust."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={nativeSettings?.retry?.modelFallback ?? false} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), retry: { ...(nativeSettings?.retry ?? {}), modelFallback: event.target.checked } })} /></NativeSetting>
               </div>
             </section>
             {nativeSettingsError && <p role="alert" style={{ margin: 0, color: "var(--status-error)", fontSize: 12 }}>{nativeSettingsError}</p>}

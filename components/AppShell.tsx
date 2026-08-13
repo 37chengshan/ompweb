@@ -149,38 +149,6 @@ export function AppShell() {
   }, [sidebarWidth, sidebarResizing]);
   const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
   const [ompUpdateAvailable, setOmpUpdateAvailable] = useState(false);
-  const appUpdateInFlightRef = useRef(false);
-  const ompUpdateInFlightRef = useRef(false);
-  const installAppUpdate = useCallback(async () => {
-    if (appUpdateInFlightRef.current) return;
-    appUpdateInFlightRef.current = true;
-    try {
-      const response = await fetch("/api/app-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
-      const data = await response.json() as { error?: string };
-      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
-      setAppUpdateAvailable(false);
-      toast.success("ompweb update started", "ompweb will restart automatically. Refresh when it is available again.");
-    } catch (error) {
-      toast.error("Could not update ompweb", error instanceof Error ? error.message : String(error));
-    } finally {
-      appUpdateInFlightRef.current = false;
-    }
-  }, []);
-  const installOmpUpdate = useCallback(async () => {
-    if (ompUpdateInFlightRef.current) return;
-    ompUpdateInFlightRef.current = true;
-    try {
-      const response = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
-      const data = await response.json() as { error?: string };
-      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
-      setOmpUpdateAvailable(false);
-      toast.success("OMP updated", "Restart active OMP sessions in Settings to use the new runtime.");
-    } catch (error) {
-      toast.error("Could not update OMP", error instanceof Error ? error.message : String(error));
-    } finally {
-      ompUpdateInFlightRef.current = false;
-    }
-  }, []);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
   useEffect(() => {
@@ -205,26 +173,66 @@ export function AppShell() {
       signal: controller.signal,
     })
       .then((response) => response.ok ? response.json() : null)
-      .then((data: { currentVersion?: string | null; availableVersion?: string | null; updateAvailable?: boolean } | null) => {
+      .then((data: { currentVersion?: string | null; availableVersion?: string | null; updateAvailable?: boolean; updateCommand?: string } | null) => {
         setOmpUpdateAvailable(Boolean(data?.updateAvailable));
         if (!data?.updateAvailable || !data.availableVersion) return;
-        toast.info("OMP update available", <span>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}. <button type="button" onClick={() => void installOmpUpdate()} style={{ marginLeft: 6, padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}>Update now</button></span>);
+        const cmd = data.updateCommand || "omp update";
+        toast.info(
+          "OMP update available",
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+            <div>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+                {cmd}
+              </code>
+              <button
+                type="button"
+                onClick={() => {
+                  void copyText(cmd).then(() => toast.success("Command copied to clipboard"));
+                }}
+                style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        );
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [installOmpUpdate]);
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     void fetch("/api/app-update", { signal: controller.signal })
       .then((response) => response.ok ? response.json() : null)
-      .then((data: { currentVersion?: string; availableVersion?: string | null; updateAvailable?: boolean } | null) => {
+      .then((data: { currentVersion?: string; availableVersion?: string | null; updateAvailable?: boolean; updateCommand?: string } | null) => {
         setAppUpdateAvailable(Boolean(data?.updateAvailable));
         if (!data?.updateAvailable || !data.availableVersion) return;
-        toast.info("ompweb update available", <span>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}. <button type="button" onClick={() => void installAppUpdate()} style={{ marginLeft: 6, padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}>Update now</button></span>);
+        const cmd = data.updateCommand || "npm install -g @kahme247/ompweb";
+        toast.info(
+          "ompweb update available",
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+            <div>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+                {cmd}
+              </code>
+              <button
+                type="button"
+                onClick={() => {
+                  void copyText(cmd).then(() => toast.success("Command copied to clipboard"));
+                }}
+                style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        );
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [installAppUpdate]);
+  }, []);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
 

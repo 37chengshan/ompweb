@@ -292,38 +292,12 @@ handled or safely ignored.
 - Skill toggling edits only the `disable-model-invocation` frontmatter key on the target `SKILL.md`; keep that surgical so user formatting survives.
 - `/api/skills/install` shells through `npx skills add ... --agent universal`, which installs into the ecosystem-standard `.agents/skills` dirs omp reads; project installs run with the selected cwd.
 
-### Self-update process (`/api/omp-update`, `/api/app-update`, `bin/omp-web-update.js`)
-- Two independent update targets with one shared safety contract in
-  `lib/update-backups.ts` (snapshot → mutate → verify → rollback):
-  - **OMP runtime** (`lib/omp/updates.ts`): delegates the mutation to `omp update`
-    (it owns installer detection and the `pi-natives*` pin), but first snapshots
-    the `@oh-my-pi` scope dir that owns the launcher, then verifies BOTH that the
-    binary answers `--version` and that a fresh utility RPC process completes
-    `get_state`. On failure the snapshot is restored and the error says so.
-  - **ompweb package** (`lib/npm-update.ts` + `bin/omp-web-update.js`): the server
-    spawns a detached helper, responds, then exits; the helper waits for the
-    parent to die (replacing a running app's files on Windows can fail on open
-    handles), snapshots the package dir, installs through the SAME package
-    manager that owns the install (`detectInstallMethod`: bun-global vs npm),
-    verifies the installed version + launcher, and only then relaunches. On
-    failure it restores the snapshot and relaunches the PREVIOUS version — the
-    app must never be left down by a failed update.
-- A persistent status file (`<tmp>/ompweb-update-status.json`) records the last
-  outcome; `GET /api/app-update` returns it as `lastUpdate` so a restored app
-  can explain a failed attempt in Settings.
-- The other manager's global copy is synced best-effort after a successful app
-  update — bun-managed and npm-managed copies of `@kahme247/ompweb` used to
-  diverge (0.2.5 vs 0.2.6) and the updater only ever touched one.
-- Self-update is refused when the server runs from source (no
-  `OMP_WEB_PACKAGE_DIR` — set by `bin/omp-web.js` in production) so the dev
-  server can never kill itself.
-- Backups live under `~/.omp-web/backups/<label>/…`, pruned to the newest 2 per
-  label. Windows/bun gotcha that motivated all of this: bun 1.3.x global
-  installs on this machine land in `~/node_modules` (the `.bunx` shims resolve
-  `..\node_modules` from `~/.bun`), while `omp update`'s own updater computes
-  `~/.bun/install/global/node_modules` — a mismatch that left a broken install
-  after an interrupted update, taking `omp --version` down with
-  `SyntaxError: Unexpected end of script`.
+### Update notifications (`/api/omp-update`, `/api/app-update`)
+- Automatic in-app self-updating has been removed in favor of explicit user notifications and manual terminal commands.
+- `GET /api/app-update` queries the npm registry for `@kahme247/ompweb` updates, detects the install manager (`bun` vs `npm` via `detectInstallMethod`), and returns `updateAvailable` plus the exact terminal command (e.g. `npm install -g @kahme247/ompweb` or `bun add -g @kahme247/ompweb`).
+- `POST /api/omp-update` (`action: "check"`) runs `omp update --check` and returns `updateAvailable` plus `updateCommand: "omp update"`.
+- `POST /api/omp-update` (`action: "restart"`) restarts active OMP sessions after a manual CLI update.
+- Notifications in `AppShell` and settings cards in `SettingsConfig` present the update notification alongside copyable terminal update commands.
 
 ### Auth and model config
 - Auth flows go through RPC commands (`get_login_providers`, `login`) against the omp child process; credentials live in omp's `agent.db` (SQLite) which omp-web never touches directly.

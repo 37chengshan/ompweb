@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { invalidateOmpCliCache } from "@/lib/omp/omp-cli";
-import { checkOmpUpdate, installOmpUpdate } from "@/lib/omp/updates";
-import { disposeUtilityRpc } from "@/lib/omp/rpc-utility";
+import { checkOmpUpdate } from "@/lib/omp/updates";
 import { restartAllRpcSessions } from "@/lib/rpc-manager";
 
 export const dynamic = "force-dynamic";
@@ -11,19 +9,13 @@ export async function POST(request: Request) {
     const body = await request.json() as { action?: unknown };
     if (body.action === "check") return NextResponse.json(await checkOmpUpdate());
     if (body.action === "update") {
-      const output = await installOmpUpdate();
-      invalidateOmpCliCache();
-      // The utility process was already verified against the new binary, but
-      // drop it so the next request starts clean instead of reusing a process
-      // that may hold the old install's modules in memory.
-      disposeUtilityRpc();
-      return NextResponse.json({ success: true, output });
+      return NextResponse.json({ error: "Automatic self-updating is disabled. Run 'omp update' in your terminal.", code: "update_disabled" }, { status: 400 });
     }
     if (body.action === "restart") {
       const sessionsRestarted = await restartAllRpcSessions();
       return NextResponse.json({ success: true, sessionsRestarted });
     }
-    return NextResponse.json({ error: "action must be check, update, or restart", code: "invalid_action" }, { status: 400 });
+    return NextResponse.json({ error: "action must be check or restart", code: "invalid_action" }, { status: 400 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

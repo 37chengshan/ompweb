@@ -23,6 +23,7 @@ type UpdateState = {
 type NativeSettings = {
   defaultThinkingLevel?: "auto" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   hideThinkingBlock?: boolean;
+  externalThinking?: boolean;
   textVerbosity?: "low" | "medium" | "high";
   personality?: "default" | "friendly" | "pragmatic" | "none";
   advisor?: { enabled?: boolean; subagents?: boolean; syncBacklog?: "off" | "1" | "3" | "5"; immuneTurns?: number };
@@ -202,6 +203,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
               <NativeSetting label="Verbosity" description="Response detail for supporting providers."><select style={nativeSelectStyle} value={nativeSettings?.textVerbosity ?? "medium"} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), textVerbosity: event.target.value as NativeSettings["textVerbosity"] })}>{["low", "medium", "high"].map((level) => <option key={level} value={level}>{level}</option>)}</select></NativeSetting>
               <NativeSetting label="Personality" description="Style included in OMP's system prompt."><select style={nativeSelectStyle} value={nativeSettings?.personality ?? "default"} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), personality: event.target.value as NativeSettings["personality"] })}>{["default", "friendly", "pragmatic", "none"].map((value) => <option key={value} value={value}>{value}</option>)}</select></NativeSetting>
               <NativeSetting label="Thinking Blocks" description="Hide model reasoning from agent responses."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={nativeSettings?.hideThinkingBlock ?? false} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), hideThinkingBlock: event.target.checked })} /></NativeSetting>
+              <NativeSetting label="External Thinking" description="Private scratchpad reasoning via the think tool (disables GPT/Claude/Gemini native reasoning)."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={nativeSettings?.externalThinking ?? false} onChange={(event) => void saveNativeSettings({ ...(nativeSettings ?? {}), externalThinking: event.target.checked })} /></NativeSetting>
              </div>
            </section>
            <section style={{ padding: "16px", border: "1px solid var(--border)", borderRadius: "var(--radius-modal)", background: "var(--bg-subtle)" }}>

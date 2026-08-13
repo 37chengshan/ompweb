@@ -222,11 +222,11 @@
   "chatWindow.subagentState.started": "运行中",
   "chatWindow.subagentSummary": "{running} 运行中 · 共 {total} 个",
   "chatWindow.subagentsPanel": "子代理",
-"chatWindow.subagentRetrying": "重试 {attempt}/{max}",
-"chatWindow.subagentRetryAttempt": "第 {attempt} 次尝试",
-"chatWindow.subagentNestedCount": "嵌套 {count}",
-"chatWindow.tokensUnit": "{count} 词元",
-"chatWindow.contextGauge": "{used}/{total} 上下文",
+  "chatWindow.subagentRetrying": "重试 {attempt}/{max}",
+  "chatWindow.subagentRetryAttempt": "第 {attempt} 次尝试",
+  "chatWindow.subagentNestedCount": "嵌套 {count}",
+  "chatWindow.tokensUnit": "{count} 词元",
+  "chatWindow.contextGauge": "{used}/{total} 上下文",
   "chatWindow.collapsePanel": "收起",
   "chatWindow.expandPanel": "展开",
   "chatWindow.todoBlocker": "已阻塞：{blocker}",
@@ -768,5 +768,7 @@
   "commandPalette.toggleTheme": "切换主题",
   "commandPalette.currentModel": "当前模型",
   "commandPalette.notAvailable": "由聊天管理",
-  "commandPalette.hints": "↑↓ 导航 · ↵ 选择 · esc 关闭"
+  "commandPalette.hints": "↑↓ 导航 · ↵ 选择 · esc 关闭",
+  "chatInput.interruptReply": "打断并回复",
+  "chatInput.interruptReplyTitle": "中止当前运行并立即回答"
 }

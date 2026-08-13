@@ -435,7 +435,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, loadSlashCommands,
+    handleToolPresetChange, handleThinkingLevelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, handleInterruptAndReply, loadSlashCommands,
   } = useAgentSession({
     session, newSessionCwd, advisorEnabled, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
@@ -691,6 +691,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
       followUpMode={followUpMode}
       onFollowUpModeChange={session ? handleFollowUpModeChange : undefined}
       onAbortRetry={session ? handleAbortRetry : undefined}
+      onInterruptAndReply={session ? handleInterruptAndReply : undefined}
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}
       modelNameOverride={liveModelMeta?.name ?? null}

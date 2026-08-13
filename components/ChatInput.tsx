@@ -86,6 +86,8 @@ interface Props {
   modelNameOverride?: string | null;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
   onAbortRetry?: () => void;
+  /** Abort the running agent and send the message as a fresh prompt (abort_and_prompt). */
+  onInterruptAndReply?: (message: string, images?: AttachedImage[]) => Promise<boolean> | boolean;
   queuedMessages?: QueuedMessages | null;
   inputHistory?: string[];
   onRecallQueue?: () => void;
@@ -377,7 +379,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelsLoading, onModelChange, fastModeEnabled, fastModeSupported, onFastModeChange,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap, modelNameOverride,
-  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, onAbortRetry,
+  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, onAbortRetry, onInterruptAndReply,
   interruptMode, onInterruptModeChange, autoCompactionEnabled, onAutoCompactionChange,
   steeringMode, onSteeringModeChange, followUpMode, onFollowUpModeChange,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -1013,6 +1015,16 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     }
     clearInput();
   }, [value, attachedImages, attachedTextFiles, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t]);
+
+  /** Abort the running agent and send the current draft as a fresh prompt. */
+  const sendWithInterrupt = useCallback(() => {
+    if (!onInterruptAndReply) return;
+    const msg = value.trim();
+    if (!msg && !attachedImages.length && !attachedTextFiles.length) return;
+    void Promise.resolve(onInterruptAndReply(msg, attachedImages.length ? attachedImages : undefined)).then((ok) => {
+      if (ok) clearInput();
+    });
+  }, [onInterruptAndReply, value, attachedImages, attachedTextFiles, clearInput]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
     const lastIndex = filteredSlashCommands.length - 1;
@@ -1978,6 +1990,29 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
 
           {isStreaming ? (
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, alignSelf: "flex-end" }}>
+              {onInterruptAndReply && (
+                <button
+                  onClick={sendWithInterrupt}
+                  disabled={!canQueueStreamingMessage}
+                  title={(attachedImages.length || attachedTextFiles.length) ? t("chatInput.imagesCannotQueue") : t("chatInput.interruptReplyTitle")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "7px 12px",
+                    background: canQueueStreamingMessage ? "color-mix(in srgb, var(--accent-strong) 12%, transparent)" : "none",
+                    border: "1px solid color-mix(in srgb, var(--accent-strong) 40%, transparent)",
+                    borderRadius: 8,
+                    color: canQueueStreamingMessage ? "var(--accent-strong)" : "var(--text-dim)",
+                    cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
+                    fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
+                    transition: "background var(--dur-fast) var(--ease-out-warm)",
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                  </svg>
+                  {t("chatInput.interruptReply")}
+                </button>
+              )}
               {onSteer && (
                 <button
                   onClick={() => sendQueued("steer")}

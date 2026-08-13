@@ -592,6 +592,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // Mirror of the isCompacting state that survives render batching, so two
   // clicks in the same tick cannot double-send a compact command.
   const isCompactingRef = useRef(false);
+  // Set while an interrupt-and-reply (abort_and_prompt) is in flight: the
+  // aborted turn's terminal agent_end must not tear down the new run that is
+  // starting. Cleared on the new run's agent_start (or the intercept itself).
+  const interruptReplyPendingRef = useRef(false);
   const agentRunningRef = useRef(false);
   const bashRunningRef = useRef(false);
   const bashRecoveryIdRef = useRef(0);
@@ -1614,6 +1618,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleAgentEvent = useCallback((event: AgentEvent) => {
     switch (event.type) {
       case "agent_start":
+        interruptReplyPendingRef.current = false;
         agentRunningRef.current = true;
         setAgentRunning(true);
         setAgentPhase({ kind: "waiting_model" });
@@ -1622,6 +1627,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "agent_end":
         // isTerminal === false means an async delivery resumes this run soon.
         if (event.isTerminal === false) break;
+        // An interrupt-and-reply aborts the current turn: its terminal
+        // agent_end arrives while abort_and_prompt is already starting the new
+        // run — keep the running state alive for it.
+        if (interruptReplyPendingRef.current) {
+          interruptReplyPendingRef.current = false;
+          break;
+        }
         // A late agent_end can arrive over SSE after reconcileAgentState
         // already finished this run — don't re-trigger completion.
         if (!agentRunningRef.current) break;
@@ -2082,6 +2094,58 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return false;
     }
   }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, opts.chatInputRef, refreshSubagentRoster, registerHostTools, registerHostUriSchemes]);
+
+  /** Abort the running agent and send the message as a fresh prompt
+   * (abort_and_prompt). Only valid mid-run; the old turn's agent_end is
+   * consumed by the pending-interrupt guard so the new run keeps streaming. */
+  const handleInterruptAndReply = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage && !images?.length) return false;
+    const sid = sessionIdRef.current;
+    if (!sid || !agentRunningRef.current) return false;
+
+    const imageBlocks = images?.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mimeType, data: img.data } }));
+    const userMsg: AgentMessage = {
+      role: "user",
+      content: imageBlocks?.length
+        ? [...(message.trim() ? [{ type: "text" as const, text: message }] : []), ...imageBlocks]
+        : message,
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    optimisticUserMessageKeyRef.current = userMessageKey(userMsg);
+    interruptReplyPendingRef.current = true;
+    pendingScrollToUserRef.current = true;
+    completionScrollAllowedRef.current = true;
+    userScrollIntentUntilRef.current = 0;
+
+    const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+    try {
+      await ensureEventsConnected(sid);
+      void refreshSubagentRoster(sid);
+      await sendAgentCommand(sid, {
+        type: "abort_and_prompt",
+        message: trimmedMessage,
+        ...(piImages?.length ? { images: piImages } : {}),
+      });
+      return true;
+    } catch (e) {
+      console.error("Failed to interrupt and reply:", e);
+      interruptReplyPendingRef.current = false;
+      const optimisticKey = optimisticUserMessageKeyRef.current;
+      if (optimisticKey) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return last?.role === "user" && userMessageKey(last) === optimisticKey
+            ? prev.slice(0, -1)
+            : prev;
+        });
+      }
+      optimisticUserMessageKeyRef.current = null;
+      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  }, [addNotice, ensureEventsConnected, refreshSubagentRoster]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -2828,7 +2892,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionIdRef, messagesEndRef, scrollContainerRef,
     pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry,
+    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, handleInterruptAndReply,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,

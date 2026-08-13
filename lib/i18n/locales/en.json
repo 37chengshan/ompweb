@@ -222,11 +222,11 @@
   "chatWindow.subagentState.started": "Running",
   "chatWindow.subagentSummary": "{running} running · {total} total",
   "chatWindow.subagentsPanel": "Subagents",
-"chatWindow.subagentRetrying": "retrying {attempt}/{max}",
-"chatWindow.subagentRetryAttempt": "attempt {attempt}",
-"chatWindow.subagentNestedCount": "{count} nested",
-"chatWindow.tokensUnit": "{count} tok",
-"chatWindow.contextGauge": "{used}/{total} ctx",
+  "chatWindow.subagentRetrying": "retrying {attempt}/{max}",
+  "chatWindow.subagentRetryAttempt": "attempt {attempt}",
+  "chatWindow.subagentNestedCount": "{count} nested",
+  "chatWindow.tokensUnit": "{count} tok",
+  "chatWindow.contextGauge": "{used}/{total} ctx",
   "chatWindow.collapsePanel": "Collapse",
   "chatWindow.expandPanel": "Expand",
   "chatWindow.todoBlocker": "Blocked: {blocker}",
@@ -768,5 +768,7 @@
   "commandPalette.toggleTheme": "Toggle theme",
   "commandPalette.currentModel": "Current model",
   "commandPalette.notAvailable": "Managed by chat",
-  "commandPalette.hints": "↑↓ Navigate · ↵ Select · esc Close"
+  "commandPalette.hints": "↑↓ Navigate · ↵ Select · esc Close",
+  "chatInput.interruptReply": "Interrupt & reply",
+  "chatInput.interruptReplyTitle": "Abort the current run and answer immediately"
 }

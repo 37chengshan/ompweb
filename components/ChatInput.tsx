@@ -85,6 +85,7 @@ interface Props {
   /** Display name for the current model when the catalog does not know it. */
   modelNameOverride?: string | null;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
+  onAbortRetry?: () => void;
   queuedMessages?: QueuedMessages | null;
   inputHistory?: string[];
   onRecallQueue?: () => void;
@@ -376,7 +377,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelsLoading, onModelChange, fastModeEnabled, fastModeSupported, onFastModeChange,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap, modelNameOverride,
-  retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
+  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, onAbortRetry,
   interruptMode, onInterruptModeChange, autoCompactionEnabled, onAutoCompactionChange,
   steeringMode, onSteeringModeChange, followUpMode, onFollowUpModeChange,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -1465,6 +1466,29 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               <path d="M3 3v5h5" />
             </svg>
             {t("chatInput.retrying", { attempt: retryInfo.attempt, maxAttempts: retryInfo.maxAttempts })}{retryInfo.errorMessage && <span style={{ opacity: 0.7, marginLeft: 4 }}>— {retryInfo.errorMessage}</span>}
+            {onAbortRetry && (
+              <button
+                type="button"
+                onClick={onAbortRetry}
+                title="Stop the automatic retry and leave the failed turn as-is"
+                style={{
+                  marginLeft: "auto",
+                  padding: "3px 9px",
+                  fontSize: 11,
+                  color: "var(--status-warning)",
+                  background: "transparent",
+                  border: "1px solid color-mix(in srgb, var(--status-warning) 45%, transparent)",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "background var(--dur-fast) var(--ease-out-warm)",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--status-warning) 12%, transparent)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                Abort retry
+              </button>
+            )}
           </div>
         )}
         {compactResultText && (

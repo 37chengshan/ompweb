@@ -2213,6 +2213,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [addNotice, refreshLiveModelState]);
 
+  /** Stop an in-progress automatic retry from the retry banner. */
+  const handleAbortRetry = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    setRetryInfo(null);
+    try {
+      await sendAgentCommand(sid, { type: "abort_retry" });
+    } catch (error) {
+      console.error("Failed to abort retry:", error);
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice]);
+
   const handleCompact = useCallback(async () => {
     const sid = sessionIdRef.current;
     if (!sid || isCompactingRef.current || isCompacting) return;
@@ -2740,7 +2753,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionIdRef, messagesEndRef, scrollContainerRef,
     pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel,
+    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,

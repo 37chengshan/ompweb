@@ -2,15 +2,12 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join } from "path";
 import { isMap, parseDocument, stringify } from "yaml";
 import { getAgentDir } from "./paths";
+import { isRecord } from "../type-guards";
 
 export type ModelRoles = Record<string, string>;
 
 function configPath(): string {
   return join(getAgentDir(), "config.yml");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Reads the native OMP role selectors from config.yml without touching other settings. */

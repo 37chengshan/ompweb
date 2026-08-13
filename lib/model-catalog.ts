@@ -6,6 +6,8 @@
  * no I/O, no omp dependency.
  */
 
+import { isRecord } from "./type-guards";
+
 export interface ModelCatalogCost {
   input?: number;
   output?: number;
@@ -75,10 +77,6 @@ const KNOWN_PROVIDER_HOSTS: Record<string, readonly string[]> = {
   openrouter: ["openrouter.ai"],
 };
 const SUPPORTED_INPUT_MODALITIES: Record<string, true> = { text: true, image: true };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function cleanString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;

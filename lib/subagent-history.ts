@@ -15,6 +15,8 @@ import { parseJsonlLenient } from "./omp/session-files";
 import { parseSubagentProgress } from "./subagent-types";
 import type { SubagentHistoryEntry, SubagentHistoryResult, SubagentAgentSource } from "./subagent-types";
 import type { AgentMessage, SessionEntry } from "./types";
+import { asNumber, asString, isRecord } from "./type-guards";
+import { taskResultStructuredOutput, taskResultUsageCost } from "./task-result-details";
 
 /** Sibling artifacts directory for a parent session file. */
 export function siblingDirForSession(sessionFilePath: string): string {
@@ -59,31 +61,6 @@ export function resolveSubagentArtifact(
   return realCandidate;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function asNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-/** Settled cost lives in `usage.cost` on SingleResult, not a top-level field. */
-function usageTotalCost(usage: unknown): number | undefined {
-  if (!isRecord(usage)) return undefined;
-  const cost = isRecord(usage.cost) ? usage.cost : undefined;
-  if (!cost) return undefined;
-  const total = asNumber(cost.total);
-  if (total !== undefined) return total;
-  const input = asNumber(cost.input);
-  const output = asNumber(cost.output);
-  if (input !== undefined && output !== undefined) return input + output;
-  return undefined;
-}
-
 function asAgentSource(value: unknown): SubagentAgentSource | undefined {
   return value === "bundled" || value === "user" || value === "project" ? value : undefined;
 }
@@ -100,20 +77,6 @@ function resultStatus(value: Record<string, unknown>): SubagentHistoryEntry["sta
   if (typeof value.error === "string" && value.error) return "failed";
   if (typeof value.exitCode === "number") return value.exitCode === 0 ? "completed" : "failed";
   return "started";
-}
-
-function structuredOutput(value: unknown): SubagentHistoryResult["structuredOutput"] {
-  if (!isRecord(value)) return undefined;
-  const out: NonNullable<SubagentHistoryResult["structuredOutput"]> = {};
-  const source = asString(value.source);
-  if (source !== undefined) out.source = source;
-  const mode = asString(value.mode);
-  if (mode !== undefined) out.mode = mode;
-  const status = asString(value.status);
-  if (status !== undefined) out.status = status;
-  const error = asString(value.error);
-  if (error !== undefined) out.error = error;
-  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -188,9 +151,9 @@ export function extractSubagentHistory(sessionFilePath: string): SubagentHistory
       // NOTE: `output`/`stderr` are deliberately NOT copied — the roster route
       // must stay telemetry-only (task outputs can be ~500KB per agent).
       if (raw.truncated === true) result.truncated = true;
-      const cost = asNumber(raw.cost) ?? usageTotalCost(raw.usage);
+      const cost = asNumber(raw.cost) ?? taskResultUsageCost(raw.usage);
       if (cost !== undefined) result.cost = cost;
-      const structured = structuredOutput(raw.structuredOutput);
+      const structured = taskResultStructuredOutput(raw.structuredOutput);
       if (structured !== undefined) result.structuredOutput = structured;
       const error = asString(raw.error);
       if (error !== undefined) result.error = error;
@@ -224,7 +187,7 @@ export function extractSubagentHistory(sessionFilePath: string): SubagentHistory
         tokens: asNumber(raw.tokens) ?? prior?.tokens,
         contextTokens: asNumber(raw.contextTokens) ?? prior?.contextTokens,
         contextWindow: asNumber(raw.contextWindow) ?? prior?.contextWindow,
-        cost: asNumber(raw.cost) ?? usageTotalCost(raw.usage) ?? prior?.cost,
+        cost: asNumber(raw.cost) ?? taskResultUsageCost(raw.usage) ?? prior?.cost,
         durationMs: asNumber(raw.durationMs) ?? prior?.durationMs,
         modelOverride: typeof raw.modelOverride === "string" || Array.isArray(raw.modelOverride) ? raw.modelOverride : prior?.modelOverride,
         modelRole: asString(raw.modelRole) ?? prior?.modelRole,

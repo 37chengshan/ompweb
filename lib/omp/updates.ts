@@ -8,8 +8,6 @@ export interface OmpUpdateStatus {
   updateCommand: string;
 }
 
-const OMP_BACKUP_LABEL = "omp";
-
 function runOmpUpdate(args: string[]): Promise<string> {
   const bin = resolveOmpBin();
   if (!bin) return Promise.reject(new Error("omp binary not found. Install oh-my-pi or set OMP_WEB_OMP_BIN."));

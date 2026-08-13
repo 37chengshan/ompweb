@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname } from "path";
 import { isMap, parseDocument, stringify } from "yaml";
 import { getSettingsPath } from "./paths";
+import { isRecord } from "../type-guards";
 
 export type NativeSettings = {
   defaultThinkingLevel?: "auto" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -41,10 +42,6 @@ const MEMORY_SCOPES = new Set(["global", "per-project", "per-project-tagged"]);
 
 function configPath(): string {
   return getSettingsPath();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringArray(value: unknown): string[] | undefined {

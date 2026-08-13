@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { basename, dirname, join, relative, resolve, sep } from "path";
 import { stripAnsi } from "../ansi";
 import { getAgentDir } from "./paths";
+import { isRecord } from "../type-guards";
 
 const MAX_MCP_CONFIG_BYTES = 512 * 1024;
 const MAX_DISCOVERED_MCP_CONFIG_BYTES = 5 * 1024 * 1024;
@@ -21,10 +22,6 @@ export type McpUserConfig = {
 
 export type McpLiveStatus = "connected" | "connecting" | "not_connected" | "inactive" | "disabled" | "configured";
 export type McpLiveServer = { name: string; source: string; status: McpLiveStatus; type?: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function serverEntries(config: McpFile): Array<{ name: string; config: McpServer }> {
   return Object.entries(config.mcpServers ?? {})

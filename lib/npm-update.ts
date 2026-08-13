@@ -1,7 +1,5 @@
 import packageJson from "../package.json";
-import { spawn } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import { homedir, tmpdir } from "os";
+import { homedir } from "os";
 import { join, normalize, sep } from "path";
 
 const NPM_PACKAGE = "@kahme247/ompweb";

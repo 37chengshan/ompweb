@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { basename, dirname, join } from "path";
 import { isMap, isScalar, isSeq, parseDocument, stringify, type Document } from "yaml";
 import { getModelsConfigPath } from "./paths";
+import { isRecord } from "../type-guards";
 
 /**
  * Direct YAML access to omp's custom-models file (~/.omp/agent/models.yml).
@@ -63,10 +64,6 @@ export interface ProviderConfig {
 export interface ModelsFileConfig {
   providers?: Record<string, ProviderConfig>;
   [key: string]: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Mirrors validateProviderConfiguration(mode: "models-config") closely enough

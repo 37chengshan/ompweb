@@ -22,6 +22,7 @@ import * as fsRuntime from "fs";
 import * as path from "path";
 import { StringDecoder } from "string_decoder";
 import { gunzipSync, gzipSync } from "zlib";
+import { isRecord } from "../type-guards";
 
 // Keep user-session directory traversal out of Next's static NFT globbing.
 // These paths are resolved and authorized at request time by omp-web.
@@ -261,10 +262,6 @@ function readBlobSync(hash: string): Buffer | null {
   } catch {
     return null;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function isImageBlock(value: unknown): value is { type: "image"; data: string; mimeType?: string } {

@@ -2,6 +2,7 @@
 // AgentProgress / SubagentLifecyclePayload / SingleResult, kept small and
 // defensive: every field is optional because payloads are parsed leniently).
 
+import { asNumber, asString, isRecord } from "./type-guards";
 export type SubagentAgentSource = "bundled" | "user" | "project";
 
 export interface SubagentRetryState {
@@ -110,18 +111,6 @@ export interface SubagentSnapshotLike {
   lastUpdate?: number;
   progress?: unknown;
   parentToolCallId?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function asNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function asAgentSource(value: unknown): SubagentAgentSource | undefined {
@@ -249,6 +238,35 @@ export function parseSubagentSnapshot(value: unknown): SubagentInfo | undefined 
   if (lastUpdate !== undefined) info.lastUpdate = lastUpdate;
   const progress = parseSubagentProgress(value.progress);
   if (progress !== undefined) info.progress = progress;
+  return info;
+}
+
+/** Map a subagent_lifecycle frame to roster form. Stricter than a snapshot:
+ * requires id + status, and unlike snapshots the wire may omit `agent` (it
+ * defaults to "subagent"). Unknown statuses must not fabricate a live chip. */
+export function parseSubagentLifecycle(value: unknown): SubagentInfo | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = asString(value.id);
+  const statusRaw = asString(value.status);
+  if (!id || !statusRaw) return undefined;
+  if (statusRaw !== "started" && statusRaw !== "completed" && statusRaw !== "failed" && statusRaw !== "aborted") return undefined;
+  const info: SubagentInfo = {
+    id,
+    agent: asString(value.agent) ?? "subagent",
+    status: statusRaw,
+    index: asNumber(value.index) ?? -1,
+    lastUpdate: Date.now(),
+    source: "live",
+  };
+  const agentSource = asAgentSource(value.agentSource);
+  if (agentSource !== undefined) info.agentSource = agentSource;
+  const description = asString(value.description);
+  if (description !== undefined) info.description = description;
+  const sessionFile = asString(value.sessionFile);
+  if (sessionFile !== undefined) info.sessionFile = sessionFile;
+  const parentToolCallId = asString(value.parentToolCallId);
+  if (parentToolCallId !== undefined) info.parentToolCallId = parentToolCallId;
+  if (typeof value.detached === "boolean") info.detached = value.detached;
   return info;
 }
 

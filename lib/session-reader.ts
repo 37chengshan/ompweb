@@ -1,4 +1,4 @@
-import { existsSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { normalize as normalizePath } from "path";
 import { getAgentDir } from "./omp/paths";
 import {
@@ -18,6 +18,8 @@ import type {
   SessionInfo,
 } from "./types";
 import { normalizeToolCalls } from "./normalize";
+import { isRecord } from "./type-guards";
+import { taskResultRetryFailure, taskResultStructuredOutput, taskResultUsageCost } from "./task-result-details";
 import type { TodoPhase } from "./pi-types";
 import { sessionPathKey } from "./session-path";
 import { resolveProject, type ProjectInfo } from "./worktree";
@@ -138,6 +140,10 @@ export function invalidateSessionListCache(): void {
   // not change when a file is added inside an existing project subdirectory
   // (Windows/NTFS). Clear it too so new sessions appear immediately.
   invalidateSessionFileListCache();
+  // Drop cached entry parses so a mutation preserving size+mtime (rare) can
+  // never serve stale entries; the (size, mtimeMs) key already invalidates
+  // the common case, this closes the remaining window.
+  globalThis.__ompSessionEntriesCache?.clear();
 }
 
 function getPathCache(): Map<string, string> {
@@ -233,9 +239,61 @@ export function readSessionHeader(filePath: string): SessionHeader | null {
   return readSessionHeaderSync(filePath);
 }
 
+/** Full-file entry parse memoized on (path, size, mtimeMs). Read-only scans
+ * (subagent history, file-reference checks, thinking routes) re-parse MB-scale
+ * session files on every 15s reconcile poll and again at run end; the memo
+ * turns each UNCHANGED file's parse into a single stat — the same convention
+ * as scanSessionInfoCached. Stored on globalThis for hot-reload safety and
+ * LRU-bounded. Entries are SHARED across cache hits: callers must treat them
+ * as immutable (all current callers only read). */
+interface SessionEntriesCacheEntry {
+  size: number;
+  mtimeMs: number;
+  entries: SessionEntry[];
+}
+
+declare global {
+  var __ompSessionEntriesCache: Map<string, SessionEntriesCacheEntry> | undefined;
+}
+
+const MAX_SESSION_ENTRIES_CACHE_ENTRIES = 32;
+
+function getSessionEntriesCache(): Map<string, SessionEntriesCacheEntry> {
+  if (!globalThis.__ompSessionEntriesCache) globalThis.__ompSessionEntriesCache = new Map();
+  return globalThis.__ompSessionEntriesCache;
+}
+
+function loadSessionEntriesCached(filePath: string): SessionEntry[] {
+  let size: number;
+  let mtimeMs: number;
+  try {
+    const stat = statSync(filePath);
+    size = stat.size;
+    mtimeMs = stat.mtimeMs;
+  } catch {
+    // Missing/unreadable file — mirror loadSessionFile's lenient empty result.
+    return loadSessionFile(filePath).entries;
+  }
+  const cache = getSessionEntriesCache();
+  const cached = cache.get(filePath);
+  if (cached && cached.size === size && cached.mtimeMs === mtimeMs) {
+    cache.delete(filePath);
+    cache.set(filePath, cached);
+    return cached.entries;
+  }
+  const entries = loadSessionFile(filePath).entries;
+  cache.set(filePath, { size, mtimeMs, entries });
+  while (cache.size > MAX_SESSION_ENTRIES_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
+  return entries;
+}
+
 /** Session entries without blob resolution (fine for reference/thinking scans). */
 export function getSessionEntries(filePath: string): SessionEntry[] {
-  return loadSessionFile(filePath).entries;
+  return loadSessionEntriesCached(filePath);
 }
 
 function parseTodoPhases(value: unknown): TodoPhase[] | null {
@@ -407,10 +465,6 @@ function parseEntryTimestamp(timestamp: string): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function base64ImageInfo(block: unknown): { bytes: number; mime?: string } | null {
   if (!isRecord(block) || block.type !== "image") return null;
 
@@ -447,39 +501,6 @@ function truncateTaskDetailText(value: string): string {
   if (value.length <= TASK_DETAIL_MAX_TEXT) return value;
   // Cut by code point so a boundary can never split a surrogate pair.
   return `${[...value].slice(0, TASK_DETAIL_MAX_TEXT).join("")}…`;
-}
-
-/** Settled cost rides `usage.cost` on SingleResult; top-level `cost` is absent. */
-function taskDetailUsageCost(usage: unknown): number | undefined {
-  if (!isRecord(usage)) return undefined;
-  const cost = isRecord(usage.cost) ? usage.cost : undefined;
-  if (!cost) return undefined;
-  const total = typeof cost.total === "number" ? cost.total : undefined;
-  if (total !== undefined) return total;
-  const input = typeof cost.input === "number" ? cost.input : undefined;
-  const output = typeof cost.output === "number" ? cost.output : undefined;
-  if (input !== undefined && output !== undefined) return input + output;
-  return undefined;
-}
-
-function taskDetailRetryFailure(value: unknown): { attempt: number; errorMessage: string } | undefined {
-  if (!isRecord(value)) return undefined;
-  const attempt = typeof value.attempt === "number" ? value.attempt : undefined;
-  const errorMessage = typeof value.errorMessage === "string" ? value.errorMessage : undefined;
-  if (attempt === undefined || errorMessage === undefined) return undefined;
-  return { attempt, errorMessage: truncateTaskDetailText(errorMessage) };
-}
-
-function taskDetailStructuredOutput(value: unknown): Record<string, string> | undefined {
-  // Project to the UI fields only — `data` is arbitrary upstream payload and
-  // must never ride the bounded history response.
-  if (!isRecord(value)) return undefined;
-  const out: Record<string, string> = {};
-  for (const key of ["source", "mode", "status"] as const) {
-    if (typeof value[key] === "string") out[key] = truncateTaskDetailText(value[key]);
-  }
-  if (typeof value.error === "string") out.error = truncateTaskDetailText(value.error);
-  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function taskDetailAsync(value: unknown): Record<string, string> | undefined {
@@ -530,17 +551,17 @@ function keepTaskToolResultDetails(details: Record<string, unknown>): Record<str
     }
     // Settled results carry cost in `usage.cost`, not top-level `cost`.
     if (typeof out.cost !== "number") {
-      const usageCost = taskDetailUsageCost(raw.usage);
+      const usageCost = taskResultUsageCost(raw.usage);
       if (usageCost !== undefined) out.cost = usageCost;
     }
     // Project nested objects to bounded, UI-only shapes.
     if (raw.retryFailure !== undefined) {
-      const retryFailure = taskDetailRetryFailure(raw.retryFailure);
+      const retryFailure = taskResultRetryFailure(raw.retryFailure, truncateTaskDetailText);
       if (retryFailure) out.retryFailure = retryFailure;
       else delete out.retryFailure;
     }
     if (raw.structuredOutput !== undefined) {
-      const structuredOutput = taskDetailStructuredOutput(raw.structuredOutput);
+      const structuredOutput = taskResultStructuredOutput(raw.structuredOutput, truncateTaskDetailText);
       if (structuredOutput) out.structuredOutput = structuredOutput;
       else delete out.structuredOutput;
     }
@@ -580,6 +601,10 @@ function stripToolResultDetails(message: AgentMessage): AgentMessage {
 
 function omitToolResultBase64Images(message: AgentMessage): AgentMessage {
   if (message.role !== "toolResult") return message;
+  // Shape-malformed-but-JSON-valid files can carry a string content here
+  // (import accepts arbitrary content); the loader tolerates such lines, so
+  // the converter must too instead of crashing the whole session view.
+  if (!Array.isArray(message.content)) return message;
 
   let omitted = 0;
   let bytes = 0;
@@ -650,10 +675,17 @@ export function entryToUiMessage(
         };
       }
       if (raw.role === "fileMention") {
+        // Guard against shape-malformed entries (missing/non-array `files`)
+        // the same way the loader tolerates bad lines: one bad entry must not
+        // 500 the entire session view.
+        const files = Array.isArray(raw.files)
+          ? (raw.files as unknown[]).filter((f): f is { path: string } =>
+              !!f && typeof f === "object" && typeof (f as { path?: unknown }).path === "string")
+          : [];
         return {
           role: "custom",
           customType: "file-mention",
-          content: `Attached file${raw.files.length === 1 ? "" : "s"}:\n${raw.files.map((f) => `- ${f.path}`).join("\n")}`,
+          content: `Attached file${files.length === 1 ? "" : "s"}:\n${files.map((f) => `- ${f.path}`).join("\n")}`,
           display: true,
           timestamp: raw.timestamp,
         };

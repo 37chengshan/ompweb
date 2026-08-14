@@ -691,6 +691,8 @@
   "sessionSidebar.archiveLeafOnly": "Archive child sessions first",
   "sessionSidebar.delete": "Delete",
   "sessionSidebar.deleteConfirm": "Delete “{title}”?",
+  "sessionSidebar.deleteFailed": "Failed to delete the session",
+  "sessionSidebar.archiveFailed": "Failed to archive the session",
   "sessionSidebar.expandForks": "Expand forks",
   "sessionSidebar.explorer": "Explorer",
   "sessionSidebar.force": "Force",

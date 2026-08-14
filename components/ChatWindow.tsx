@@ -22,7 +22,6 @@ import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import {
   captureScrollDistance,
   getNextVisibleCount,
-  getVisibleRenderWindow,
   restoreScrollTop,
   VISIBLE_PAGE_SIZE,
 } from "@/lib/chat-lazy-load";
@@ -216,6 +215,11 @@ interface CommittedTranscriptProps {
   sessionId: string | undefined;
   toolCallsDefaultCollapsed: boolean;
   visibleCount: number;
+  /** True while the viewport is near the bottom of the conversation. When
+   *  false (user is reading history), the render window anchors its top so
+   *  messages appended by a running agent cannot slide the viewed messages
+   *  out of the window. */
+  nearBottom: boolean;
   sentinelRef: React.RefObject<HTMLButtonElement | null>;
   handleLoadMoreClick: () => void;
 }
@@ -229,7 +233,7 @@ interface CommittedTranscriptProps {
 const CommittedTranscript = memo(function CommittedTranscript({
   messages, entryIds, conversationMeta, messageRefs, isStreaming, sessionBusy, isNew, forkingEntryId,
   handleFork, handleNavigate, handleEditContent, modelNames, messageCwd, onOpenFile, sessionId,
-  toolCallsDefaultCollapsed, visibleCount, sentinelRef, handleLoadMoreClick,
+  toolCallsDefaultCollapsed, visibleCount, nearBottom, sentinelRef, handleLoadMoreClick,
 }: CommittedTranscriptProps) {
   const { t } = useI18n();
   const { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
@@ -370,7 +374,24 @@ const CommittedTranscript = memo(function CommittedTranscript({
     }
     idx = endIdx;
   }
-  const { startIndex, hasMore } = getVisibleRenderWindow(rendered.length, visibleCount);
+  // Anchor the render window while the user is reading history: the plain
+  // end-anchored window (total - visibleCount) slides forward as a running
+  // agent appends messages, silently pushing the viewed messages out of the
+  // window with no scroll correction. While not near the bottom, keep the
+  // window's top at the last end-anchored position and let the appended tail
+  // grow into the window; returning to the bottom re-engages the end anchor.
+  const anchorStartIndexRef = useRef<number | null>(null);
+  const { startIndex, hasMore } = useMemo(() => {
+    const total = rendered.length;
+    const endAnchored = Math.max(0, total - visibleCount);
+    if (nearBottom || anchorStartIndexRef.current === null) {
+      anchorStartIndexRef.current = endAnchored;
+      return { startIndex: endAnchored, hasMore: endAnchored > 0 };
+    }
+    const anchored = Math.min(anchorStartIndexRef.current, endAnchored);
+    anchorStartIndexRef.current = anchored;
+    return { startIndex: anchored, hasMore: anchored > 0 };
+  }, [rendered.length, visibleCount, nearBottom]);
   return (
     <>
       {hasMore && (
@@ -468,6 +489,20 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
   // top, load another page while keeping the scroll position stable.
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
   const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
+  // True while the viewport is at/near the conversation bottom. Drives the
+  // anchored render window in CommittedTranscript.
+  const [nearBottom, setNearBottom] = useState(true);
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const update = () => {
+      const next = el.scrollTop + el.clientHeight >= el.scrollHeight - 96;
+      setNearBottom((prev) => (prev === next ? prev : next));
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    return () => el.removeEventListener("scroll", update);
+  }, [scrollContainerRef]);
   const sentinelRef = useRef<HTMLButtonElement>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
   // "auto" (observer fired while scrolling) anchors the viewport to the old
@@ -858,6 +893,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
               sessionId={session?.id ?? sessionIdRef.current ?? undefined}
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
               visibleCount={visibleCount}
+              nearBottom={nearBottom}
               sentinelRef={sentinelRef}
               handleLoadMoreClick={handleLoadMoreClick}
             />

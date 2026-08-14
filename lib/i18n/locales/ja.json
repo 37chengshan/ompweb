@@ -691,6 +691,8 @@
   "sessionSidebar.archiveLeafOnly": "先に子セッションをアーカイブしてください",
   "sessionSidebar.delete": "削除",
   "sessionSidebar.deleteConfirm": "「{title}」を削除しますか？",
+  "sessionSidebar.deleteFailed": "セッションを削除できませんでした",
+  "sessionSidebar.archiveFailed": "セッションをアーカイブできませんでした",
   "sessionSidebar.expandForks": "フォークを展開",
   "sessionSidebar.explorer": "エクスプローラー",
   "sessionSidebar.force": "強制",

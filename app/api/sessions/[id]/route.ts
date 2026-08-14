@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readFileSync, readdirSync, statSync } from "fs";
+import { closeSync, openSync, readFileSync, readdirSync, readSync, statSync } from "fs";
 import * as fsRuntime from "fs";
 import { dirname, join } from "path";
 import {
@@ -303,7 +303,25 @@ export async function DELETE(
         // read and a full-file rewrite. Skip it like a live session.
         try {
           if (statSync(childPath).size > MAX_SESSION_LOAD_BYTES) {
-            skippedChildren.push({ id: file, reason: "session_child_too_large" });
+            // Report the real session id when the header is readable without
+            // loading the whole file (bounded 64KB prefix read).
+            let oversizedId = file;
+            try {
+              const fd = openSync(childPath, "r");
+              try {
+                const head = Buffer.alloc(64 * 1024);
+                const bytes = readSync(fd, head, 0, head.length, 0);
+                const lines = head.toString("utf8", 0, bytes).split("\n");
+                const headerIndex = parseTitleSlotLine(lines[0] ?? "") ? 1 : 0;
+                const parsed = JSON.parse(lines[headerIndex] ?? "{}") as { id?: unknown };
+                if (typeof parsed.id === "string") oversizedId = parsed.id;
+              } finally {
+                closeSync(fd);
+              }
+            } catch {
+              // Header unreadable — fall back to the basename.
+            }
+            skippedChildren.push({ id: oversizedId, reason: "session_child_too_large" });
             continue;
           }
         } catch {

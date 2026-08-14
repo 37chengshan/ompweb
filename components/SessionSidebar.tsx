@@ -2513,6 +2513,7 @@ const SessionItem = memo(function SessionItem({
       onDeleted?.(session.id);
     } catch {
       setDeleting(false);
+      toast.error(translate("sessionSidebar.archiveFailed"));
     }
   }, [session.id, onDeleted]);
   const handleDelete = useCallback(async () => {
@@ -2524,6 +2525,7 @@ const SessionItem = memo(function SessionItem({
       onDeleted?.(session.id);
     } catch {
       setDeleting(false);
+      toast.error(translate("sessionSidebar.deleteFailed"));
     }
   }, [session.id, onDeleted]);
   const closeConfirmation = useCallback(() => {

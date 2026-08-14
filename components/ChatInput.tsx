@@ -10,6 +10,7 @@ import { toast } from "@/components/ui/toast";
 import { formatCompactNumber } from "@/lib/format";
 import { clearDraft, getDraft, setDraft, type ChatDraftFile, type ChatDraftImage } from "@/lib/draft-store";
 import { WEB_SLASH_COMMANDS, expandWebSlashCommand } from "@/lib/web-slash-commands";
+import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
 import {
   composeMessageWithTextAttachments,
   MAX_ATTACHED_TEXT_BYTES,
@@ -1412,7 +1413,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
           e.target.value = "";
         }}
       />
-      <div style={{ maxWidth: 820, margin: "0 auto" }}>
+      <div style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH, margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
         <ComposerModeStatus goal={activeGoal} plan={activePlan} />
         {/* Retry banner */}

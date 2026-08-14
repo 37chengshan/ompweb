@@ -94,6 +94,11 @@ html.dark {
   --radius-control: 8px;
   --radius-card: 12px;
   --radius-modal: 16px;
+  --control-height-sm: 28px;
+  --control-height: 32px;
+  --control-height-lg: 36px;
+  --control-padding-inline: 10px;
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
   /* Warm diffuse shadows (light); dark theme swaps to ambient glow below. */
   --shadow-card: 0 1px 2px rgba(60,50,35,0.05), 0 2px 8px rgba(60,50,35,0.06);
   --shadow-pop: 0 2px 6px rgba(60,50,35,0.07), 0 8px 24px rgba(60,50,35,0.10);
@@ -1033,9 +1038,111 @@ pre, code {
 }
 
 .sidebar-project-header > button:focus-visible,
-.sidebar-project-identity:focus-visible {
+.sidebar-project-identity:focus-visible,
+.sidebar-project-action:focus-visible,
+.sidebar-new-session:focus-visible,
+.sidebar-settings-row:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+/* Sidebar overflow menus: compact items with a subtle warm hover highlight. */
+.sidebar-menu-item {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out-warm);
+}
+.sidebar-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.sidebar-menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+/* Project navigation: give each workspace a quiet, tactile surface. The
+   indicator uses transform/opacity so active-session updates stay cheap. */
+.sidebar-project {
+  position: relative;
+  isolation: isolate;
+  transition: margin var(--dur-med) var(--ease-out-warm);
+}
+.sidebar-project-header {
+  position: relative;
+  z-index: 1;
+}
+.sidebar-project-worktree {
+  margin: 0 0 0 32px;
+  padding: 0 0 2px 6px;
+  animation: sidebar-worktree-in var(--dur-fast) var(--ease-out-warm) both;
+}
+.sidebar-project-worktree > div {
+  width: auto !important;
+  margin: 0 !important;
+}
+.sidebar-project-worktree button {
+  width: 100% !important;
+  max-width: none !important;
+}
+@keyframes sidebar-worktree-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.sidebar-project-sessions {
+  animation: sidebar-sessions-in var(--dur-med) var(--ease-out-warm) both;
+  transform-origin: top center;
+}
+@keyframes sidebar-sessions-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.sidebar-project-activity {
+  transition: transform var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm);
+}
+.sidebar-project:hover .sidebar-project-activity {
+  transform: translateX(-1px);
+}
+
+/* The composer is calmer at rest and gains a small lift while editing. */
+.chat-input-shell {
+  transition: border-color var(--dur-med) var(--ease-out-warm), box-shadow var(--dur-med) var(--ease-out-warm), transform var(--dur-med) var(--ease-out-warm);
+}
+.chat-input-shell:focus-within {
+  transform: none;
+}
+.composer-control-shelf {
+  animation: ui-slide-up var(--dur-fast) var(--ease-out-warm) both;
+}
+.composer-control-shelf > button {
+  transition: background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm), transform var(--dur-fast) var(--ease-out-warm);
+}
+.composer-control-shelf > button:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+  color: var(--text) !important;
+  transform: none;
+}
+@media (min-width: 641px) {
+  .composer-control-shelf {
+    max-width: min(100%, 760px);
+    justify-content: flex-end;
+    gap: 4px !important;
+    padding-top: 4px;
+    border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  }
+  .composer-control-shelf > button {
+    height: 28px !important;
+    padding-inline: 8px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-project-sessions, .sidebar-project-worktree, .composer-control-shelf { animation: none; }
 }
 
 @media (max-width: 640px) {
@@ -1221,9 +1328,9 @@ html.dark .dropdown-surface :is(select, option) {
               transform var(--dur-fast) var(--ease-out-warm);
 }
 .chat-message-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 25%, var(--border)) !important;
-  box-shadow: var(--shadow-pop) !important;
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border)) !important;
+  box-shadow: var(--shadow-card) !important;
+  transform: none;
 }
 
 /* Unboxed assistant message: entrance animation only. Tool-call and
@@ -1320,6 +1427,58 @@ html.dark .dropdown-surface :is(select, option) {
               border-color var(--dur-fast) var(--ease-out-warm),
               opacity var(--dur-fast) var(--ease-out-warm),
               transform var(--dur-fast) var(--ease-out-warm);
+}
+.ui-focus-ring:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: -2px;
+}
+.ui-control {
+  min-height: var(--control-height);
+  padding-inline: var(--control-padding-inline);
+  border-radius: var(--radius-control);
+  font: inherit;
+}
+.ui-icon-button {
+  display: inline-flex;
+  width: var(--control-height);
+  height: var(--control-height);
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--control-height);
+  padding: 0;
+  border-radius: var(--radius-control);
+}
+.ui-compact-surface {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+}
+.shell-topbar {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--border) 70%, transparent);
+}
+.shell-topbar > button {
+  transition: background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);
+}
+.tabbar-scroll {
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.tabbar-tab {
+  transition: background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);
+}
+.tabbar-tab[aria-selected="true"] {
+  background: var(--bg-selected) !important;
+  color: var(--text) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.tabbar-tab:hover:not([aria-selected="true"]) {
+  background: var(--bg-hover) !important;
+  color: var(--text) !important;
+}
+.tabbar-close {
+  transition: background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);
 }
 
 @keyframes notice-shelf-in {

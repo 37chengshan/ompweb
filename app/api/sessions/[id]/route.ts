@@ -7,6 +7,7 @@ import {
   deleteSessionFileWithArtifacts,
   getLeafEntryId,
   loadSessionFile,
+  MAX_SESSION_LOAD_BYTES,
   parseTitleSlotLine,
   setSessionTitle,
   writeSessionFileAtomicSync,
@@ -297,6 +298,17 @@ export async function DELETE(
       for (const file of files) {
         const childPath = join(dir, file);
 
+        // Re-parenting rewrites the whole child file; a child at/above the
+        // load ceiling would cause a huge allocation (RangeError) during the
+        // read and a full-file rewrite. Skip it like a live session.
+        try {
+          if (statSync(childPath).size > MAX_SESSION_LOAD_BYTES) {
+            skippedChildren.push({ id: file, reason: "session_child_too_large" });
+            continue;
+          }
+        } catch {
+          continue; // vanished between readdir and stat — not a child we can fix
+        }
         // Parse phase: an unreadable or non-matching sibling is simply not a
         // child of the deleted session, so it must not be reported as skipped.
         let lines: string[];

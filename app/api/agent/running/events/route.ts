@@ -47,6 +47,10 @@ export async function GET(req: Request) {
       };
 
       req.signal?.addEventListener("abort", cleanup);
+      if (req.signal?.aborted) {
+        cleanup();
+        return;
+      }
     },
   });
 

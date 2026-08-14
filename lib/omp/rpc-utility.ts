@@ -168,6 +168,10 @@ export async function runIsolatedUtilityCommand<T = unknown>(
     await proc.waitReady(READY_TIMEOUT_MS);
     return await proc.sendCommand<T>(command, options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS);
   } finally {
-    void proc.dispose();
+    // Await the child's exit (not fire-and-forget): callers like the
+    // models-config test remove their throwaway temp dir right after this
+    // resolves, and on Windows a still-exiting child holding handles on that
+    // dir makes rmSync fail (EBUSY, only suppressed by force: true).
+    await proc.dispose();
   }
 }

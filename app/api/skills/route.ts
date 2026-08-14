@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "fs";
 import { basename } from "path";
 import {
   getSkillScanRootDirs,
@@ -50,13 +50,18 @@ export async function PATCH(req: Request) {
     // project walk-up roots discovery visits above the session directory.
     const scanCwd = cwd && isExistingFilePathAllowed(cwd, allowedRoots) ? cwd : undefined;
     for (const dir of getSkillScanRootDirs(scanCwd)) allowedRoots.add(dir);
-    if (!isExistingFilePathAllowed(filePath, allowedRoots)) {
+    // Resolve symlinks once up front and authorize the resolved path: the
+    // read/write below then operate on the same resolved path, so a symlink
+    // swapped between the authorization check and the write cannot redirect
+    // it outside the checked roots.
+    const resolvedFilePath = realpathSync(filePath);
+    if (!isExistingFilePathAllowed(resolvedFilePath, allowedRoots)) {
       return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 
-    const content = readFileSync(filePath, "utf8");
+    const content = readFileSync(resolvedFilePath, "utf8");
     const updated = setDisableModelInvocation(content, disableModelInvocation);
-    if (updated !== content) writeFileSync(filePath, updated, "utf8");
+    if (updated !== content) writeFileSync(resolvedFilePath, updated, "utf8");
 
     // Report what the file now says rather than what was asked for.
     const { frontmatter } = parseSkillFrontmatter(updated);

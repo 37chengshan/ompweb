@@ -440,6 +440,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const valueRef = useRef(value);
   const attachedImagesRef = useRef(attachedImages);
   const attachedTextFilesRef = useRef(attachedTextFiles);
+  // Bumped whenever the user clears/sends the composer: in-flight FileReader
+  // and file.text() reads must not re-append their results afterwards.
+  const attachmentRevisionRef = useRef(0);
   const pendingImageCountRef = useRef(0);
   const pendingTextFileCountRef = useRef(0);
   valueRef.current = value;
@@ -523,7 +526,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       }
       return;
     }
+    const revision = attachmentRevisionRef.current;
     pendingImageCountRef.current += imageFiles.length;
+    const created: AttachedImage[] = [];
     try {
       const newImages = await Promise.all(
         imageFiles.map(
@@ -534,13 +539,21 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 const result = reader.result as string;
                 // result is "data:<mime>;base64,<data>"
                 const base64 = result.split(",")[1];
-                resolve({ data: base64, mimeType: file.type, previewUrl: URL.createObjectURL(file) });
+                const image = { data: base64, mimeType: file.type, previewUrl: URL.createObjectURL(file) };
+                created.push(image);
+                resolve(image);
               };
               reader.onerror = reject;
               reader.readAsDataURL(file);
             })
         )
       );
+      // The composer was cleared/sent while the reads were in flight —
+      // drop the batch instead of re-appending stale attachments.
+      if (attachmentRevisionRef.current !== revision) {
+        newImages.forEach(revokeImagePreview);
+        return;
+      }
       setAttachedImages((prev) => {
         const accepted = newImages.slice(0, Math.max(0, MAX_ATTACHED_IMAGES - prev.length));
         newImages.slice(accepted.length).forEach(revokeImagePreview);
@@ -548,6 +561,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       });
       setAttachError(null);
     } catch {
+      // A failed read in the batch must not leak the siblings' blob URLs.
+      created.forEach(revokeImagePreview);
       setAttachError("One or more images could not be read. Try a different file.");
     } finally {
       pendingImageCountRef.current -= imageFiles.length;
@@ -572,6 +587,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       }
       return;
     }
+    const revision = attachmentRevisionRef.current;
     pendingTextFileCountRef.current += textFiles.length;
     try {
       const readFiles = await Promise.all(
@@ -582,15 +598,22 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
           size: file.size,
         })),
       );
-      // Binary content (NUL bytes) cannot be inlined into the prompt.
-      const newFiles = readFiles.filter((file) => !file.content.includes("\u0000"));
+      // The composer was cleared/sent while the reads were in flight —
+      // drop the batch instead of re-appending stale attachments.
+      if (attachmentRevisionRef.current !== revision) return;
+      // Binary content cannot be inlined into the prompt: NUL bytes, or
+      // U+FFFD replacement characters left by mis-decoded binary (e.g.
+      // UTF-16 text read as UTF-8).
+      const newFiles = readFiles.filter(
+        (file) => !file.content.includes("\u0000") && !file.content.includes("\uFFFD"),
+      );
       const skipped = textFiles.length - newFiles.length;
       setAttachedTextFiles((prev) => [
         ...prev,
         ...newFiles.slice(0, Math.max(0, MAX_ATTACHED_TEXT_FILES - prev.length)),
       ]);
       if (skipped > 0) {
-        setAttachError(`${skipped} file(s) skipped: binary files cannot be attached.`);
+        setAttachError(`${skipped} file(s) skipped: binary or non-text files cannot be attached.`);
       } else {
         setAttachError(null);
       }
@@ -646,6 +669,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
     clearImages();
     clearTextFiles();
+    // Invalidate any attachment reads still in flight.
+    attachmentRevisionRef.current += 1;
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }

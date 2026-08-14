@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import dynamic from "next/dynamic";
 import { Copy, ExternalLink, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -75,6 +76,16 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
 }) {
   const isMobile = useIsMobile();
   const workspaceReady = cwd !== null;
+  const [submitBehavior, setSubmitBehavior] = useState<SubmitDuringRunBehavior>(() => getSubmitDuringRunBehavior());
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const value = window.localStorage.getItem("omp-sound-enabled");
+      return value === null ? true : value === "true";
+    } catch {
+      return true;
+    }
+  });
   const [update, setUpdate] = useState<UpdateState | null>(null);
   const [checking, setChecking] = useState(true);
   const [appUpdate, setAppUpdate] = useState<UpdateState | null>(null);
@@ -97,20 +108,47 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
       .catch((error) => setNativeSettingsError(error instanceof Error ? error.message : String(error)));
   }, []);
 
-  const saveNativeSettings = useCallback(async (next: NativeSettings) => {
+  // Full-snapshot saves must be serialized against each other: each call
+  // sends the whole settings object, so two overlapping PUTs can land out of
+  // order and a stale snapshot can clobber a newer one server-side. We keep the
+  // latest snapshot in a ref and drain a single serialized save loop, always
+  // writing the most recent snapshot.
+  const latestNativeSettingsRef = useRef<NativeSettings | null>(null);
+  const nativeSaveDrainingRef = useRef(false);
+
+  const saveNativeSettings = useCallback((next: NativeSettings) => {
     setNativeSettings(next);
     setNativeSettingsError(null);
+    latestNativeSettingsRef.current = next;
+    if (nativeSaveDrainingRef.current) return;
+    nativeSaveDrainingRef.current = true;
     setNativeSavesInFlight((count) => count + 1);
-    try {
-      const response = await fetch("/api/omp-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: next }) });
-      const data = await response.json() as { settings?: NativeSettings; error?: string };
-      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
-      setNativeSettings(data.settings ?? next);
-    } catch (error) {
-      setNativeSettingsError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setNativeSavesInFlight((count) => Math.max(0, count - 1));
-    }
+
+    void (async () => {
+      try {
+        // Drain: keep writing until the latest desired snapshot has been saved.
+        while (latestNativeSettingsRef.current !== null) {
+          const snapshot = latestNativeSettingsRef.current;
+          latestNativeSettingsRef.current = null;
+          try {
+            const response = await fetch("/api/omp-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: snapshot }) });
+            const data = await response.json() as { settings?: NativeSettings; error?: string };
+            if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+            // Only reflect the server-normalized result when no newer snapshot
+            // arrived while this request was in flight.
+            if (latestNativeSettingsRef.current === null) setNativeSettings(data.settings ?? snapshot);
+          } catch (error) {
+            setNativeSettingsError(error instanceof Error ? error.message : String(error));
+            // A failed save should not silently drop later pending changes; the
+            // loop exits but the latest snapshot stays queued for a retry.
+            break;
+          }
+        }
+      } finally {
+        nativeSaveDrainingRef.current = false;
+        setNativeSavesInFlight((count) => Math.max(0, count - 1));
+      }
+    })();
   }, []);
 
   const checkForUpdate = useCallback(async () => {
@@ -175,6 +213,8 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             <div style={{ fontSize: 13, fontWeight: 600 }}>Interface</div>
             <p style={{ margin: "6px 0 10px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>Controls how ompweb presents live agent activity.</p>
             <NativeSetting label="Keep tool calls collapsed" description="Show only the compact tool-call header while tools are running."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={toolCallsDefaultCollapsed} onChange={(event) => onToolCallsDefaultCollapsedChange(event.target.checked)} /></NativeSetting>
+            <NativeSetting label="Completion sound" description="Play a short sound when the agent finishes a run."><input type="checkbox" style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} checked={soundEnabled} onChange={(event) => { const next = event.target.checked; setSoundEnabled(next); try { localStorage.setItem("omp-sound-enabled", String(next)); } catch { /* storage unavailable */ } window.dispatchEvent(new CustomEvent("omp-sound-pref-change", { detail: next })); }} /></NativeSetting>
+            <NativeSetting label="Message during active run" description="What the composer does when you submit while the agent is working. Steer interrupts the current run; Queue follow-up delivers the message after it finishes."><select style={nativeSelectStyle} value={submitBehavior} onChange={(event) => { const next = event.target.value as SubmitDuringRunBehavior; setSubmitDuringRunBehavior(next); setSubmitBehavior(next); }}><option value="steer">Steer current run</option><option value="queue">Queue follow-up</option></select></NativeSetting>
            </section>
            <section style={{ padding: "16px", border: "1px solid var(--border)", borderRadius: "var(--radius-modal)", background: "var(--bg-subtle)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600 }}><Sparkles size={15} aria-hidden="true" /> Advisor</div>

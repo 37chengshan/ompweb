@@ -37,6 +37,19 @@ export function useAudio() {
   const enabledRef = useRef(enabled);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
+  // The settings dialog toggles the same preference; keep the live state in
+  // sync when it changes there.
+  useEffect(() => {
+    const onPrefChange = (e: Event) => {
+      const detail = (e as CustomEvent<boolean>).detail;
+      if (typeof detail !== "boolean") return;
+      enabledRef.current = detail;
+      setEnabled(detail);
+    };
+    window.addEventListener("omp-sound-pref-change", onPrefChange);
+    return () => window.removeEventListener("omp-sound-pref-change", onPrefChange);
+  }, []);
+
   // Reuse a single AudioContext so it can be resumed if the browser
   // autoplay policy suspends it (contexts created outside user gestures
   // start in "suspended" state and produce no sound).

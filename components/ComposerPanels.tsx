@@ -144,7 +144,7 @@ function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }
         aria-expanded={!collapsed}
         onClick={() => setCollapsed((value) => !value)}
         title={collapsed ? t("chatWindow.expandPanel") : t("chatWindow.collapsePanel")}
-        className={`flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-text-muted ${collapsed ? "" : "border-b border-border"}`}
+        className={`ui-focus-ring flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-text-muted ${collapsed ? "" : "border-b border-border"}`}
         style={{ background: "none" }}
       >
         <Network size={14} strokeWidth={1.8} aria-hidden />
@@ -154,10 +154,7 @@ function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }
           aria-label={t("chatWindow.subagentSummary", { running: runningCount, total: subagents.length })}
           title={t("chatWindow.subagentSummary", { running: runningCount, total: subagents.length })}
         >
-          <Activity size={12} strokeWidth={1.8} aria-hidden />
-          <span>{runningCount}</span>
-          <Network size={12} strokeWidth={1.8} aria-hidden />
-          <span>{subagents.length}</span>
+          <span>{runningCount}/{subagents.length}</span>
         </span>
         <ChevronDown
           size={14}
@@ -172,9 +169,8 @@ function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }
       </button>
       {!collapsed && (
         <div
-          role="list"
-          aria-label={t("chatWindow.subagentsPanel")}
           className="flex flex-wrap gap-1.5 px-3 py-2.5"
+          style={{ maxHeight: "min(30vh, 240px)", overflowY: "auto" }}
         >
           {subagents.map((subagent) => {
             const stateLabel = t(SUBAGENT_STATE_KEYS[subagent.status]);
@@ -184,30 +180,30 @@ function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }
               <button
                 key={subagent.id}
                 type="button"
-                role="listitem"
+                className="ui-focus-ring"
                 onClick={() => onSelectSubagent(subagent)}
                 aria-label={label}
                 title={`${label}${subagent.detached ? " (async)" : ""}`}
                 style={{
                   display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 1,
-                  maxWidth: 320, padding: "3px 10px",
-                  border: "1px solid var(--border)",
-                  borderRadius: 999,
-                  background: "var(--bg-panel)",
+                  maxWidth: 320, padding: "5px 9px",
+                  border: "1px solid color-mix(in srgb, var(--border) 86%, transparent)",
+                  borderRadius: "var(--radius-control)",
+                  background: "var(--bg)",
                   fontSize: 11.5,
                   fontFamily: "inherit",
                   cursor: "pointer",
                   color: live && subagent.status === "started" ? "var(--text)" : "var(--text-dim)",
                   opacity: live && subagent.status === "started" ? 1 : 0.72,
-                  transition: "border-color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
+                  transition: "border-color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 40%, var(--border))";
                   e.currentTarget.style.background = "var(--bg-hover)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "var(--border)";
-                  e.currentTarget.style.background = "var(--bg-panel)";
+                  e.currentTarget.style.borderColor = "color-mix(in srgb, var(--border) 86%, transparent)";
+                  e.currentTarget.style.background = "var(--bg)";
                 }}
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, maxWidth: "100%" }}>

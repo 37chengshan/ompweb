@@ -154,6 +154,8 @@ type AgentStateResponse = {
   systemPrompt?: string;
   thinkingLevel?: string;
   fastModeEnabled?: boolean;
+  fastModeActive?: boolean;
+  autoRetryEnabled?: boolean;
   interruptMode?: "immediate" | "wait";
   autoCompactionEnabled?: boolean;
   steeringMode?: "all" | "one-at-a-time";
@@ -363,6 +365,24 @@ function createNoticeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/**
+ * Shared guard for URLs opened from agent/extension open_url requests. Allows
+ * only http, https and mailto; rejects javascript:, data:, vbscript:, file:,
+ * protocol-relative (//...) and any other scheme so a hostile or malformed URL
+ * cannot escape the browser. Preserves existing behavior for safe URLs.
+ */
+function isSafeOpenUrl(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  const url = raw.trim();
+  if (!url) return false;
+  // Protocol-relative (//host/...) — ambiguous scheme, reject.
+  if (url.startsWith("//")) return false;
+  const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(url);
+  if (!match) return false;
+  const scheme = match[1].toLowerCase();
+  return scheme === "http" || scheme === "https" || scheme === "mailto";
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -549,10 +569,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [toolPreset, setToolPreset] = useState<ToolPreset>(() => getPreferredToolPreset());
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("auto");
   const [fastModeEnabled, setFastModeEnabled] = useState(false);
+  const [fastModeActive, setFastModeActive] = useState<boolean | undefined>(undefined);
   // Runtime session modes returned by get_state and changed via RPC
   // (set_interrupt_mode / set_auto_compaction).
   const [interruptMode, setInterruptMode] = useState<"immediate" | "wait">("immediate");
   const [autoCompactionEnabled, setAutoCompactionEnabled] = useState(true);
+  const [autoRetryEnabled, setAutoRetryEnabled] = useState(false);
   // Queue delivery modes (set_steering_mode / set_follow_up_mode).
   const [steeringMode, setSteeringMode] = useState<"all" | "one-at-a-time">("all");
   const [followUpMode, setFollowUpMode] = useState<"all" | "one-at-a-time">("all");
@@ -596,6 +618,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // aborted turn's terminal agent_end must not tear down the new run that is
   // starting. Cleared on the new run's agent_start (or the intercept itself).
   const interruptReplyPendingRef = useRef(false);
+  // Timestamp of the last client-side queue mutation (steer/follow-up sent).
+  // get_state snapshots may lag behind the RPC round-trip, so a snapshot
+  // reporting queuedMessageCount === 0 must not wipe a queue we just wrote.
+  const queueMutatedAtRef = useRef(0);
   const agentRunningRef = useRef(false);
   const bashRunningRef = useRef(false);
   const bashRecoveryIdRef = useRef(0);
@@ -872,6 +898,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (agentState.state?.fastModeEnabled !== undefined) {
         setFastModeEnabled(agentState.state.fastModeEnabled);
       }
+      setFastModeActive(agentState.state?.fastModeActive);
+      if (agentState.state?.autoRetryEnabled !== undefined) setAutoRetryEnabled(agentState.state.autoRetryEnabled);
       if (agentState.state?.interruptMode !== undefined) setInterruptMode(agentState.state.interruptMode);
       if (agentState.state?.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(agentState.state.autoCompactionEnabled);
       if (agentState.state?.steeringMode !== undefined) setSteeringMode(agentState.state.steeringMode);
@@ -947,6 +975,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt || null);
           if (modelApplied && liveState.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(liveState.thinkingLevel));
           if (liveState.fastModeEnabled !== undefined) setFastModeEnabled(liveState.fastModeEnabled);
+          setFastModeActive(liveState.fastModeActive);
+          if (liveState.autoRetryEnabled !== undefined) setAutoRetryEnabled(liveState.autoRetryEnabled);
           if (liveState.interruptMode !== undefined) setInterruptMode(liveState.interruptMode);
           if (liveState.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(liveState.autoCompactionEnabled);
           if (liveState.steeringMode !== undefined) setSteeringMode(liveState.steeringMode);
@@ -954,8 +984,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.todoPhases !== undefined) setTodoPhases(liveState.todoPhases ?? []);
-          if (liveState.queuedMessageCount === 0) setQueuedMessages(EMPTY_QUEUE);
-        } else if (!agentState.running) {
+          if (liveState.queuedMessageCount === 0 && Date.now() - queueMutatedAtRef.current >= 5000) setQueuedMessages(EMPTY_QUEUE);
+        } else if (!agentState.running && Date.now() - queueMutatedAtRef.current >= 5000) {
           setQueuedMessages(EMPTY_QUEUE);
         }
         if (showLoading) setLoading(false);
@@ -1237,12 +1267,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
     switch (toolName) {
       case "open_url": {
-        const url = str(args.url) ?? "";
+        const raw = typeof args.url === "string" ? args.url : "";
+        const safe = isSafeOpenUrl(raw);
+        const url = safe ? raw : "";
         if (url && typeof window !== "undefined") {
           const opened = window.open(url, "_blank", "noopener,noreferrer");
           opened?.focus?.();
         }
-        await respondHostTool(sid, id, url ? `Opened ${url}` : "No URL provided", !url);
+        const message = safe ? (raw ? `Opened ${raw}` : "No URL provided") : "Unsafe or invalid URL not opened";
+        await respondHostTool(sid, id, message, !safe && !!raw);
         break;
       }
       case "notify": {
@@ -1386,16 +1419,22 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "open_url": {
         // OAuth and similar flows: try to open a tab (often blocked outside a
         // user gesture), and always surface the URL as a notice fallback.
+        // Reject unsafe schemes (javascript:/data:/file:/protocol-relative).
         const url = request.launchUrl ?? request.url;
-        try {
-          window.open(url, "_blank", "noopener,noreferrer");
-        } catch {
-          // Pop-up blocked — the notice below still carries the URL.
+        const safeUrl = isSafeOpenUrl(url) ? url : "";
+        if (safeUrl) {
+          try {
+            window.open(safeUrl, "_blank", "noopener,noreferrer");
+          } catch {
+            // Pop-up blocked — the notice below still carries the URL.
+          }
         }
         addNotice({
           id: request.id,
           type: "info",
-          message: request.instructions ? `${request.instructions}\n${url}` : translate("agentSession.openInBrowser", { url }),
+          message: safeUrl
+            ? (request.instructions ? `${request.instructions}\n${safeUrl}` : translate("agentSession.openInBrowser", { url: safeUrl }))
+            : translate("agentSession.unsafeUrlBlocked"),
         });
         break;
       }
@@ -1548,7 +1587,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (state?.todoPhases !== undefined) setTodoPhases(state.todoPhases ?? []);
       // And the only reliable re-sync for a missed subagent lifecycle frame.
       void refreshSubagentRoster(sid);
-      if (!state || state.queuedMessageCount === 0) setQueuedMessages(EMPTY_QUEUE);
+      if ((!state || state.queuedMessageCount === 0) && Date.now() - queueMutatedAtRef.current >= 5000) setQueuedMessages(EMPTY_QUEUE);
       const busy = data.running && state
         && (state.isStreaming || state.isPromptRunning || state.isCompacting);
       if (busy || !agentRunningRef.current) return;
@@ -1600,6 +1639,37 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const fi = prev.followUp.indexOf(text);
       if (fi !== -1) return { ...prev, followUp: prev.followUp.filter((_, i) => i !== fi) };
       return prev;
+    });
+  }, []);
+
+  /** Remove one queued message from the client-side queue mirror. omp's RPC
+   *  protocol has no queue-mutation commands, so this only affects the queue
+   *  panel: a message removed here may still be delivered by the running agent
+   *  (it then arrives in the chat like any delivered turn). */
+  const removeQueuedMessage = useCallback((text: string) => {
+    if (!text) return;
+    setQueuedMessages((prev) => {
+      const si = prev.steering.indexOf(text);
+      const fi = prev.followUp.indexOf(text);
+      if (si === -1 && fi === -1) return prev;
+      return {
+        steering: si === -1 ? prev.steering : prev.steering.filter((_, i) => i !== si),
+        followUp: fi === -1 ? prev.followUp : prev.followUp.filter((_, i) => i !== fi),
+      };
+    });
+  }, []);
+
+  /** Promote the first queued follow-up to a steering message (client-side
+   *  relabel; the delivery order itself is owned by omp). */
+  const promoteQueuedToSteer = useCallback((text: string) => {
+    if (!text) return;
+    setQueuedMessages((prev) => {
+      const fi = prev.followUp.indexOf(text);
+      if (fi === -1) return prev;
+      return {
+        steering: [...prev.steering, text],
+        followUp: prev.followUp.filter((_, i) => i !== fi),
+      };
     });
   }, []);
 
@@ -1669,7 +1739,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               if (d.state?.todoPhases !== undefined) setTodoPhases(d.state.todoPhases ?? []);
               // omp reports only a queued count; an empty (or dead) session
               // means the client-tracked queue texts are stale.
-              if (!d.state || d.state.queuedMessageCount === 0) setQueuedMessages(EMPTY_QUEUE);
+              if ((!d.state || d.state.queuedMessageCount === 0) && Date.now() - queueMutatedAtRef.current >= 5000) setQueuedMessages(EMPTY_QUEUE);
             })
             .catch(() => {});
         }
@@ -1725,6 +1795,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             if (!applied) return; // stale snapshot — drop its thinking level too
             if (d.state.thinkingLevel !== undefined) setThinkingLevel(normalizeThinkingLevel(d.state.thinkingLevel));
             if (d.state.fastModeEnabled !== undefined) setFastModeEnabled(d.state.fastModeEnabled);
+            setFastModeActive(d.state.fastModeActive);
+            if (d.state.autoRetryEnabled !== undefined) setAutoRetryEnabled(d.state.autoRetryEnabled);
             if (d.state.interruptMode !== undefined) setInterruptMode(d.state.interruptMode);
             if (d.state.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(d.state.autoCompactionEnabled);
             if (d.state.steeringMode !== undefined) setSteeringMode(d.state.steeringMode);
@@ -2264,14 +2336,28 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current ?? await ensureNewSession();
     if (!sid) return;
     try {
-      const result = await sendAgentCommand<{ enabled?: boolean }>(sid, { type: "set_fast_mode", enabled });
+      const result = await sendAgentCommand<{ enabled?: boolean; active?: boolean }>(sid, { type: "set_fast_mode", enabled });
       setFastModeEnabled(result?.enabled ?? enabled);
+      setFastModeActive(result?.active);
       void refreshLiveModelState(sid);
     } catch (error) {
       console.error("Failed to change Fast mode:", error);
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
   }, [addNotice, ensureNewSession, refreshLiveModelState]);
+
+  /** Toggle automatic retry for transient model failures. */
+  const handleAutoRetryChange = useCallback(async (enabled: boolean) => {
+    const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+    if (!sid) return;
+    setAutoRetryEnabled(enabled);
+    try {
+      await sendAgentCommand(sid, { type: "set_auto_retry", enabled });
+    } catch (error) {
+      setAutoRetryEnabled((current) => (current === enabled ? !enabled : current));
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice]);
 
   /** Change how steering interrupts the running agent (immediate vs wait). */
   const handleInterruptModeChange = useCallback(async (mode: "immediate" | "wait") => {
@@ -2363,6 +2449,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
   }, [addNotice]);
+
+  const handleHandoff = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid || isCompactingRef.current || agentRunningRef.current || bashRunningRef.current) return;
+    try {
+      await sendAgentCommand(sid, { type: "handoff" });
+      await loadSession(sid, true);
+      void refreshLiveModelState(sid);
+    } catch (error) {
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice, loadSession, refreshLiveModelState]);
 
   const handleCompact = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -2554,6 +2652,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
       // omp emits no queue snapshots; track the queued text locally until it
       // is delivered (user message_end) or the queue count drops to zero.
+      queueMutatedAtRef.current = Date.now();
       setQueuedMessages((prev) => ({ ...prev, steering: [...prev.steering, message] }));
     } catch (e) {
       console.error("Failed to steer:", e);
@@ -2577,6 +2676,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         streamingBehavior: behavior,
         ...(piImages?.length ? { images: piImages } : {}),
       });
+      queueMutatedAtRef.current = Date.now();
       setQueuedMessages((prev) => behavior === "steer"
         ? { ...prev, steering: [...prev.steering, message] }
         : { ...prev, followUp: [...prev.followUp, message] });
@@ -2597,6 +2697,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         message,
         ...(piImages?.length ? { images: piImages } : {}),
       });
+      queueMutatedAtRef.current = Date.now();
       setQueuedMessages((prev) => ({ ...prev, followUp: [...prev.followUp, message] }));
     } catch (e) {
       console.error("Failed to follow up:", e);
@@ -2614,11 +2715,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to abort compaction:", e);
     }
   }, []);
-
-  // omp's RPC protocol has no clear_queue command, so queued messages cannot
-  // be recalled into the editor. Exported as undefined so ChatInput hides the
-  // recall button entirely.
-  const handleRecallQueue: (() => void) | undefined = undefined;
 
   const handleThinkingLevelChange = useCallback(async (level: ThinkingLevelOption) => {
     setThinkingLevel(level);
@@ -2730,7 +2826,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt || null);
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
-          if (agentState.state.queuedMessageCount === 0) {
+          if (agentState.state.queuedMessageCount === 0 && Date.now() - queueMutatedAtRef.current >= 5000) {
             setQueuedMessages(EMPTY_QUEUE);
             // The queue drained while the page was closed — a stored copy
             // from a previous page load is stale.
@@ -2877,7 +2973,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, streamState,
-    agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled, interruptMode, autoCompactionEnabled, steeringMode, followUpMode,
+    agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled, fastModeActive, autoRetryEnabled, interruptMode, autoCompactionEnabled, steeringMode, followUpMode,
     liveModelMeta,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,
@@ -2892,9 +2988,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionIdRef, messagesEndRef, scrollContainerRef,
     pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, handleInterruptAndReply,
-    handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
-    handleRecallQueue,
+    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleFastModeChange, handleAutoRetryChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, handleInterruptAndReply,
+    handleCompact, handleHandoff, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
+    removeQueuedMessage, promoteQueuedToSteer,
     handleBuiltinSlashCommand,
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, setActiveLeafId, setData, setMessages,
     dispatch, setAgentRunning, setForkingEntryId,

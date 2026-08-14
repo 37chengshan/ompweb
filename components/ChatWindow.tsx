@@ -395,21 +395,18 @@ const CommittedTranscript = memo(function CommittedTranscript({
 
 export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
   const { t, tn } = useI18n();
-  const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
+  const { playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
   // wrapping handleAgentEventRef because useAgentSession overwrites that ref
   // on every render (it syncs the latest callback), which would blow away an
-  // externally-installed wrapper after the first re-render.
+  // externally-installed wrapper after the first re-render. playDoneSound
+  // checks the sound preference itself.
   const playDoneSoundRef = useRef(playDoneSound);
   playDoneSoundRef.current = playDoneSound;
-  const soundEnabledRef = useRef(soundEnabled);
-  soundEnabledRef.current = soundEnabled;
   const wrappedOnAgentEnd = useCallback(() => {
-    if (soundEnabledRef.current) {
-      playDoneSoundRef.current();
-    }
+    playDoneSoundRef.current();
     onAgentEnd?.();
   }, [onAgentEnd]);
 
@@ -420,10 +417,10 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
 
   const {
     loading, error, messages, entryIds, streamState,
-    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel, fastModeEnabled, interruptMode, autoCompactionEnabled, steeringMode, followUpMode,
+    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, thinkingLevel, fastModeEnabled, fastModeActive,
     liveModelMeta,
     retryInfo, contextUsage, forkingEntryId,
-    isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats,
+    isCompacting, compactResult, displayModel: displayModelValue, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
@@ -432,10 +429,10 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
-    handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
-    handleRecallQueue,
+    handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
+    removeQueuedMessage, promoteQueuedToSteer,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, handleFastModeChange, handleInterruptModeChange, handleAutoCompactionChange, handleSteeringModeChange, handleFollowUpModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, handleInterruptAndReply, loadSlashCommands,
+    handleThinkingLevelChange, handleFastModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, loadSlashCommands,
   } = useAgentSession({
     session, newSessionCwd, advisorEnabled, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
@@ -670,28 +667,16 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
       modelsLoading={modelsLoading}
       modelError={modelError}
       onModelChange={handleModelChange}
-      onCompact={session || isNew ? handleCompact : undefined}
       onAbortCompaction={handleAbortCompaction}
       isCompacting={isCompacting}
-      compactError={compactError}
       compactResult={compactResult}
-      toolPreset={toolPreset}
-      onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
       thinkingLevel={thinkingLevel}
       onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}
       fastModeEnabled={fastModeEnabled}
+      fastModeActive={fastModeActive}
       fastModeSupported={Boolean(displayModelValue && modelList.some((entry) => entry.provider === displayModelValue.provider && entry.id === displayModelValue.modelId && entry.supportsFastMode))}
       onFastModeChange={session || isNew ? handleFastModeChange : undefined}
-      interruptMode={interruptMode}
-      onInterruptModeChange={session ? handleInterruptModeChange : undefined}
-      autoCompactionEnabled={autoCompactionEnabled}
-      onAutoCompactionChange={session ? handleAutoCompactionChange : undefined}
-      steeringMode={steeringMode}
-      onSteeringModeChange={session ? handleSteeringModeChange : undefined}
-      followUpMode={followUpMode}
-      onFollowUpModeChange={session ? handleFollowUpModeChange : undefined}
       onAbortRetry={session ? handleAbortRetry : undefined}
-      onInterruptAndReply={session ? handleInterruptAndReply : undefined}
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}
       modelNameOverride={liveModelMeta?.name ?? null}
@@ -701,13 +686,13 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
       advisorEnabled={advisorEnabled}
       queuedMessages={queuedMessages}
       inputHistory={inputHistory}
-      onRecallQueue={handleRecallQueue}
+      contextUsage={contextUsage}
+      onRemoveQueuedMessage={removeQueuedMessage}
+      onPromoteQueuedToSteer={promoteQueuedToSteer}
       slashCommands={slashCommands}
       slashCommandsLoading={slashCommandsLoading}
       onLoadSlashCommands={loadSlashCommands}
       onBuiltinCommand={handleBuiltinSlashCommand}
-      soundEnabled={soundEnabled}
-      onSoundToggle={onSoundToggle}
       onAudioUnlock={unlockAudio}
       draftKey={session?.id ?? (newSessionCwd ? `new:${newSessionCwd}` : undefined)}
       cwd={session?.cwd ?? newSessionCwd}
@@ -805,14 +790,14 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 12,
-                marginLeft: 16,
-                 marginRight: 52,
+                marginLeft: 8,
+                marginRight: 8,
                 fontFamily: "var(--font-mono)",
               }}
             >
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>⌥</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>omp web</span>
+                <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: "0.04em", color: "var(--accent)", flexShrink: 0, whiteSpace: "nowrap" }}>⌥</span>
+                <span style={{ fontSize: 18, color: "var(--text)", fontWeight: 600, letterSpacing: "0.02em", flexShrink: 0, whiteSpace: "nowrap" }}>omp web</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -886,7 +871,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
                   display: "flex", alignItems: "center", gap: 7,
                   marginBottom: 8, padding: "6px 10px",
                   border: "1px solid color-mix(in srgb, var(--status-success) 25%, transparent)",
-                  borderRadius: 7,
+                  borderRadius: "var(--radius-control)",
                   background: "color-mix(in srgb, var(--status-success) 4%, transparent)",
                   color: "var(--text-muted)", fontSize: 12,
                 }}
@@ -953,7 +938,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
         )}
       </div>
 
-      <div className="relative">
+      <div className="relative" style={{ flexShrink: 0 }}>
         <div
           style={{
             padding: `0 ${CHAT_COLUMN_PADDING}px`,
@@ -980,10 +965,11 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
 function ExtensionStatusBar({ statuses }: { statuses: Array<{ key: string; text: string }> }) {
   if (statuses.length === 0) return null;
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
       {statuses.map((status) => (
         <div
           key={status.key}
+          className="ui-compact-surface"
           style={{
             display: "flex",
             alignItems: "center",
@@ -991,7 +977,7 @@ function ExtensionStatusBar({ statuses }: { statuses: Array<{ key: string; text:
             maxWidth: "100%",
             padding: "4px 8px",
             border: "1px solid color-mix(in srgb, var(--accent) 24%, var(--border))",
-            borderRadius: 6,
+            borderRadius: "var(--radius-control)",
             background: "color-mix(in srgb, var(--accent) 7%, var(--bg))",
             color: "var(--text-muted)",
             fontSize: 12,
@@ -1008,13 +994,14 @@ function ExtensionStatusBar({ statuses }: { statuses: Array<{ key: string; text:
 function ExtensionWidgets({ widgets }: { widgets: Array<{ key: string; lines: string[] }> }) {
   if (widgets.length === 0) return null;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
       {widgets.map((widget) => (
         <div
           key={widget.key}
+          className="ui-compact-surface"
           style={{
             border: "1px solid var(--border)",
-            borderRadius: 7,
+            borderRadius: "var(--radius-control)",
             background: "var(--bg-panel)",
             overflow: "hidden",
           }}
@@ -1059,26 +1046,26 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              minHeight: 60,
-              height: 60,
-              maxHeight: 60,
-              marginBottom: index === notices.length - 1 ? 0 : 6,
+              gap: 8,
+              minHeight: 36,
+              height: 36,
+              maxHeight: 48,
+              marginBottom: index === notices.length - 1 ? 0 : 4,
               overflow: "hidden",
-              borderRadius: 14,
+              borderRadius: "var(--radius-control)",
               border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
               background: "var(--bg)",
               color: "var(--text-muted)",
               width: "fit-content",
               maxWidth: "min(100%, 620px)",
-              boxShadow: floating ? "var(--shadow-modal)" : "var(--shadow-pop)",
-              fontSize: 18,
-              lineHeight: 1.45,
+              boxShadow: floating ? "var(--shadow-pop)" : "var(--shadow-card)",
+              fontSize: 12,
+              lineHeight: 1.35,
               transformOrigin: "top center",
               animation: notice.exiting
                 ? "notice-shelf-out var(--dur-med) ease-in forwards"
                 : "notice-shelf-in var(--dur-med) var(--ease-out-warm) both",
-              padding: "0 12px",
+              padding: "0 10px",
             }}
           >
             <span
@@ -1090,7 +1077,7 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
                 flexShrink: 0,
               }}
             />
-            <span style={{ padding: "14px 0", minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ padding: "8px 0", minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {notice.message}
             </span>
           </div>

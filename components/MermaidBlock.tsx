@@ -155,6 +155,9 @@ function MermaidZoomDialog({ svg, onClose }: { svg: string; onClose: () => void 
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.preventDefault();
+        // Do not let the Escape reach the window-level listener, which would
+        // abort a running agent (same pattern as ImageLightbox).
+        event.stopPropagation();
         onClose();
       }}
     >

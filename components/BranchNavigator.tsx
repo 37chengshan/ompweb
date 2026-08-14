@@ -287,7 +287,11 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
       closeDropdown();
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeDropdown();
+      if (event.key !== "Escape") return;
+      // Closing the branch menu must not also reach the window-level Esc
+      // listener, which would abort a running agent.
+      event.stopPropagation();
+      closeDropdown();
     };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", onKey);

@@ -72,7 +72,13 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
                 event.preventDefault();
                 const index = tabs.findIndex((item) => item.id === tab.id);
                 const next = tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
-                if (next) onSelectTab(next.id);
+                if (next) {
+                  onSelectTab(next.id);
+                  // Roving tabindex: move DOM focus to the newly selected tab
+                  // so the visible focus ring follows the selection.
+                  const nextEl = listRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(next.id)}"]`);
+                  nextEl?.focus();
+                }
               }
             }}
             onMouseDown={(e) => {

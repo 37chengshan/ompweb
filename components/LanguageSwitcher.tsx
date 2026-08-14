@@ -81,6 +81,9 @@ export function LanguageSwitcher() {
         break;
       case "Escape":
         e.preventDefault();
+        // Stop the window-level Esc listener (abort agent) from firing while
+        // the language menu is open.
+        e.stopPropagation();
         close(true);
         break;
       case "Tab":

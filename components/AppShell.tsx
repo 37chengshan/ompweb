@@ -259,6 +259,7 @@ export function AppShell() {
 
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const systemBtnRef = useRef<HTMLButtonElement>(null);
+  const sessionStatsBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleSystemPromptChange = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
@@ -390,6 +391,32 @@ export function AppShell() {
     const ro = new ResizeObserver(update);
     ro.observe(topBarRef.current);
     return () => ro.disconnect();
+  }, [activeTopPanel]);
+
+  // Dismiss the system/session dropdowns on outside click or Escape. The
+  // Escape handler stops propagation so the global Esc (abort agent) does not
+  // fire while a panel is open; clicks on the trigger buttons themselves are
+  // ignored here — their onClick toggles the panel.
+  useEffect(() => {
+    // The branch panel manages its own outside-click and Escape dismissal.
+    if (!activeTopPanel || activeTopPanel === "branches") return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-top-panel]")) return;
+      if (systemBtnRef.current?.contains(event.target as Node)) return;
+      if (sessionStatsBtnRef.current?.contains(event.target as Node)) return;
+      setActiveTopPanel(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setActiveTopPanel(null);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [activeTopPanel]);
 
   // Right panel — file tabs only
@@ -1010,6 +1037,7 @@ export function AppShell() {
 
             return (
               <button
+                ref={sessionStatsBtnRef}
                 type="button"
                 onClick={() => toggleTopPanel("session")}
                 title={tooltip || t("appShell.sessionInfo")}
@@ -1087,9 +1115,12 @@ export function AppShell() {
               </button>
             );
           })()}
-          {/* Top panel dropdown — shared, only one active at a time */}
-          {activeTopPanel && topPanelPos && (
-            <div className="dropdown-surface" style={{
+          {/* Top panel dropdown — shared, only one active at a time. The
+              branch panel renders inside BranchNavigator itself; never mount
+              an empty fixed layer for it (it would sit over the top-bar
+              region and swallow clicks). */}
+          {(activeTopPanel === "system" || activeTopPanel === "session") && topPanelPos && (
+            <div data-top-panel className="dropdown-surface" style={{
               position: "fixed",
               top: topPanelPos.top,
               left: topPanelPos.left,

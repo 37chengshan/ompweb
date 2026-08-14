@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/lib/api-utils";
+import { comparableProjectPath } from "@/lib/comparable-path";
 import { allowFileRoot } from "@/lib/file-access";
 import {
-  comparableProjectPath,
   hideProject,
   loadProjectRegistry,
   mergeProjects,

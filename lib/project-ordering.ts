@@ -1,4 +1,4 @@
-import { comparableProjectPath } from "./project-registry";
+import { comparableProjectPath } from "./comparable-path";
 import type { ManagedProject, SessionInfo } from "./types";
 
 // ============================================================================

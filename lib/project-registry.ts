@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, type Stats } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
+import { comparableProjectPath } from "./comparable-path";
 import { getAgentDir } from "./omp/paths";
 import type { ManagedProject } from "./types";
 
@@ -42,13 +43,6 @@ export class ProjectPathError extends Error {
 }
 
 const EMPTY_REGISTRY: ProjectRegistryFile = { version: 1, projects: [] };
-
-/** Case-insensitive comparable form on Windows (NTFS is case-insensitive);
- *  case-sensitive elsewhere. */
-export function comparableProjectPath(value: string): string {
-  const normalized = resolve(value).replace(/\\/g, "/");
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
-}
 
 /** Parse registry JSON; missing, corrupt, or foreign-shaped input yields an
  *  empty registry rather than failing the whole sidebar. */

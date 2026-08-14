@@ -192,7 +192,7 @@ export function ModelCatalogPicker({ open, providerName, providerBaseUrl, existi
                     <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                       <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.id}</span>
                       {entry.reasoning && (
-                        <span style={{ fontSize: 9, padding: "1px 4px", background: "rgba(99,102,241,0.12)", color: "rgba(99,102,241,0.8)", borderRadius: 3, flexShrink: 0 }}>T</span>
+                        <span style={{ fontSize: 9, padding: "1px 4px", background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent)", borderRadius: 3, flexShrink: 0 }}>T</span>
                       )}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

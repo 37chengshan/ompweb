@@ -682,9 +682,13 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
       esRef.current = null;
     }
 
+    // Guard against stale metadata responses: a fetch started for a previous
+    // filePath must not overwrite the current file's size/error.
+    let cancelled = false;
     fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
       .then((r) => r.json())
       .then((d: { size?: number; error?: string }) => {
+        if (cancelled) return;
         if (d.error) setError(d.error);
         if (typeof d.size === "number") {
           setSize(d.size);
@@ -693,7 +697,9 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
           }
         }
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      });
 
     const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId));
     esRef.current = es;
@@ -717,6 +723,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
     es.onerror = () => setWatching(false);
 
     return () => {
+      cancelled = true;
       es.close();
       esRef.current = null;
     };
@@ -818,13 +825,19 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
   const [watching, setWatching] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const gitDiffRequestRef = useRef(0);
+  const contentRequestRef = useRef(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [selectedLineRange, setSelectedLineRange] = useState<SelectedLineRange | null>(null);
 
   const fetchContent = useCallback((filePath: string) => {
+    // Guard against stale responses: bump the request id and ignore any
+    // resolve that is no longer the latest fetch for this component, so a
+    // slower older request cannot overwrite newer content/error state.
+    const requestId = ++contentRequestRef.current;
     return fetch(getFileApiUrl(filePath, "read", sourceSessionId))
       .then((r) => r.json())
       .then((d: FileData & { error?: string }) => {
+        if (requestId !== contentRequestRef.current) return null;
         if (d.error) {
           setError(d.error);
           return null;
@@ -834,6 +847,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
         return d;
       })
       .catch((e) => {
+        if (requestId !== contentRequestRef.current) return null;
         setError(String(e));
         return null;
       });
@@ -872,9 +886,15 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
       esRef.current = null;
     }
 
-    fetchContent(filePath).then((d) => {
+    // Cancel effect-local work on filePath change so a stale in-flight load
+    // cannot revert display mode or flip loading off for the new file.
+    let cancelled = false;
+    void fetchContent(filePath).then((d) => {
+      if (cancelled) return;
       if (d?.language === "markdown") setDisplayMode("preview");
-    }).finally(() => setLoading(false));
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
 
     // Set up SSE watch
     const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId));
@@ -898,6 +918,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
     };
 
     return () => {
+      cancelled = true;
       es.close();
       esRef.current = null;
     };

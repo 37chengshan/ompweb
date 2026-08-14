@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/lib/i18n";
+import { isSafeExternalUrl } from "@/lib/safe-url";
 import { omitUntouchedModelDrafts } from "@/lib/models-config-drafts";
 import { formatApiError } from "@/lib/i18n/api-error";
 import {
@@ -245,17 +246,37 @@ function RetryFallbackDetail({ models }: { models: RuntimeModelEntry[] }) {
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, []);
 
-  const save = async (next: RetrySettings) => {
+  // Serialize full-snapshot saves: each call writes the whole settings object,
+  // so overlapping PUTs can land out of order and clobber newer changes. Keep
+  // the latest snapshot and drain a single serialized save always writing the
+  // most recent state (fixes rapid fallback-chain edits scheduling stale writes).
+  const latestRef = useRef<RetrySettings | null>(null);
+  const drainingRef = useRef(false);
+  const save = (next: RetrySettings) => {
     setSettings(next);
     setError(null);
-    try {
-      const response = await fetch("/api/omp-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: next }) });
-      const data = await response.json() as { settings?: RetrySettings; error?: string };
-      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
-      setSettings(data.settings ?? next);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    }
+    latestRef.current = next;
+    if (drainingRef.current) return;
+    drainingRef.current = true;
+    void (async () => {
+      try {
+        while (latestRef.current !== null) {
+          const snapshot = latestRef.current;
+          latestRef.current = null;
+          try {
+            const response = await fetch("/api/omp-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: snapshot }) });
+            const data = await response.json() as { settings?: RetrySettings; error?: string };
+            if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+            if (latestRef.current === null) setSettings(data.settings ?? snapshot);
+          } catch (reason) {
+            setError(reason instanceof Error ? reason.message : String(reason));
+            break;
+          }
+        }
+      } finally {
+        drainingRef.current = false;
+      }
+    })();
   };
 
   if (!settings) return <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Loading native OMP retry settings...</div>;
@@ -274,7 +295,7 @@ function RetryFallbackDetail({ models }: { models: RuntimeModelEntry[] }) {
     </div>
     <section style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", overflow: "hidden" }}>
       <div style={{ padding: "10px 12px", background: "var(--bg-panel)", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: "var(--text)", fontSize: 12, fontWeight: 600 }}>Fallback chain for</span><select value={role} onChange={(event) => setRole(event.target.value)} style={{ padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)" }}>{NATIVE_MODEL_ROLES.map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
-      <div style={{ padding: 12, display: "flex", gap: 8 }}><select value={candidate} onChange={(event) => setCandidate(event.target.value)} style={{ flex: 1, minWidth: 0, padding: "6px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)" }}><option value="">Select a fallback model</option>{modelOptions.filter((value) => !chain.includes(value)).map((value) => <option key={value} value={value}>{value}</option>)}</select><button type="button" disabled={!candidate} onClick={() => { updateChain([...chain, candidate]); setCandidate(""); }} style={{ padding: "6px 10px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "#fff", cursor: candidate ? "pointer" : "default" }}>Add</button></div>
+      <div style={{ padding: 12, display: "flex", gap: 8 }}><select value={candidate} onChange={(event) => setCandidate(event.target.value)} style={{ flex: 1, minWidth: 0, padding: "6px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)" }}><option value="">Select a fallback model</option>{modelOptions.filter((value) => !chain.includes(value)).map((value) => <option key={value} value={value}>{value}</option>)}</select><button type="button" disabled={!candidate} onClick={() => { updateChain([...chain, candidate]); setCandidate(""); }} style={{ padding: "6px 10px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--on-accent)", cursor: candidate ? "pointer" : "default" }}>Add</button></div>
       {chain.length === 0 ? (
         <div style={{ padding: "0 12px 12px", color: "var(--text-dim)", fontSize: 12 }}>No explicit chain. OMP uses the <code>default</code> chain when available.</div>
       ) : (
@@ -307,21 +328,40 @@ function NativeRegistryDetail({ models, connectedProviders, onChanged }: { model
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, []);
 
-  const save = async (next: NativeRegistrySettings) => {
+  // Serialize full-snapshot saves: each call PUTs the whole settings object and
+  // a rapid sequence of provider/model toggles must not let an older snapshot
+  // land after a newer one. Keep the latest snapshot and drain a single
+  // serialized save loop so the most recent state wins on the server.
+  const latestRef = useRef<NativeRegistrySettings | null>(null);
+  const drainingRef = useRef(false);
+  const save = (next: NativeRegistrySettings) => {
     setSettings(next);
     setSaving(true);
     setError(null);
-    try {
-      const response = await fetch("/api/omp-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: next }) });
-      const data = await response.json() as { settings?: NativeRegistrySettings; error?: string };
-      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
-      setSettings(data.settings ?? next);
-      await onChanged();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setSaving(false);
-    }
+    latestRef.current = next;
+    if (drainingRef.current) return;
+    drainingRef.current = true;
+    void (async () => {
+      try {
+        while (latestRef.current !== null) {
+          const snapshot = latestRef.current;
+          latestRef.current = null;
+          try {
+            const response = await fetch("/api/omp-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: snapshot }) });
+            const data = await response.json() as { settings?: NativeRegistrySettings; error?: string };
+            if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+            if (latestRef.current === null) setSettings(data.settings ?? snapshot);
+            await onChanged();
+          } catch (reason) {
+            setError(reason instanceof Error ? reason.message : String(reason));
+            break;
+          }
+        }
+      } finally {
+        drainingRef.current = false;
+        setSaving(false);
+      }
+    })();
   };
 
   if (!settings) return <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Loading native OMP registry settings...</div>;
@@ -667,12 +707,12 @@ const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as 
 type ThinkingLevel = typeof THINKING_LEVELS[number];
 
 const LEVEL_COLORS: Record<ThinkingLevel, string> = {
-  minimal: "#6b7280",
-  low:     "#60a5fa",
-  medium:  "#a78bfa",
-  high:    "#f472b6",
-  xhigh:   "#fb923c",
-  max:     "#ef4444",
+  minimal: "var(--text-dim)",
+  low:     "color-mix(in srgb, var(--accent) 45%, var(--text-muted))",
+  medium:  "var(--accent)",
+  high:    "var(--accent-hover)",
+  xhigh:   "var(--status-warning)",
+  max:     "var(--status-error)",
 };
 
 function ThinkingEditor({
@@ -1183,7 +1223,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
       };
       if (data.type === "auth") {
         setLoginState({ phase: "auth", url: data.url!, instructions: data.instructions ?? null, token: data.token! });
-        window.open(data.url!, "_blank", "noopener,noreferrer");
+        if (isSafeExternalUrl(data.url)) window.open(data.url, "_blank", "noopener,noreferrer");
       } else if (data.type === "device_code") {
         setLoginState({
           phase: "device_code",
@@ -1192,7 +1232,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
           intervalSeconds: data.intervalSeconds ?? null,
           expiresInSeconds: data.expiresInSeconds ?? null,
         });
-        window.open(data.verificationUri!, "_blank", "noopener,noreferrer");
+        if (isSafeExternalUrl(data.verificationUri)) window.open(data.verificationUri, "_blank", "noopener,noreferrer");
       } else if (data.type === "prompt_request") {
         setLoginState({ phase: "prompt", message: data.message!, placeholder: data.placeholder ?? null, token: data.token! });
       } else if (data.type === "select_request") {
@@ -2106,7 +2146,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                             {m.id || t("modelsConfig.newModel")}
                           </span>
                           {m.reasoning && (
-                            <span style={{ fontSize: 9, padding: "1px 4px", background: "rgba(99,102,241,0.12)", color: "rgba(99,102,241,0.8)", borderRadius: 3, flexShrink: 0 }}>T</span>
+                            <span style={{ fontSize: 9, padding: "1px 4px", background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent)", borderRadius: 3, flexShrink: 0 }}>T</span>
                           )}
                         </button>
                       );

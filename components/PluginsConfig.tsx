@@ -191,8 +191,8 @@ function ScopeTag({ scope }: { scope: PluginScope }) {
         padding: "1px 5px",
         borderRadius: 3,
         flexShrink: 0,
-        background: scope === "project" ? "rgba(99,102,241,0.12)" : "rgba(120,120,120,0.12)",
-        color: scope === "project" ? "rgba(99,102,241,0.85)" : "var(--text-dim)",
+        background: scope === "project" ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "color-mix(in srgb, var(--text-dim) 12%, transparent)",
+        color: scope === "project" ? "var(--accent)" : "var(--text-dim)",
       }}
     >
       {t(scopeKey(scope))}

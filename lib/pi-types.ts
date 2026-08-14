@@ -63,6 +63,7 @@ export interface RpcSessionState {
   sessionId: string;
   sessionName?: string;
   autoCompactionEnabled: boolean;
+  autoRetryEnabled?: boolean;
   messageCount: number;
   queuedMessageCount: number;
   todoPhases: TodoPhase[];
@@ -96,6 +97,8 @@ export interface WebSessionState {
   systemPrompt: string;
   thinkingLevel: string;
   fastModeEnabled: boolean;
+  fastModeActive?: boolean;
+  autoRetryEnabled?: boolean;
   todoPhases: TodoPhase[];
   extensionStatuses: Array<{ key: string; text: string }>;
   extensionWidgets: Array<{ key: string; lines: string[]; placement: "aboveEditor" | "belowEditor" }>;

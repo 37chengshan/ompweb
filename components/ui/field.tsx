@@ -149,7 +149,7 @@ function focusGlowStyle(focused: boolean, invalid: boolean): CSSProperties {
   if (!focused) return {};
   return {
     borderColor: invalid ? "var(--accent)" : "var(--accent)",
-    boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)",
+    boxShadow: "var(--focus-ring)",
   };
 }
 

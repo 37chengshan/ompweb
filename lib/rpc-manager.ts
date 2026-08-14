@@ -666,6 +666,7 @@ export class AgentSessionWrapper {
       isBashRunning: this.bashRunning,
       isCompacting: state.isCompacting,
       autoCompactionEnabled: state.autoCompactionEnabled,
+      autoRetryEnabled: state.autoRetryEnabled,
       interruptMode: state.interruptMode,
       steeringMode: state.steeringMode,
       followUpMode: state.followUpMode,
@@ -688,6 +689,7 @@ export class AgentSessionWrapper {
       // the runtime auto-disables priority (e.g. after an Anthropic reject).
       // The wrapper's own flag is only the spawn-time cache.
       fastModeEnabled: state.fastModeEnabled ?? state.fastMode ?? this.fastModeEnabled,
+      fastModeActive: state.fastModeActive,
       todoPhases: state.todoPhases ?? [],
       extensionStatuses: Array.from(this.extensionStatuses, ([key, text]) => ({ key, text })),
       extensionWidgets: Array.from(this.extensionWidgets.values()),

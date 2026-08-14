@@ -44,6 +44,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
       ref={listRef}
       role="tablist"
       aria-label="Open files"
+      className="tabbar-scroll"
       style={{
         display: "flex",
         alignItems: "flex-end",
@@ -59,6 +60,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
           <div
             key={tab.id}
             data-tab-id={tab.id}
+            className="tabbar-tab ui-focus-ring"
             onClick={() => onSelectTab(tab.id)}
             role="tab"
             tabIndex={isActive ? 0 : -1}
@@ -134,6 +136,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
             </span>
             <button
               onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
+              className="tabbar-close ui-focus-ring"
               onMouseEnter={() => setHoveredClose(tab.id)}
               onMouseLeave={() => setHoveredClose(null)}
               style={{

@@ -159,10 +159,10 @@ function SkillDetail({
             flexShrink: 0,
             background:
               label === "project"
-                ? "rgba(99,102,241,0.12)"
-                : "rgba(120,120,120,0.12)",
+                ? "color-mix(in srgb, var(--accent) 12%, transparent)"
+                : "color-mix(in srgb, var(--text-dim) 12%, transparent)",
             color:
-              label === "project" ? "rgba(99,102,241,0.8)" : "var(--text-dim)",
+              label === "project" ? "var(--accent)" : "var(--text-dim)",
           }}
         >
           {t(SOURCE_LABEL_KEYS[label])}

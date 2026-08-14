@@ -232,6 +232,7 @@ function TreeNode({
   const [loaded, setLoaded] = useState(node.loaded ?? false);
   const [loading, setLoading] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   const loadChildren = useCallback(async (force = false) => {
     if (loaded && !force) return;
@@ -269,6 +270,16 @@ function TreeNode({
     }
   }, [node.isDir, node.fullPath, node.name, loaded, open, loadChildren, onOpenFile, onToggleExpanded]);
 
+  // Keyboard activation (Enter/Space) for the row, mirroring the click action so
+  // the tree is operable without a mouse. Only reacts when the focus is on the
+  // row itself, never when a nested action button (mention/download) is focused.
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    handleClick();
+  }, [handleClick]);
+
   const mentionLabel = t("fileExplorer.insertPathIntoChat");
   const downloadLabel = t("fileExplorer.downloadFile");
 
@@ -276,8 +287,16 @@ function TreeNode({
     <div>
       <div
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        onFocus={(e) => { if (e.target === e.currentTarget) setFocused(true); }}
+        onBlur={() => setFocused(false)}
+        role="treeitem"
+        tabIndex={0}
+        aria-selected={highlighted}
+        aria-expanded={node.isDir ? open : undefined}
+        aria-label={node.isDir ? (node.name + " (folder" + (open ? ", expanded" : ", collapsed") + ")") : (node.name + " (file)")}
         style={{
           position: "relative",
           display: "flex",
@@ -290,6 +309,8 @@ function TreeNode({
           background: hovered ? "var(--bg-hover)" : "transparent",
           borderRadius: "var(--radius-control)",
           userSelect: "none",
+          boxShadow: focused ? "inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent)" : "none",
+          outline: "none",
           transition: `background var(--dur-fast) var(--ease-out-warm)`,
         }}
       >
@@ -438,7 +459,7 @@ function TreeNode({
         )}
       </div>
       {node.isDir && open && (
-        <div>
+        <div role="group">
           {children.map((child) => (
             <TreeNode
               key={child.fullPath}
@@ -782,7 +803,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
         </div>
       )}
 
-      <div style={{ padding: "2px 4px" }}>
+      <div role="tree" aria-label={t("sessionSidebar.explorer")} style={{ padding: "2px 4px" }}>
         {loading ? (
           <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>{t("fileExplorer.loadingFiles")}</div>
         ) : error ? (

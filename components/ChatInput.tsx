@@ -1372,7 +1372,11 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,.txt,.text,.md,.markdown,.mdx,text/plain,text/markdown"
+        // Extension-only list: a leading "image/*" wildcard makes the
+        // Windows/Chrome dialog default to an images-only filter and the
+        // text types disappear behind a dropdown. Explicit extensions group
+        // into one "Custom files" filter covering everything we accept.
+        accept=".png,.jpg,.jpeg,.gif,.webp,.avif,.bmp,.ico,.svg,.txt,.text,.md,.markdown,.mdx"
         multiple
         disabled={isStreaming}
         style={{ display: "none" }}

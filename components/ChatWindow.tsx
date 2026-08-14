@@ -481,7 +481,12 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     if (!sentinel || !container) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
+        // Only auto-load on a genuine upward scroll. On fresh open the
+        // sentinel sits at the top of the rendered window and is visible at
+        // scrollTop = 0 — auto-loading then races the initial scroll-to-bottom
+        // (the capture happens before the scroll, and the restore pins the
+        // viewport to the top of the last page until every page is loaded).
+        if (entries[0]?.isIntersecting && container.scrollTop > 0) {
           // Save distance from top before prepending to restore scroll later
           prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
           loadMoreModeRef.current = "auto";

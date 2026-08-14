@@ -108,7 +108,7 @@ npm install
 npm run dev
 ```
 
-The local dev server runs at [http://127.0.0.1:30177](http://127.0.0.1:30177).
+The local dev server runs at [http://127.0.0.1:30178](http://127.0.0.1:30178).
 
 Common checks:
 

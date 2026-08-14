@@ -9,7 +9,7 @@ Thanks for your interest in contributing!
 
 ```bash
 npm install
-npm run dev   # http://127.0.0.1:30177
+npm run dev   # http://127.0.0.1:30178
 ```
 
 ## Checks (must pass before submitting)
@@ -17,7 +17,7 @@ npm run dev   # http://127.0.0.1:30177
 ```bash
 npx tsc --noEmit                                   # type check
 npm run lint                                       # ESLint, zero warnings
-node --test lib/*.test.mjs components/*.test.mjs   # unit tests
+npm test                                           # unit tests
 ```
 
 Avoid `npm run build` during local development — it writes to `.next/` and

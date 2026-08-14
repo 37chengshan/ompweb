@@ -47,13 +47,16 @@ export async function POST(
   if (!token || !code) {
     return Response.json({ error: "token and code required", code: "login_token_code_required" }, { status: 400 });
   }
-  // Verify token belongs to this provider (token format: "<provider>-<ts>-<random>")
-  if (!token.startsWith(`${provider}-`)) {
-    return Response.json({ error: "Token does not match provider", code: "login_token_mismatch" }, { status: 400 });
-  }
   const pending = getLoginRegistry().get(token);
   if (!pending) {
     return Response.json({ error: "No pending login for token", code: "login_no_pending" }, { status: 404 });
+  }
+  // Exact provider association: the registry records the provider a token was
+  // created for. A prefix check on the token alone is unsafe because provider
+  // ids may share prefixes (e.g. "openai" vs "openai-codex"), which would let
+  // a token for one provider be submitted against another provider's route.
+  if (pending.provider !== provider) {
+    return Response.json({ error: "Token does not match provider", code: "login_token_mismatch" }, { status: 400 });
   }
 
   pending.submit(code);

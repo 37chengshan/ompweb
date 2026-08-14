@@ -45,7 +45,18 @@ const nextConfig = (phase: string): NextConfig => {
     // Next.js enables gzip/brotli compression for `next start` by default; no
     // custom compression middleware is needed (and would require a custom server).
     async headers() {
+      const securityHeaders = [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        { key: "Content-Security-Policy", value: "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:; font-src 'self' data:" },
+      ];
       const headers = [
+        {
+          source: "/:path*",
+          headers: securityHeaders,
+        },
         {
           // Hashed build output never changes, so browsers/proxies may cache it
           // immutably for a year and skip revalidation entirely.
@@ -66,7 +77,7 @@ const nextConfig = (phase: string): NextConfig => {
 
       // Dev chunks have stable URLs whose content changes in place; caching
       // them immutably would serve stale module factories after a restart.
-      if (isDev) return headers.slice(1);
+      if (isDev) return [headers[0], headers[2]];
 
       return headers;
     },

@@ -48,11 +48,11 @@ if (!fs.existsSync(nextDir)) {
 }
 
 if (!loopbackHostnames.has(hostname)) {
-  console.warn(
-    passwordEnabled
-      ? `Warning: ompweb is listening on ${hostname} with Basic Auth over HTTP. Use HTTPS or a trusted VPN to protect the password in transit.`
-      : `Warning: ompweb is listening on ${hostname} without authentication. Only use this on a trusted network.`,
-  );
+  if (!passwordEnabled) {
+    console.error(`Refusing to listen on ${hostname} without OMP_WEB_PASSWORD. Set a strong password or bind to 127.0.0.1.`);
+    process.exit(1);
+  }
+  console.warn(`Warning: ompweb is listening on ${hostname} with Basic Auth over HTTP. Use HTTPS or a trusted VPN to protect the password in transit.`);
 }
 
 const nextArgs = ["start", "-p", port];

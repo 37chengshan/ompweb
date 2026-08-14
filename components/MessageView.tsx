@@ -215,7 +215,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 
   return (
     <div
-      style={{ marginBottom: 16, display: "flex", flexDirection: "column", alignItems: "flex-end", paddingRight: 6 }}
+      style={{ marginBottom: 18, display: "flex", flexDirection: "column", alignItems: "flex-end", paddingRight: 6 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -510,7 +510,7 @@ function AssistantMessageView({
   return (
     <div
       className={`chat-message${isStreaming ? " chat-message--live" : ""}`}
-      style={{ marginBottom: 16 }}
+      style={{ marginBottom: 18 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

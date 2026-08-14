@@ -217,26 +217,27 @@ pre, code {
   color: var(--text);
   word-break: break-word;
 }
-.markdown-body p { margin: 0 0 8px; }
+.markdown-body p { margin: 0 0 10px; }
 .markdown-body p:last-child { margin-bottom: 0; }
 .markdown-body h1, .markdown-body h2, .markdown-body h3,
 .markdown-body h4, .markdown-body h5, .markdown-body h6 {
   font-family: var(--font-serif);
   font-weight: 600;
-  margin: 10px 0 5px;
   color: var(--text);
   line-height: 1.35;
   letter-spacing: 0.005em;
 }
-.markdown-body h1 { font-size: 1.16em; }
-.markdown-body h2 { font-size: 1.08em; }
-.markdown-body h3 { font-size: 0.98em; color: color-mix(in srgb, var(--text) 88%, var(--text-muted)); }
+/* Compact headings, kept close to the content they introduce */
+.markdown-body h1 { font-size: 1.2em; margin: 14px 0 8px; }
+.markdown-body h2 { font-size: 1.1em; margin: 12px 0 6px; }
+.markdown-body h3 { font-size: 1em; margin: 10px 0 5px; color: color-mix(in srgb, var(--text) 88%, var(--text-muted)); }
 .markdown-body ul, .markdown-body ol {
   padding-left: 22px;
-  margin: 5px 0 8px;
+  margin: 6px 0 10px;
   list-style-position: outside;
 }
-.markdown-body li { margin: 3px 0; padding-left: 2px; }
+.markdown-body li { margin: 2px 0; padding-left: 2px; }
+.markdown-body li > ul, .markdown-body li > ol { margin: 2px 0 4px; }
 .markdown-body ul > li { list-style-type: disc; }
 .markdown-body ol > li { list-style-type: decimal; }
 .markdown-body li > p { margin: 0; }
@@ -265,13 +266,13 @@ pre, code {
   border-radius: 6px;
 }
 .markdown-body .markdown-inline-code {
-  background: var(--bg-subtle);
+  background: color-mix(in srgb, var(--bg-panel) 62%, var(--bg));
   border-radius: 5px;
   padding: 1px 5px;
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 0.92em;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent);
 }
 .markdown-body .contains-task-list {
   padding-left: 0;
@@ -492,7 +493,7 @@ pre, code {
   position: relative;
   margin: 6px 0;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 6px;
   overflow: hidden;
   background: var(--bg);
   box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 42%, transparent);
@@ -532,6 +533,12 @@ pre, code {
 .markdown-code-action:hover:not(:disabled) {
   color: var(--text);
   border-color: color-mix(in srgb, var(--border) 70%, var(--text-muted));
+  background: var(--bg-hover);
+}
+.markdown-code-action.is-copied {
+  color: var(--status-success);
+  border-color: color-mix(in srgb, var(--status-success) 45%, var(--border));
+  background: var(--bg-panel);
 }
 .markdown-code-action:disabled {
   color: var(--text-dim);
@@ -1459,6 +1466,40 @@ html.dark .dropdown-surface :is(select, option) {
 }
 .shell-topbar > button {
   transition: background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);
+}
+/* Collapsible "Process details" row: quiet when collapsed, subtle hover,
+   small chevron that flips when expanded. */
+.process-details-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-height: 24px;
+  padding: 2px 8px;
+  margin-left: -8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);
+}
+.process-details-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.process-details-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.process-details-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tabbar-scroll {
   border-bottom: 1px solid var(--border);

@@ -264,7 +264,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           {headerAction}
           <button
             onClick={() => copy(code)}
-            className="markdown-code-action"
+            className={copied ? "markdown-code-action is-copied" : "markdown-code-action"}
           >
             {copied ? t("codeBlock.copied") : t("codeBlock.copy")}
           </button>
@@ -277,7 +277,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           fontSize: 12.5,
           lineHeight: 1.62,
           overflowX: "auto",
-          backgroundColor: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+          backgroundColor: "color-mix(in srgb, var(--bg) 88%, var(--bg-panel))",
         }}>
           <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
         </pre>

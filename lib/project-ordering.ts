@@ -1,3 +1,4 @@
+import { comparableProjectPath } from "./project-registry";
 import type { ManagedProject, SessionInfo } from "./types";
 
 // ============================================================================
@@ -32,7 +33,9 @@ export function sortManagedProjects(projects: ManagedProject[]): ManagedProject[
 }
 
 /** Running/unread session counts per project, for the activity indicators on
- *  project rows. */
+ *  project rows. Keys are the case-folded comparable form of the projectRoot
+ *  so casing-only differences (Windows/NTFS) still resolve — callers must
+ *  look up with comparableProjectPath(project.path). */
 export function projectActivityCounts(
   sessions: SessionInfo[],
   runningIds: Iterable<string>,
@@ -44,26 +47,37 @@ export function projectActivityCounts(
   for (const session of sessions) {
     const key = session.projectRoot ?? session.cwd;
     if (!key) continue;
-    const current = result.get(key) ?? { running: 0, unread: 0 };
+    const folded = comparableProjectPath(key);
+    const current = result.get(folded) ?? { running: 0, unread: 0 };
     if (running.has(session.id)) current.running += 1;
     if (unread.has(session.id)) current.unread += 1;
-    result.set(key, current);
+    result.set(folded, current);
   }
   return result;
 }
 
 /** Group sessions under their project. Every project in `projects` gets an
- *  entry (possibly empty) so empty managed projects render their empty state. */
+ *  entry (possibly empty) so empty managed projects render their empty state.
+ *  Buckets are keyed by the exact project path for callers; sessions are
+ *  matched through a case-folded lookup (Windows/NTFS is case-insensitive and
+ *  session-file cwds can carry different casing than the registered path), so
+ *  casing-only differences land in the right bucket instead of silently
+ *  dropping the session from the sidebar. */
 export function groupSessionsByProject(
   projects: ManagedProject[],
   sessions: SessionInfo[],
 ): Map<string, SessionInfo[]> {
   const grouped = new Map<string, SessionInfo[]>();
-  for (const project of projects) grouped.set(project.path, []);
+  const bucketByKey = new Map<string, SessionInfo[]>();
+  for (const project of projects) {
+    const bucket: SessionInfo[] = [];
+    grouped.set(project.path, bucket);
+    bucketByKey.set(comparableProjectPath(project.path), bucket);
+  }
   for (const session of sessions) {
     const key = session.projectRoot ?? session.cwd;
     if (!key) continue;
-    const bucket = grouped.get(key);
+    const bucket = bucketByKey.get(comparableProjectPath(key)) ?? grouped.get(key);
     if (bucket) bucket.push(session);
   }
   return grouped;

@@ -12,6 +12,7 @@ import { toast } from "./ui/toast";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
+import { comparableProjectPath } from "@/lib/project-registry";
 import { Check, ChevronDown, ChevronRight, FileUp, Folder, GitBranch, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 
 declare global {
@@ -1496,7 +1497,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
                 project={project}
                 isActive={isActive}
                 isExpanded={expandedProjectPaths.has(project.path)}
-                activity={projectActivity.get(project.path)}
+                activity={projectActivity.get(comparableProjectPath(project.path))}
                 tree={tree}
                 hiddenCount={filtersActive ? 0 : Math.max(0, tree.length - MAX_PROJECT_SESSIONS)}
                 selectedSessionId={selectedSessionId}

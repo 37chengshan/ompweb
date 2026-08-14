@@ -569,14 +569,19 @@ export class AgentSessionWrapper {
   /** Poll briefly for the session file to appear after agent_start, then
    *  invalidate the session-list caches and re-signal the sidebar so the
    *  running session shows up even though the file landed after the first
-   *  refresh (see the agent_start case). Bounded; stops on destroy. */
+   *  refresh (see the agent_start case). Bounded (max ~10s) and stops on
+   *  destroy. */
   private signalWhenSessionFileAppears(): void {
     if (this.sessionFileSignalTimer) return;
+    let attempts = 0;
     const check = () => {
       this.sessionFileSignalTimer = null;
       if (!this._alive || !this._sessionFile) return;
       if (!existsSync(this._sessionFile)) {
-        this.sessionFileSignalTimer = setTimeout(check, 250);
+        attempts += 1;
+        if (attempts < 40) {
+          this.sessionFileSignalTimer = setTimeout(check, 250);
+        }
         return;
       }
       invalidateSessionListCache();

@@ -16,7 +16,6 @@ import { formatCompactNumber, formatPercent } from "@/lib/format";
 import { translate, useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { Settings2 } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
@@ -731,26 +730,9 @@ export function AppShell() {
         onExplorerRefreshDone={handleExplorerRefreshDone}
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
+        onOpenSettings={() => setSettingsTab("general")}
+        updateAvailable={appUpdateAvailable || ompUpdateAvailable}
       />
-      <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
-        <button
-            onClick={() => setSettingsTab("general")}
-            title="Settings"
-            aria-label="Settings"
-            style={{
-              width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              height: 32, padding: 0, background: "none", border: "none",
-              borderRadius: 9, color: "var(--text-muted)", cursor: "pointer",
-              fontSize: 12,
-              transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
-          >
-            <span style={{ position: "relative", display: "inline-flex" }}><Settings2 size={14} aria-hidden="true" />{(appUpdateAvailable || ompUpdateAvailable) && <span aria-label="Update available" role="status" style={{ position: "absolute", top: -3, right: -4, width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", border: "1px solid var(--bg-panel)" }} />}</span>
-            Settings
-          </button>
-      </div>
     </>
   );
 
@@ -883,11 +865,12 @@ export function AppShell() {
       {/* Center: chat */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: isMobile ? 44 : 36, background: "var(--bg-panel)" }}>
+        <div ref={topBarRef} className="shell-topbar" style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: isMobile ? 44 : 36, background: "var(--bg-panel)" }}>
           <button
             onClick={handleSidebarToggle}
             title={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
             aria-label={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
+            className="ui-icon-button ui-focus-ring"
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
@@ -915,6 +898,7 @@ export function AppShell() {
             title={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
             aria-label={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
             aria-pressed={isDark}
+            className="ui-icon-button ui-focus-ring"
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
@@ -946,6 +930,7 @@ export function AppShell() {
                 disabled={!selectedSession}
                 title={selectedSession ? t("appShell.viewFullHistory") : t("appShell.fullHistoryUnavailable")}
                 aria-label={t("appShell.viewFullHistory")}
+                className="ui-control ui-focus-ring"
                 style={{
                   display: "flex",
                   alignItems: "center",

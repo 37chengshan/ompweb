@@ -215,15 +215,15 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 
   return (
     <div
-      style={{ marginBottom: 16, display: "flex", flexDirection: "column", alignItems: "flex-end" }}
+      style={{ marginBottom: 16, display: "flex", flexDirection: "column", alignItems: "flex-end", paddingRight: 6 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "85%" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", maxWidth: "85%", minWidth: 0 }}>
         <div
           className="chat-message-card"
           style={{
-            flex: 1,
+            maxWidth: "100%",
             minWidth: 0,
             background: "var(--user-bg)",
             border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
@@ -263,14 +263,13 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           {content && <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</SafeMarkdownBody>}
         </div>
 
-      </div>
-
-      {/* Bottom row: action buttons + timestamp */}
-      {(time || canFork || canNavigate || true) && (
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "flex-end",
-          gap: 6, marginTop: 3,
-        }}>
+        {/* Bottom row: action buttons + timestamp — inside the bubble's column,
+            spanning its width, so the timestamp aligns with its right edge. */}
+        {(time || canFork || canNavigate || true) && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "flex-end",
+            gap: 6, marginTop: 3, width: "100%",
+          }}>
           <div
             style={{
               display: "flex", gap: 3,
@@ -367,8 +366,9 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             </div>
           )}
           {time && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{time}</span>}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

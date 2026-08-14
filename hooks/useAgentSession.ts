@@ -94,7 +94,26 @@ function pruneSubagentIdMap<T>(map: Record<string, T>): Record<string, T> {
   const keys = Object.keys(map);
   if (keys.length <= SUBAGENT_ACTIVITY_MAX_IDS) return map;
   const next = { ...map };
-  for (const key of keys.slice(0, keys.length - SUBAGENT_ACTIVITY_MAX_IDS)) delete next[key];
+  let over = keys.length - SUBAGENT_ACTIVITY_MAX_IDS;
+  // JS orders integer-like keys (e.g. a digits-only subagent id "12345")
+  // numerically before string keys, so insertion order only holds for the
+  // non-integer keys. Evict those oldest-first; integer-like keys — whose
+  // relative age is unknowable from a plain object — are evicted last so an
+  // actively-updated digits-only id is never wrongly pruned.
+  const ordered = keys.filter((key) => !/^(?:0|[1-9]\d*)$/.test(key));
+  for (const key of ordered) {
+    if (over <= 0) break;
+    delete next[key];
+    over -= 1;
+  }
+  if (over > 0) {
+    for (const key of keys) {
+      if (over <= 0) break;
+      if (next[key] === undefined) continue;
+      delete next[key];
+      over -= 1;
+    }
+  }
   return next;
 }
 
@@ -1099,6 +1118,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [ensureNewSession]);
 
+  // Reconnect actions captured after their definitions (host-tool and URI
+  // registrations are per-wrapper and are not persisted by omp, and the
+  // roster needs a fresh get_subagents snapshot) so the fatal-error reconnect
+  // below can restore everything the mount flow sets up — not just the stream.
+  const reconnectActionsRef = useRef<((sid: string) => void) | null>(null);
+
   const connectEvents = useCallback((sid: string): Promise<EventStreamConnectionResult> => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -1148,7 +1173,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = setTimeout(() => {
               reconnectTimerRef.current = null;
-              if (agentRunningRef.current && sessionIdRef.current === sid) void connectEvents(sid);
+              if (agentRunningRef.current && sessionIdRef.current === sid) {
+                void connectEvents(sid);
+                // The reconnect restores the event stream, but host tools, URI
+                // schemes, and the subagent roster were registered on the old
+                // connection — re-register them so the agent keeps working.
+                reconnectActionsRef.current?.(sid);
+              }
             }, 1000);
           }
         }
@@ -1246,6 +1277,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Older omp builds: no URI bridge, nothing to do.
     }
   }, [HOST_URI_SCHEMES]);
+
+  reconnectActionsRef.current = (sid: string) => {
+    void registerHostTools(sid);
+    void registerHostUriSchemes(sid);
+    void refreshSubagentRoster(sid);
+  };
 
   /** Answer a host_tool_call with a toolResult payload. */
   const respondHostTool = useCallback(async (sid: string, id: string, text: string, isError = false) => {
@@ -1750,13 +1787,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // no agent_start/agent_end pair will follow.
         if (event.agentInvoked !== false) break;
         if (!agentRunningRef.current) break;
-        void finishPromptWithoutStream(sessionIdRef.current);
+        // Fence with the current run id like agent_end does: the reload below
+        // is async, and a prompt that starts while it is in flight must not be
+        // overwritten by this finished run's snapshot.
+        void finishPromptWithoutStream(sessionIdRef.current, promptRunIdRef.current);
         break;
       case "prompt_error":
         addNotice({ type: "error", message: (event.errorMessage as string | undefined) ?? translate("agentSession.commandFailed") });
         // A failed prompt is terminal: no agent_end follows it. Without this the
-        // spinner and the locked input wait for the 15s reconcile poll.
-        if (agentRunningRef.current) void finishPromptWithoutStream(sessionIdRef.current);
+        // spinner and the locked input wait for the 15s reconcile poll. Fenced
+        // with the run id for the same reason as prompt_result above.
+        if (agentRunningRef.current) void finishPromptWithoutStream(sessionIdRef.current, promptRunIdRef.current);
         break;
       case "notice": {
         const level = event.level as string | undefined;
@@ -2290,7 +2331,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // selection is display-only: the viewed branch is loaded from the session
   // file, while a live agent keeps prompting from its own current leaf.
   const handleNavigate = useCallback(async (entryId: string) => {
-    if (bashRunningRef.current) return;
+    // While a run is active its streaming frames append to the displayed
+    // message list — swapping in another branch's context mid-run would mix
+    // the running turn into the wrong branch (same gating as MessageView's
+    // sessionBusy-navigable check).
+    if (bashRunningRef.current || agentRunningRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     setActiveLeafId(entryId);
@@ -2298,7 +2343,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [loadContext]);
 
   const handleLeafChange = useCallback(async (leafId: string | null) => {
-    if (bashRunningRef.current) return;
+    if (bashRunningRef.current || agentRunningRef.current) return;
     setActiveLeafId(leafId);
     const sid = sessionIdRef.current;
     if (!sid) return;

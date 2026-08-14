@@ -544,7 +544,15 @@ export class AgentSessionWrapper {
   }
 
   private emit(event: AgentEvent): void {
-    for (const l of this.listeners) l(event);
+    for (const l of this.listeners) {
+      try {
+        l(event);
+      } catch {
+        // A throwing subscriber (SSE encode failure, UI handler bug) must not
+        // starve the remaining subscribers — same isolation RpcProcess and
+        // notifyRunningChange apply to their listener sets.
+      }
+    }
   }
 
   private resetIdleTimer(): void {

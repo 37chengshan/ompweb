@@ -243,6 +243,11 @@ export function extractSubagentHistory(sessionFilePath: string): SubagentHistory
 /** Cap on transcript bytes materialized for the dialog (files are small). */
 export const MAX_SUBAGENT_TRANSCRIPT_BYTES = 16 * 1024 * 1024;
 
+/** Bytes read per page call — the total cap above bounds the file, this
+ * bounds the per-response window so large transcripts are delivered
+ * incrementally instead of serialized whole. */
+export const SUBAGENT_TRANSCRIPT_PAGE_BYTES = 256 * 1024;
+
 export interface SubagentTranscriptPage {
   sessionFile: string;
   fromByte: number;
@@ -281,12 +286,13 @@ export function readSubagentTranscriptPage(sessionFilePath: string, fromByte = 0
   if (size > MAX_SUBAGENT_TRANSCRIPT_BYTES) {
     return { ...empty, fromByte: startByte, nextByte: startByte, reset, error: "Subagent transcript exceeds the readable size limit" };
   }
+  const endByte = Math.min(size, startByte + SUBAGENT_TRANSCRIPT_PAGE_BYTES);
   let body: string;
   try {
     // Slice the BYTE buffer, not the decoded string: `startByte` is a UTF-8
     // offset, while string indices are UTF-16 code units — slicing the string
     // misaligns every later page once non-ASCII text precedes the offset.
-    body = readFileSync(sessionFilePath).subarray(startByte).toString("utf8");
+    body = readFileSync(sessionFilePath).subarray(startByte, endByte).toString("utf8");
   } catch {
     return { ...empty, fromByte: startByte, nextByte: startByte, reset };
   }
@@ -296,7 +302,11 @@ export function readSubagentTranscriptPage(sessionFilePath: string, fromByte = 0
   const messages = entries
     .map((entry) => entryToUiMessage(entry, {}))
     .filter((message): message is AgentMessage => message !== null);
-  const nextByte = startByte + Buffer.byteLength(completeText, "utf8");
+  let nextByte = startByte + Buffer.byteLength(completeText, "utf8");
+  // Guarantee forward progress: when the window ends mid-line and more
+  // content remains, the partial line has no newline to complete it — skip
+  // it instead of returning the same offset forever.
+  if (nextByte === startByte && endByte < size) nextByte = endByte;
   return { sessionFile: sessionFilePath, fromByte: startByte, nextByte, reset, messages, totalBytes: size };
 }
 

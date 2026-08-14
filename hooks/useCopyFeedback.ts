@@ -15,6 +15,9 @@ export function useCopyFeedback(): { copied: boolean; copy: (text: string) => vo
       setCopied(true);
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      // Clipboard denied (permissions, unfocused document): stay silent —
+      // the button just never flips to "copied".
     });
   }, []);
 

@@ -12,7 +12,6 @@ import { clearDraft, getDraft, setDraft, type ChatDraftFile, type ChatDraftImage
 import { WEB_SLASH_COMMANDS, expandWebSlashCommand } from "@/lib/web-slash-commands";
 import {
   composeMessageWithTextAttachments,
-  isTextAttachmentFile,
   MAX_ATTACHED_TEXT_BYTES,
   MAX_ATTACHED_TEXT_FILES,
   type AttachedTextFileData,
@@ -506,7 +505,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     },
   }));
 
-  const processImageFiles = useCallback(async (files: File[], unsupportedCount: number) => {
+  const processImageFiles = useCallback(async (files: File[]) => {
     const remaining = Math.max(
       0,
       MAX_ATTACHED_IMAGES - attachedImagesRef.current.length - pendingImageCountRef.current,
@@ -547,7 +546,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
         newImages.slice(accepted.length).forEach(revokeImagePreview);
         return [...prev, ...accepted];
       });
-      setAttachError((prev) => (unsupportedCount > 0 ? prev : null));
+      setAttachError(null);
     } catch {
       setAttachError("One or more images could not be read. Try a different file.");
     } finally {
@@ -555,27 +554,27 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     }
   }, []);
 
-  const processTextFiles = useCallback(async (files: File[], unsupportedCount: number) => {
+  const processTextFiles = useCallback(async (files: File[]) => {
     const remaining = Math.max(
       0,
       MAX_ATTACHED_TEXT_FILES - attachedTextFilesRef.current.length - pendingTextFileCountRef.current,
     );
     const textFiles = files
-      .filter((file) => isTextAttachmentFile(file) && file.size <= MAX_ATTACHED_TEXT_BYTES)
+      .filter((file) => file.size <= MAX_ATTACHED_TEXT_BYTES)
       .slice(0, remaining);
     if (!textFiles.length) {
       if (files.length > 0) {
         setAttachError(
           remaining === 0
             ? `Maximum of ${MAX_ATTACHED_TEXT_FILES} text files reached.`
-            : `${files.length} text file(s) skipped: text and markdown files up to ${Math.round(MAX_ATTACHED_TEXT_BYTES / 1024)} KB are supported.`,
+            : `${files.length} file(s) skipped: files up to ${Math.round(MAX_ATTACHED_TEXT_BYTES / 1024)} KB are supported.`,
         );
       }
       return;
     }
     pendingTextFileCountRef.current += textFiles.length;
     try {
-      const newFiles = await Promise.all(
+      const readFiles = await Promise.all(
         textFiles.map(async (file): Promise<AttachedTextFile> => ({
           name: file.name,
           mimeType: file.type,
@@ -583,13 +582,20 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
           size: file.size,
         })),
       );
+      // Binary content (NUL bytes) cannot be inlined into the prompt.
+      const newFiles = readFiles.filter((file) => !file.content.includes("\u0000"));
+      const skipped = textFiles.length - newFiles.length;
       setAttachedTextFiles((prev) => [
         ...prev,
         ...newFiles.slice(0, Math.max(0, MAX_ATTACHED_TEXT_FILES - prev.length)),
       ]);
-      setAttachError((prev) => (unsupportedCount > 0 ? prev : null));
+      if (skipped > 0) {
+        setAttachError(`${skipped} file(s) skipped: binary files cannot be attached.`);
+      } else {
+        setAttachError(null);
+      }
     } catch {
-      setAttachError("One or more text files could not be read. Try a different file.");
+      setAttachError("One or more files could not be read. Try a different file.");
     } finally {
       pendingTextFileCountRef.current -= textFiles.length;
     }
@@ -601,13 +607,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       return;
     }
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-    const textFiles = files.filter((file) => isTextAttachmentFile(file));
-    const unsupportedFiles = files.filter((file) => !file.type.startsWith("image/") && !isTextAttachmentFile(file));
-    if (unsupportedFiles.length > 0) {
-      setAttachError(`${unsupportedFiles.length} file(s) skipped: only images, text, and markdown files are supported.`);
-    }
-    void processImageFiles(imageFiles, unsupportedFiles.length);
-    void processTextFiles(textFiles, unsupportedFiles.length);
+    const otherFiles = files.filter((file) => !file.type.startsWith("image/"));
+    void processImageFiles(imageFiles);
+    void processTextFiles(otherFiles);
   }, [isStreaming, processImageFiles, processTextFiles]);
 
   const removeImage = useCallback((index: number) => {
@@ -1372,11 +1374,10 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       <input
         ref={fileInputRef}
         type="file"
-        // Extension-only list: a leading "image/*" wildcard makes the
-        // Windows/Chrome dialog default to an images-only filter and the
-        // text types disappear behind a dropdown. Explicit extensions group
-        // into one "Custom files" filter covering everything we accept.
-        accept=".png,.jpg,.jpeg,.gif,.webp,.avif,.bmp,.ico,.svg,.txt,.text,.md,.markdown,.mdx"
+        // Accept every file type: the handler below reads any non-image file
+        // as text (rejecting binary content), so restricting the picker would
+        // only hide files the app can attach (code, config, logs, ...).
+        accept="*/*"
         multiple
         disabled={isStreaming}
         style={{ display: "none" }}
@@ -1991,9 +1992,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
               </svg>
             </button>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, memo, useRef, useEffect } from "react";
+import { GitBranch } from "lucide-react";
 import { translate, useI18n } from "@/lib/i18n";
 import type { SessionEntry, SessionTreeNode } from "@/lib/types";
 
@@ -18,8 +19,6 @@ interface Props {
   onToggle?: () => void;
   /** Whether a session is currently active (used to show appropriate empty reason) */
   hasSession?: boolean;
-  /** When inline, render icon-only (no text label) to save horizontal space */
-  compact?: boolean;
 }
 
 // Find the visible entry IDs on the path from root to activeLeafId.
@@ -243,7 +242,7 @@ const TreeNodeView = memo(function TreeNodeView({ node, activePathIds, depth, is
   return true;
 });
 
-export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, containerRef, open: openProp, onToggle, hasSession, compact }: Props) {
+export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, containerRef, open: openProp, onToggle, hasSession }: Props) {
   const { t } = useI18n();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
@@ -322,12 +321,7 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
   const hasContent = !noBranchReason && firstNode !== null && firstNode.children.length > 1;
 
   const branchIcon = (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: hasContent ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}>
-      <line x1="6" y1="3" x2="6" y2="15" />
-      <circle cx="18" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <path d="M18 9a9 9 0 0 1-9 9" />
-    </svg>
+    <GitBranch size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: hasContent ? "var(--accent)" : undefined, flexShrink: 0 }} />
   );
 
   const chevron = (
@@ -339,35 +333,21 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
 
   if (inline) {
     return (
-      <div style={{ height: "100%", display: "flex", alignItems: "stretch" }}>
+      <div style={{ height: "100%", display: "flex", alignItems: "center" }}>
         <button
           ref={btnRef}
           onClick={() => onToggle ? onToggle() : setOpenInternal((v) => !v)}
+          className="shell-toolbar-btn ui-focus-ring"
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            height: "100%",
-            padding: "0 12px",
-            background: open ? "var(--bg-selected)" : "none",
-            border: "none",
-            borderTop: open ? "2px solid var(--accent)" : "2px solid transparent",
-            borderRight: "1px solid var(--border)",
-            cursor: "pointer",
-            color: open ? "var(--text)" : "var(--text-muted)",
-            fontSize: 11,
-            whiteSpace: "nowrap",
-            transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
+            background: open ? "var(--bg-selected)" : undefined,
+            color: open ? "var(--text)" : undefined,
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = open ? "var(--text)" : "var(--text-muted)"; }}
           title={t("branchNavigator.branches")}
           aria-label={t("branchNavigator.branches")}
           aria-haspopup="menu"
           aria-expanded={open}
         >
           {branchIcon}
-          {!compact && <span>{t("branchNavigator.branches")}</span>}
         </button>
         {open && dropdownPos && (
           <div data-branch-panel className="dropdown-surface" style={{

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { LOCALES, useI18n } from "@/lib/i18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
@@ -105,17 +106,29 @@ export function LanguageSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
+        className="shell-toolbar-btn ui-focus-ring"
         style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          minWidth: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: "0 8px",
-          background: "none", border: "none", borderRight: "1px solid var(--border)",
-          color: open ? "var(--text)" : "var(--text-muted)", cursor: "pointer",
-          transition: "color var(--dur-fast) var(--ease-out-warm)", fontSize: 11, whiteSpace: "nowrap",
+          width: "auto",
+          minWidth: isMobile ? 44 : 36,
+          padding: "0 8px",
+          gap: 4,
+          background: open ? "var(--bg-selected)" : undefined,
+          color: open ? "var(--text)" : undefined,
+          fontSize: 11,
+          whiteSpace: "nowrap",
         }}
-        onMouseEnter={(e) => { if (!open) e.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(e) => { if (!open) e.currentTarget.style.color = "var(--text-muted)"; }}
       >
         {current.label}
+        <ChevronDown
+          size={10}
+          strokeWidth={2}
+          aria-hidden="true"
+          style={{
+            flexShrink: 0,
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform var(--dur-fast) var(--ease-out-warm)",
+          }}
+        />
       </button>
 
       {open && (

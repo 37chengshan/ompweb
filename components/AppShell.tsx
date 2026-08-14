@@ -11,6 +11,7 @@ import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { Check, History, Menu, Moon, PanelLeft, Sun, Terminal, Wand2 } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { formatCompactNumber, formatPercent } from "@/lib/format";
 import { translate, useI18n } from "@/lib/i18n";
@@ -864,31 +865,17 @@ export function AppShell() {
 
       {/* Center: chat */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        {/* Top bar with sidebar toggle */}
+        {/* Top bar: compact icon-led control bar */}
         <div ref={topBarRef} className="shell-topbar" style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: isMobile ? 44 : 36, background: "var(--bg-panel)" }}>
+        {/* Utility group: sidebar, theme, language */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, height: "100%", paddingLeft: isMobile ? 4 : 8 }}>
           <button
             onClick={handleSidebarToggle}
             title={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
             aria-label={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
-            className="ui-icon-button ui-focus-ring"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
-              background: "none", border: "none", borderRight: "1px solid var(--border)",
-              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--dur-fast) var(--ease-out-warm)",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+            className="shell-toolbar-btn ui-focus-ring"
           >
-            {sidebarOpen ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            )}
+            {sidebarOpen ? <PanelLeft size={16} strokeWidth={1.8} aria-hidden="true" /> : <Menu size={16} strokeWidth={1.8} aria-hidden="true" />}
           </button>
           <button
             onClick={(e) => {
@@ -898,88 +885,25 @@ export function AppShell() {
             title={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
             aria-label={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
             aria-pressed={isDark}
-            className="ui-icon-button ui-focus-ring"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
-              background: "none", border: "none", borderRight: "1px solid var(--border)",
-              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--dur-fast) var(--ease-out-warm)",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+            className="shell-toolbar-btn ui-focus-ring"
           >
-            {isDark ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-            )}
+            {isDark ? <Sun size={16} strokeWidth={1.8} aria-hidden="true" /> : <Moon size={16} strokeWidth={1.8} aria-hidden="true" />}
           </button>
           <LanguageSwitcher />
-          {showChat && (
-            <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
+        </div>
+        {showChat && (
+          <>
+            <div className="shell-toolbar-divider" aria-hidden="true" />
+            {/* Session controls: history, generate title, branches, system */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, height: "100%" }}>
               <button
                 onClick={handleViewFullHistory}
                 disabled={!selectedSession}
-                title={selectedSession ? t("appShell.viewFullHistory") : t("appShell.fullHistoryUnavailable")}
-                aria-label={t("appShell.viewFullHistory")}
-                className="ui-control ui-focus-ring"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  height: "100%",
-                  width: isMobile ? 44 : undefined,
-                  padding: isMobile ? 0 : "0 12px",
-                  background: "none",
-                  border: "none",
-                  borderTop: "2px solid transparent",
-                  borderRight: "1px solid var(--border)",
-                  color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
-                  cursor: selectedSession ? "pointer" : "not-allowed",
-                  opacity: selectedSession ? 1 : 0.45,
-                  flexShrink: 0,
-                  fontSize: 11,
-                  whiteSpace: "nowrap",
-                  transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
-                }}
-                onMouseEnter={(e) => {
-                  if (!selectedSession) return;
-                  e.currentTarget.style.color = "var(--text)";
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = selectedSession ? "var(--text-muted)" : "var(--text-dim)";
-                  e.currentTarget.style.background = "none";
-                }}
+                title={selectedSession ? t("appShell.fullHistory") : t("appShell.fullHistoryUnavailable")}
+                aria-label={t("appShell.fullHistory")}
+                className="shell-toolbar-btn ui-focus-ring"
               >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{
-                    color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-                  <path d="M3 3v5h5" />
-                  <path d="M12 7v5l3 2" />
-                </svg>
-                {!isMobile && <span>{t("appShell.fullHistory")}</span>}
+                <History size={16} strokeWidth={1.8} aria-hidden="true" />
               </button>
               {(() => {
                 const hasMessages = Boolean(
@@ -1011,45 +935,21 @@ export function AppShell() {
                     disabled={disabled}
                     title={title}
                     aria-label={label}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      height: "100%", width: isMobile ? 44 : undefined, padding: isMobile ? 0 : "0 12px",
-                      background: "none", border: "none",
-                      borderTop: "2px solid transparent",
-                      borderRight: "1px solid var(--border)",
-                      color: isError ? "var(--status-error)" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)",
-                      cursor: disabled ? "not-allowed" : "pointer",
-                      opacity: disabled && autoNameStatus.kind !== "naming" ? 0.45 : 1,
-                      flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
-                      transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (disabled) return;
-                      e.currentTarget.style.color = isError ? "var(--status-error)" : "var(--text)";
-                      e.currentTarget.style.background = "var(--bg-hover)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = isError ? "var(--status-error)" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)";
-                      e.currentTarget.style.background = "none";
-                    }}
+                    className="shell-toolbar-btn ui-focus-ring"
+                    style={{ opacity: autoNameStatus.kind === "naming" ? 1 : undefined }}
                   >
                     {autoNameStatus.kind === "naming" ? (
-                      <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
                         <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                       </svg>
                     ) : isSuccess ? (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
+                      <Check size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: "var(--accent)" }} />
+                    ) : isError ? (
+                      <Wand2 size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: "var(--status-error)" }} />
                     ) : (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="m15 4 5 5L7 22l-5-5Z" />
-                        <path d="m14 5 5 5" />
-                        <path d="M6 4V2M5 3H3M19 19v3M17.5 20.5h3" />
-                      </svg>
+                      <Wand2 size={16} strokeWidth={1.8} aria-hidden="true" />
                     )}
-                    {!isMobile && <span>{label}</span>}
                   </button>
                 );
               })()}
@@ -1058,7 +958,6 @@ export function AppShell() {
                 activeLeafId={branchActiveLeafId}
                 onLeafChange={handleBranchLeafChange}
                 inline
-                compact={isMobile}
                 containerRef={topBarRef}
                 open={activeTopPanel === "branches"}
                 onToggle={() => toggleTopPanel("branches")}
@@ -1067,33 +966,16 @@ export function AppShell() {
               <button
                 ref={systemBtnRef}
                 onClick={() => toggleTopPanel("system")}
-                title={t("appShell.systemPrompt")}
-                aria-label={t("appShell.systemPrompt")}
+                title={t("appShell.system")}
+                aria-label={t("appShell.system")}
                 aria-pressed={activeTopPanel === "system"}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  height: "100%", width: isMobile ? 44 : undefined, padding: isMobile ? 0 : "0 12px",
-                  background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
-                  border: "none",
-                  borderTop: activeTopPanel === "system" ? "2px solid var(--accent)" : "2px solid transparent",
-                  borderRight: "1px solid var(--border)",
-                  cursor: "pointer",
-                  color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-                  fontSize: 11, whiteSpace: "nowrap", transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)"; }}
+                className="shell-toolbar-btn ui-focus-ring"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}>
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="8" y1="13" x2="16" y2="13" />
-                  <line x1="8" y1="17" x2="13" y2="17" />
-                </svg>
-                {!isMobile && <span>{t("appShell.system")}</span>}
+                <Terminal size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: systemPrompt ? "var(--accent)" : undefined }} />
               </button>
             </div>
-          )}
+          </>
+        )}
           {/* Session stats — right-aligned in top bar */}
           {showChat && (sessionStats || contextUsage) && (() => {
             const tok = sessionStats?.tokens;
@@ -1146,14 +1028,19 @@ export function AppShell() {
                   overflow: "hidden",
                   background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
                   border: "none",
-                  borderTop: activeTopPanel === "session" ? "2px solid var(--accent)" : "2px solid transparent",
                   fontSize: 11, color: "var(--text-muted)",
                   whiteSpace: "nowrap", cursor: "pointer",
                   fontVariantNumeric: "tabular-nums",
                   transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)"; }}
+                onMouseEnter={(e) => {
+                  if (activeTopPanel !== "session") e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = activeTopPanel === "session" ? "var(--bg-selected)" : "none";
+                  e.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
+                }}
               >
                 {isMobile && (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

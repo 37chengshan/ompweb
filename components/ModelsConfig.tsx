@@ -1215,12 +1215,18 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
     eventSourceRef.current = es;
 
     es.onmessage = (e) => {
-      const data = JSON.parse(e.data) as {
+      let data: {
         type: string; url?: string; instructions?: string | null;
         token?: string; message?: string; placeholder?: string | null;
         userCode?: string; verificationUri?: string; intervalSeconds?: number | null; expiresInSeconds?: number | null;
         options?: { id: string; label: string }[];
       };
+      try {
+        data = JSON.parse(e.data) as typeof data;
+      } catch {
+        // Malformed frame: ignore rather than killing the handler.
+        return;
+      }
       if (data.type === "auth") {
         setLoginState({ phase: "auth", url: data.url!, instructions: data.instructions ?? null, token: data.token! });
         if (isSafeExternalUrl(data.url)) window.open(data.url, "_blank", "noopener,noreferrer");

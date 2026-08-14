@@ -435,9 +435,12 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
   });
   const sessionBusy = agentRunning || bashRunning;
 
-  // Register the abort handler for the global Esc shortcut
+  // Register the abort handler for the global Esc shortcut. The cleanup
+  // matters: unmounting mid-run must not leave the module-global handler
+  // pointing at this (now unmounted) instance's handleAbort.
   useEffect(() => {
     registerAbortHandler(sessionBusy ? handleAbort : null);
+    return () => registerAbortHandler(null);
   }, [sessionBusy, handleAbort]);
 
   // Cycle model / thinking level via ⌘/Ctrl+Alt+M and ⌘/Ctrl+Alt+T (RPC

@@ -25,6 +25,9 @@ export async function GET(
   }
 
   const encoder = new TextEncoder();
+  // Hoisted so the stream's cancel() (half-open disconnects that never fire
+  // the abort signal) can release the heartbeat and the RpcProcess listener.
+  let streamCleanup: (() => void) | null = null;
   const stream = new ReadableStream({
     start(controller) {
       let closed = false;
@@ -87,6 +90,7 @@ export async function GET(
           // controller already closed
         }
       };
+      streamCleanup = cleanup;
 
       // Detect client disconnect via abort signal
       req.signal?.addEventListener("abort", cleanup);
@@ -116,6 +120,9 @@ export async function GET(
         if (closed) return;
         unsubscribe = session.onEvent((event) => encode(event));
       })();
+    },
+    cancel() {
+      streamCleanup?.();
     },
   });
 

@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 // session ids. Also carries refresh hints when a live session's file metadata
 // changes, so the sidebar can show a newly-started session immediately.
 export async function GET(req: Request) {
+  // Hoisted so the stream's cancel() (half-open disconnects that never fire
+  // the abort signal) can release the heartbeat and the subscriber.
+  let streamCleanup: (() => void) | null = null;
   const stream = new ReadableStream({
     start(controller) {
       const encode = (data: unknown) => {
@@ -45,12 +48,16 @@ export async function GET(req: Request) {
         unsubscribe();
         try { controller.close(); } catch { /* already closed */ }
       };
+      streamCleanup = cleanup;
 
       req.signal?.addEventListener("abort", cleanup);
       if (req.signal?.aborted) {
         cleanup();
         return;
       }
+    },
+    cancel() {
+      streamCleanup?.();
     },
   });
 

@@ -690,15 +690,16 @@ export function AppShell() {
   }, [handleOpenFile, selectedSession?.id]);
 
   const handleCloseFileTab = useCallback((tabId: string) => {
-    setFileTabs((prev) => {
-      const next = prev.filter((t) => t.id !== tabId);
-      if (next.length === 0) setRightPanelOpen(false);
-      return next;
-    });
+    // Compute everything from the current list outside the updaters: no side
+    // effect inside a state updater, and no stale-closure read (the callback
+    // is recreated whenever fileTabs changes, but a batched double-close
+    // would still have read the pre-close list from the closure).
+    const next = fileTabs.filter((t) => t.id !== tabId);
+    setFileTabs(next);
+    if (next.length === 0) setRightPanelOpen(false);
     setActiveFileTabId((cur) => {
       if (cur !== tabId) return cur;
-      const remaining = fileTabs.filter((t) => t.id !== tabId);
-      return remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+      return next.length > 0 ? next[next.length - 1].id : null;
     });
   }, [fileTabs]);
 

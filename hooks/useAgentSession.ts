@@ -576,6 +576,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
   const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean } | null>(null);
+  // False once this hook instance unmounts: background loops (prompt/bash
+  // settlement polling) must not keep firing on a dead instance.
+  const hookAliveRef = useRef(true);
   const [modelNames, setModelNames] = useState<Record<string, string>>({});
   const [modelList, setModelList] = useState<ModelEntry[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -1551,7 +1554,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     await delay(PROMPT_SETTLE_INITIAL_DELAY_MS);
     const startedAt = Date.now();
 
-    while (agentRunningRef.current && Date.now() - startedAt < PROMPT_SETTLE_MAX_MS) {
+    while (
+      hookAliveRef.current
+      && sessionIdRef.current === sid
+      && agentRunningRef.current
+      && Date.now() - startedAt < PROMPT_SETTLE_MAX_MS
+    ) {
       if (runId !== undefined && promptRunIdRef.current !== runId) return;
       try {
         const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
@@ -2969,6 +2977,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [messages, streamState, agentRunning, agentPhase, extensionWidgets, isCompacting, retryInfo, activeSubagentCount, todoPhases, scrollToBottom]);
 
   useEffect(() => () => {
+    hookAliveRef.current = false;
     if (followScrollFrameRef.current !== null) cancelAnimationFrame(followScrollFrameRef.current);
   }, []);
 

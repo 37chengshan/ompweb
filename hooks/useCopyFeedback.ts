@@ -9,9 +9,11 @@ import { copyText } from "@/lib/clipboard";
 export function useCopyFeedback(): { copied: boolean; copy: (text: string) => void } {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
 
   const copy = useCallback((text: string) => {
     copyText(text).then(() => {
+      if (!mountedRef.current) return;
       setCopied(true);
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => setCopied(false), 1500);
@@ -22,6 +24,7 @@ export function useCopyFeedback(): { copied: boolean; copy: (text: string) => vo
   }, []);
 
   useEffect(() => () => {
+    mountedRef.current = false;
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 

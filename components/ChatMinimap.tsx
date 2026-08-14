@@ -71,6 +71,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
   const [minimapHovered, setMinimapHovered] = useState(false);
   const [mouseYRatio, setMouseYRatio] = useState<number | null>(null);
   const draggingRef = useRef(false);
+  const dragListenersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // RAF gate for mousemove so a pixel-level pointer event doesn't re-render
   // the whole minimap (every node + tooltip) on every frame.
@@ -256,12 +257,26 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     };
     const onUp = () => {
       draggingRef.current = false;
+      dragListenersRef.current = null;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    dragListenersRef.current = { onMove, onUp };
   }, [visible, viewportRatio, scrollRatio, scrollToMinimapRatio]);
+
+  // An interrupted drag (unmount before mouseup) must not leak the window
+  // listeners.
+  useEffect(() => () => {
+    const listeners = dragListenersRef.current;
+    if (listeners) {
+      window.removeEventListener("mousemove", listeners.onMove);
+      window.removeEventListener("mouseup", listeners.onUp);
+      dragListenersRef.current = null;
+    }
+    draggingRef.current = false;
+  }, []);
 
 
 

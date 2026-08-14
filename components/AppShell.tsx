@@ -1208,7 +1208,9 @@ export function AppShell() {
               left: topPanelPos.left,
               width: topPanelPos.width,
               maxHeight: `calc(100dvh - ${topPanelPos.top}px)`,
-              overflowY: "auto",
+              // Scroll (not clip) when the window is too narrow for the stat
+              // columns — usage/cost must never be cut off.
+              overflow: "auto",
               zIndex: 500,
             }}>
               {activeTopPanel === "system" && (
@@ -1375,7 +1377,7 @@ export function AppShell() {
                         display: "grid",
                         gridTemplateColumns: isMobile
                           ? "1fr"
-                          : "minmax(360px, 1.7fr) minmax(140px, 0.55fr) minmax(190px, 0.75fr)",
+                          : "minmax(300px, 1.7fr) minmax(120px, 0.55fr) minmax(160px, 0.75fr)",
                         gap: isMobile ? 16 : 24,
                         fontSize: 12,
                         lineHeight: 1.5,

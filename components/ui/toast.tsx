@@ -13,6 +13,7 @@
 import { Toast } from "@base-ui/react/toast";
 import { AlertCircle, Check, Info, X } from "lucide-react";
 import { useState } from "react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import type React from "react";
 
 type ToastKind = "success" | "error" | "info";
@@ -102,12 +103,16 @@ export function ClampedDescription({ children }: { children: React.ReactNode }) 
 
 function Toaster() {
   const { toasts } = Toast.useToastManager<ToastData>();
+  const isMobile = useIsMobile();
+  // Clear the app chrome (topbar 36/44px + tab bar 36px) with a safe gap so
+  // toasts never cover the header, tabs, or chat content.
+  const topOffset = isMobile ? 88 : 80;
   return (
     <Toast.Portal>
       <Toast.Viewport
         style={{
           position: "fixed",
-          bottom: 16,
+          top: topOffset,
           right: 16,
           zIndex: 2100,
           display: "flex",

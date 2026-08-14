@@ -312,6 +312,15 @@ export class AgentSessionWrapper {
         // agent's first reply or terminal event.
         invalidateSessionListCache();
         refreshSessionList = true;
+        // If the file is not on disk yet, the sidebar refresh above may walk
+        // the sessions dir before it exists — and the mtime-keyed walk cache
+        // then stays stale (NTFS does not bump the sessions-root mtime for
+        // files added inside a project subdirectory), hiding the running
+        // session from the list until the next invalidation (agent_end).
+        // Re-signal once the file actually lands.
+        if (this._sessionFile && !existsSync(this._sessionFile)) {
+          this.signalWhenSessionFileAppears();
+        }
         break;
       case "agent_end":
         if (event.isTerminal !== false) {
@@ -553,6 +562,27 @@ export class AgentSessionWrapper {
         // notifyRunningChange apply to their listener sets.
       }
     }
+  }
+
+  private sessionFileSignalTimer: NodeJS.Timeout | null = null;
+
+  /** Poll briefly for the session file to appear after agent_start, then
+   *  invalidate the session-list caches and re-signal the sidebar so the
+   *  running session shows up even though the file landed after the first
+   *  refresh (see the agent_start case). Bounded; stops on destroy. */
+  private signalWhenSessionFileAppears(): void {
+    if (this.sessionFileSignalTimer) return;
+    const check = () => {
+      this.sessionFileSignalTimer = null;
+      if (!this._alive || !this._sessionFile) return;
+      if (!existsSync(this._sessionFile)) {
+        this.sessionFileSignalTimer = setTimeout(check, 250);
+        return;
+      }
+      invalidateSessionListCache();
+      notifyRunningChange({ refreshSessionList: true });
+    };
+    this.sessionFileSignalTimer = setTimeout(check, 250);
   }
 
   private resetIdleTimer(): void {
@@ -1032,6 +1062,10 @@ export class AgentSessionWrapper {
     if (!this._alive) return;
     this._alive = false;
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.sessionFileSignalTimer) {
+      clearTimeout(this.sessionFileSignalTimer);
+      this.sessionFileSignalTimer = null;
+    }
     this.unsubscribeFrames?.();
     this.clearPendingUiRequests();
     if (this.mcpListWaiter) {

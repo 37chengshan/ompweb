@@ -1779,6 +1779,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               if (!applied) return; // stale snapshot — drop everything derived from it
               if (d.state?.contextUsage !== undefined) setContextUsage(d.state.contextUsage ?? null);
               if (d.state?.systemPrompt !== undefined) setSystemPrompt(d.state.systemPrompt || null);
+              // Fast mode is family-scoped in omp: re-sync from the terminal
+              // state so a run that switched models/families never leaves the
+              // composer toggle stuck on a stale value.
+              if (d.state?.fastModeEnabled !== undefined) setFastModeEnabled(d.state.fastModeEnabled);
+              setFastModeActive(d.state?.fastModeActive);
               if (d.state?.extensionStatuses !== undefined) setExtensionStatuses(d.state.extensionStatuses ?? []);
               if (d.state?.extensionWidgets !== undefined) setExtensionWidgets(d.state.extensionWidgets ?? []);
               if (d.state?.todoPhases !== undefined) setTodoPhases(d.state.todoPhases ?? []);

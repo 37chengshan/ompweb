@@ -738,9 +738,15 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         return state.projectRoot;
       }
     }
-    // A registered project path is its own canonical root.
-    if (projects.some((p) => p.path === cwd)) return cwd;
-    const match = allSessions.find((s) => s.cwd === cwd);
+    // A registered project path is its own canonical root. The lookup goes
+    // through the case-folded comparable form (Windows/NTFS is
+    // case-insensitive, so a session's cwd/projectRoot can spell the same
+    // folder with different casing), and the registered path itself is
+    // returned so the caller gets a canonical value.
+    const registered = projects.find((p) => comparableProjectPath(p.path) === comparableProjectPath(cwd));
+    if (registered) return registered.path;
+    const foldedCwd = comparableProjectPath(cwd);
+    const match = allSessions.find((s) => comparableProjectPath(s.cwd) === foldedCwd);
     return match?.projectRoot ?? cwd;
   }, [worktreeStateByProject, allSessions, projects]);
 
@@ -1044,7 +1050,9 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
       }
       // Hiding the active project leaves nothing selected; activate the next
       // most-relevant project so New Session and Explorer stay usable.
-      if (selectedProject === projectPath) {
+      // Compare case-folded — the selected cwd can spell the project path
+      // with different casing than this row (Windows/NTFS).
+      if (selectedProject !== null && comparableProjectPath(selectedProject) === comparableProjectPath(projectPath)) {
         const next = sortedProjects.find((p) => p.path !== projectPath);
         setSelectedCwd(next ? next.path : null);
       }
@@ -1123,7 +1131,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         return;
       }
       setWtConfirmRemove(null);
-      if (selectedCwd === path) setSelectedCwd(root);
+      if (selectedCwd !== null && comparableProjectPath(selectedCwd) === comparableProjectPath(path)) setSelectedCwd(root);
       setWtRefreshKey((k) => k + 1);
     } catch (e) {
       setWtError(e instanceof Error ? e.message : String(e));
@@ -1219,7 +1227,10 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     activeGitState?.isGit
     && activeGitState.isTopLevel
     && selectedCwd
-    && selectedProject === activeGitState.projectRoot,
+    && selectedProject !== null
+    // Case-folded: the active project may be spelled differently than the
+    // server-resolved git root (Windows/NTFS), yet still be the same repo.
+    && comparableProjectPath(selectedProject) === comparableProjectPath(activeGitState.projectRoot),
   );
   const toggleWorktrees = useCallback(() => {
     setWtDropdownOpen((v) => !v);
@@ -1485,7 +1496,12 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
 
           {visibleProjectEntries.map(({ project, sessions }) => {
             const tree = buildSessionTree(sessions);
-            const isActive = selectedProject === project.path;
+            // Sessions group under a project through the case-folded comparable
+            // form (see groupSessionsByProject), so the active highlight must
+            // use the same comparison: a session whose cwd/projectRoot spells
+            // the project folder with different casing (Windows/NTFS) lands in
+            // this row — the row must light up for it too.
+            const isActive = selectedProject !== null && comparableProjectPath(selectedProject) === comparableProjectPath(project.path);
             // Each project's own branch comes from its own cached Git state —
             // a project never inherits another repo's branch. Only the active
             // repo's row owns the single switcher anchor so the dropdown opens

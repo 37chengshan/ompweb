@@ -21,6 +21,7 @@ import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import { getInitialNavigation } from "@/lib/initial-navigation";
+import { comparableProjectPath } from "@/lib/comparable-path";
 import { showCompletionNotification } from "@/lib/browser-notifications";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
@@ -492,8 +493,12 @@ export function AppShell() {
     // Worktrees of one repo share a project root. Moving the effective cwd
     // within the same project (e.g. switching worktree, or clicking a session
     // that lives in another worktree) must not close the open session.
+    // Compare case-folded: the same folder can be spelled with different
+    // casing (Windows/NTFS) between the session's projectRoot and the
+    // sidebar's resolved project root.
     const newProject = projectRoot ?? cwd;
-    if (selectedSession && (selectedSession.projectRoot ?? selectedSession.cwd) === newProject) {
+    const sessionProject = selectedSession ? (selectedSession.projectRoot ?? selectedSession.cwd) : null;
+    if (sessionProject && comparableProjectPath(sessionProject) === comparableProjectPath(newProject)) {
       return;
     }
     // Close any session that belongs to a different project — it no longer

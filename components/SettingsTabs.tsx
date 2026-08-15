@@ -33,6 +33,11 @@ export const SETTINGS_CATEGORIES: TabItem[] = [
   { id: "system", label: "System & Updates", description: "App updates, runtime version, and active session restart", Icon: RefreshCw },
 ];
 
+export const getNormalizedActive = (tab: SettingsTab): SettingsTab => {
+  if (tab === "skills" || tab === "plugins" || tab === "extensions") return "mcp";
+  return tab;
+};
+
 export function SettingsTabs({
   active,
   onSelect,
@@ -44,11 +49,6 @@ export function SettingsTabs({
   workspaceReady?: boolean;
   layout?: "horizontal" | "vertical";
 }) {
-  const getNormalizedActive = (tab: SettingsTab): SettingsTab => {
-    if (tab === "skills" || tab === "plugins" || tab === "extensions") return "mcp";
-    return tab;
-  };
-
   const currentActive = getNormalizedActive(active);
 
   const onKeyDown = (event: React.KeyboardEvent, index: number) => {

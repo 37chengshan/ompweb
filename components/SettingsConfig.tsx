@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { Copy, ExternalLink, RefreshCw, RotateCcw, Sparkles, Search, AlertCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
-import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES } from "./SettingsTabs";
+import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
 
 const SettingsTabLoading = () => <div role="status" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>Loading settings…</div>;
 const ModelsConfig = dynamic(() => import("./ModelsConfig").then((module) => module.ModelsConfig), { loading: SettingsTabLoading });
@@ -59,6 +59,15 @@ const nativeSelectStyle = {
 const nativeOptionStyle = {
   background: "var(--bg-panel)",
   color: "var(--text)",
+} as const;
+
+const chipStyle = {
+  fontSize: 10,
+  padding: "1px 6px",
+  borderRadius: 4,
+  background: "var(--bg-subtle)",
+  color: "var(--text-muted)",
+  fontWeight: 500,
 } as const;
 
 function slugify(value: string): string {
@@ -157,10 +166,10 @@ function SearchResultsList({ results, query, onSelect }: { results: SearchResult
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 12.5, fontWeight: 600 }}>{result.label}</span>
             {result.kind === "category" && (
-              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--bg-subtle)", color: "var(--text-muted)", fontWeight: 500 }}>Section</span>
+              <span style={chipStyle}>Section</span>
             )}
             {result.scope && (
-              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--bg-subtle)", color: "var(--text-muted)", fontWeight: 500 }}>{result.scope}</span>
+              <span style={chipStyle}>{result.scope}</span>
             )}
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45 }}>{result.description}</div>
@@ -241,7 +250,7 @@ function NativeSetting({ label, description, scope, children }: { label: string;
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{label}</span>
           {scope && (
-            <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--bg-subtle)", color: "var(--text-muted)", fontWeight: 500 }}>
+            <span style={chipStyle}>
               {scope}
             </span>
           )}
@@ -336,6 +345,30 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
     })();
   }, []);
 
+  const currentSettings = (): NativeSettings => latestNativeSettingsRef.current ?? nativeSettings ?? {};
+
+  const patchSettings = (patch: Partial<NativeSettings>) => {
+    void saveNativeSettings({ ...currentSettings(), ...patch });
+  };
+
+  // `key` is always an object-valued section here (tools/advisor/compaction/...),
+  // so the section spread is safe; the cast keeps the generic index type-checkable.
+  const patchSection = <K extends keyof NativeSettings>(key: K, patch: Partial<NonNullable<NativeSettings[K]>>) => {
+    const base = latestNativeSettingsRef.current;
+    const section = (base ?? nativeSettings?.[key] ?? {}) as object;
+    void saveNativeSettings({
+      ...currentSettings(),
+      [key]: { ...section, ...patch },
+    });
+  };
+
+  // tools.approval is itself a nested object, so it needs its own base spread.
+  const patchApproval = (patch: Partial<NonNullable<NonNullable<NativeSettings["tools"]>["approval"]>>) => {
+    const base = latestNativeSettingsRef.current ?? nativeSettings ?? {};
+    const tools = base.tools ?? {};
+    void saveNativeSettings({ ...base, tools: { ...tools, approval: { ...(tools.approval ?? {}), ...patch } } });
+  };
+
   const checkForUpdate = useCallback(async () => {
     setChecking(true);
     setMessage(null);
@@ -387,11 +420,6 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
       setRestarting(false);
     }
   }, []);
-
-  const getNormalizedActive = (tab: SettingsTab): SettingsTab => {
-    if (tab === "skills" || tab === "plugins" || tab === "extensions") return "mcp";
-    return tab;
-  };
 
   const currentTab = getNormalizedActive(activeTab);
 
@@ -530,12 +558,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <select
                       style={nativeSelectStyle}
                       value={nativeSettings?.tools?.approvalMode ?? "yolo"}
-                      onChange={(event) =>
-                        void saveNativeSettings({
-                          ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                          tools: { ...(latestNativeSettingsRef.current ?? nativeSettings?.tools ?? {}), approvalMode: event.target.value as "always-ask" | "write" | "yolo" },
-                        })
-                      }
+                      onChange={(event) => patchSection("tools", { approvalMode: event.target.value as "always-ask" | "write" | "yolo" })}
                     >
                       <option value="always-ask" style={nativeOptionStyle}>Always ask</option>
                       <option value="write" style={nativeOptionStyle}>Allow writes</option>
@@ -546,15 +569,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <select
                       style={nativeSelectStyle}
                       value={nativeSettings?.tools?.approval?.bash ?? "prompt"}
-                      onChange={(event) =>
-                        void saveNativeSettings({
-                          ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                          tools: {
-                            ...(latestNativeSettingsRef.current ?? nativeSettings?.tools ?? {}),
-                            approval: { ...(latestNativeSettingsRef.current ?? nativeSettings?.tools?.approval ?? {}), bash: event.target.value as "allow" | "prompt" | "deny" },
-                          },
-                        })
-                      }
+                      onChange={(event) => patchApproval({ bash: event.target.value as "allow" | "prompt" | "deny" })}
                     >
                       <option value="allow" style={nativeOptionStyle}>Allow</option>
                       <option value="prompt" style={nativeOptionStyle}>Always ask</option>
@@ -565,15 +580,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <select
                       style={nativeSelectStyle}
                       value={nativeSettings?.tools?.approval?.extension ?? "prompt"}
-                      onChange={(event) =>
-                        void saveNativeSettings({
-                          ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                          tools: {
-                            ...(latestNativeSettingsRef.current ?? nativeSettings?.tools ?? {}),
-                            approval: { ...(latestNativeSettingsRef.current ?? nativeSettings?.tools?.approval ?? {}), extension: event.target.value as "allow" | "prompt" },
-                          },
-                        })
-                      }
+                      onChange={(event) => patchApproval({ extension: event.target.value as "allow" | "prompt" })}
                     >
                       <option value="prompt" style={nativeOptionStyle}>Ask every time</option>
                       <option value="allow" style={nativeOptionStyle}>Auto approve</option>
@@ -595,7 +602,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <select
                       style={nativeSelectStyle}
                       value={nativeSettings?.defaultThinkingLevel ?? "high"}
-                      onChange={(e) => void saveNativeSettings({ ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}), defaultThinkingLevel: e.target.value as NativeSettings["defaultThinkingLevel"] })}
+                      onChange={(e) => patchSettings({ defaultThinkingLevel: e.target.value as NativeSettings["defaultThinkingLevel"] })}
                     >
                       {["auto", "minimal", "low", "medium", "high", "xhigh", "max"].map((l) => (
                         <option key={l} value={l} style={nativeOptionStyle}>{l}</option>
@@ -606,7 +613,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <select
                       style={nativeSelectStyle}
                       value={nativeSettings?.textVerbosity ?? "medium"}
-                      onChange={(e) => void saveNativeSettings({ ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}), textVerbosity: e.target.value as NativeSettings["textVerbosity"] })}
+                      onChange={(e) => patchSettings({ textVerbosity: e.target.value as NativeSettings["textVerbosity"] })}
                     >
                       {["low", "medium", "high"].map((l) => (
                         <option key={l} value={l} style={nativeOptionStyle}>{l}</option>
@@ -617,7 +624,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <select
                       style={nativeSelectStyle}
                       value={nativeSettings?.personality ?? "default"}
-                      onChange={(e) => void saveNativeSettings({ ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}), personality: e.target.value as NativeSettings["personality"] })}
+                      onChange={(e) => patchSettings({ personality: e.target.value as NativeSettings["personality"] })}
                     >
                       {["default", "friendly", "pragmatic", "none"].map((p) => (
                         <option key={p} value={p} style={nativeOptionStyle}>{p}</option>
@@ -627,13 +634,13 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                   <NativeSetting label="Thinking Blocks" description="Hide model reasoning from output view." scope="Native OMP">
                     <ToggleSwitch
                       checked={nativeSettings?.hideThinkingBlock ?? false}
-                      onChange={(checked) => void saveNativeSettings({ ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}), hideThinkingBlock: checked })}
+                      onChange={(checked) => patchSettings({ hideThinkingBlock: checked })}
                     />
                   </NativeSetting>
                   <NativeSetting label="External Thinking" description="Private scratchpad reasoning via think tool." scope="Native OMP">
                     <ToggleSwitch
                       checked={nativeSettings?.externalThinking ?? false}
-                      onChange={(checked) => void saveNativeSettings({ ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}), externalThinking: checked })}
+                      onChange={(checked) => patchSettings({ externalThinking: checked })}
                     />
                   </NativeSetting>
                 </div>
@@ -662,10 +669,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                         checked={nativeSettings?.advisor?.enabled ?? advisorEnabled}
                         onChange={(enabled) => {
                           onAdvisorChange(enabled);
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            advisor: { ...(latestNativeSettingsRef.current ?? nativeSettings?.advisor ?? {}), enabled },
-                          });
+                          patchSection("advisor", { enabled });
                         }}
                       />
                     </NativeSetting>
@@ -674,12 +678,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                         <select
                           style={nativeSelectStyle}
                           value={nativeSettings?.advisor?.syncBacklog ?? "off"}
-                          onChange={(e) =>
-                            void saveNativeSettings({
-                              ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                              advisor: { ...(latestNativeSettingsRef.current ?? nativeSettings?.advisor ?? {}), syncBacklog: e.target.value as "off" | "1" | "3" | "5" },
-                            })
-                          }
+                          onChange={(e) => patchSection("advisor", { syncBacklog: e.target.value as "off" | "1" | "3" | "5" })}
                         >
                           <option value="off" style={nativeOptionStyle}>Off</option>
                           <option value="1" style={nativeOptionStyle}>1 turn</option>
@@ -693,12 +692,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <NativeSetting label="Review Subagents" description="Apply Advisor passive review to subagent tasks." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.advisor?.subagents ?? false}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            advisor: { ...(latestNativeSettingsRef.current ?? nativeSettings?.advisor ?? {}), subagents: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("advisor", { subagents: checked })}
                       />
                     </NativeSetting>
                   )}
@@ -712,35 +706,20 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <NativeSetting label="Automatic Compaction" description="Compact context before model context limit is hit." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.compaction?.enabled ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            compaction: { ...(latestNativeSettingsRef.current ?? nativeSettings?.compaction ?? {}), enabled: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("compaction", { enabled: checked })}
                       />
                     </NativeSetting>
                     <NativeSetting label="Continue After Compaction" description="Resume task execution after compaction completes." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.compaction?.autoContinue ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            compaction: { ...(latestNativeSettingsRef.current ?? nativeSettings?.compaction ?? {}), autoContinue: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("compaction", { autoContinue: checked })}
                       />
                     </NativeSetting>
                     <NativeSetting label="Maintenance Strategy" description="Select algorithm used to reduce context pressure." scope="Native OMP">
                       <select
                         style={nativeSelectStyle}
                         value={nativeSettings?.compaction?.strategy ?? "snapcompact"}
-                        onChange={(e) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            compaction: { ...(latestNativeSettingsRef.current ?? nativeSettings?.compaction ?? {}), strategy: e.target.value as NonNullable<NativeSettings["compaction"]>["strategy"] },
-                          })
-                        }
+                        onChange={(e) => patchSection("compaction", { strategy: e.target.value as NonNullable<NativeSettings["compaction"]>["strategy"] })}
                       >
                         <option value="snapcompact" style={nativeOptionStyle}>Snapcompact</option>
                         <option value="handoff" style={nativeOptionStyle}>Handoff</option>
@@ -752,12 +731,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <NativeSetting label="Compact Mid-Turn" description="Check context limits between tool execution steps." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.compaction?.midTurnEnabled ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            compaction: { ...(latestNativeSettingsRef.current ?? nativeSettings?.compaction ?? {}), midTurnEnabled: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("compaction", { midTurnEnabled: checked })}
                       />
                     </NativeSetting>
                   </div>
@@ -772,12 +746,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                       <select
                         style={nativeSelectStyle}
                         value={nativeSettings?.memory?.backend ?? "mnemopi"}
-                        onChange={(e) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            memory: { ...(latestNativeSettingsRef.current ?? nativeSettings?.memory ?? {}), backend: e.target.value as NonNullable<NativeSettings["memory"]>["backend"] },
-                          })
-                        }
+                        onChange={(e) => patchSection("memory", { backend: e.target.value as NonNullable<NativeSettings["memory"]>["backend"] })}
                       >
                         <option value="off" style={nativeOptionStyle}>Off</option>
                         <option value="local" style={nativeOptionStyle}>Local summaries</option>
@@ -788,35 +757,20 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <NativeSetting label="Enable Auto-Learn" description="Capture reusable lessons after completed runs." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.autolearn?.enabled ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            autolearn: { ...(latestNativeSettingsRef.current ?? nativeSettings?.autolearn ?? {}), enabled: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("autolearn", { enabled: checked })}
                       />
                     </NativeSetting>
                     <NativeSetting label="Private Capture Turn" description="Run private lesson-capture turn at completion." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.autolearn?.autoContinue ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            autolearn: { ...(latestNativeSettingsRef.current ?? nativeSettings?.autolearn ?? {}), autoContinue: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("autolearn", { autoContinue: checked })}
                       />
                     </NativeSetting>
                     <NativeSetting label="Memory Scope" description="Scoping for Mnemopi knowledge storage." scope="Native OMP">
                       <select
                         style={nativeSelectStyle}
                         value={nativeSettings?.mnemopi?.scoping ?? "per-project"}
-                        onChange={(e) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            mnemopi: { ...(latestNativeSettingsRef.current ?? nativeSettings?.mnemopi ?? {}), scoping: e.target.value as NonNullable<NativeSettings["mnemopi"]>["scoping"] },
-                          })
-                        }
+                        onChange={(e) => patchSection("mnemopi", { scoping: e.target.value as NonNullable<NativeSettings["mnemopi"]>["scoping"] })}
                       >
                         <option value="per-project" style={nativeOptionStyle}>Per project</option>
                         <option value="per-project-tagged" style={nativeOptionStyle}>Per project, tagged recall</option>
@@ -826,23 +780,13 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <NativeSetting label="Recall on Session Start" description="Load relevant memories into first turn." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.mnemopi?.autoRecall ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            mnemopi: { ...(latestNativeSettingsRef.current ?? nativeSettings?.mnemopi ?? {}), autoRecall: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("mnemopi", { autoRecall: checked })}
                       />
                     </NativeSetting>
                     <NativeSetting label="Retain Completed Turns" description="Store completed conversation turns in memory." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.mnemopi?.autoRetain ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            mnemopi: { ...(latestNativeSettingsRef.current ?? nativeSettings?.mnemopi ?? {}), autoRetain: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("mnemopi", { autoRetain: checked })}
                       />
                     </NativeSetting>
                   </div>
@@ -856,24 +800,14 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <NativeSetting label="Automatic Retry" description="Retry failed turns automatically." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.retry?.enabled ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            retry: { ...(latestNativeSettingsRef.current ?? nativeSettings?.retry ?? {}), enabled: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("retry", { enabled: checked })}
                       />
                     </NativeSetting>
                     <NativeSetting label="Max Attempts" description="Retry limit before giving up." scope="Native OMP">
                       <select
                         style={nativeSelectStyle}
                         value={String(nativeSettings?.retry?.maxRetries ?? 2)}
-                        onChange={(e) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            retry: { ...(latestNativeSettingsRef.current ?? nativeSettings?.retry ?? {}), maxRetries: Number(e.target.value) },
-                          })
-                        }
+                        onChange={(e) => patchSection("retry", { maxRetries: Number(e.target.value) })}
                       >
                         {[0, 1, 2, 3, 4, 5].map((n) => (
                           <option key={n} value={n} style={nativeOptionStyle}>{n}</option>
@@ -883,12 +817,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <NativeSetting label="Model Fallback" description="Fall back to alternative model when retries exhaust." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.retry?.modelFallback ?? false}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            retry: { ...(latestNativeSettingsRef.current ?? nativeSettings?.retry ?? {}), modelFallback: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("retry", { modelFallback: checked })}
                       />
                     </NativeSetting>
                   </div>
@@ -908,34 +837,19 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                     <NativeSetting label="Load Project MCP Servers" description="Allow project-root MCP configuration to be discovered." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.mcp?.enableProjectConfig ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            mcp: { ...(latestNativeSettingsRef.current ?? nativeSettings?.mcp ?? {}), enableProjectConfig: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("mcp", { enableProjectConfig: checked })}
                       />
                     </NativeSetting>
                     <NativeSetting label="Render MCP Markdown" description="Render non-JSON MCP results as Markdown in transcript." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.mcp?.renderMarkdownResults ?? true}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            mcp: { ...(latestNativeSettingsRef.current ?? nativeSettings?.mcp ?? {}), renderMarkdownResults: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("mcp", { renderMarkdownResults: checked })}
                       />
                     </NativeSetting>
                     <NativeSetting label="MCP Resource Updates" description="Inject server resource updates into conversation." scope="Native OMP">
                       <ToggleSwitch
                         checked={nativeSettings?.mcp?.notifications ?? false}
-                        onChange={(checked) =>
-                          void saveNativeSettings({
-                            ...(latestNativeSettingsRef.current ?? nativeSettings ?? {}),
-                            mcp: { ...(latestNativeSettingsRef.current ?? nativeSettings?.mcp ?? {}), notifications: checked },
-                          })
-                        }
+                        onChange={(checked) => patchSection("mcp", { notifications: checked })}
                       />
                     </NativeSetting>
                   </div>

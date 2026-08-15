@@ -511,6 +511,35 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{children}</div>;
 }
 
+function TreeNavButton({ icon: Icon, label, selected, onClick }: { icon: IconComponent; label: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)",
+        background: selected ? "var(--bg-selected)" : "none",
+        color: selected ? "var(--text)" : "var(--text-muted)",
+        cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8,
+        fontWeight: selected ? 600 : 400,
+      }}
+    >
+      <Icon size={14} style={{ color: selected ? "var(--accent)" : "currentColor", flexShrink: 0 }} />
+      {label}
+    </button>
+  );
+}
+
+const hoverRow = (selected: boolean) => ({
+  onMouseEnter: (e: React.MouseEvent<HTMLElement>) => { if (!selected) e.currentTarget.style.background = "var(--bg-hover)"; },
+  onMouseLeave: (e: React.MouseEvent<HTMLElement>) => { if (!selected) e.currentTarget.style.background = "none"; },
+});
+
+const hoverAccent = {
+  onMouseEnter: (e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.borderColor = "var(--accent)"; },
+  onMouseLeave: (e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.borderColor = "var(--border)"; },
+};
+
 // ── Provider detail ───────────────────────────────────────────────────────────
 
 type EndpointPreset = {
@@ -2140,18 +2169,10 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
             display: "flex", flexDirection: "column", flexShrink: 0, background: "var(--bg-panel)",
           }}>
             <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
-              <button type="button" onClick={() => setSelection({ type: "registry" })} style={{ width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)", background: selection?.type === "registry" ? "var(--bg-selected)" : "none", color: selection?.type === "registry" ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8, fontWeight: selection?.type === "registry" ? 600 : 400 }}>
-                <Layers size={14} style={{ color: selection?.type === "registry" ? "var(--accent)" : "currentColor", flexShrink: 0 }} /> Native OMP registry
-              </button>
-              <button type="button" onClick={() => setSelection({ type: "fallbacks" })} style={{ width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)", background: selection?.type === "fallbacks" ? "var(--bg-selected)" : "none", color: selection?.type === "fallbacks" ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8, fontWeight: selection?.type === "fallbacks" ? 600 : 400 }}>
-                <RotateCcw size={14} style={{ color: selection?.type === "fallbacks" ? "var(--accent)" : "currentColor", flexShrink: 0 }} /> Retry & fallback
-              </button>
-              <button type="button" onClick={() => setSelection({ type: "picker" })} style={{ width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)", background: selection?.type === "picker" ? "var(--bg-selected)" : "none", color: selection?.type === "picker" ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8, fontWeight: selection?.type === "picker" ? 600 : 400 }}>
-                <BookOpen size={14} style={{ color: selection?.type === "picker" ? "var(--accent)" : "currentColor", flexShrink: 0 }} /> Composer model picker
-              </button>
-              <button type="button" onClick={() => setSelection({ type: "roles" })} style={{ width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)", background: selection?.type === "roles" ? "var(--bg-selected)" : "none", color: selection?.type === "roles" ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8, fontWeight: selection?.type === "roles" ? 600 : 400 }}>
-                <SlidersHorizontal size={14} style={{ color: selection?.type === "roles" ? "var(--accent)" : "currentColor", flexShrink: 0 }} /> OMP model roles
-              </button>
+              <TreeNavButton icon={Layers} label="Native OMP registry" selected={selection?.type === "registry"} onClick={() => setSelection({ type: "registry" })} />
+              <TreeNavButton icon={RotateCcw} label="Retry & fallback" selected={selection?.type === "fallbacks"} onClick={() => setSelection({ type: "fallbacks" })} />
+              <TreeNavButton icon={BookOpen} label="Composer model picker" selected={selection?.type === "picker"} onClick={() => setSelection({ type: "picker" })} />
+              <TreeNavButton icon={SlidersHorizontal} label="OMP model roles" selected={selection?.type === "roles"} onClick={() => setSelection({ type: "roles" })} />
 
               {(activeOAuth.length > 0 || activeApiKey.length > 0) && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "14px 10px 6px", color: "var(--text-dim)", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
@@ -2169,8 +2190,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                     key={p.id}
                     onClick={() => setSelection({ type: "oauth", providerId: p.id })}
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none", fontWeight: isSelected ? 600 : 400 }}
-                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "none"; }}
+                    {...hoverRow(isSelected)}
                   >
                     <ProviderIcon id={p.id} size={16} />
                     <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
@@ -2188,8 +2208,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                     key={p.id}
                     onClick={() => setSelection({ type: "apikey", providerId: p.id })}
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none", fontWeight: isSelected ? 600 : 400 }}
-                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "none"; }}
+                    {...hoverRow(isSelected)}
                   >
                     <ProviderIcon id={p.id} size={16} />
                     <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</span>
@@ -2223,8 +2242,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                       type="button"
                       onClick={() => setSelection({ type: "provider", name: pName })}
                       style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isProviderSelected ? "var(--bg-selected)" : "none" }}
-                      onMouseEnter={(e) => { if (!isProviderSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                      onMouseLeave={(e) => { if (!isProviderSelected) e.currentTarget.style.background = "none"; }}
+                      {...hoverRow(isProviderSelected)}
                     >
                       <ProviderIcon id={pName} size={15} />
                       <span style={{ fontSize: 12, fontWeight: isProviderSelected ? 600 : 500, color: "var(--text)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -2244,8 +2262,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                           key={i}
                           onClick={() => setSelection({ type: "model", providerName: pName, index: i })}
                           style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px 5px 28px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isModelSelected ? "var(--bg-selected)" : "none", marginTop: 1 }}
-                          onMouseEnter={(e) => { if (!isModelSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isModelSelected) e.currentTarget.style.background = "none"; }}
+                          {...hoverRow(isModelSelected)}
                         >
                           <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: m.id ? "var(--text-muted)" : "var(--text-dim)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {m.id || t("modelsConfig.newModel")}
@@ -2263,8 +2280,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                         type="button"
                         onClick={(e) => { e.stopPropagation(); addModel(pName); }}
                         style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", color: "var(--text-muted)", border: "1px solid var(--border)", background: "var(--bg-subtle)", fontFamily: "inherit", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.borderColor = "var(--accent)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.borderColor = "var(--border)"; }}
+                        {...hoverAccent}
                       >
                         <Plus size={11} aria-hidden="true" />
                         <span>{t("modelsConfig.addModel")}</span>
@@ -2273,8 +2289,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setCatalogPicker(pName); }}
                         style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", color: "var(--text-muted)", border: "1px solid var(--border)", background: "var(--bg-subtle)", fontFamily: "inherit", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.borderColor = "var(--accent)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.borderColor = "var(--border)"; }}
+                        {...hoverAccent}
                       >
                         <BookOpen size={11} aria-hidden="true" />
                         <span>{t("modelsConfig.addFromCatalog")}</span>

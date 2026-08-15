@@ -20,6 +20,12 @@
 # production
 /build
 
+# rendered / generated artifacts (mockups, screenshots, images)
+/output/
+*.png.png
+screenshots/
+/mockups/
+
 # misc
 .DS_Store
 *.pem

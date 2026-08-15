@@ -22,7 +22,7 @@ import {
   ConfirmDialog,
   useFieldValidation,
 } from "@/components/ui/field";
-import { Plus, Trash2, RefreshCw, AlertCircle, Cpu, Settings, Sparkles, Check as CheckIcon, ArrowDown, ArrowUp } from "lucide-react";
+import { Plus, Trash2, RefreshCw, AlertCircle, Cpu, Settings, Sparkles, Check as CheckIcon, ArrowDown, ArrowUp, Layers, RotateCcw, SlidersHorizontal, BookOpen } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { SettingsTabs, type SettingsTab } from "./SettingsTabs";
 import { ModelCatalogPicker } from "./ModelCatalogPicker";
@@ -528,21 +528,15 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider.api]);
 
-  // Provider name is required and must not collide with another provider; we
-  // surface a simple non-empty check on blur and on rename submit.
   const renameValidate = () => {
     if (!editingName.trim()) return t("modelsConfig.errorNameRequired");
-    if (editingName.trim() !== name) {
-      // Note: collision is only visible to the parent; we leave that check to
-      // the consumer. Here we just enforce non-empty.
-      return null;
-    }
     return null;
   };
   const renameV = useFieldValidation(renameValidate);
+
   const baseUrlValidate = () => {
     const v = provider.baseUrl ?? "";
-    if (!v.trim()) return null; // optional
+    if (!v.trim()) return null;
     try {
       const u = new URL(v);
       if (u.protocol !== "http:" && u.protocol !== "https:") return t("modelsConfig.errorUrlInvalid");
@@ -552,6 +546,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
     }
   };
   const baseUrlV = useFieldValidation(baseUrlValidate);
+
   const apiKeyValidate = () => {
     if (provider.auth === "none") return null;
     if (!provider.apiKey || !provider.apiKey.trim()) return t("modelsConfig.errorApiKeyRequired");
@@ -560,21 +555,95 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
   const apiKeyV = useFieldValidation(apiKeyValidate);
 
   const trimmedRename = editingName.trim();
+  const hostName = provider.baseUrl ? (provider.baseUrl.replace(/^https?:\/\//, "").split("/")[0] || provider.baseUrl) : "Default endpoint";
+
+  const applyPreset = (preset: { baseUrl: string; api: string; authNone?: boolean }) => {
+    onChange({
+      ...provider,
+      baseUrl: preset.baseUrl,
+      api: preset.api,
+      auth: preset.authNone ? "none" : provider.auth,
+    });
+    toast.success(`Applied ${preset.baseUrl} endpoint preset`);
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Hero Provider Header Card */}
+      <div style={{ padding: "14px 16px", border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", display: "flex", flexDirection: "column", gap: 10, boxShadow: "var(--shadow-card)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <ProviderIcon id={name} size={20} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--text)" }}>{name}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{hostName}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {provider.auth === "none" ? (
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "var(--bg-subtle)", color: "var(--text-muted)", fontWeight: 500 }}>
+                Auth: None
+              </span>
+            ) : provider.apiKey ? (
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)", fontWeight: 600 }}>
+                Key Set
+              </span>
+            ) : (
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "color-mix(in srgb, var(--status-error) 15%, transparent)", color: "var(--status-error)", fontWeight: 600 }}>
+                Key Missing
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Endpoint Presets */}
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            Quick Endpoint Presets
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => applyPreset({ baseUrl: "http://localhost:11434/v1", api: "openai-completions", authNone: true })}
+              style={{ padding: "4px 8px", fontSize: 11, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
+            >
+              🦙 Ollama
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset({ baseUrl: "http://localhost:1234/v1", api: "openai-completions", authNone: true })}
+              style={{ padding: "4px 8px", fontSize: 11, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
+            >
+              ⚡ LM Studio / vLLM
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset({ baseUrl: "https://openrouter.ai/api/v1", api: "openai-completions" })}
+              style={{ padding: "4px 8px", fontSize: 11, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
+            >
+              🌐 OpenRouter
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset({ baseUrl: "http://127.0.0.1:2455/v1", api: "openai-completions" })}
+              style={{ padding: "4px 8px", fontSize: 11, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
+            >
+              🤖 Local Proxy (:2455)
+            </button>
+          </div>
+        </div>
+      </div>
+
       <FieldGroup
         label={
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <Settings size={11} aria-hidden="true" /> {t("modelsConfig.provider")}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Settings size={12} aria-hidden="true" /> Configuration Details
           </span>
         }
       >
-        <FormField
-          label={t("modelsConfig.providerName")}
-          required
-          error={renameV.error}
-        >
+        <FormField label={t("modelsConfig.providerName")} required error={renameV.error}>
           <TextInput
             value={editingName}
             onChange={(v) => { setEditingName(v); renameV.onChange(); }}
@@ -608,10 +677,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
           </button>
         )}
 
-        <FormField
-          label={t("modelsConfig.baseUrl")}
-          error={baseUrlV.error}
-        >
+        <FormField label={t("modelsConfig.baseUrl")} error={baseUrlV.error}>
           <TextInput
             value={provider.baseUrl ?? ""}
             onChange={(v) => { set("baseUrl", v || undefined); baseUrlV.onChange(); }}
@@ -661,25 +727,33 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
         </FormField>
       </FieldGroup>
 
-      <button
-        type="button"
-        onClick={() => setDeleteOpen(true)}
-        style={{
-          alignSelf: "flex-start",
-          padding: "5px 12px",
-          background: "none",
-          border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
-          borderRadius: "var(--radius-control)",
-          color: "var(--accent)",
-          cursor: "pointer",
-          fontSize: 11,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 5,
-        }}
-      >
-        <Trash2 size={12} aria-hidden="true" /> {t("modelsConfig.delete")}
-      </button>
+      {/* Danger Zone */}
+      <section style={{ padding: "14px 16px", border: "1px solid color-mix(in srgb, var(--status-error) 25%, transparent)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>Remove Provider</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Delete {name} and remove its models from models.yml configuration.</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setDeleteOpen(true)}
+          style={{
+            padding: "6px 12px",
+            background: "none",
+            border: "1px solid var(--status-error)",
+            borderRadius: "var(--radius-control)",
+            color: "var(--status-error)",
+            cursor: "pointer",
+            fontSize: 12,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            fontWeight: 500,
+            flexShrink: 0,
+          }}
+        >
+          <Trash2 size={13} aria-hidden="true" /> {t("modelsConfig.delete")}
+        </button>
+      </section>
 
       <ConfirmDialog
         open={deleteOpen}
@@ -2053,18 +2127,33 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
 
           {/* Left: tree */}
           <div style={{
-            width: isMobile ? "100%" : 210,
+            width: isMobile ? "100%" : 235,
             maxHeight: isMobile ? "40vh" : undefined,
             borderRight: isMobile ? "none" : "1px solid var(--border)",
             borderBottom: isMobile ? "1px solid var(--border)" : "none",
             display: "flex", flexDirection: "column", flexShrink: 0, background: "var(--bg-panel)",
           }}>
             <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
-              <button type="button" onClick={() => setSelection({ type: "registry" })} style={{ width: "100%", padding: "7px 8px", border: "none", borderRadius: 5, background: selection?.type === "registry" ? "var(--bg-selected)" : "none", color: "var(--text)", cursor: "pointer", fontSize: 12, textAlign: "left" }}>Native OMP registry</button>
-              <button type="button" onClick={() => setSelection({ type: "fallbacks" })} style={{ width: "100%", padding: "7px 8px", border: "none", borderRadius: 5, background: selection?.type === "fallbacks" ? "var(--bg-selected)" : "none", color: "var(--text)", cursor: "pointer", fontSize: 12, textAlign: "left" }}>Retry & fallback</button>
-              <button type="button" onClick={() => setSelection({ type: "picker" })} style={{ width: "100%", padding: "7px 8px", border: "none", borderRadius: 5, background: selection?.type === "picker" ? "var(--bg-selected)" : "none", color: "var(--text)", cursor: "pointer", fontSize: 12, textAlign: "left" }}>Composer model picker</button>
-              <button type="button" onClick={() => setSelection({ type: "roles" })} style={{ width: "100%", padding: "7px 8px", border: "none", borderRadius: 5, background: selection?.type === "roles" ? "var(--bg-selected)" : "none", color: "var(--text)", cursor: "pointer", fontSize: 12, textAlign: "left" }}>OMP model roles</button>
-              {(activeOAuth.length > 0 || activeApiKey.length > 0) && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "12px 8px 4px", color: "var(--text-dim)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}><span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />Connected through OMP</div>}
+              <button type="button" onClick={() => setSelection({ type: "registry" })} style={{ width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)", background: selection?.type === "registry" ? "var(--bg-selected)" : "none", color: selection?.type === "registry" ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8, fontWeight: selection?.type === "registry" ? 600 : 400 }}>
+                <Layers size={14} style={{ color: selection?.type === "registry" ? "var(--accent)" : "currentColor", flexShrink: 0 }} /> Native OMP registry
+              </button>
+              <button type="button" onClick={() => setSelection({ type: "fallbacks" })} style={{ width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)", background: selection?.type === "fallbacks" ? "var(--bg-selected)" : "none", color: selection?.type === "fallbacks" ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8, fontWeight: selection?.type === "fallbacks" ? 600 : 400 }}>
+                <RotateCcw size={14} style={{ color: selection?.type === "fallbacks" ? "var(--accent)" : "currentColor", flexShrink: 0 }} /> Retry & fallback
+              </button>
+              <button type="button" onClick={() => setSelection({ type: "picker" })} style={{ width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)", background: selection?.type === "picker" ? "var(--bg-selected)" : "none", color: selection?.type === "picker" ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8, fontWeight: selection?.type === "picker" ? 600 : 400 }}>
+                <BookOpen size={14} style={{ color: selection?.type === "picker" ? "var(--accent)" : "currentColor", flexShrink: 0 }} /> Composer model picker
+              </button>
+              <button type="button" onClick={() => setSelection({ type: "roles" })} style={{ width: "100%", padding: "8px 10px", border: "none", borderRadius: "var(--radius-control)", background: selection?.type === "roles" ? "var(--bg-selected)" : "none", color: selection?.type === "roles" ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 8, fontWeight: selection?.type === "roles" ? 600 : 400 }}>
+                <SlidersHorizontal size={14} style={{ color: selection?.type === "roles" ? "var(--accent)" : "currentColor", flexShrink: 0 }} /> OMP model roles
+              </button>
+
+              {(activeOAuth.length > 0 || activeApiKey.length > 0) && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "14px 10px 6px", color: "var(--text-dim)", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
+                  Connected through OMP
+                </div>
+              )}
+
               {/* Active OAuth subscriptions */}
               {activeOAuth.map((p) => {
                 const isSelected = selection?.type === "oauth" && selection.providerId === p.id;
@@ -2073,13 +2162,13 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                     type="button"
                     key={p.id}
                     onClick={() => setSelection({ type: "oauth", providerId: p.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 5, cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none" }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none", fontWeight: isSelected ? 600 : 400 }}
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "none"; }}
                   >
                     <ProviderIcon id={p.id} size={16} />
                     <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                    <span title={`OMP OAuth provider: ${p.id}`} style={{ padding: "2px 4px", borderRadius: 3, background: "var(--bg-subtle)", color: "var(--text-dim)", fontSize: 9, flexShrink: 0 }}>OAuth</span>
+                    <span title={`OMP OAuth provider: ${p.id}`} style={{ padding: "2px 5px", borderRadius: 4, background: "var(--bg-subtle)", color: "var(--text-muted)", fontSize: 9, fontWeight: 500, flexShrink: 0 }}>OAuth</span>
                   </button>
                 );
               })}
@@ -2092,20 +2181,27 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                     type="button"
                     key={p.id}
                     onClick={() => setSelection({ type: "apikey", providerId: p.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 5, cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none" }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none", fontWeight: isSelected ? 600 : 400 }}
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "none"; }}
                   >
                     <ProviderIcon id={p.id} size={16} />
                     <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</span>
-                    <span title={`OMP API-key provider: ${p.id}`} style={{ padding: "2px 4px", borderRadius: 3, background: "var(--bg-subtle)", color: "var(--text-dim)", fontSize: 9, flexShrink: 0 }}>API key</span>
+                    <span title={`OMP API-key provider: ${p.id}`} style={{ padding: "2px 5px", borderRadius: 4, background: "var(--bg-subtle)", color: "var(--text-muted)", fontSize: 9, fontWeight: 500, flexShrink: 0 }}>API key</span>
                   </button>
                 );
               })}
 
               {/* Divider before custom providers, only when there are active managed providers */}
               {(activeOAuth.length > 0 || activeApiKey.length > 0) && providers.length > 0 && (
-                <div style={{ margin: "4px 8px", borderTop: "1px solid var(--border)" }} />
+                <div style={{ margin: "8px 10px", borderTop: "1px solid var(--border)" }} />
+              )}
+
+              {/* Custom providers header */}
+              {providers.length > 0 && (
+                <div style={{ padding: "10px 10px 4px", fontSize: 10, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Configured Providers
+                </div>
               )}
 
               {/* Custom providers */}
@@ -2115,24 +2211,21 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                 const isProviderSelected = selection?.type === "provider" && selection.name === pName;
                 const models = pData.models ?? [];
                 return (
-                  <div key={pName} style={{ marginBottom: 2 }}>
+                  <div key={pName} style={{ marginBottom: 6, padding: "4px 6px", borderRadius: "var(--radius-control)", background: isProviderSelected ? "var(--bg-panel)" : "transparent", border: isProviderSelected ? "1px solid var(--border)" : "1px solid transparent" }}>
                     {/* Provider row */}
                     <button
                       type="button"
                       onClick={() => setSelection({ type: "provider", name: pName })}
-                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 8px", borderRadius: 5, cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isProviderSelected ? "var(--bg-selected)" : "none" }}
+                      style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isProviderSelected ? "var(--bg-selected)" : "none" }}
                       onMouseEnter={(e) => { if (!isProviderSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
                       onMouseLeave={(e) => { if (!isProviderSelected) e.currentTarget.style.background = "none"; }}
                     >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }}>
-                        <rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" />
-                        <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
-                        <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
-                        <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
-                        <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
-                      </svg>
-                      <span style={{ fontSize: 12, fontWeight: isProviderSelected ? 600 : 400, color: "var(--text)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <ProviderIcon id={pName} size={15} />
+                      <span style={{ fontSize: 12, fontWeight: isProviderSelected ? 600 : 500, color: "var(--text)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {pName}
+                      </span>
+                      <span style={{ fontSize: 10, color: "var(--text-dim)", padding: "1px 5px", borderRadius: 4, background: "var(--bg-subtle)" }}>
+                        {models.length} model{models.length === 1 ? "" : "s"}
                       </span>
                     </button>
 
@@ -2144,7 +2237,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                           type="button"
                           key={i}
                           onClick={() => setSelection({ type: "model", providerName: pName, index: i })}
-                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px 5px 26px", borderRadius: 5, cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isModelSelected ? "var(--bg-selected)" : "none" }}
+                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px 5px 28px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isModelSelected ? "var(--bg-selected)" : "none", marginTop: 1 }}
                           onMouseEnter={(e) => { if (!isModelSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
                           onMouseLeave={(e) => { if (!isModelSelected) e.currentTarget.style.background = "none"; }}
                         >
@@ -2159,24 +2252,26 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                     })}
 
                     {/* Add model buttons */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 8px 4px 26px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px 4px 10px", marginTop: 2, flexWrap: "nowrap" }}>
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); addModel(pName); }}
-                        style={{ display: "flex", alignItems: "center", gap: 4, padding: 0, borderRadius: 5, cursor: "pointer", color: "var(--text-dim)", border: "none", background: "none", fontFamily: "inherit" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", color: "var(--text-muted)", border: "1px solid var(--border)", background: "var(--bg-subtle)", fontFamily: "inherit", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.borderColor = "var(--accent)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.borderColor = "var(--border)"; }}
                       >
-                        <span style={{ fontSize: 11 }}>{t("modelsConfig.addModel")}</span>
+                        <Plus size={11} aria-hidden="true" />
+                        <span>{t("modelsConfig.addModel")}</span>
                       </button>
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setCatalogPicker(pName); }}
-                        style={{ display: "flex", alignItems: "center", gap: 4, padding: 0, borderRadius: 5, cursor: "pointer", color: "var(--text-dim)", border: "none", background: "none", fontFamily: "inherit" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", color: "var(--text-muted)", border: "1px solid var(--border)", background: "var(--bg-subtle)", fontFamily: "inherit", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.borderColor = "var(--accent)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.borderColor = "var(--border)"; }}
                       >
-                        <span style={{ fontSize: 11 }}>{t("modelsConfig.addFromCatalog")}</span>
+                        <BookOpen size={11} aria-hidden="true" />
+                        <span>{t("modelsConfig.addFromCatalog")}</span>
                       </button>
                     </div>
                   </div>

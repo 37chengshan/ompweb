@@ -1367,6 +1367,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     () => selectableThinkingLevels(availableThinkingLevels),
     [availableThinkingLevels],
   );
+  // A run starting mid-interaction must not leave the reasoning menu
+  // open: the level only applies to the next prompt, and the trigger is
+  // disabled while streaming.
+  useEffect(() => {
+    if (isStreaming) setThinkingDropdownOpen(false);
+  }, [isStreaming]);
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -2147,11 +2154,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               </div>
             )}
 
-            {/* Reasoning level selector */}
-            {!isStreaming && onThinkingLevelChange && (
+            {/* Reasoning level selector — stays visible while the agent
+                runs (disabled) so the level never looks like it reset. */}
+            {onThinkingLevelChange && (
               <div ref={thinkingDropdownRef} style={{ position: "relative" }}>
                 <button
                   onClick={() => setThinkingDropdownOpen((v) => !v)}
+                  disabled={isStreaming}
                   title={t("chatInput.changeReasoningTitle", { level: thinkingDisplayLabel })}
                   aria-label={`${t("chatInput.changeReasoning")}: ${thinkingDisplayLabel}`}
                   style={{
@@ -2162,11 +2171,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     border: "none",
                     borderRadius: 7,
                     color: "var(--text-muted)",
-                    cursor: "pointer",
+                    cursor: isStreaming ? "not-allowed" : "pointer",
+                    opacity: isStreaming ? 0.5 : 1,
                     fontSize: 12,
                     transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
                   }}
                   onMouseEnter={(e) => {
+                    if (isStreaming) return;
                     e.currentTarget.style.background = "var(--bg-hover)";
                     e.currentTarget.style.color = "var(--text)";
                   }}
@@ -2199,7 +2210,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                         <button
                           className="dropdown-item"
                           key={lvl}
-                          onClick={() => { setThinkingDropdownOpen(false); if (!isActive) onThinkingLevelChange(lvl); }}
+                          onClick={() => { setThinkingDropdownOpen(false); if (!isActive && !isStreaming) onThinkingLevelChange(lvl); }}
                           style={{
                             display: "flex", alignItems: "center", gap: 8,
                             width: "100%", padding: "7px 12px",
@@ -2230,11 +2241,15 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               </div>
             )}
 
-            {/* Fast toggle — only for models that support fast mode */}
-            {!isStreaming && fastModeSupported && onFastModeChange && (
+            {/* Fast toggle — only for models that support fast mode. Stays
+                visible while the agent runs (disabled) so it does not look
+                like fast mode was reset; the toggle affects the family tier
+                for the next prompt. */}
+            {fastModeSupported && onFastModeChange && (
               <button
                 type="button"
-                onClick={() => onFastModeChange(!fastModeEnabled)}
+                onClick={() => { if (isStreaming) return; onFastModeChange(!fastModeEnabled); }}
+                disabled={isStreaming}
                 title={fastModeEnabled && fastModeActive === false ? "Fast mode is enabled but inactive for this model" : `Turn OMP Fast mode ${fastModeEnabled ? "off" : "on"} for this model`}
                 aria-pressed={fastModeEnabled}
                 style={{
@@ -2245,7 +2260,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   border: "none",
                   borderRadius: 7,
                   color: fastModeEnabled && fastModeActive === false ? "var(--status-warning)" : fastModeEnabled ? "var(--accent)" : "var(--text-muted)",
-                  cursor: "pointer",
+                  cursor: isStreaming ? "not-allowed" : "pointer",
+                  opacity: isStreaming ? 0.5 : 1,
                   fontSize: 12,
                   fontWeight: 600,
                   transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",

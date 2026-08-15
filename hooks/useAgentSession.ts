@@ -2963,6 +2963,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       initialScrollDoneRef.current = true;
       scrollToBottom(streamState.isStreaming || agentRunningRef.current ? "instant" : "smooth");
     } else if (!initialScrollDoneRef.current) {
+      // Wait for the message list to actually be mounted: while `loading` is
+      // true the scroll container does not exist, so scrolling now would
+      // no-op yet mark the initial scroll as done - leaving the viewport at
+      // the top (which then auto-loads the full history) after load ends.
+      // The `loading` dep re-runs this effect once the list is rendered.
+      if (loading) return;
       initialScrollDoneRef.current = true;
       scrollToBottom("instant");
     } else if (completionScrollAllowedRef.current) {
@@ -2974,7 +2980,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
       }
     }
-  }, [messages, streamState, agentRunning, agentPhase, extensionWidgets, isCompacting, retryInfo, activeSubagentCount, todoPhases, scrollToBottom]);
+  }, [messages, streamState, agentRunning, agentPhase, extensionWidgets, isCompacting, retryInfo, activeSubagentCount, todoPhases, scrollToBottom, loading]);
 
   useEffect(() => () => {
     hookAliveRef.current = false;

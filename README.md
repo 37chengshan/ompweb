@@ -138,7 +138,7 @@ ompweb supports English, Simplified Chinese (简体中文), and Japanese (日本
 
 ## Credits
 
-ompweb is a fork of [agegr/pi-web](https://github.com/agegr/pi-web) (MIT), the web UI for the [badlogic/pi-mono](https://github.com/badlogic/pi-mono) pi coding agent, adapted for [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi).
+ompweb is a fork of [agegr/pi-web](https://github.com/agegr/pi-web) (MIT), the web UI for the [earendil/pi-mono](https://github.com/earendil-works/pi) pi coding agent, adapted for [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi).
 
 ## License
 

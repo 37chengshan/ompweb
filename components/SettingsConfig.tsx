@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import dynamic from "next/dynamic";
-import { Copy, ExternalLink, RefreshCw, RotateCcw, Sparkles, Search, AlertCircle, ShieldCheck, Cpu, Settings2, Cable, Bot, Puzzle } from "lucide-react";
+import { Copy, ExternalLink, RefreshCw, RotateCcw, Sparkles, Search, AlertCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES } from "./SettingsTabs";
@@ -85,6 +85,9 @@ type SettingIndexEntry = {
   scope?: "UI" | "Native OMP" | "Workspace";
 };
 
+// NOTE: This index mirrors the <NativeSetting label=...> cards rendered in the
+// panels below. Search matches against this index and jumps via slugify(label),
+// so keep labels/descriptions in sync when editing the settings UI.
 const SETTING_INDEX: SettingIndexEntry[] = [
   // Interface & Behavior
   { tab: "general", section: "Interface & Behavior", label: "Keep tool calls collapsed", description: "Show only compact headers while tools execute.", scope: "UI" },

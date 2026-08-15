@@ -513,6 +513,30 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 // ── Provider detail ───────────────────────────────────────────────────────────
 
+type EndpointPreset = {
+  label: string;
+  baseUrl: string;
+  /** "none" forces no-auth; "apiKey" forces key-based auth; "keep" preserves the current auth mode. */
+  auth: "none" | "apiKey" | "keep";
+};
+
+const ENDPOINT_PRESETS: EndpointPreset[] = [
+  { label: "🦙 Ollama", baseUrl: "http://localhost:11434/v1", auth: "none" },
+  { label: "⚡ LM Studio / vLLM", baseUrl: "http://localhost:1234/v1", auth: "none" },
+  { label: "🌐 OpenRouter", baseUrl: "https://openrouter.ai/api/v1", auth: "apiKey" },
+  { label: "🤖 Local Proxy (:2455)", baseUrl: "http://127.0.0.1:2455/v1", auth: "keep" },
+];
+
+const presetButtonStyle = {
+  padding: "4px 8px",
+  fontSize: 11,
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-control)",
+  background: "var(--bg)",
+  color: "var(--text)",
+  cursor: "pointer",
+} as const;
+
 function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
   name: string; provider: ProviderEntry;
   onChange: (p: ProviderEntry) => void; onRename: (n: string) => void; onDelete: () => void;
@@ -557,12 +581,12 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
   const trimmedRename = editingName.trim();
   const hostName = provider.baseUrl ? (provider.baseUrl.replace(/^https?:\/\//, "").split("/")[0] || provider.baseUrl) : "Default endpoint";
 
-  const applyPreset = (preset: { baseUrl: string; api: string; authNone?: boolean }) => {
+  const applyPreset = (preset: EndpointPreset) => {
     onChange({
       ...provider,
       baseUrl: preset.baseUrl,
-      api: preset.api,
-      auth: preset.authNone ? "none" : provider.auth,
+      api: "openai-completions",
+      auth: preset.auth === "keep" ? provider.auth : preset.auth,
     });
     toast.success(`Applied ${preset.baseUrl} endpoint preset`);
   };
@@ -604,34 +628,16 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
             Quick Endpoint Presets
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <button
-              type="button"
-              onClick={() => applyPreset({ baseUrl: "http://localhost:11434/v1", api: "openai-completions", authNone: true })}
-              style={{ padding: "4px 8px", fontSize: 11, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
-            >
-              🦙 Ollama
-            </button>
-            <button
-              type="button"
-              onClick={() => applyPreset({ baseUrl: "http://localhost:1234/v1", api: "openai-completions", authNone: true })}
-              style={{ padding: "4px 8px", fontSize: 11, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
-            >
-              ⚡ LM Studio / vLLM
-            </button>
-            <button
-              type="button"
-              onClick={() => applyPreset({ baseUrl: "https://openrouter.ai/api/v1", api: "openai-completions" })}
-              style={{ padding: "4px 8px", fontSize: 11, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
-            >
-              🌐 OpenRouter
-            </button>
-            <button
-              type="button"
-              onClick={() => applyPreset({ baseUrl: "http://127.0.0.1:2455/v1", api: "openai-completions" })}
-              style={{ padding: "4px 8px", fontSize: 11, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
-            >
-              🤖 Local Proxy (:2455)
-            </button>
+            {ENDPOINT_PRESETS.map((preset) => (
+              <button
+                key={preset.baseUrl}
+                type="button"
+                onClick={() => applyPreset(preset)}
+                style={presetButtonStyle}
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>

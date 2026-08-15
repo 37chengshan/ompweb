@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Bot, Cable, Cpu, KeyRound, Puzzle, RefreshCw, Settings2, ShieldCheck, Sparkles } from "lucide-react";
+import { Cable, Cpu, KeyRound, RefreshCw, Settings2, ShieldCheck, Sparkles } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
 
 export type SettingsTab =

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, memo, KeyboardEvent } from "react";
-import { ChevronDown, ListChecks, Sparkles, Target } from "lucide-react";
+import { ChevronDown, ListChecks, Search, Sparkles, Target } from "lucide-react";
 import { getSubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { ActiveGoal, ActivePlan } from "@/lib/web-mode-state";
@@ -120,6 +120,16 @@ function compareModelOptions(collator: Intl.Collator, a: ModelOption, b: ModelOp
   return collator.compare(a.name || a.modelId, b.name || b.modelId)
     || collator.compare(a.provider, b.provider)
     || collator.compare(a.modelId, b.modelId);
+}
+
+export function filterModelOptions(options: ModelOption[], query: string, locale: string): ModelOption[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase(locale);
+  if (!normalizedQuery) return options;
+  return options.filter((option) => (
+    option.name.toLocaleLowerCase(locale).includes(normalizedQuery)
+    || option.modelId.toLocaleLowerCase(locale).includes(normalizedQuery)
+    || option.provider.toLocaleLowerCase(locale).includes(normalizedQuery)
+  ));
 }
 
 const THINKING_LEVEL_DESC_KEYS: Record<string, string> = {
@@ -402,6 +412,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
+  const [modelSearchQuery, setModelSearchQuery] = useState("");
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
@@ -426,6 +437,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
+  const modelSearchInputRef = useRef<HTMLInputElement>(null);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1318,16 +1330,21 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     })).sort((a, b) => compareModelOptions(modelCollator, a, b));
   }, [modelList, modelNames, model?.provider, visibleModelKeys, modelCollator]);
 
-  // Group options by provider, preserving insertion order
+  const filteredModelOptions = React.useMemo(
+    () => filterModelOptions(modelOptions, modelSearchQuery, locale),
+    [locale, modelOptions, modelSearchQuery],
+  );
+
+  // Group options by provider, preserving insertion order.
   const modelsByProvider: { provider: string; options: ModelOption[] }[] = React.useMemo(() => {
     const groups: { provider: string; options: ModelOption[] }[] = [];
-    for (const opt of modelOptions) {
+    for (const opt of filteredModelOptions) {
       const group = groups.find((g) => g.provider === opt.provider);
       if (group) group.options.push(opt);
       else groups.push({ provider: opt.provider, options: [opt] });
     }
     return groups;
-  }, [modelOptions]);
+  }, [filteredModelOptions]);
 
   const displayModelName = model
     ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name
@@ -1373,6 +1390,14 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   useEffect(() => {
     if (isStreaming) setThinkingDropdownOpen(false);
   }, [isStreaming]);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) {
+      setModelSearchQuery("");
+      return;
+    }
+    requestAnimationFrame(() => modelSearchInputRef.current?.focus());
+  }, [modelDropdownOpen]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -2101,11 +2126,42 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     bottom,
                     ...panelPos,
                     zIndex: 500,
-                    overflow: "hidden", maxHeight: maxH, overflowY: "auto",
+                    display: "flex", flexDirection: "column",
+                    overflow: "hidden", maxHeight: maxH,
                     }}>
+                    <div style={{ padding: "8px 8px 6px", flexShrink: 0 }}>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "6px 10px",
+                        background: "var(--bg)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius-control)",
+                      }}>
+                        <Search size={13} strokeWidth={1.8} color="var(--text-dim)" aria-hidden="true" />
+                        <input
+                          ref={modelSearchInputRef}
+                          type="search"
+                          value={modelSearchQuery}
+                          onChange={(e) => setModelSearchQuery(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              setModelDropdownOpen(false);
+                            }
+                          }}
+                          placeholder={t("chatInput.searchModels")}
+                          aria-label={t("chatInput.searchModels")}
+                          style={{
+                            flex: 1, background: "none", border: "none", outline: "none",
+                            color: "var(--text)", fontSize: 13, boxSizing: "border-box", minWidth: 0,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ overflowY: "auto", minHeight: 0, paddingBottom: 4 }}>
                     {modelsByProvider.length === 0 ? (
                       <div style={{ padding: "8px 12px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
-                        {showModelsLoading ? t("chatInput.loadingModels") : t("chatInput.noAvailableModels")}
+                        {modelSearchQuery.trim() ? t("chatInput.noMatchingModels") : showModelsLoading ? t("chatInput.loadingModels") : t("chatInput.noAvailableModels")}
                       </div>
                     ) : modelsByProvider.map((group, gi) => (
                       <div key={group.provider}>
@@ -2148,6 +2204,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                         })}
                       </div>
                     ))}
+                    </div>
                   </div>
                   );
                 })()}

@@ -2141,6 +2141,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                         <input
                           ref={modelSearchInputRef}
                           type="search"
+                          autoComplete="off"
+                          spellCheck={false}
                           value={modelSearchQuery}
                           onChange={(e) => setModelSearchQuery(e.target.value)}
                           onKeyDown={(e) => {

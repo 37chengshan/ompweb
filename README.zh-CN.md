@@ -47,9 +47,12 @@ ompweb --hostname 0.0.0.0       # 在可信网络中暴露服务
 ompweb -p 8080 -H 0.0.0.0       # 组合使用
 ompweb --no-open                # 不自动打开浏览器
 
+ompweb --password "a-long-random-password" # 启用 Basic Auth（Windows 同样适用）
+
 PORT=8080 ompweb                # 也支持环境变量
 OMP_WEB_HOSTNAME=0.0.0.0 ompweb # 显式暴露到网络
-OMP_WEB_PASSWORD='a-long-random-password' ompweb # 启用 Basic Auth（用户名：omp）
+OMP_WEB_PASSWORD='a-long-random-password' ompweb # 环境变量形式（POSIX）
+# Windows: $env:OMP_WEB_PASSWORD="secret"; ompweb
 OMP_WEB_NO_OPEN=1 ompweb        # 作为后台服务运行时很有用
 ```
 

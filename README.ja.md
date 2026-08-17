@@ -47,9 +47,12 @@ ompweb --hostname 0.0.0.0       # 信頼できるネットワークに公開
 ompweb -p 8080 -H 0.0.0.0       # オプションを組み合わせる
 ompweb --no-open                # ブラウザを自動的に開かない
 
+ompweb --password "a-long-random-password" # Basic Auth を有効化（Windows でも同様）
+
 PORT=8080 ompweb                # 環境変数にも対応
 OMP_WEB_HOSTNAME=0.0.0.0 ompweb # ネットワーク公開を明示的に有効化
-OMP_WEB_PASSWORD='a-long-random-password' ompweb # Basic Auth を有効化（ユーザー名: omp）
+OMP_WEB_PASSWORD='a-long-random-password' ompweb # 環境変数でも同様（POSIX）
+# Windows: $env:OMP_WEB_PASSWORD="secret"; ompweb
 OMP_WEB_NO_OPEN=1 ompweb        # バックグラウンドサービスとして実行する場合に便利
 ```
 

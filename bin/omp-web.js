@@ -38,9 +38,18 @@ try {
   }
 }
 
-const { port, hostname, openBrowser } = parseLaunchOptions();
+const launchOptions = parseLaunchOptions();
+if (launchOptions.help || launchOptions.version) {
+  process.exit(0);
+}
+const port = launchOptions.port;
+const hostname = launchOptions.hostname;
+const password = launchOptions.password;
+const openBrowser = launchOptions.openBrowser;
+// Propagate --password into the env for proxy.ts / lib/web-auth.ts and the spawned Next process.
+if (password) process.env.OMP_WEB_PASSWORD = password;
 const loopbackHostnames = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-const passwordEnabled = Boolean(process.env.OMP_WEB_PASSWORD);
+const passwordEnabled = typeof password === "string" && password.length > 0;
 
 if (!fs.existsSync(nextDir)) {
   console.error("Build artifacts not found. Please report this issue.");
@@ -49,7 +58,7 @@ if (!fs.existsSync(nextDir)) {
 
 if (!loopbackHostnames.has(hostname)) {
   if (!passwordEnabled) {
-    console.error(`Refusing to listen on ${hostname} without OMP_WEB_PASSWORD. Set a strong password or bind to 127.0.0.1.`);
+    console.error(`Refusing to listen on ${hostname} without OMP_WEB_PASSWORD (or --password). Set a strong password or bind to 127.0.0.1.`);
     process.exit(1);
   }
   console.warn(`Warning: ompweb is listening on ${hostname} with Basic Auth over HTTP. Use HTTPS or a trusted VPN to protect the password in transit.`);

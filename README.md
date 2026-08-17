@@ -44,14 +44,20 @@ ompweb --port 8080              # custom port
 ompweb --hostname 0.0.0.0       # expose on a trusted network
 ompweb -p 8080 -H 0.0.0.0       # combine options
 ompweb --no-open                # do not open the browser automatically
+ompweb --password "a-long-random-password" # Basic Auth without POSIX inline-env syntax
 
 PORT=8080 ompweb                # environment variable is also supported
 OMP_WEB_HOSTNAME=0.0.0.0 ompweb # explicit network exposure
-OMP_WEB_PASSWORD='a-long-random-password' ompweb # require Basic Auth (username: omp)
+OMP_WEB_PASSWORD='a-long-random-password' ompweb # env-variable form (POSIX: inline or exported)
 OMP_WEB_NO_OPEN=1 ompweb        # useful when running as a background service
+
+# Windows (PowerShell / CMD)
+# $env:OMP_WEB_PASSWORD="a-long-random-password"; ompweb
+# or
+# ompweb --password "a-long-random-password"
 ```
 
-Set `OMP_WEB_PASSWORD` to protect the interface and every API endpoint with HTTP Basic Auth. The username is always `omp`; leaving the variable unset disables authentication. Basic Auth does not encrypt traffic, so remote use still requires HTTPS through a trusted reverse proxy or VPN.
+Set `OMP_WEB_PASSWORD` (or pass `--password`) to protect the interface and every API endpoint with HTTP Basic Auth. The username is always `omp`; leaving the variable unset disables authentication. Basic Auth does not encrypt traffic, so remote use still requires HTTPS through a trusted reverse proxy or VPN. On Windows the env-variable syntax is `$env:OMP_WEB_PASSWORD="..."`; `ompweb --password "..."` works in every shell without that extra step.
 
 ### Security and troubleshooting
 
@@ -82,7 +88,7 @@ Set `OMP_WEB_PASSWORD` to protect the interface and every API endpoint with HTTP
 | --- | --- |
 | `PORT` | Server port (default `30177`; `-p/--port` wins) |
 | `OMP_WEB_HOSTNAME` | Bind hostname (default `127.0.0.1`; `-H/--hostname` wins) |
-| `OMP_WEB_PASSWORD` | Optional HTTP Basic Auth password (username: `omp`) |
+| `OMP_WEB_PASSWORD` / `--password` | HTTP Basic Auth password (username: `omp`); `--password` works in every shell (PowerShell/CMD) without ` $env:` syntax |
 | `OMP_WEB_NO_OPEN` | Set to `1`/`true` to skip auto-opening the browser |
 | `OMP_WEB_OMP_BIN` | Absolute path to the `omp` binary when it is not on `PATH` |
 | `PI_CODING_AGENT_DIR` | Point at another omp agent directory (default `~/.omp/agent`) |

@@ -1034,10 +1034,31 @@ async function listSessionFiles(sessionsRoot: string): Promise<string[]> {
   if (!globalThis.__ompSessionFileListCache) globalThis.__ompSessionFileListCache = new Map();
   const cache = globalThis.__ompSessionFileListCache;
   const cached = cache.get(sessionsRoot);
-  if (cached && cached.mtimeMs === rootStat.mtimeMs) return cached.files;
+  if (cached && cached.mtimeMs === rootStat.mtimeMs) {
+    // Windows/NTFS: root mtime may not bump when a file is added inside a project subdir.
+    // Validate by sampling subdir mtimes (cheap: stat per project dir, not per file).
+    let stale = false;
+    try {
+      for (const dirent of readDirectorySyncRuntime(sessionsRoot, { withFileTypes: true })) {
+        if (!dirent.isDirectory()) continue;
+        const subPath = path.join(sessionsRoot, dirent.name);
+        const subMtime = statSync(subPath).mtimeMs;
+        if (subMtime > cached.mtimeMs) { stale = true; break; }
+      }
+    } catch { stale = true; }
+    if (!stale) return cached.files;
+  }
 
   const files = collectSessionFiles(sessionsRoot);
-  cache.set(sessionsRoot, { mtimeMs: rootStat.mtimeMs, files });
+  // Store max mtime across root + subdirs so future NTFS checks are accurate
+  let maxMtime = rootStat.mtimeMs;
+  try {
+    for (const dirent of readDirectorySyncRuntime(sessionsRoot, { withFileTypes: true })) {
+      if (!dirent.isDirectory()) continue;
+      maxMtime = Math.max(maxMtime, statSync(path.join(sessionsRoot, dirent.name)).mtimeMs);
+    }
+  } catch {}
+  cache.set(sessionsRoot, { mtimeMs: maxMtime, files });
   return files;
 }
 

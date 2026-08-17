@@ -54,11 +54,16 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
 
   // Resolve each unique cwd to its project root (main repo shared by all
   // worktrees). resolveProject caches per-cwd, so this is cheap after warmup.
+  // Bound concurrency so 100+ unique cwds don't spawn 100 parallel git processes.
   const uniqueCwds = [...new Set(ompSessions.map((s) => s.cwd).filter(Boolean))];
   const projectByCwd = new Map<string, ProjectInfo>();
-  await Promise.all(uniqueCwds.map(async (cwd) => {
-    projectByCwd.set(cwd, await resolveProject(cwd));
-  }));
+  const CONCURRENCY = 6;
+  for (let i = 0; i < uniqueCwds.length; i += CONCURRENCY) {
+    const chunk = uniqueCwds.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map(async (cwd) => {
+      projectByCwd.set(cwd, await resolveProject(cwd));
+    }));
+  }
 
   return ompSessions.map((s) => {
     cacheSessionPath(s.id, s.path);

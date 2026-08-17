@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
+import { memo, useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, useDeferredValue, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import type { ManagedProject, SessionInfo } from "@/lib/types";
 import { translate, useI18n } from "@/lib/i18n";
@@ -581,11 +581,21 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
   const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileExplorerRef = useRef<FileExplorerHandle>(null);
 
+  const sessionsEtagRef = useRef<string | null>(null);
+  const sessionsAbortRef = useRef<AbortController | null>(null);
   const loadSessions = useCallback(async (showLoading = false) => {
+    sessionsAbortRef.current?.abort();
+    const controller = new AbortController();
+    sessionsAbortRef.current = controller;
     try {
       if (showLoading) setLoading(true);
-      const res = await fetch("/api/sessions");
+      const headers: Record<string, string> = {};
+      if (sessionsEtagRef.current) headers["If-None-Match"] = sessionsEtagRef.current;
+      const res = await fetch("/api/sessions", { headers, signal: controller.signal });
+      if (res.status === 304) return;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const etag = res.headers.get("ETag");
+      if (etag) sessionsEtagRef.current = etag;
       const data = await res.json() as { sessions: SessionInfo[]; runningSessionIds?: string[] };
       setAllSessions(data.sessions);
       // Treat the fetched running set as an initial fallback only. Once SSE is
@@ -607,6 +617,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         sessionRefreshTimerRef.current = setTimeout(() => setSessionRefreshDone(false), 2000);
       }
     } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
       setError(translate("sessionSidebar.loadFailed", { detail: e instanceof Error ? e.message : String(e) }));
     } finally {
       if (showLoading) setLoading(false);
@@ -654,6 +665,16 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     saveUnreadSessionIds(unreadSessionIds);
   }, [unreadSessionIds]);
 
+  // Debounce refresh bursts (agent_start + session_info_update + file-appear signal can fire within 250ms)
+  const pendingRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRefresh = useCallback(() => {
+    if (pendingRefreshRef.current) return;
+    pendingRefreshRef.current = setTimeout(() => {
+      pendingRefreshRef.current = null;
+      void loadSessions(false);
+    }, 300);
+  }, [loadSessions]);
+
   useEffect(() => {
     // Live running status and session-list invalidations arrive via SSE; the
     // sidebar never has to poll while an agent is working.
@@ -669,7 +690,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         if (data.type === "running") {
           sseAuthoritativeRef.current = true;
           setRunningSessionIds(new Set(data.runningSessionIds ?? []));
-          if (data.refreshSessionList) void loadSessions(false);
+          if (data.refreshSessionList) scheduleRefresh();
         }
       } catch {
         // ignore malformed frames
@@ -677,13 +698,16 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     };
 
     // On error EventSource auto-reconnects; keep the last known state meanwhile.
-    return () => source.close();
-  }, [loadSessions]);
+    return () => {
+      if (pendingRefreshRef.current) clearTimeout(pendingRefreshRef.current);
+      source.close();
+    };
+  }, [loadSessions, scheduleRefresh]);
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
     const completedInBackground = [...previous].filter((id) => !runningSessionIds.has(id) && id !== selectedSessionId);
-    const newlyRunning = [...runningSessionIds];
+    const newlyRunning = [...runningSessionIds].filter((id) => !previous.has(id));
 
     if (completedInBackground.length > 0 || newlyRunning.length > 0) {
       setUnreadSessionIds((prev) => {
@@ -693,7 +717,12 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         return next;
       });
     }
-    if (completedInBackground.length > 0) {
+    // A brand-new session's JSONL does not exist until the first assistant
+    // turn makes progress — but its running badge must show immediately
+    // via the optimistic row. Once any session completes (or a new session
+    // appears on disk), reload so it replaces the optimistic placeholder
+    // without waiting for another refresh trigger.
+    if (completedInBackground.length > 0 || newlyRunning.length > 0) {
       loadSessions(false);
     }
 
@@ -864,18 +893,64 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
   const optimisticProjectRoot = optimisticSession
     ? optimisticSession.projectRoot ?? projectRootFor(optimisticSession.cwd) ?? optimisticSession.cwd
     : null;
+  // Stable placeholder timestamps: Date.now() inside the memo would churn every refresh and bust downstream memos.
+  const placeholderTsRef = useRef<Map<string, string>>(new Map());
   const visibleSessions = useMemo(() => {
-    if (!optimisticSession || allSessions.some((session) => session.id === optimisticSession.id)) {
-      return allSessions;
+    let base = allSessions;
+    if (optimisticSession && !base.some((session) => session.id === optimisticSession.id)) {
+      base = [...base, { ...optimisticSession, projectRoot: optimisticProjectRoot ?? optimisticSession.cwd }];
     }
-    return [...allSessions, { ...optimisticSession, projectRoot: optimisticProjectRoot ?? optimisticSession.cwd }];
-  }, [allSessions, optimisticProjectRoot, optimisticSession]);
+    // A running session's JSONL may not exist yet (first turn still
+    // streaming). Keep it in the list so navigating away never hides it
+    // until the file lands and the next refresh replaces the placeholder.
+    const known = new Set(base.map((s) => s.id));
+    const placeholders: SessionInfo[] = [];
+    for (const id of runningSessionIds) {
+      if (known.has(id)) continue;
+      let ts = placeholderTsRef.current.get(id);
+      if (!ts) {
+        ts = new Date().toISOString();
+        placeholderTsRef.current.set(id, ts);
+      }
+      placeholders.push({
+        id,
+        path: "",
+        cwd: selectedCwd ?? "",
+        name: undefined,
+        created: ts,
+        modified: ts,
+        messageCount: 1,
+        firstMessage: "",
+        projectRoot: selectedCwd ?? "",
+      });
+    }
+    // Prune timestamps for ids that are now materialized or no longer running
+    if (placeholderTsRef.current.size > placeholders.length) {
+      for (const key of [...placeholderTsRef.current.keys()]) {
+        if (!runningSessionIds.has(key) || known.has(key)) placeholderTsRef.current.delete(key);
+      }
+    }
+    return placeholders.length ? [...base, ...placeholders] : base;
+  }, [allSessions, optimisticSession, optimisticProjectRoot, runningSessionIds, selectedCwd]);
   const visibleProjects = useMemo(() => {
-    if (!optimisticProjectRoot || projects.some((project) => project.path === optimisticProjectRoot)) {
-      return projects;
+    let base = projects;
+    if (optimisticProjectRoot && !base.some((project) => project.path === optimisticProjectRoot)) {
+      base = [...base, { path: optimisticProjectRoot }];
     }
-    return [...projects, { path: optimisticProjectRoot }];
-  }, [optimisticProjectRoot, projects]);
+    // Running placeholders may belong to a project not yet in the managed list
+    // (new session's cwd wasn't registered as a project). Keep that workspace
+    // visible so the placeholder row has a bucket to render in.
+    const known = new Set(base.map((p) => p.path));
+    for (const id of runningSessionIds) {
+      if (allSessions.some((s) => s.id === id)) continue;
+      const path = selectedCwd ?? "";
+      if (path && !known.has(path)) {
+        base = [...base, { path }];
+        known.add(path);
+      }
+    }
+    return base;
+  }, [optimisticProjectRoot, projects, runningSessionIds, allSessions, selectedCwd]);
 
   // ---- Derived project list ---------------------------------------------------
   const selectedProject = useMemo(() => projectRootFor(selectedCwd), [projectRootFor, selectedCwd]);
@@ -895,27 +970,33 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
   // Client-side filtering (Workspaces header: search + "running only").
   // While a filter is active, workspaces with no matching sessions are hidden
   // so the list reads as a genuine result set; at rest every workspace stays.
-  const filtersActive = searchOpen || runningOnly || searchQuery.trim().length > 0;
+  // Deferred search: typing stays responsive (input updates immediately) while the heavy
+  // visibleProjectEntries filter runs at lower priority. Combines with the 200ms ETag loadSessions
+  // debounce already in place — keystrokes never block the main thread on large session lists.
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const filtersActive = searchOpen || runningOnly || deferredSearchQuery.trim().length > 0;
   const visibleProjectEntries = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = deferredSearchQuery.trim().toLowerCase();
     const entries: { project: ManagedProject; sessions: SessionInfo[] }[] = [];
     for (const project of sortedProjects) {
       let list = sessionsByProject.get(project.path) ?? [];
-      if (runningOnly) {
-        list = list.filter((s) => runningSessionIds.has(s.id));
-      }
+      if (runningOnly) list = list.filter((s) => runningSessionIds.has(s.id));
       if (q) {
-        const label = projectLabel(project.path).toLowerCase();
-        list = list.filter(
-          (s) => (s.name ?? "").toLowerCase().includes(q) || s.firstMessage.toLowerCase().includes(q),
-        );
-        if (list.length === 0 && !label.includes(q)) continue;
+        const labelLower = projectLabel(project.path).toLowerCase();
+        list = list.filter((s) => (s.name ?? "").toLowerCase().includes(q) || s.firstMessage.toLowerCase().includes(q));
+        if (list.length === 0 && !labelLower.includes(q)) continue;
       }
       if (list.length === 0 && (runningOnly || q)) continue;
       entries.push({ project, sessions: list });
     }
     return entries;
-  }, [sortedProjects, sessionsByProject, runningOnly, searchQuery, runningSessionIds]);
+  }, [sortedProjects, sessionsByProject, runningOnly, deferredSearchQuery, runningSessionIds]);
+
+  const treesByProject = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof buildSessionTree>>();
+    for (const { project, sessions } of visibleProjectEntries) m.set(project.path, buildSessionTree(sessions));
+    return m;
+  }, [visibleProjectEntries]);
 
   // Drop persisted expansion keys whose project no longer exists (removed or
   // vanished), so the storage stays bounded to real projects. Only runs after
@@ -1495,7 +1576,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
           )}
 
           {visibleProjectEntries.map(({ project, sessions }) => {
-            const tree = buildSessionTree(sessions);
+            const tree = treesByProject.get(project.path) ?? buildSessionTree(sessions);
             // Sessions group under a project through the case-folded comparable
             // form (see groupSessionsByProject), so the active highlight must
             // use the same comparison: a session whose cwd/projectRoot spells

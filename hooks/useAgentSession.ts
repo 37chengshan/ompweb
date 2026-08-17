@@ -515,6 +515,26 @@ function readCompactResult(result: unknown, reason: string): CompactResultInfo |
   };
 }
 
+/** Shared construction for an outgoing prompt: the optimistic user bubble
+ * (display shape with nested image blocks) and omp's RPC payload shape
+ * (flat image objects). Used by both handleSend and handleInterruptAndReply
+ * so the two paths cannot drift apart. */
+function buildOutgoingPrompt(
+  message: string,
+  images?: AttachedImage[],
+): { userMsg: AgentMessage; piImages: { type: "image"; data: string; mimeType: string }[] | undefined } {
+  const imageBlocks = images?.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mimeType, data: img.data } }));
+  const userMsg: AgentMessage = {
+    role: "user",
+    content: imageBlocks?.length
+      ? [...(message.trim() ? [{ type: "text" as const, text: message }] : []), ...imageBlocks]
+      : message,
+    timestamp: Date.now(),
+  };
+  const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+  return { userMsg, piImages };
+}
+
 export interface ChatInputHandle {
   insertText: (text: string) => void;
   insertIfEmpty: (content: string) => void;
@@ -770,7 +790,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     return null;
   }, [todoPhases]);
 
-  // Merge a batch of roster entries, keeping live frames over history.
   // Merge a batch of roster entries, keeping live frames over history.
   // `skipNewerThan` lets callers refuse to overwrite entries updated by live
   // frames after a point-in-time snapshot was requested (a snapshot taken
@@ -1762,7 +1781,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setAgentPhase(null);
         setRetryInfo(null);
         setSubagents([]);
-      subagentRosterGenerationRef.current += 1;
+        subagentRosterGenerationRef.current += 1;
         resetSubagentActivityState();
         dispatch({ type: "end" });
         if (endedSid) {
@@ -2047,10 +2066,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             lastUpdate: Date.now(),
             source: "live",
           };
-          // Progress frames arrive every ~150ms; skip the rerender when no
-          // displayed field actually changed (lastUpdate is never rendered;
-          // undefined values are omitted by JSON.stringify).
-          if (JSON.stringify({ ...current, lastUpdate: undefined }) === JSON.stringify({ ...nextEntry, lastUpdate: undefined })) return prev;
+          // Progress frames arrive every ~150ms; skip rerender when no displayed field changed.
+          // Avoid double JSON.stringify on hot path — field compare is cheaper than serializing whole entries.
+          if (
+            current.agent === nextEntry.agent &&
+            current.agentSource === nextEntry.agentSource &&
+            current.sessionFile === nextEntry.sessionFile &&
+            current.detached === nextEntry.detached &&
+            current.task === nextEntry.task &&
+            current.assignment === nextEntry.assignment &&
+            JSON.stringify(current.progress) === JSON.stringify(nextEntry.progress)
+          ) return prev;
           const next = [...prev];
           next[target] = nextEntry;
           return next;
@@ -2123,14 +2149,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const promptRunId = promptRunIdRef.current + 1;
 
-    const imageBlocks = images?.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mimeType, data: img.data } }));
-    const userMsg: AgentMessage = {
-      role: "user",
-      content: imageBlocks?.length
-        ? [...(message.trim() ? [{ type: "text" as const, text: message }] : []), ...imageBlocks]
-        : message,
-      timestamp: Date.now(),
-    };
+    const { userMsg, piImages } = buildOutgoingPrompt(message, images);
     setMessages((prev) => [...prev, userMsg]);
     optimisticUserMessageKeyRef.current = userMessageKey(userMsg);
     promptRunIdRef.current = promptRunId;
@@ -2143,8 +2162,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // The send click bubbles through the global pointer listener below. It is
     // not a request to stop following the response that this prompt starts.
     userScrollIntentUntilRef.current = 0;
-
-    const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
 
     try {
       let sentSessionId: string | null = null;
@@ -2230,29 +2247,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const sid = sessionIdRef.current;
     if (!sid || !agentRunningRef.current) return false;
 
-    const imageBlocks = images?.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mimeType, data: img.data } }));
-    const userMsg: AgentMessage = {
-      role: "user",
-      content: imageBlocks?.length
-        ? [...(message.trim() ? [{ type: "text" as const, text: message }] : []), ...imageBlocks]
-        : message,
-      timestamp: Date.now(),
-    };
+    const { userMsg, piImages: interruptPiImages } = buildOutgoingPrompt(message, images);
     setMessages((prev) => [...prev, userMsg]);
     optimisticUserMessageKeyRef.current = userMessageKey(userMsg);
     interruptReplyPendingRef.current = true;
     pendingScrollToUserRef.current = true;
     completionScrollAllowedRef.current = true;
     userScrollIntentUntilRef.current = 0;
-
-    const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
     try {
       await ensureEventsConnected(sid);
       void refreshSubagentRoster(sid);
       await sendAgentCommand(sid, {
         type: "abort_and_prompt",
         message: trimmedMessage,
-        ...(piImages?.length ? { images: piImages } : {}),
+        ...(interruptPiImages?.length ? { images: interruptPiImages } : {}),
       });
       return true;
     } catch (e) {
@@ -2698,10 +2706,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // the real user message when pi delivers it (user message_end event). An
   // optimistic chat bubble here would duplicate the queue panel and turn into
   // a ghost message if the queue is recalled.
+  const toPiImages = (images?: AttachedImage[]) => images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
   const handleSteer = useCallback(async (message: string, images?: AttachedImage[]) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
-    const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+    const piImages = toPiImages(images);
     try {
       await sendAgentCommand(sid, {
         type: "steer",
@@ -2726,7 +2735,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   ) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
-    const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+    const piImages = toPiImages(images);
     try {
       await sendAgentCommand(sid, {
         type: "prompt",
@@ -2748,7 +2757,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleFollowUp = useCallback(async (message: string, images?: AttachedImage[]) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
-    const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+    const piImages = toPiImages(images);
     try {
       await sendAgentCommand(sid, {
         type: "follow_up",
@@ -2960,6 +2969,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // during a run to avoid layout thrash. A manual scroll-up
   // (completionScrollAllowedRef === false) disables following.
   const followScrollFrameRef = useRef<number | null>(null);
+  // Reset scroll anchors when the active session changes. Not every navigation
+  // bumps ChatWindow's sessionKey (promoted new sessions, hydration), so a
+  // revisited compacted session would otherwise stay pinned at the top
+  // (compaction summary) instead of the latest turn.
+  const prevSessionIdForScrollRef = useRef<string | null>(null);
+  useEffect(() => {
+    const sid = session?.id ?? null;
+    if (prevSessionIdForScrollRef.current !== sid) {
+      prevSessionIdForScrollRef.current = sid;
+      initialScrollDoneRef.current = false;
+      completionScrollAllowedRef.current = true;
+      pendingScrollToUserRef.current = false;
+      if (followScrollFrameRef.current !== null) {
+        cancelAnimationFrame(followScrollFrameRef.current);
+        followScrollFrameRef.current = null;
+      }
+    }
+  }, [session?.id]);
   useEffect(() => {
     const hasContent = messages.length > 0 || streamState.isStreaming;
     if (!hasContent) return;

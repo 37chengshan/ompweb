@@ -18,12 +18,12 @@ export async function GET(req: Request) {
     const sessions = await listAllSessions();
     const runningSessionIds = getRunningRpcSessionIds();
     const body = { sessions, runningSessionIds };
-
-    const etag = `"${createHash("sha1").update(JSON.stringify(body)).digest("hex").slice(0, 16)}"`;
+    const bodyJson = JSON.stringify(body);
+    const etag = `"${createHash("sha1").update(bodyJson).digest("hex").slice(0, 16)}"`;
     if (req.headers.get("if-none-match") === etag) {
       return new NextResponse(null, { status: 304, headers: { ETag: etag, ...SESSION_LIST_HEADERS } });
     }
-    return NextResponse.json(body, { headers: { ETag: etag, ...SESSION_LIST_HEADERS } });
+    return new NextResponse(bodyJson, { headers: { ETag: etag, "Content-Type": "application/json", ...SESSION_LIST_HEADERS } });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error), code: "internal_error" },

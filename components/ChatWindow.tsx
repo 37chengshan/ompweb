@@ -59,7 +59,8 @@ function phaseLabel(phase: AgentPhase): string {
 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
-const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;// Trigger the next history page while the sentinel is still this far below
+const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;
+// Trigger the next history page while the sentinel is still this far below
 // the top edge, so a normal upward scroll seamlessly continues into the newly
 // loaded messages. Triggering only at the very top made the load invisible:
 // the restore anchored the viewport to the old content, so the user parked on
@@ -489,6 +490,14 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
   // Only render the last N messages initially. When the user scrolls to the
   // top, load another page while keeping the scroll position stable.
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
+  const prevSessionKeyForPagingRef = useRef<string | null>(null);
+  const sessionKeyForPaging = session?.id ?? (newSessionCwd ? `new:${newSessionCwd}` : "empty");
+  useEffect(() => {
+    if (prevSessionKeyForPagingRef.current !== sessionKeyForPaging) {
+      prevSessionKeyForPagingRef.current = sessionKeyForPaging;
+      setVisibleCount(VISIBLE_PAGE_SIZE);
+    }
+  }, [sessionKeyForPaging]);
   const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
   // True while the viewport is at/near the conversation bottom. Drives the
   // anchored render window in CommittedTranscript.
@@ -496,13 +505,21 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+    let raf: number | null = null;
     const update = () => {
+      raf = null;
       const next = el.scrollTop + el.clientHeight >= el.scrollHeight - 96;
       setNearBottom((prev) => (prev === next ? prev : next));
     };
+    const onScroll = () => {
+      if (raf === null) raf = requestAnimationFrame(update);
+    };
     update();
-    el.addEventListener("scroll", update, { passive: true });
-    return () => el.removeEventListener("scroll", update);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (raf !== null) cancelAnimationFrame(raf);
+    };
   }, [scrollContainerRef]);
   const sentinelRef = useRef<HTMLButtonElement>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
@@ -623,7 +640,6 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
-  const visibleMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
     const history: string[] = [];
@@ -636,7 +652,6 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     }
     return history.reverse();
   }, [messages]);
-  const messageRefs = useMessageRefs(visibleMessages.length);
   const conversationMeta = useMemo(() => {
     const toolResultsMap = new Map<string, ToolResultMessage>();
     let lastAnchorIdx = -1;
@@ -651,6 +666,10 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
 
     return { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage };
   }, [messages]);
+  // The ref array is sized by the count of user/assistant messages — exactly
+  // what conversationMeta's visibleRefIndexByMessage already tallies, so no
+  // separate filter pass (which would re-run on every streaming frame).
+  const messageRefs = useMessageRefs(conversationMeta.visibleRefIndexByMessage.size);
   // Tool-call ids already rendered by COMMITTED messages — memoized away from
   // the streaming path so a per-token update only re-scans the live bubble.
   const committedToolCallIds = useMemo(() => {

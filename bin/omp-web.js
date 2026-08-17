@@ -61,7 +61,7 @@ if (!loopbackHostnames.has(hostname)) {
     console.error(`Refusing to listen on ${hostname} without OMP_WEB_PASSWORD (or --password). Set a strong password or bind to 127.0.0.1.`);
     process.exit(1);
   }
-  console.warn(`Warning: ompweb is listening on ${hostname} with Basic Auth over HTTP. Use HTTPS or a trusted VPN to protect the password in transit.`);
+  console.warn(`Warning: ompweb is listening on ${hostname} over HTTP. Use HTTPS or a trusted VPN to protect the password and session cookie in transit.`);
 }
 
 const nextArgs = ["start", "-p", port];

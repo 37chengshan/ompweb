@@ -103,9 +103,10 @@ configuration is project-local, validated before writing, and saved atomically.
 ## Security contract
 
 - Bind loopback-only by default. A non-loopback hostname is an explicit opt-in.
-- `OMP_WEB_PASSWORD` protects every route with HTTP Basic Auth using the fixed
-  username `omp`. Basic Auth is not encryption; exposed deployments require
-  HTTPS through a trusted reverse proxy or VPN.
+- `OMP_WEB_PASSWORD` protects every route with a password-only sign-in screen.
+  Successful sign-in creates an HTTP-only, signed cookie with a 30-day expiry;
+  changing the configured password invalidates existing sessions. Exposed
+  deployments require HTTPS through a trusted reverse proxy or VPN.
 - API requests are origin-checked. Do not add browser-to-host execution paths
   that bypass this boundary.
 - OMP RPC host tools are intentionally not registered. A browser request must

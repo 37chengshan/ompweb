@@ -47,7 +47,7 @@ ompweb --hostname 0.0.0.0       # 信頼できるネットワークに公開
 ompweb -p 8080 -H 0.0.0.0       # オプションを組み合わせる
 ompweb --no-open                # ブラウザを自動的に開かない
 
-ompweb --password "a-long-random-password" # Basic Auth を有効化（Windows でも同様）
+ompweb --password "a-long-random-password" # パスワードのみのサインインを有効化（Windows でも同様）
 
 PORT=8080 ompweb                # 環境変数にも対応
 OMP_WEB_HOSTNAME=0.0.0.0 ompweb # ネットワーク公開を明示的に有効化
@@ -56,7 +56,7 @@ OMP_WEB_PASSWORD='a-long-random-password' ompweb # 環境変数でも同様（PO
 OMP_WEB_NO_OPEN=1 ompweb        # バックグラウンドサービスとして実行する場合に便利
 ```
 
-`OMP_WEB_PASSWORD` を設定すると、HTTP Basic 認証で UI とすべての API エンドポイントを保護できます。ユーザー名は常に `omp` です。未設定なら認証は無効です。Basic 認証は通信を暗号化しないため、リモート利用では信頼できるリバースプロキシまたは VPN 経由の HTTPS が必要です。ompweb をインターネットへ直接公開しないでください。
+`OMP_WEB_PASSWORD` を設定すると、テーマに統合されたパスワードのみのサインイン画面で UI とすべての API エンドポイントを保護できます。サインイン後は HTTP-only の署名付きセッションクッキーが 30 日間有効です。未設定なら認証は無効です。リモート利用では、パスワードとセッションクッキーを守るため、信頼できるリバースプロキシまたは VPN 経由の HTTPS が必要です。ompweb をインターネットへ直接公開しないでください。
 
 ## 機能
 
@@ -79,7 +79,7 @@ OMP_WEB_NO_OPEN=1 ompweb        # バックグラウンドサービスとして�
 | --- | --- |
 | `PORT` | サーバーポート（デフォルト `30177`。`-p/--port` が優先） |
 | `OMP_WEB_HOSTNAME` | バインドするホスト名（デフォルト `127.0.0.1`。`-H/--hostname` が優先） |
-| `OMP_WEB_PASSWORD` | 任意の HTTP Basic 認証パスワード（ユーザー名: `omp`） |
+| `OMP_WEB_PASSWORD` | サインイン画面用の任意のパスワード |
 | `OMP_WEB_NO_OPEN` | `1`/`true` を設定するとブラウザの自動起動をスキップ |
 | `OMP_WEB_OMP_BIN` | `omp` バイナリが `PATH` にない場合の絶対パス |
 | `PI_CODING_AGENT_DIR` | 別の omp エージェントディレクトリを指定（デフォルト `~/.omp/agent`） |

@@ -16,7 +16,7 @@ function printHelp() {
 Options:
   -p, --port <port>        Server port (default 30177, env PORT)
   -H, --hostname <host>    Bind hostname (default 127.0.0.1, env OMP_WEB_HOSTNAME)
-      --password <pass>    Basic Auth password (username: omp, env OMP_WEB_PASSWORD)
+      --password <pass>    Password for the web sign-in screen (env OMP_WEB_PASSWORD)
       --no-open            Do not open the browser automatically
   -h, --help               Show this help
       --version            Show version
@@ -28,8 +28,8 @@ Password:
   $env:OMP_WEB_PASSWORD="secret"; ompweb   # PowerShell
   set OMP_WEB_PASSWORD=secret&& ompweb     # CMD
 
-Security: Basic Auth does not encrypt traffic — use HTTPS via a trusted
-reverse proxy or VPN when binding to a non-loopback hostname.`);
+Security: use HTTPS via a trusted reverse proxy or VPN when binding to a
+non-loopback hostname, so the password and session cookie stay private.`);
 }
 
 function parseLaunchOptions(args = process.argv.slice(2), env = process.env) {

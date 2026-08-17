@@ -40,6 +40,7 @@
     "test": "node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs components/*.test.mjs components/ui/*.test.mjs hooks/*.test.mjs bin/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "prepack": "npm run build",
     "release:check": "npm test && npm run build"
   },
   "dependencies": {

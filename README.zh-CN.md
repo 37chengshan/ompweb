@@ -47,7 +47,7 @@ ompweb --hostname 0.0.0.0       # 在可信网络中暴露服务
 ompweb -p 8080 -H 0.0.0.0       # 组合使用
 ompweb --no-open                # 不自动打开浏览器
 
-ompweb --password "a-long-random-password" # 启用 Basic Auth（Windows 同样适用）
+ompweb --password "a-long-random-password" # 启用仅密码登录（Windows 同样适用）
 
 PORT=8080 ompweb                # 也支持环境变量
 OMP_WEB_HOSTNAME=0.0.0.0 ompweb # 显式暴露到网络
@@ -56,7 +56,7 @@ OMP_WEB_PASSWORD='a-long-random-password' ompweb # 环境变量形式（POSIX）
 OMP_WEB_NO_OPEN=1 ompweb        # 作为后台服务运行时很有用
 ```
 
-设置 `OMP_WEB_PASSWORD` 可使用 HTTP Basic Auth 保护界面和所有 API 端点。用户名固定为 `omp`；留空则关闭认证。Basic Auth 不加密流量，远程访问仍需通过受信任反向代理或 VPN 提供 HTTPS。默认仅监听 `127.0.0.1`；不要将 ompweb 直接暴露到互联网。
+设置 `OMP_WEB_PASSWORD` 可通过与主题集成的仅密码登录页面保护界面和所有 API 端点。登录成功后，会创建有效期为 30 天的 HTTP-only 签名会话 Cookie；留空则关闭认证。远程访问仍需通过受信任反向代理或 VPN 提供 HTTPS，以保护密码和会话 Cookie。默认仅监听 `127.0.0.1`；不要将 ompweb 直接暴露到互联网。
 
 ## 功能特性
 
@@ -79,7 +79,7 @@ OMP_WEB_NO_OPEN=1 ompweb        # 作为后台服务运行时很有用
 | --- | --- |
 | `PORT` | 服务器端口（默认 `30177`；`-p/--port` 优先） |
 | `OMP_WEB_HOSTNAME` | 绑定主机名（默认 `127.0.0.1`；`-H/--hostname` 优先） |
-| `OMP_WEB_PASSWORD` | 可选的 HTTP Basic Auth 密码（用户名：`omp`） |
+| `OMP_WEB_PASSWORD` | 登录页面使用的可选密码 |
 | `OMP_WEB_NO_OPEN` | 设为 `1`/`true` 可跳过自动打开浏览器 |
 | `OMP_WEB_OMP_BIN` | `omp` 不在 `PATH` 中时，指向其二进制文件的绝对路径 |
 | `PI_CODING_AGENT_DIR` | 指向其他 omp agent 目录（默认 `~/.omp/agent`） |

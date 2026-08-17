@@ -1,6 +1,7 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-export const OMP_WEB_AUTH_USERNAME = "omp";
+export const OMP_WEB_SESSION_COOKIE = "omp_web_session";
+export const OMP_WEB_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 function hash(value: string): Buffer {
   return createHash("sha256").update(value, "utf8").digest();
@@ -14,21 +15,25 @@ export function isWebPasswordEnabled(password: string | undefined = process.env.
   return typeof password === "string" && password.length > 0;
 }
 
-export function isValidBasicAuthorization(authorization: string | null, password = process.env.OMP_WEB_PASSWORD): boolean {
-  if (!isWebPasswordEnabled(password) || !authorization) return false;
-  const match = /^Basic\s+(\S+)$/i.exec(authorization);
+export function isValidWebPassword(candidate: string, password = process.env.OMP_WEB_PASSWORD): boolean {
+  return isWebPasswordEnabled(password) && equal(candidate, password);
+}
+
+export function createWebSession(password: string, now = Date.now()): string {
+  const expiresAt = now + OMP_WEB_SESSION_MAX_AGE_SECONDS * 1000;
+  const payload = `v1.${expiresAt}.${randomBytes(16).toString("base64url")}`;
+  const signature = createHmac("sha256", password).update(payload, "utf8").digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+export function isValidWebSession(session: string | undefined, password = process.env.OMP_WEB_PASSWORD, now = Date.now()): boolean {
+  if (!isWebPasswordEnabled(password) || !session) return false;
+  const match = /^v1\.(\d{13})\.([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{43})$/.exec(session);
   if (!match) return false;
 
-  let credentials: string;
-  try {
-    const decoded = Buffer.from(match[1], "base64");
-    if (decoded.toString("base64") !== match[1]) return false;
-    credentials = new TextDecoder("utf-8", { fatal: true }).decode(decoded);
-  } catch {
-    return false;
-  }
-  const separator = credentials.indexOf(":");
-  if (separator === -1) return false;
-  return equal(credentials.slice(0, separator), OMP_WEB_AUTH_USERNAME)
-    && equal(credentials.slice(separator + 1), password);
+  const expiresAt = Number(match[1]);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) return false;
+  const payload = session.slice(0, session.lastIndexOf("."));
+  const expected = createHmac("sha256", password).update(payload, "utf8").digest("base64url");
+  return equal(match[3], expected);
 }

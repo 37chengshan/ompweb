@@ -1392,8 +1392,9 @@ html.dark .dropdown-surface :is(select, option) {
 }
 
 .live-status-dot {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
   position: relative;
+  isolation: isolate;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* Live status pulse: the accent ring breathes outward while the dot itself
@@ -1403,19 +1404,24 @@ html.dark .dropdown-surface :is(select, option) {
    Driven by opacity+transform on an ::after layer (not a box-shadow
    keyframe) so the animation composites instead of repainting. Token
    duration/easing keep it consistent with the motion system, and the
-   global prefers-reduced-motion block collapses it to a static dot. */
+   global prefers-reduced-motion block collapses it to a static dot.
+   inset:0 keeps the ring centered on the dot; will-change hints the
+   compositor. The keyframe holds opacity 0 at the end to avoid a snap
+   back to full opacity before the next iteration. */
 .live-pulse::after {
   content: "";
   position: absolute;
-  inset: -1px;
+  inset: 0;
   border-radius: 9999px;
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-  animation: live-dot-pulse 1.6s var(--ease-out-warm) infinite;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: live-dot-pulse 1.5s var(--ease-out-warm) infinite;
   pointer-events: none;
+  will-change: transform, opacity;
 }
 @keyframes live-dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0; transform: scale(2.2); }
+  0% { opacity: 0.9; transform: scale(1); }
+  70% { opacity: 0; transform: scale(2.6); }
+  100% { opacity: 0; transform: scale(2.6); }
 }
 
 .mcp-editor-grid > :first-child { min-width: 0; }

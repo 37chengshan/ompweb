@@ -35,7 +35,7 @@ const nextConfig = (phase: string): NextConfig => {
       }
       return config;
     },
-    allowedDevOrigins: ['192.168.*.*'],
+    allowedDevOrigins: ["127.0.0.1", "192.168.*.*"],
     // Security: stop advertising the runtime, and surface dev-mode problems
     // earlier. Source maps in the browser bundle leak server path layout and
     // bloat downloads without helping end users of a published app.

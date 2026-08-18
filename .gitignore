@@ -55,3 +55,17 @@ next-env.d.ts
 /.vscode/
 .vscode/settings.json
 /.pi/
+
+# ephemeral / temp dirs (auto-generated, not tracked)
+.agent-teams/
+.freebuff/
+.jspace/
+
+# windows
+Thumbs.db
+Desktop.ini
+
+# local tooling cruft
+.tmp/
+tmp/
+*.log

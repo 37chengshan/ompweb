@@ -1,4 +1,4 @@
-import { loadModelsWithCache, withModelRuntimeError, type ModelsData } from "@/lib/models-cache";
+import { loadModelsWithCache, withModelRuntimeError, withSafeModelLoadFailure, type ModelsData } from "@/lib/models-cache";
 import { type OmpModel, runUtilityCommand } from "@/lib/omp/rpc-utility";
 import { readDisabledProviders } from "@/lib/omp/model-roles";
 
@@ -34,20 +34,40 @@ function supportsFastMode(model: OmpModel): boolean {
 }
 
 async function loadModels(): Promise<ModelsData> {
-  const { models: available } = await runUtilityCommand<{ models: OmpModel[] }>(
+  const availableResponse = await runUtilityCommand<{ models?: unknown }>(
     { type: "get_available_models" },
     120_000,
   );
+  const available = Array.isArray(availableResponse.models)
+    ? availableResponse.models
+        .filter((model): model is OmpModel => (
+          typeof model === "object" && model !== null
+          && typeof (model as OmpModel).id === "string"
+          && typeof (model as OmpModel).provider === "string"
+        ))
+        .map((model) => ({
+          ...model,
+          name: typeof model.name === "string" && model.name.trim().length > 0 ? model.name : model.id,
+        }))
+    : [];
 
   const nameMap = new Map<string, string>();
   const thinkingLevels: Record<string, string[]> = {};
   const modelList = available
     .map((m) => ({ id: m.id, name: m.name, provider: m.provider, thinkingLevels: thinkingLevelsFor(m), supportsFastMode: supportsFastMode(m) }))
     .sort(compareModelEntries);
-  const { providers: loginProviders } = await runUtilityCommand<{ providers: Array<{ id: string; name: string; authenticated: boolean }> }>(
+  const loginResponse = await runUtilityCommand<{ providers?: unknown }>(
     { type: "get_login_providers" },
     30_000,
   );
+  const loginProviders = Array.isArray(loginResponse.providers)
+    ? loginResponse.providers.filter((provider): provider is { id: string; name: string; authenticated: boolean } => (
+      typeof provider === "object" && provider !== null
+      && typeof (provider as { id?: unknown }).id === "string"
+      && typeof (provider as { name?: unknown }).name === "string"
+      && typeof (provider as { authenticated?: unknown }).authenticated === "boolean"
+    ))
+    : [];
   const disabledProviders = readDisabledProviders();
   const connectedProviders = loginProviders
     .filter((provider) => provider.authenticated)
@@ -91,8 +111,7 @@ const EMPTY_MODELS: ModelsData = {
 export async function GET() {
   try {
     return Response.json(await loadModelsWithCache(MODELS_CACHE_KEY, () => loadModels()));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return Response.json(withModelRuntimeError(EMPTY_MODELS, message));
+  } catch {
+    return Response.json(withSafeModelLoadFailure(EMPTY_MODELS));
   }
 }

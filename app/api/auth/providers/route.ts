@@ -7,10 +7,18 @@ export const dynamic = "force-dynamic";
 // hardcoded exclusions or display-name overrides are needed anymore.
 export async function GET() {
   try {
-    const { providers } = await runUtilityCommand<{ providers: OmpLoginProvider[] }>(
+    const response = await runUtilityCommand<{ providers?: unknown }>(
       { type: "get_login_providers" },
       30_000,
     );
+    const providers = Array.isArray(response.providers)
+      ? response.providers.filter((provider): provider is OmpLoginProvider => (
+        typeof provider === "object" && provider !== null
+        && typeof (provider as OmpLoginProvider).id === "string"
+        && typeof (provider as OmpLoginProvider).name === "string"
+        && typeof (provider as OmpLoginProvider).authenticated === "boolean"
+      ))
+      : [];
     const result = providers
       .filter((p) => p.available !== false)
       .map((p) => ({

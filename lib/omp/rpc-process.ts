@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "child_process";
 import { createInterface } from "readline";
+import { sanitizeProjectCommandEnvironment } from "../project-command-env";
 import { resolveOmpBin } from "./omp-cli";
 import { encodeRpcFrames, RpcFrameDecoder, type RpcFrameRecord, type RpcProtocolVersion } from "./rpc-frame";
 
@@ -95,7 +96,7 @@ export class RpcProcess {
     const args = ["--mode", "rpc-ui", "--cwd", options.cwd, ...(options.extraArgs ?? [])];
     this.child = this.spawnProcess(bin, args, {
       cwd: options.cwd,
-      env: { ...process.env, ...options.env },
+      env: sanitizeProjectCommandEnvironment({ ...process.env, ...options.env }),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       // On POSIX, omp launches grandchildren (LSP servers, extension subprocesses). Run the

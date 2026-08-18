@@ -19,6 +19,8 @@ const fs = require("fs");
 const { parseLaunchOptions } = require("./omp-web-options");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { isPortAvailable } = require("./port-availability");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { wireChildProcessLifecycle } = require("./process-lifecycle");
 
 const pkgDir = path.join(__dirname, "..");
 const nextDir = path.join(pkgDir, ".next");
@@ -90,6 +92,7 @@ async function main() {
       OMP_WEB_HOSTNAME: hostname,
     },
   });
+  wireChildProcessLifecycle(child);
 
   let browserOpened = false;
   child.stdout.on("data", (chunk) => {
@@ -112,8 +115,6 @@ async function main() {
       opener.unref();
     }
   });
-
-  child.on("exit", (code) => process.exit(code ?? 0));
 }
 
 main().catch((error) => {

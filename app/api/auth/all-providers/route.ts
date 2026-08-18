@@ -11,14 +11,28 @@ export const dynamic = "force-dynamic";
 // api-key route), so they are intentionally absent.
 export async function GET() {
   try {
-    const { models } = await runUtilityCommand<{ models: OmpModel[] }>(
+    const modelsResponse = await runUtilityCommand<{ models?: unknown }>(
       { type: "get_available_models" },
       120_000,
     );
-    const { providers: loginProviders } = await runUtilityCommand<{ providers: OmpLoginProvider[] }>(
+    const models = Array.isArray(modelsResponse.models)
+      ? modelsResponse.models.filter((model): model is OmpModel => (
+        typeof model === "object" && model !== null
+        && typeof (model as OmpModel).provider === "string"
+      ))
+      : [];
+    const loginResponse = await runUtilityCommand<{ providers?: unknown }>(
       { type: "get_login_providers" },
       30_000,
     );
+    const loginProviders = Array.isArray(loginResponse.providers)
+      ? loginResponse.providers.filter((provider): provider is OmpLoginProvider => (
+        typeof provider === "object" && provider !== null
+        && typeof (provider as OmpLoginProvider).id === "string"
+        && typeof (provider as OmpLoginProvider).name === "string"
+        && typeof (provider as OmpLoginProvider).authenticated === "boolean"
+      ))
+      : [];
 
     // OAuth-authenticated providers show in the subscription section instead;
     // custom models.yml providers are managed in the editor tree.

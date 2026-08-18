@@ -70,6 +70,7 @@ export interface ModelsFileConfig {
  * to reject configs omp itself would refuse to load. Throws on failure. */
 export function validateModelsConfig(config: ModelsFileConfig): void {
   if (!isRecord(config)) throw new Error("Config must be an object");
+  config = sanitizeModelsConfig(config);
   const providers = config.providers ?? {};
   if (!isRecord(providers)) throw new Error('"providers" must be an object');
   for (const [providerName, provider] of Object.entries(providers)) {
@@ -134,6 +135,20 @@ export interface ModelsConfigFile {
   parseError?: string;
 }
 
+/** Drop empty model rows produced by blank YAML sequence entries or an empty
+ * `id`. Malformed non-empty rows are retained so validation can report them. */
+function sanitizeModelsConfig(config: ModelsFileConfig): ModelsFileConfig {
+  if (!isRecord(config.providers)) return config;
+  const providers = Object.fromEntries(Object.entries(config.providers).map(([providerId, provider]) => {
+    if (!isRecord(provider) || !Array.isArray(provider.models)) return [providerId, provider];
+    const models = provider.models.filter((model) => (
+      !isRecord(model) || typeof model.id !== "string" || model.id.trim().length > 0
+    ));
+    return [providerId, { ...provider, models }];
+  }));
+  return { ...config, providers };
+}
+
 /** Read models.yml, reporting rather than swallowing parse failures. */
 export function readModelsConfigFile(): ModelsConfigFile {
   const path = getModelsConfigPath();
@@ -164,7 +179,7 @@ export function readModelsConfigFile(): ModelsConfigFile {
       parseError: "the top level of models.yml must be a mapping",
     };
   }
-  return { path, exists: true, source, config: parsed as ModelsFileConfig };
+  return { path, exists: true, source, config: sanitizeModelsConfig(parsed as ModelsFileConfig) };
 }
 
 /** Tolerant read for consumers that only inspect the config (a broken file
@@ -284,7 +299,7 @@ export function writeModelsConfig(config: ModelsFileConfig, options: WriteModels
   if (current.parseError && !options.overwriteUnparseable) {
     throw new ModelsConfigParseError(current.path, current.parseError);
   }
-  const text = serializeModelsConfig(config, current.parseError ? undefined : current.source);
+  const text = serializeModelsConfig(sanitizeModelsConfig(config), current.parseError ? undefined : current.source);
   const dir = dirname(current.path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   // Write-then-rename: a crash mid-write must not leave models.yml truncated,

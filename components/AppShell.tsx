@@ -185,9 +185,9 @@ export function AppShell() {
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "omp update";
         toast.info(
-          "OMP update available",
+          translate("appShell.ompUpdateAvailable"),
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-            <div>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}</div>
+            <div>{translate("appShell.updateVersion", { current: data.currentVersion ?? "?", available: data.availableVersion })}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
                 {cmd}
@@ -195,11 +195,13 @@ export function AppShell() {
               <button
                 type="button"
                 onClick={() => {
-                  void copyText(cmd).then(() => toast.success("Command copied to clipboard"));
+                  void copyText(cmd)
+                    .then(() => toast.success(translate("appShell.commandCopied")))
+                    .catch(() => toast.error(translate("appShell.commandCopyFailed")));
                 }}
                 style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
               >
-                Copy
+                {translate("appShell.copyCommand")}
               </button>
             </div>
           </div>
@@ -217,9 +219,9 @@ export function AppShell() {
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "npm install -g @kahme247/ompweb";
         toast.info(
-          "ompweb update available",
+          translate("appShell.appUpdateAvailable"),
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-            <div>v{data.currentVersion ?? "?"} -&gt; v{data.availableVersion}</div>
+            <div>{translate("appShell.updateVersion", { current: data.currentVersion ?? "?", available: data.availableVersion })}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
                 {cmd}
@@ -227,11 +229,13 @@ export function AppShell() {
               <button
                 type="button"
                 onClick={() => {
-                  void copyText(cmd).then(() => toast.success("Command copied to clipboard"));
+                  void copyText(cmd)
+                    .then(() => toast.success(translate("appShell.commandCopied")))
+                    .catch(() => toast.error(translate("appShell.commandCopyFailed")));
                 }}
                 style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
               >
-                Copy
+                {translate("appShell.copyCommand")}
               </button>
             </div>
           </div>

@@ -132,7 +132,7 @@ export function SettingsTabs({
 
   return (
     <nav aria-label="Settings sections" role="tablist" style={{ display: "flex", gap: 3, padding: "7px 12px", borderBottom: "1px solid var(--border)", background: "var(--bg-panel)", flexShrink: 0, overflowX: "auto" }}>
-      {SETTINGS_CATEGORIES.map(({ id, label, Icon, needsWorkspace }, index) => {
+      {SETTINGS_CATEGORIES.map(({ id, label, description, Icon, needsWorkspace }, index) => {
         const selected = id === currentActive;
         const disabled = Boolean(needsWorkspace && !workspaceReady);
         return (
@@ -143,13 +143,19 @@ export function SettingsTabs({
             id={`settings-tab-${id}`}
             aria-selected={selected}
             aria-controls={`settings-panel-${id}`}
+            aria-label={`${label}: ${description}`}
+            title={description}
             tabIndex={selected ? 0 : -1}
             disabled={disabled}
             onClick={() => onSelect(id)}
             onKeyDown={(event) => onKeyDown(event, index)}
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 9px", border: "none", borderRadius: "var(--radius-control)", background: selected ? "var(--bg-selected)" : "transparent", color: selected ? "var(--text)" : "var(--text-muted)", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1, fontSize: 12, whiteSpace: "nowrap" }}
+            style={{ display: "inline-flex", alignItems: "flex-start", gap: 5, padding: "6px 9px", border: "none", borderRadius: "var(--radius-control)", background: selected ? "var(--bg-selected)" : "transparent", color: selected ? "var(--text)" : "var(--text-muted)", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1, fontSize: 12, whiteSpace: "nowrap", textAlign: "left", minWidth: 150 }}
           >
-            <Icon size={13} aria-hidden="true" /> {label}
+            <Icon size={13} aria-hidden="true" />
+            <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+              <span style={{ fontWeight: selected ? 600 : 500 }}>{label}</span>
+              <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-muted)", fontSize: 10, fontWeight: 400, lineHeight: 1.25 }}>{description}</span>
+            </span>
           </button>
         );
       })}

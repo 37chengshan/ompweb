@@ -7,6 +7,8 @@ import { Copy, ExternalLink, RefreshCw, RotateCcw, Sparkles, Search, AlertCircle
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
+import { useI18n } from "@/lib/i18n";
+import { copyText } from "@/lib/clipboard";
 
 const SettingsTabLoading = () => <div role="status" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>Loading settings…</div>;
 const ModelsConfig = dynamic(() => import("./ModelsConfig").then((module) => module.ModelsConfig), { loading: SettingsTabLoading });
@@ -277,6 +279,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
   onClose: () => void;
 }) {
   const isMobile = useIsMobile();
+  const { t } = useI18n();
   const workspaceReady = cwd !== null;
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -413,13 +416,13 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
       const response = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restart" }) });
       const data = (await response.json()) as { error?: string; sessionsRestarted?: number };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
-      setMessage(`Restarted ${data.sessionsRestarted ?? 0} active OMP session(s).`);
+      setMessage(t("settingsConfig.restartSuccess", { count: data.sessionsRestarted ?? 0 }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setRestarting(false);
     }
-  }, []);
+  }, [t]);
 
   const currentTab = getNormalizedActive(activeTab);
 
@@ -877,37 +880,38 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             {currentTab === "system" && (
               <div role="tabpanel" id="settings-panel-system" aria-labelledby="settings-tab-system" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
                 <div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>System & Updates</h3>
-                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-muted)" }}>App version status, OMP runtime updates, and active session management.</p>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{t("settingsConfig.systemUpdates")}</h3>
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.systemUpdatesDescription")}</p>
                 </div>
 
                 {/* ompweb app update card */}
                 <section style={{ padding: 14, border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>ompweb application</div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{t("settingsConfig.appLabel")}</div>
                       <div style={{ marginTop: 4, color: appUpdate?.updateAvailable ? "var(--accent)" : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                        {checkingAppUpdate ? "Checking for updates..." : appUpdate?.updateAvailable ? `v${appUpdate.currentVersion ?? "?"} -> v${appUpdate.availableVersion}` : appUpdate?.currentVersion ? `v${appUpdate.currentVersion} is up to date` : "Version unavailable"}
+                        {checkingAppUpdate ? t("settingsConfig.checkingUpdates") : appUpdate?.updateAvailable ? t("appShell.updateVersion", { current: appUpdate.currentVersion ?? "?", available: appUpdate.availableVersion ?? "?" }) : appUpdate?.currentVersion ? t("settingsConfig.upToDate", { version: appUpdate.currentVersion }) : t("settingsConfig.versionUnavailable")}
                       </div>
                     </div>
-                    <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate} aria-label="Check ompweb updates" style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checkingAppUpdate ? "wait" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
-                      <RefreshCw size={13} aria-hidden="true" /> Refresh
+                    <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate} aria-label={t("settingsConfig.checkAppUpdates")} style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checkingAppUpdate ? "wait" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <RefreshCw size={13} aria-hidden="true" /> {t("settingsConfig.refresh")}
                     </button>
                   </div>
                   {appUpdate?.updateAvailable && (
                     <div style={{ marginTop: 6, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Run this command in terminal to update ompweb:</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.runAppUpdateCommand")}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{appUpdate.updateCommand || "npm install -g @kahme247/ompweb"}</code>
                         <button
                           type="button"
                           onClick={() => {
-                            void navigator.clipboard.writeText(appUpdate.updateCommand || "npm install -g @kahme247/ompweb");
-                            setMessage("Copied update command to clipboard.");
+                            void copyText(appUpdate.updateCommand || "npm install -g @kahme247/ompweb")
+                              .then(() => setMessage(t("appShell.commandCopied")))
+                              .catch(() => setMessage(t("appShell.commandCopyFailed")));
                           }}
                           style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
                         >
-                          <Copy size={12} aria-hidden="true" /> Copy
+                          <Copy size={12} aria-hidden="true" /> {t("appShell.copyCommand")}
                         </button>
                       </div>
                     </div>
@@ -918,29 +922,30 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                 <section style={{ padding: 14, border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>OMP runtime</div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{t("settingsConfig.ompLabel")}</div>
                       <div style={{ marginTop: 4, color: update?.updateAvailable ? "var(--accent)" : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                        {checking ? "Checking for updates..." : update?.updateAvailable ? `v${update.currentVersion ?? "?"} -> v${update.availableVersion}` : update?.currentVersion ? `v${update.currentVersion} is up to date` : "Version unavailable"}
+                        {checking ? t("settingsConfig.checkingUpdates") : update?.updateAvailable ? t("appShell.updateVersion", { current: update.currentVersion ?? "?", available: update.availableVersion ?? "?" }) : update?.currentVersion ? t("settingsConfig.upToDate", { version: update.currentVersion }) : t("settingsConfig.versionUnavailable")}
                       </div>
                     </div>
-                    <button type="button" onClick={() => void checkForUpdate()} disabled={checking} aria-label="Check OMP updates" style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checking ? "wait" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
-                      <RefreshCw size={13} aria-hidden="true" /> Refresh
+                    <button type="button" onClick={() => void checkForUpdate()} disabled={checking} aria-label={t("settingsConfig.checkOmpUpdates")} style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checking ? "wait" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <RefreshCw size={13} aria-hidden="true" /> {t("settingsConfig.refresh")}
                     </button>
                   </div>
                   {update?.updateAvailable && (
                     <div style={{ marginTop: 6, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Run this command in terminal to update OMP runtime:</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.runOmpUpdateCommand")}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{update.updateCommand || "omp update"}</code>
                         <button
                           type="button"
                           onClick={() => {
-                            void navigator.clipboard.writeText(update.updateCommand || "omp update");
-                            setMessage("Copied update command to clipboard.");
+                            void copyText(update.updateCommand || "omp update")
+                              .then(() => setMessage(t("appShell.commandCopied")))
+                              .catch(() => setMessage(t("appShell.commandCopyFailed")));
                           }}
                           style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
                         >
-                          <Copy size={12} aria-hidden="true" /> Copy
+                          <Copy size={12} aria-hidden="true" /> {t("appShell.copyCommand")}
                         </button>
                       </div>
                     </div>
@@ -952,7 +957,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                       disabled={restarting}
                       style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: restarting ? "wait" : "pointer", fontSize: 12 }}
                     >
-                      <RotateCcw size={13} aria-hidden="true" /> {restarting ? "Restarting..." : "Restart OMP sessions"}
+                      <RotateCcw size={13} aria-hidden="true" /> {restarting ? t("settingsConfig.restarting") : t("settingsConfig.restartSessions")}
                     </button>
                     <a
                       href="https://github.com/can1357/oh-my-pi/releases"
@@ -960,7 +965,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                       rel="noreferrer"
                       style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", color: "var(--text-muted)", textDecoration: "none", fontSize: 12 }}
                     >
-                      <ExternalLink size={13} aria-hidden="true" /> Changelog
+                      <ExternalLink size={13} aria-hidden="true" /> {t("settingsConfig.changelog")}
                     </a>
                   </div>
                   {message && <p role="status" style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{message}</p>}

@@ -5,13 +5,18 @@ import {
   getBrowseStartDirectory,
   getParentDirectory,
   listDirectories,
+  listWindowsDrives,
   resolveDirectory,
+  shouldShowWindowsDrivePicker,
 } from "@/lib/directory-browser";
 
 // GET /api/cwd/browse?path=...：列出文件系统中的可读子目录。
 export async function GET(request: NextRequest) {
   try {
     const requested = request.nextUrl.searchParams.get("path")?.trim();
+    if (shouldShowWindowsDrivePicker(requested)) {
+      return NextResponse.json({ path: "", parentPath: null, drives: await listWindowsDrives(), directories: [] });
+    }
     const candidate = getBrowseStartDirectory(requested);
 
     let resolved: string;

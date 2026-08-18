@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/lib/api-utils";
 import { existsSync } from "fs";
-import { addWorktree, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
+import { addWorktree, findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
+import { projectIdentityKey } from "@/lib/project-identity";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
  *  allowed dirs may be inspected or mutated through this endpoint. */
@@ -37,11 +38,13 @@ export async function GET(req: Request) {
 
     const project = await resolveProject(cwd);
     let worktrees: Awaited<ReturnType<typeof listWorktrees>> = [];
+    let currentWorktreePath: string | null = null;
     let isGit = true;
     try {
       // For a removed-worktree cwd (session of a deleted worktree), fall back
       // to the inferred project root so the switcher still shows the project.
       worktrees = await listWorktrees(existsSync(cwd) ? cwd : project.projectRoot);
+      currentWorktreePath = findCurrentWorktreePath(worktrees, cwd);
     } catch {
       isGit = false;
     }
@@ -51,8 +54,10 @@ export async function GET(req: Request) {
     for (const w of worktrees) allowFileRoot(w.path);
     return NextResponse.json({
       projectRoot: project.projectRoot,
+      projectKey: projectIdentityKey(project.projectRoot),
       isGit,
       isTopLevel: project.isTopLevel,
+      currentWorktreePath,
       worktrees,
     });
   } catch (error) {

@@ -1,11 +1,6 @@
 import { realpathSync } from "fs";
 import path from "path";
-
-const WINDOWS_ABSOLUTE_RE = /^[a-zA-Z]:[\\/]/;
-
-function isWindowsAbsolutePath(filePath: string): boolean {
-  return WINDOWS_ABSOLUTE_RE.test(filePath) || filePath.startsWith("\\\\") || filePath.startsWith("//");
-}
+import { isWindowsAbsolutePath } from "./paths";
 
 export function isPathWithinRoots(target: string, roots: Set<string>): boolean {
   for (const root of roots) {

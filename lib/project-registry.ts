@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, type Stats } from "fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, type Stats } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
 import { comparableProjectPath } from "./comparable-path";
@@ -44,6 +44,15 @@ export class ProjectPathError extends Error {
 
 const EMPTY_REGISTRY: ProjectRegistryFile = { version: 1, projects: [] };
 
+function canonicalProjectPath(value: string): string {
+  const resolved = resolve(value);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
 /** Parse registry JSON; missing, corrupt, or foreign-shaped input yields an
  *  empty registry rather than failing the whole sidebar. */
 export function parseProjectRegistry(raw: string): ProjectRegistryFile {
@@ -56,7 +65,7 @@ export function parseProjectRegistry(raw: string): ProjectRegistryFile {
       if (!item || typeof item !== "object" || Array.isArray(item)) continue;
       if (!("path" in item) || typeof item.path !== "string" || !item.path.trim()) continue;
       entries.push({
-        path: resolve(item.path.trim()),
+        path: canonicalProjectPath(item.path.trim()),
         addedAt: "addedAt" in item && typeof item.addedAt === "string"
           ? item.addedAt
           : new Date(0).toISOString(),
@@ -105,7 +114,7 @@ export function upsertProject(
   path: string,
   now = new Date().toISOString(),
 ): ProjectRegistryFile {
-  const canonical = resolve(path);
+  const canonical = canonicalProjectPath(path);
   const key = comparableProjectPath(canonical);
   const projects = registry.projects.filter((p) => comparableProjectPath(p.path) !== key);
   projects.push({ path: canonical, addedAt: now, hidden: false });
@@ -115,7 +124,7 @@ export function upsertProject(
 /** Mark a project hidden (or add a hidden entry for a session-discovered
  *  project that was never explicitly added). Reversible via upsertProject. */
 export function hideProject(registry: ProjectRegistryFile, path: string): ProjectRegistryFile {
-  const canonical = resolve(path);
+  const canonical = canonicalProjectPath(path);
   const key = comparableProjectPath(canonical);
   const existing = registry.projects.some((p) => comparableProjectPath(p.path) === key);
   const projects = registry.projects.map((p) =>
@@ -148,7 +157,7 @@ export function mergeProjects(registry: ProjectRegistryFile, discovered: Iterabl
   }
   const extra: ManagedProject[] = [];
   const extraSeen = new Set<string>();
-  for (const raw of new Set([...discovered].filter(Boolean).map((d) => resolve(d)))) {
+  for (const raw of new Set([...discovered].filter(Boolean).map(canonicalProjectPath))) {
     const key = comparableProjectPath(raw);
     if (hidden.has(key) || registeredSeen.has(key) || extraSeen.has(key)) continue;
     extraSeen.add(key);

@@ -395,11 +395,17 @@ export type SessionEntry =
 
 export type FileEntry = SessionHeader | SessionEntry;
 
+export interface BranchPreview {
+  role?: "user" | "assistant";
+  text: string;
+}
+
 export interface SessionTreeNode {
   entry: SessionEntry;
   children: SessionTreeNode[];
   label?: string;
   compressedEntryIds?: string[];
+  branchPreview?: BranchPreview;
 }
 
 export interface SessionInfo {
@@ -416,6 +422,8 @@ export interface SessionInfo {
    *  Always set by the server; optional because the client builds transient
    *  SessionInfo objects before the first refresh. Fall back to cwd. */
   projectRoot?: string;
+  /** Stable identity key for grouping and comparison (case-folded on Windows). */
+  projectKey?: string;
   /** Branch name when cwd is a linked git worktree (not the main checkout) */
   worktreeBranch?: string;
 }

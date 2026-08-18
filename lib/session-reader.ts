@@ -23,6 +23,7 @@ import { taskResultRetryFailure, taskResultStructuredOutput, taskResultUsageCost
 import type { TodoPhase } from "./pi-types";
 import { sessionPathKey } from "./session-path";
 import { resolveProject, type ProjectInfo } from "./worktree";
+import { projectIdentityKey } from "./project-identity";
 
 export { getAgentDir };
 
@@ -84,6 +85,7 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
         ? matchParentSessionId(s.parentSessionPath, pathToId, knownIds)
         : undefined,
       projectRoot: project?.projectRoot ?? s.cwd,
+      projectKey: projectIdentityKey(project?.projectRoot ?? s.cwd),
       ...(project?.isWorktree && project.branch ? { worktreeBranch: project.branch } : {}),
     };
   });

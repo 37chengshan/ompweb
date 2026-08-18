@@ -1,5 +1,6 @@
 import { comparableProjectPath } from "./comparable-path";
 import type { ManagedProject, SessionInfo } from "./types";
+import { workspaceKeyOf } from "./workspace-memory";
 
 // ============================================================================
 // Pure ordering/grouping helpers shared between the sidebar and unit tests.
@@ -45,9 +46,9 @@ export function projectActivityCounts(
   const unread = new Set(unreadIds);
   const result = new Map<string, { running: number; unread: number }>();
   for (const session of sessions) {
-    const key = session.projectRoot ?? session.cwd;
+    const key = workspaceKeyOf(session);
     if (!key) continue;
-    const folded = comparableProjectPath(key);
+    const folded = comparableProjectPath(session.projectKey ?? key);
     const current = result.get(folded) ?? { running: 0, unread: 0 };
     if (running.has(session.id)) current.running += 1;
     if (unread.has(session.id)) current.unread += 1;
@@ -75,9 +76,9 @@ export function groupSessionsByProject(
     bucketByKey.set(comparableProjectPath(project.path), bucket);
   }
   for (const session of sessions) {
-    const key = session.projectRoot ?? session.cwd;
+    const key = workspaceKeyOf(session);
     if (!key) continue;
-    const bucket = bucketByKey.get(comparableProjectPath(key)) ?? grouped.get(key);
+    const bucket = bucketByKey.get(comparableProjectPath(session.projectKey ?? key)) ?? grouped.get(key);
     if (bucket) bucket.push(session);
   }
   return grouped;

@@ -334,6 +334,8 @@ export interface UseAgentSessionOptions {
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
   onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
+  /** Registers an action that lazily starts the session and loads its system prompt. */
+  onSystemPromptLoaderChange?: (loader: (() => Promise<void>) | null) => void;
   onSessionStatsPanelOpen?: () => void;
   setToolPreset?: (preset: "none" | "default" | "full") => void;
   /** Opens a file in the web UI's file viewer (used by the open_file host tool). */
@@ -579,7 +581,7 @@ function toSlashCommandInfo(command: RpcAvailableSlashCommand): SlashCommandInfo
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, advisorEnabled, onAgentEnd, onSessionCreated, onSessionForked,
-    modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
     onOpenFile,
   } = opts;
 
@@ -1116,6 +1118,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       ensuringNewSessionRef.current = null;
     }
   }, [advisorEnabled, isNew, newSessionCwd, newSessionModel, newSessionDefaultModel, toolPreset, thinkingLevel]);
+
+  // The system panel may initialize a dormant session, but must not create a
+  // prompt or model run just to inspect the resolved system prompt.
+  const loadSystemPrompt = useCallback(async () => {
+    const sid = sessionIdRef.current ?? await ensureNewSession();
+    if (!sid) return;
+
+    const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
+    if (!hookAliveRef.current || sessionIdRef.current !== sid) return;
+    setSystemPrompt(state.systemPrompt ?? "");
+  }, [ensureNewSession]);
 
   const loadSlashCommands = useCallback(async () => {
     const sid = sessionIdRef.current ?? await ensureNewSession();
@@ -2934,6 +2947,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   useEffect(() => {
     onSystemPromptChange?.(systemPrompt);
   }, [systemPrompt, onSystemPromptChange]);
+
+  useEffect(() => {
+    onSystemPromptLoaderChange?.(loadSystemPrompt);
+    return () => onSystemPromptLoaderChange?.(null);
+  }, [loadSystemPrompt, onSystemPromptLoaderChange]);
 
   useEffect(() => {
     if (!onBranchDataChange) return;

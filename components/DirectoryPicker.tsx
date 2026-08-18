@@ -15,6 +15,7 @@ interface BrowseResponse {
   path?: string;
   parentPath?: string | null;
   directories?: DirectoryEntry[];
+  drives?: DirectoryEntry[];
   error?: string;
   code?: string;
 }
@@ -37,6 +38,20 @@ function FolderIcon() {
   );
 }
 
+function DriveIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M2 9h12" />
+      <circle cx="11.5" cy="11" r="0.6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function isWindowsDriveRoot(directory: string): boolean {
+  return /^[a-zA-Z]:[\\/]?$/.test(directory);
+}
+
 interface Props {
   onCancel: () => void;
   onSelect: (path: string) => void;
@@ -51,6 +66,7 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
   const [parentDirectory, setParentDirectory] = useState<string | null>(null);
   const [pathInput, setPathInput] = useState("");
   const [directories, setDirectories] = useState<DirectoryEntry[]>([]);
+  const [drives, setDrives] = useState<DirectoryEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const dialogRef = useModalDialog<HTMLDivElement>({
@@ -68,6 +84,7 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
       setParentDirectory(data.parentPath ?? null);
       setPathInput(nextPath);
       setDirectories(data.directories ?? []);
+      setDrives(data.drives ?? null);
     } catch (cause) {
       setLoadError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -87,6 +104,7 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
   };
   const hasUncommittedPath = pathInput.trim() !== currentPath;
   const canSelect = Boolean(currentPath) && !hasUncommittedPath && !busy;
+  const canNavigateUp = Boolean(parentDirectory) || isWindowsDriveRoot(currentPath);
 
   if (!portalTarget) return null;
 
@@ -118,7 +136,7 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
         </div>
 
         <form onSubmit={handlePathSubmit} style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
-          <button className="directory-picker-back" type="button" onClick={() => parentDirectory && void navigateTo(parentDirectory)} disabled={loading || !parentDirectory} title={t("directoryPicker.goToParent")} aria-label={t("directoryPicker.goToParent")} style={{ width: 36, height: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg-hover)", color: "var(--text-muted)", cursor: parentDirectory ? "pointer" : "default", opacity: parentDirectory ? 1 : 0.45, transition: "background-color var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)" }} onMouseEnter={(e) => { if (parentDirectory && !loading) { e.currentTarget.style.background = "var(--bg-selected)"; e.currentTarget.style.color = "var(--text)"; } }} onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text-muted)"; }}>
+          <button className="directory-picker-back" type="button" onClick={() => void navigateTo(parentDirectory ?? undefined)} disabled={loading || !canNavigateUp} title={t("directoryPicker.goToParent")} aria-label={t("directoryPicker.goToParent")} style={{ width: 36, height: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg-hover)", color: "var(--text-muted)", cursor: canNavigateUp ? "pointer" : "default", opacity: canNavigateUp ? 1 : 0.45, transition: "background-color var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)" }} onMouseEnter={(e) => { if (canNavigateUp && !loading) { e.currentTarget.style.background = "var(--bg-selected)"; e.currentTarget.style.color = "var(--text)"; } }} onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text-muted)"; }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m18 15-6-6-6 6" />
             </svg>
@@ -165,6 +183,13 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
                 />
               ))}
             </div>
+          ) : drives !== null ? (
+            drives.length > 0 ? drives.map((entry) => (
+              <button key={entry.path} className="directory-picker-entry" type="button" onClick={() => void navigateTo(entry.path)} title={entry.path} style={{ width: "100%", minHeight: 30, display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", border: 0, borderRadius: 5, background: "none", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                <DriveIcon />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
+              </button>
+            )) : <div style={{ padding: 8, color: "var(--text-dim)", fontSize: 11 }}>{t("directoryPicker.noDrives")}</div>
           ) : directories.length > 0 ? (
             directories.map((entry) => (
               <button

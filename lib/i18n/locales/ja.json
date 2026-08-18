@@ -75,7 +75,8 @@
   "appShell.system": "システム",
   "appShell.systemPrompt": "システムプロンプト",
   "appShell.systemPromptEmpty": "システムプロンプトは空です（ツールは無効）",
-  "appShell.systemPromptLoadHint": "メッセージを送信するとシステムプロンプトが読み込まれます",
+  "appShell.systemPromptLoadHint": "システムプロンプトはまだ読み込まれていません",
+  "appShell.systemPromptLoading": "システムプロンプトを読み込んでいます…",
   "appShell.titleGenNeedsMessage": "セッションに名前を付ける前にメッセージを送信してください",
   "appShell.titleGenUnavailable": "タイトル生成はセッションの保存後に利用できます",
   "appShell.titleUpdated": "タイトルを更新しました",
@@ -279,6 +280,7 @@
   "directoryPicker.goToParent": "親ディレクトリへ移動",
   "directoryPicker.loadingDirectories": "ディレクトリを読み込み中…",
   "directoryPicker.noSubdirectories": "サブディレクトリがありません",
+  "directoryPicker.noDrives": "ドライブが見つかりません",
   "directoryPicker.openPathBeforeSelecting": "選択する前にこのパスを開いてください",
   "directoryPicker.pathPlaceholder": "/path/to/project または ~/project",
   "directoryPicker.selectCurrentDirectory": "現在のディレクトリを選択",
@@ -792,5 +794,5 @@
   "commandPalette.notAvailable": "チャットで管理",
   "commandPalette.hints": "↑↓ 移動 · ↵ 選択 · esc 閉じる",
   "chatInput.interruptReply": "割り込んで返信",
-  "chatInput.interruptReplyTitle": "中止当前运行并立即回复"
+  "chatInput.interruptReplyTitle": "現在の実行を中断してすぐに回答する"
 }

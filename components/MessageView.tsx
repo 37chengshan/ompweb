@@ -30,6 +30,10 @@ const MAX_THINKING_CACHE_ENTRIES = 100;
 const thinkingContentCache = new Map<string, Promise<string>>();
 const MAX_MARKDOWN_CHARS = 100_000;
 
+// Cap the user "sent" bubble's height so an abnormally long message does not
+// push the conversation off screen; overflow scrolls inside the bubble.
+const USER_BUBBLE_MAX_HEIGHT = 300;
+
 function formatMessageSize(chars: number): string {
   return chars >= 1_000_000 ? `${(chars / 1_000_000).toFixed(1)} MB` : `${Math.round(chars / 1_000)} KB`;
 }
@@ -234,6 +238,8 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             lineHeight: 1.6,
             color: "var(--text)",
             wordBreak: "break-word",
+            maxHeight: USER_BUBBLE_MAX_HEIGHT,
+            overflowY: "auto",
           }}
         >
           {imageBlocks.length > 0 && (

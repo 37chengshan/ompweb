@@ -890,15 +890,27 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
   // Keep a just-created session and its project visible while omp is still
   // flushing the JSONL file. The server list remains authoritative once it
   // contains the same id.
-  const optimisticProjectRoot = optimisticSession
-    ? optimisticSession.projectRoot ?? projectRootFor(optimisticSession.cwd) ?? optimisticSession.cwd
-    : null;
+  // IMPORTANT: derive synchronously — the previous projectRootFor(cwd) needs
+  // the async /api/worktrees git lookup, so the optimistic row would park in
+  // cwd-bucket then jump to repo bucket. Use registered-project match first.
+  const optimisticProjectRoot = (() => {
+    if (!optimisticSession) return null;
+    if (optimisticSession.projectRoot) return optimisticSession.projectRoot;
+    if (optimisticSession.projectKey) return optimisticSession.projectKey;
+    const cw = optimisticSession.cwd ?? "";
+    if (!cw) return null;
+    const reg = projects.find((p) => comparableProjectPath(p.path) === comparableProjectPath(cw));
+    if (reg) return reg.path;
+    return cw;
+  })();
   // Stable placeholder timestamps: Date.now() inside the memo would churn every refresh and bust downstream memos.
   const placeholderTsRef = useRef<Map<string, string>>(new Map());
   const visibleSessions = useMemo(() => {
     let base = allSessions;
     if (optimisticSession && !base.some((session) => session.id === optimisticSession.id)) {
-      base = [...base, { ...optimisticSession, projectRoot: optimisticProjectRoot ?? optimisticSession.cwd }];
+      const stableRoot = optimisticProjectRoot ?? optimisticSession.cwd;
+      const stableKey = stableRoot ? comparableProjectPath(stableRoot) : undefined;
+      base = [...base, { ...optimisticSession, projectRoot: stableRoot ?? optimisticSession.cwd, ...(stableKey ? { projectKey: stableKey } : {}) }];
     }
     // A running session's JSONL may not exist yet (first turn still
     // streaming). Keep it in the list so navigating away never hides it
@@ -912,6 +924,8 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         ts = new Date().toISOString();
         placeholderTsRef.current.set(id, ts);
       }
+      const phRoot = optimisticProjectRoot ?? selectedCwd ?? "";
+      const phKey = phRoot ? comparableProjectPath(phRoot) : undefined;
       placeholders.push({
         id,
         path: "",
@@ -921,7 +935,8 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         modified: ts,
         messageCount: 1,
         firstMessage: "",
-        projectRoot: selectedCwd ?? "",
+        projectRoot: phRoot,
+        ...(phKey ? { projectKey: phKey } : {}),
       });
     }
     // Prune timestamps for ids that are now materialized or no longer running
@@ -934,19 +949,20 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
   }, [allSessions, optimisticSession, optimisticProjectRoot, runningSessionIds, selectedCwd]);
   const visibleProjects = useMemo(() => {
     let base = projects;
-    if (optimisticProjectRoot && !base.some((project) => project.path === optimisticProjectRoot)) {
+    const hasOpt = optimisticProjectRoot ? base.some((p) => comparableProjectPath(p.path) === comparableProjectPath(optimisticProjectRoot)) : false;
+    if (optimisticProjectRoot && !hasOpt) {
       base = [...base, { path: optimisticProjectRoot }];
     }
     // Running placeholders may belong to a project not yet in the managed list
     // (new session's cwd wasn't registered as a project). Keep that workspace
     // visible so the placeholder row has a bucket to render in.
-    const known = new Set(base.map((p) => p.path));
+    const knownFolded = new Set(base.map((p) => comparableProjectPath(p.path)));
     for (const id of runningSessionIds) {
       if (allSessions.some((s) => s.id === id)) continue;
-      const path = selectedCwd ?? "";
-      if (path && !known.has(path)) {
-        base = [...base, { path }];
-        known.add(path);
+      const phPath = optimisticProjectRoot ?? selectedCwd ?? "";
+      if (phPath && !knownFolded.has(comparableProjectPath(phPath))) {
+        base = [...base, { path: phPath }];
+        knownFolded.add(comparableProjectPath(phPath));
       }
     }
     return base;
@@ -954,10 +970,23 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
 
   // ---- Derived project list ---------------------------------------------------
   const selectedProject = useMemo(() => projectRootFor(selectedCwd), [projectRootFor, selectedCwd]);
-  // Stable order: most-recently-added first, then session-discovered by path.
-  // Deliberately does NOT depend on session activity — re-sorting on every
-  // session refresh made project rows jump around while working.
-  const sortedProjects = useMemo(() => sortManagedProjects(visibleProjects), [visibleProjects]);
+  // While a fresh optimistic/placeholder is pending (JSONL not yet on disk),
+  // freeze ordering so the new project row does not flicker optimistic ->
+  // confirmed position. New projects are allowed to append at the end.
+  const hasPendingNewSession = Boolean(optimisticSession || [...runningSessionIds].some((id) => !allSessions.some((ss) => ss.id === id)));
+  const sortedProjectsBase = useMemo(() => sortManagedProjects(visibleProjects), [visibleProjects]);
+  const sortedProjectsRef = useRef<ManagedProject[] | null>(null);
+  const sortedProjects = useMemo(() => {
+    if (hasPendingNewSession && sortedProjectsRef.current) {
+      const prev = sortedProjectsRef.current;
+      const prevKeys = new Set(prev.map((p) => comparableProjectPath(p.path)));
+      const next = [...prev];
+      for (const p of sortedProjectsBase) if (!prevKeys.has(comparableProjectPath(p.path))) next.push(p);
+      return next;
+    }
+    sortedProjectsRef.current = sortedProjectsBase;
+    return sortedProjectsBase;
+  }, [sortedProjectsBase, hasPendingNewSession]);
   const sessionsByProject = useMemo(
     () => groupSessionsByProject(sortedProjects, visibleSessions),
     [sortedProjects, visibleSessions],

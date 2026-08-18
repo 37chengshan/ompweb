@@ -259,11 +259,21 @@ export function AppShell() {
   }, []);
 
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
+  const [systemPromptLoading, setSystemPromptLoading] = useState(false);
+  const systemPromptLoaderRef = useRef<(() => Promise<void>) | null>(null);
+  const systemPromptLoadIdRef = useRef(0);
   const systemBtnRef = useRef<HTMLButtonElement>(null);
   const sessionStatsBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleSystemPromptChange = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
+    setSystemPromptLoading(false);
+  }, []);
+
+  const handleSystemPromptLoaderChange = useCallback((loader: (() => Promise<void>) | null) => {
+    systemPromptLoadIdRef.current += 1;
+    systemPromptLoaderRef.current = loader;
+    setSystemPromptLoading(false);
   }, []);
 
   // Session stats (tokens + cost) — populated by ChatWindow, displayed in top bar
@@ -306,6 +316,22 @@ export function AppShell() {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile]);
+
+  const handleSystemPromptToggle = useCallback(() => {
+    const opening = activeTopPanel !== "system";
+    toggleTopPanel("system");
+    if (!opening || systemPromptLoading || systemPrompt !== null) return;
+
+    const load = systemPromptLoaderRef.current;
+    if (!load) return;
+    const loadId = ++systemPromptLoadIdRef.current;
+    setSystemPromptLoading(true);
+    void load().catch((error) => {
+      console.error("Failed to load system prompt:", error);
+    }).finally(() => {
+      if (systemPromptLoadIdRef.current === loadId) setSystemPromptLoading(false);
+    });
+  }, [activeTopPanel, systemPrompt, systemPromptLoading, toggleTopPanel]);
 
   const openSessionStatsPanel = useCallback(() => {
     if (isMobile) setSidebarOpen(false);
@@ -512,6 +538,7 @@ export function AppShell() {
     setBranchTree([]);
     setBranchActiveLeafId(null);
     setSystemPrompt(null);
+    setSystemPromptLoading(false);
     setActiveTopPanel(null);
     router.replace("/", { scroll: false });
   }, [router, selectedSession]);
@@ -521,6 +548,7 @@ export function AppShell() {
     setSelectedSession(session);
     setSessionKey((k) => k + 1);
     setSystemPrompt(null);
+    setSystemPromptLoading(false);
     setInitialSessionRestored(true);
     // On mobile, collapse the overlay drawer so the chat is revealed after pick.
     if (isMobile && !isRestore) setSidebarOpen(false);
@@ -543,6 +571,7 @@ export function AppShell() {
     setBranchTree([]);
     setBranchActiveLeafId(null);
     setSystemPrompt(null);
+    setSystemPromptLoading(false);
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
     router.replace("/", { scroll: false });
@@ -723,7 +752,6 @@ export function AppShell() {
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
 
-  const activeFileTab = fileTabs.find((t) => t.id === activeFileTabId) ?? null;
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
   const windowTitle = activeCwdName ? `${activeCwdName} - omp web` : "omp web";
 
@@ -998,7 +1026,7 @@ export function AppShell() {
               />
               <button
                 ref={systemBtnRef}
-                onClick={() => toggleTopPanel("system")}
+                onClick={handleSystemPromptToggle}
                 title={t("appShell.system")}
                 aria-label={t("appShell.system")}
                 aria-pressed={activeTopPanel === "system"}
@@ -1161,7 +1189,7 @@ export function AppShell() {
                     </div>
                   ) : (
                     <div style={{ padding: "10px 16px", fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
-                      {t("appShell.systemPromptLoadHint")}
+                      {systemPromptLoading ? t("appShell.systemPromptLoading") : t("appShell.systemPromptLoadHint")}
                     </div>
                   )}
                 </div>
@@ -1338,6 +1366,7 @@ export function AppShell() {
               chatInputRef={chatInputRef}
               onBranchDataChange={handleBranchDataChange}
               onSystemPromptChange={handleSystemPromptChange}
+              onSystemPromptLoaderChange={handleSystemPromptLoaderChange}
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
@@ -1426,22 +1455,24 @@ export function AppShell() {
 
         </div>
 
-        {/* File content */}
+        {/* Keep open viewers mounted so switching tabs preserves scroll and preview state. */}
         <div style={{ flex: 1, overflow: "hidden" }}>
-          {activeFileTab?.filePath ? (
-            <FileViewer
-              filePath={activeFileTab.filePath}
-              cwd={activeCwd ?? undefined}
-              sourceSessionId={activeFileTab.sourceSessionId}
-              gitRefreshKey={explorerRefreshKey}
-              onMentionLines={rightPanelOpen ? handleFileLineMention : undefined}
-              onOpenFile={(filePath) => handleOpenFile(
-                filePath,
-                getFileName(filePath),
-                activeFileTab.sourceSessionId,
-              )}
-            />
-          ) : (
+          {fileTabs.length > 0 ? fileTabs.map((tab) => (
+            <div key={tab.id} style={{ display: tab.id === activeFileTabId ? "block" : "none", height: "100%" }}>
+              <FileViewer
+                filePath={tab.filePath}
+                cwd={activeCwd ?? undefined}
+                sourceSessionId={tab.sourceSessionId}
+                gitRefreshKey={explorerRefreshKey}
+                onMentionLines={tab.id === activeFileTabId && rightPanelOpen ? handleFileLineMention : undefined}
+                onOpenFile={(filePath) => handleOpenFile(
+                  filePath,
+                  getFileName(filePath),
+                  tab.sourceSessionId,
+                )}
+              />
+            </div>
+          )) : (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
               {t("appShell.noFileOpen")}
             </div>

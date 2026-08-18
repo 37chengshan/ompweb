@@ -1809,14 +1809,18 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
   const loadOAuthProviders = useCallback(() => {
     fetch("/api/auth/providers")
       .then((r) => r.json())
-      .then((d: { providers: OAuthProvider[] }) => setOauthProviders(d.providers))
+      .then((d: { providers?: OAuthProvider[] }) => {
+        if (Array.isArray(d.providers)) setOauthProviders(d.providers);
+      })
       .catch(() => {});
   }, []);
 
   const loadApiKeyProviders = useCallback(() => {
     fetch("/api/auth/all-providers")
       .then((r) => r.json())
-      .then((d: { providers: ApiKeyProvider[] }) => setApiKeyProviders(d.providers))
+      .then((d: { providers?: ApiKeyProvider[] }) => {
+        if (Array.isArray(d.providers)) setApiKeyProviders(d.providers);
+      })
       .catch(() => {});
   }, []);
 

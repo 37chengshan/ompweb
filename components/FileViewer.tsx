@@ -28,6 +28,8 @@ import { markdownCodeRenderer } from "./MarkdownCode";
 import { Tooltip } from "./ui/primitives";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
+import { parseFrontmatter } from "@/lib/frontmatter";
+import { FrontmatterCard } from "./FrontmatterCard";
 
 interface Props {
   filePath: string;
@@ -776,7 +778,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
           <iframe
             key={previewUrl}
             src={previewUrl}
-            sandbox={isPdf ? undefined : ""}
+            sandbox={isPdf ? undefined : "allow-same-origin"}
             title={t("fileViewer.previewTitle", { name: getFileName(filePath) })}
             style={{ width: "100%", height: "100%", border: "none", background: isPdf ? "var(--bg)" : "var(--bg-subtle)" }}
           />
@@ -934,9 +936,14 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
     if (!hasGitDiff && displayMode === "diff") setDisplayMode("source");
   }, [displayMode, hasGitDiff]);
 
-  const markdownPreview = useMemo(
-    () => (data?.language === "markdown" ? normalizeDisplayMath(data.content) : ""),
+  const parsedFrontmatter = useMemo(
+    () => (data?.language === "markdown" ? parseFrontmatter(data.content) : null),
     [data],
+  );
+  const frontmatter = parsedFrontmatter?.data ?? null;
+  const markdownPreview = useMemo(
+    () => (data?.language === "markdown" ? normalizeDisplayMath(parsedFrontmatter?.rest ?? data.content) : ""),
+    [data, parsedFrontmatter],
   );
   const markdownPlugins = useMarkdownPlugins(markdownPreview);
 
@@ -1168,6 +1175,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
             className="markdown-body markdown-file-preview"
             style={{ padding: "24px 32px" }}
           >
+            {frontmatter && <FrontmatterCard data={frontmatter} />}
             <ReactMarkdown
               remarkPlugins={markdownPlugins.remarkPlugins}
               rehypePlugins={markdownPlugins.rehypePlugins}

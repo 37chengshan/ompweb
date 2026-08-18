@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, memo, useRef, useEffect } from "react";
 import { GitBranch } from "lucide-react";
 import { translate, useI18n } from "@/lib/i18n";
-import type { SessionEntry, SessionTreeNode } from "@/lib/types";
+import type { BranchPreview, SessionEntry, SessionTreeNode } from "@/lib/types";
 
 interface Props {
   tree: SessionTreeNode[];
@@ -41,38 +41,50 @@ function buildActivePath(nodes: SessionTreeNode[], targetId: string | null): Set
 
 // Compress a visible linear chain into the first branching/leaf node.
 // Server-side compressed IDs also count as skipped nodes.
-function compress(node: SessionTreeNode): { node: SessionTreeNode; skipped: number } {
+function isMessageEntry(entry: SessionEntry): entry is SessionEntry & { message: { role: string; content: unknown } } {
+  return entry.type === "message" && "message" in entry;
+}
+
+function messagePreview(entry: SessionEntry): BranchPreview | undefined {
+  if (!isMessageEntry(entry)) return undefined;
+  const content = entry.message.content;
+  let text = typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? content.filter((block): block is { type: "text"; text: string } => typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text" && typeof (block as { text?: unknown }).text === "string").map((block) => block.text).join(" ")
+      : "";
+  text = text.replace(/\s+/g, " " ).trim();
+  if (text.length > 40) text = `${text.slice(0, 40)}…`;
+  if (!text) text = entry.message.role === "assistant" ? translate("branchNavigator.assistantLabel") : "message";
+  const role = entry.message.role === "user" || entry.message.role === "assistant" ? entry.message.role : undefined;
+  return { ...(role ? { role } : {}), text };
+}
+
+function compress(node: SessionTreeNode): { node: SessionTreeNode; skipped: number; branchPreview?: BranchPreview; labelEntry: SessionEntry } {
   let current = node;
+  let branchPreview = current.branchPreview;
+  let labelEntry: SessionEntry = current.entry;
+  if (isMessageEntry(current.entry)) {
+    branchPreview ??= messagePreview(current.entry);
+    labelEntry = current.entry;
+  }
   let skipped = current.compressedEntryIds?.length ?? 0;
   while (current.children.length === 1) {
     current = current.children[0];
+    branchPreview ??= current.branchPreview ?? messagePreview(current.entry);
+    if (!isMessageEntry(labelEntry) && isMessageEntry(current.entry)) labelEntry = current.entry;
     skipped += 1 + (current.compressedEntryIds?.length ?? 0);
   }
-  return { node: current, skipped };
+  return { node: current, skipped, branchPreview, labelEntry };
 }
 
 function getLabel(entry: SessionEntry): string {
-  if (entry.type === "message" && "message" in entry) {
-    const msg = entry.message as { role: string; content: unknown };
-    const content = msg.content;
-    let text = "";
-    if (typeof content === "string") {
-      text = content;
-    } else if (Array.isArray(content)) {
-      text = content
-        .filter((b): b is { type: "text"; text: string } => b.type === "text")
-        .map((b) => b.text)
-        .join(" ");
-    }
-    if (text.length > 40) text = text.slice(0, 40) + "…";
-    if (text) return text;
-    if (msg.role === "assistant") return translate("branchNavigator.assistantLabel");
-  }
-  return entry.type;
+  return messagePreview(entry)?.text ?? entry.type;
 }
 
 // Does the tree have any branching at all?
 function hasBranch(nodes: SessionTreeNode[]): boolean {
+  if (nodes.length > 1) return true;
   for (const node of nodes) {
     if (node.children.length > 1) return true;
     if (hasBranch(node.children)) return true;
@@ -91,15 +103,15 @@ interface TreeNodeProps {
 
 const TreeNodeView = memo(function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelect }: TreeNodeProps) {
   const { t } = useI18n();
-  const { node: rep, skipped } = useMemo(() => compress(node), [node]);
+  const { node: rep, skipped, branchPreview, labelEntry } = useMemo(() => compress(node), [node]);
   const repId = rep.entry.id;
   const nodeId = node.entry.id;
   const isActive = activePathIds.has(repId);
   const isOnPath = activePathIds.has(nodeId) || activePathIds.has(repId);
-  const label = useMemo(() => getLabel(rep.entry), [rep.entry]);
-  const role = useMemo(() => rep.entry.type === "message" && "message" in rep.entry
-    ? (rep.entry.message as { role: string }).role
-    : null, [rep.entry]);
+  const label = useMemo(() => branchPreview?.text ?? getLabel(labelEntry), [branchPreview, labelEntry]);
+  const role = useMemo(() => branchPreview?.role ?? (labelEntry.type === "message" && "message" in labelEntry
+    ? (labelEntry.message as { role: string }).role
+    : null), [branchPreview, labelEntry]);
 
   return (
     <div>
@@ -322,7 +334,11 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
     const compressed = tree.length > 0 ? compress(tree[0]) : null;
     return compressed?.node ?? null;
   }, [tree]);
-  const hasContent = !noBranchReason && firstNode !== null && firstNode.children.length > 1;
+  const topLevelBranches = useMemo(() => {
+    if (tree.length > 1) return tree;
+    return firstNode && firstNode.children.length > 1 ? firstNode.children : [];
+  }, [firstNode, tree]);
+  const hasContent = !noBranchReason && topLevelBranches.length > 0;
 
   const branchIcon = (
     <GitBranch size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: hasContent ? "var(--accent)" : undefined, flexShrink: 0 }} />
@@ -363,15 +379,15 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
             overflowY: "auto",
             zIndex: 600,
           }}>
-            {hasContent && firstNode ? (
+            {hasContent ? (
               <div style={{ padding: "4px 12px 8px 12px", maxHeight: 260, overflowY: "auto" }}>
-                {firstNode.children.map((child, idx) => (
+                {topLevelBranches.map((child, idx) => (
                   <TreeNodeView
                     key={child.entry.id}
                     node={child}
                     activePathIds={activePathIds}
                     depth={0}
-                    isLast={idx === firstNode.children.length - 1}
+                    isLast={idx === topLevelBranches.length - 1}
                     parentLines={[]}
                     onSelect={handleSelect}
                   />
@@ -424,15 +440,15 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
           boxShadow: "var(--shadow-pop)",
           zIndex: 100,
         }}>
-          {hasContent && firstNode ? (
+          {hasContent ? (
             <div style={{ padding: "4px 12px 8px 12px", maxHeight: 260, overflowY: "auto" }}>
-              {firstNode.children.map((child, idx) => (
+              {topLevelBranches.map((child, idx) => (
                 <TreeNodeView
                   key={child.entry.id}
                   node={child}
                   activePathIds={activePathIds}
                   depth={0}
-                  isLast={idx === firstNode.children.length - 1}
+                  isLast={idx === topLevelBranches.length - 1}
                   parentLines={[]}
                   onSelect={handleSelect}
                 />

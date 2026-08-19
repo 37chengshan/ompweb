@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from "fs";
+import { existsSync, realpathSync, statSync } from "fs";
 import { homedir, tmpdir } from "os";
 import * as path from "path";
 
@@ -190,4 +190,34 @@ export function getSessionDirNameForCwd(cwd: string): string {
     return encodeRelativeSessionDirName("-tmp", tempRelative);
   }
   return encodeLegacyAbsoluteSessionDirName(canonicalCwd);
+}
+
+/** User-level agents directory (~/.omp/agent/agents). */
+export function getUserAgentsDir(): string {
+  return path.join(getAgentDir(), "agents");
+}
+
+/** Project-level agents directory (./.omp/agents at git root, or cwd fallback). */
+export function getProjectAgentsDir(cwd: string): string {
+  let current = path.resolve(cwd);
+  const home = homedir();
+  while (true) {
+    const candidate = path.join(current, ".omp", "agents");
+    try {
+      if (statSync(candidate).isDirectory()) return candidate;
+    } catch {
+      // Keep walking until the nearest project boundary.
+    }
+    if (existsSync(path.join(current, ".git"))) return candidate;
+    if (current === home) break;
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return path.join(path.resolve(cwd), ".omp", "agents");
+}
+
+/** Cache directory for unpacked bundled agents (temp). */
+export function getAgentsBundledCacheDir(): string {
+  return path.join(tmpdir(), "omp-web-bundled-agents");
 }

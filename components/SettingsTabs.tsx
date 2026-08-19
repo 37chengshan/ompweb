@@ -1,6 +1,6 @@
 "use client";
 
-import { Cable, Cpu, KeyRound, RefreshCw, Settings2, ShieldCheck, Sparkles } from "lucide-react";
+import { Bot, Cable, Cpu, KeyRound, RefreshCw, Settings2, ShieldCheck, Sparkles } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
 
 export type SettingsTab =
@@ -9,6 +9,7 @@ export type SettingsTab =
   | "models"
   | "providers"
   | "intelligence"
+  | "agents"
   | "extensions"
   | "mcp"
   | "skills"
@@ -29,6 +30,7 @@ export const SETTINGS_CATEGORIES: TabItem[] = [
   { id: "models", label: "AI Model Defaults", description: "Reasoning budget, verbosity, personality, scratchpad", Icon: Cpu },
   { id: "providers", label: "API Keys & Providers", description: "Connected OAuth accounts, API keys, and model registry", Icon: KeyRound },
   { id: "intelligence", label: "Agent & Intelligence", description: "Advisor, memory, autolearn, compaction and retry", Icon: Sparkles },
+  { id: "agents", label: "Agents", description: "Task agents, model settings, and tool policy", Icon: Bot },
   { id: "mcp", label: "Extensions & Tools", description: "MCP servers, managed skills, and OMP plugins", Icon: Cable },
   { id: "system", label: "System & Updates", description: "App updates, runtime version, and active session restart", Icon: RefreshCw },
 ];
@@ -61,7 +63,11 @@ export function SettingsTabs({
     if (nextIndex !== null) {
       event.preventDefault();
       const next = enabled[nextIndex] ?? enabled[index];
-      if (next) onSelect(next.id);
+      if (next) {
+        onSelect(next.id);
+        const targetBtn = document.getElementById("settings-tab-" + next.id);
+        targetBtn?.focus();
+      }
     }
   };
 

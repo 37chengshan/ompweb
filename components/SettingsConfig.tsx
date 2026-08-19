@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import dynamic from "next/dynamic";
 import { Copy, ExternalLink, RefreshCw, RotateCcw, Sparkles, Search, AlertCircle } from "lucide-react";
@@ -15,6 +15,7 @@ const ModelsConfig = dynamic(() => import("./ModelsConfig").then((module) => mod
 const SkillsConfig = dynamic(() => import("./SkillsConfig").then((module) => module.SkillsConfig), { loading: SettingsTabLoading });
 const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => module.PluginsConfig), { loading: SettingsTabLoading });
 const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading });
+const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading });
 
 type UpdateState = {
   currentVersion: string | null;
@@ -78,6 +79,13 @@ function slugify(value: string): string {
 
 const SettingsHighlightContext = createContext<string | null>(null);
 
+type EnhancedChildProps = {
+  id?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
+  "aria-label"?: string;
+};
+
 type SearchResult = {
   id: string;
   kind: "category" | "setting";
@@ -134,6 +142,10 @@ const SETTING_INDEX: SettingIndexEntry[] = [
   { tab: "intelligence", section: "Automatic Retry", label: "Automatic Retry", description: "Retry failed turns automatically.", scope: "Native OMP" },
   { tab: "intelligence", section: "Automatic Retry", label: "Max Attempts", description: "Retry limit before giving up.", scope: "Native OMP" },
   { tab: "intelligence", section: "Automatic Retry", label: "Model Fallback", description: "Fall back to alternative model when retries exhaust.", scope: "Native OMP" },
+  // Agents
+  { tab: "agents", section: "Agents", label: "Agent roster", description: "Browse enabled agents filtered by name and source.", scope: "Native OMP" },
+  { tab: "agents", section: "Agents", label: "Agent model", description: "Model mapping and reasoning effort per agent role.", scope: "Native OMP" },
+  { tab: "agents", section: "Agents", label: "Agent tools", description: "Allowed tools and delegated task prompt per agent.", scope: "Native OMP" },
   // Extensions & Tools
   { tab: "mcp", section: "Extensions & Tools", label: "Load Project MCP Servers", description: "Allow project-root MCP configuration to be discovered.", scope: "Native OMP" },
   { tab: "mcp", section: "Extensions & Tools", label: "Render MCP Markdown", description: "Render non-JSON MCP results as Markdown in transcript.", scope: "Native OMP" },
@@ -182,21 +194,42 @@ function SearchResultsList({ results, query, onSelect }: { results: SearchResult
   );
 }
 
-function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) {
+function ToggleSwitch({
+  checked,
+  onChange,
+  disabled,
+  id,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  id?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
+}) {
   return (
     <button
+      id={id}
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
+      aria-describedby={ariaDescribedBy}
       disabled={disabled}
       onClick={() => onChange(!checked)}
+      className="ui-focus-ring"
       style={{
         position: "relative",
         display: "inline-flex",
         alignItems: "center",
-        width: 36,
-        height: 20,
-        borderRadius: 10,
+        width: 40,
+        height: 24,
+        borderRadius: 12,
         border: "none",
         background: checked ? "var(--accent)" : "var(--border)",
         cursor: disabled ? "not-allowed" : "pointer",
@@ -207,9 +240,9 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
     >
       <span
         style={{
-          width: 16,
-          height: 16,
-          borderRadius: 8,
+          width: 20,
+          height: 20,
+          borderRadius: 10,
           background: "#fff",
           transform: checked ? "translateX(16px)" : "translateX(0px)",
           transition: "transform var(--dur-fast)",
@@ -224,6 +257,10 @@ function NativeSetting({ label, description, scope, children }: { label: string;
   const ref = useRef<HTMLDivElement>(null);
   const highlightId = useContext(SettingsHighlightContext);
   const highlighted = highlightId !== null && highlightId === slugify(label);
+  const settingSlug = slugify(label);
+  const settingId = 'setting-' + settingSlug;
+  const labelId = 'setting-label-' + settingSlug;
+  const descId = 'setting-desc-' + settingSlug;
 
   useEffect(() => {
     if (highlighted && ref.current) {
@@ -231,10 +268,21 @@ function NativeSetting({ label, description, scope, children }: { label: string;
     }
   }, [highlighted]);
 
+  let enhancedChild = children;
+  if (isValidElement(children)) {
+    const childProps = children.props as EnhancedChildProps;
+    enhancedChild = cloneElement(children as ReactElement<EnhancedChildProps>, {
+      id: childProps.id || settingId,
+      "aria-labelledby": childProps["aria-labelledby"] || labelId,
+      "aria-describedby": childProps["aria-describedby"] || descId,
+      "aria-label": childProps["aria-label"] || label,
+    });
+  }
+
   return (
     <div
       ref={ref}
-      data-search-id={slugify(label)}
+      data-search-id={settingSlug}
       style={{
         minWidth: 0,
         padding: "12px 14px",
@@ -250,16 +298,16 @@ function NativeSetting({ label, description, scope, children }: { label: string;
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{label}</span>
+          <label id={labelId} htmlFor={settingId} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", cursor: "pointer" }}>{label}</label>
           {scope && (
             <span style={chipStyle}>
               {scope}
             </span>
           )}
         </div>
-        <span style={{ flexShrink: 0 }}>{children}</span>
+        <span style={{ flexShrink: 0 }}>{enhancedChild}</span>
       </div>
-      <span style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1.45 }}>{description}</span>
+      <span id={descId} style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1.45 }}>{description}</span>
     </div>
   );
 }
@@ -488,7 +536,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
                 style={{ width: "100%", height: 28, padding: "0 8px 0 28px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }}
               />
             </div>
-            <button type="button" onClick={onClose} aria-label="Close settings" style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px" }}>×</button>
+            <button type="button" onClick={onClose} aria-label="Close settings" title="Close settings" className="ui-focus-ring" style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "4px 8px", minWidth: 28, minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-control)" }}>×</button>
           </div>
         </header>
 
@@ -873,6 +921,35 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             {cwd && visitedTabs.has("plugins") && (
               <div role="tabpanel" id="settings-panel-plugins" aria-labelledby="settings-tab-plugins" style={{ display: activeTab === "plugins" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
                 <PluginsConfig embedded cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onPluginsReloaded} />
+              </div>
+            )}
+
+            {/* AGENTS TAB */}
+            {visitedTabs.has("agents") && (
+              <div
+                role="tabpanel"
+                id="settings-panel-agents"
+                aria-labelledby="settings-tab-agents"
+                style={{
+                  display: currentTab === "agents" ? "flex" : "none",
+                  height: "100%",
+                  minHeight: 0,
+                  flexDirection: "column",
+                  overflowY: "auto",
+                  padding: 20,
+                  gap: 16,
+                  ...(highlightId && ["agent-roster", "agent-model", "agent-tools"].includes(highlightId)
+                    ? { border: "1px solid var(--accent)", boxShadow: "0 0 0 2px var(--accent)" }
+                    : {}),
+                }}
+              >
+                <div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Agents</h3>
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-muted)" }}>
+                    Task agents, models and tool policy. Bundled agents are read-only until unpacked.
+                  </p>
+                </div>
+                <AgentsConfig cwd={cwd} />
               </div>
             )}
 

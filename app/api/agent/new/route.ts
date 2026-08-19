@@ -6,8 +6,14 @@ import { allowFileRoot } from "@/lib/file-access";
 import { invalidateSessionListCache } from "@/lib/session-reader";
 import { WebRpcError, startRpcSession } from "@/lib/rpc-manager";
 import { RpcCommandError } from "@/lib/omp/rpc-process";
+import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
+
+const MAX_NEW_AGENT_REQUEST_BYTES = 4 * 1024 * 1024;
 
 function newSessionErrorResponse(error: unknown) {
+  if (error instanceof RequestBodyTooLargeError) {
+    return NextResponse.json({ error: "New session request is too large", code: "request_too_large" }, { status: 413 });
+  }
   if (error instanceof SyntaxError) {
     return NextResponse.json({ error: "Invalid JSON request body", code: "invalid_json" }, { status: 400 });
   }
@@ -28,7 +34,7 @@ function newSessionErrorResponse(error: unknown) {
 // the live model catalog (incl. background discovery) is consulted.
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as { cwd?: string; [key: string]: unknown };
+    const body = await parseJsonWithinLimit<{ cwd?: string; [key: string]: unknown }>(req, MAX_NEW_AGENT_REQUEST_BYTES);
     const { cwd, ...command } = body;
 
     if (!cwd || typeof cwd !== "string") {

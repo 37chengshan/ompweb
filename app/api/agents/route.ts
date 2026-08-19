@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import { existsSync, statSync } from "fs";
 import { dirname, resolve } from "path";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { AGENT_NAME_RE, deleteAgent, discoverAgents, readAgentFile, resolveAgentsScope, unpackBundled, validateAgentFileReference, validateAgentPayload, writeAgent, type AgentPayload } from "@/lib/omp/agents-service";
+import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
+import { AGENT_NAME_RE, MAX_AGENT_BYTES, deleteAgent, discoverAgents, readAgentFile, resolveAgentsScope, unpackBundled, validateAgentFileReference, validateAgentPayload, writeAgent, type AgentPayload } from "@/lib/omp/agents-service";
 import { getProjectAgentsDir, getUserAgentsDir } from "@/lib/omp/paths";
 
 export const dynamic = "force-dynamic";
+
+// JSON can expand control characters in a maximum-size agent prompt to six
+// bytes each, with room for the envelope fields.
+const MAX_AGENT_REQUEST_BYTES = MAX_AGENT_BYTES * 6 + 64 * 1024;
 
 type Scope = "all" | "user" | "project" | "bundled";
 
@@ -74,7 +79,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { action?: unknown; cwd?: unknown; scope?: unknown; name?: unknown; previousName?: unknown; agent?: unknown };
+    const body = await parseJsonWithinLimit<{ action?: unknown; cwd?: unknown; scope?: unknown; name?: unknown; previousName?: unknown; agent?: unknown }>(request, MAX_AGENT_REQUEST_BYTES);
     if (body.action === "unpack") {
       if (body.scope !== "user" && body.scope !== "project") throw new Error("scope must be user or project");
       const project = body.scope === "project" ? await allowedProjectScope(body.cwd) : undefined;
@@ -94,6 +99,7 @@ export async function POST(request: Request) {
     const agent = readAgentFile(written.path);
     return NextResponse.json({ success: true, ...written, agent });
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return NextResponse.json({ error: "Agent request is too large" }, { status: 413 });
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: /not allowed/i.test(message) ? 403 : 400 });
   }
@@ -101,7 +107,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const body = await request.json() as { cwd?: unknown; scope?: unknown; name?: unknown; previousName?: unknown; agent?: unknown };
+    const body = await parseJsonWithinLimit<{ cwd?: unknown; scope?: unknown; name?: unknown; previousName?: unknown; agent?: unknown }>(request, MAX_AGENT_REQUEST_BYTES);
     if (body.scope !== "user" && body.scope !== "project") throw new Error("scope must be user or project");
     const project = body.scope === "project" ? await allowedProjectScope(body.cwd) : undefined;
     const cwd = project?.cwd;
@@ -113,6 +119,7 @@ export async function PUT(request: Request) {
     const written = writeAgent(scopeDir, body.name.trim(), body.agent as AgentPayload, body.previousName);
     return NextResponse.json({ success: true, ...written, agent: readAgentFile(written.path) });
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return NextResponse.json({ error: "Agent request is too large" }, { status: 413 });
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: /not allowed/i.test(message) ? 403 : 400 });
   }
@@ -120,7 +127,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json() as { cwd?: unknown; scope?: unknown; name?: unknown };
+    const body = await parseJsonWithinLimit<{ cwd?: unknown; scope?: unknown; name?: unknown }>(request, MAX_AGENT_REQUEST_BYTES);
     if (body.scope !== "user" && body.scope !== "project") throw new Error("scope must be user or project");
     const project = body.scope === "project" ? await allowedProjectScope(body.cwd) : undefined;
     const cwd = project?.cwd;
@@ -129,6 +136,7 @@ export async function DELETE(request: Request) {
     validateAgentFileReference(scopeDir, body.name.trim());
     return NextResponse.json({ success: true, ...deleteAgent(scopeDir, body.name.trim()) });
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return NextResponse.json({ error: "Agent request is too large" }, { status: 413 });
     const message = error instanceof Error ? error.message : String(error);
     const status = /not found/i.test(message) ? 404 : /not allowed/i.test(message) ? 403 : 400;
     return NextResponse.json({ error: message }, { status });

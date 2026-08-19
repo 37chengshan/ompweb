@@ -3,10 +3,16 @@ import { readSessionHeader } from "@/lib/session-reader";
 import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
 import { startRpcSession, getRpcSession, resolveSpawnCwd, WebRpcError } from "@/lib/rpc-manager";
 import { RpcCommandError } from "@/lib/omp/rpc-process";
+import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
+
+const MAX_AGENT_COMMAND_REQUEST_BYTES = 4 * 1024 * 1024;
 
 /** omp-web's own failures carry a stable code the client can localize; omp's
  * errors stay opaque English text. */
 function commandErrorResponse(error: unknown) {
+  if (error instanceof RequestBodyTooLargeError) {
+    return NextResponse.json({ error: "Agent command is too large", code: "request_too_large" }, { status: 413 });
+  }
   if (error instanceof SyntaxError) {
     return NextResponse.json({ error: "Invalid JSON request body", code: "invalid_json" }, { status: 400 });
   }
@@ -27,7 +33,7 @@ export async function POST(
   const { id } = await params;
 
   try {
-    const body = await req.json() as { type?: unknown; [key: string]: unknown };
+    const body = await parseJsonWithinLimit<{ type?: unknown; [key: string]: unknown }>(req, MAX_AGENT_COMMAND_REQUEST_BYTES);
     if (typeof body.type !== "string" || !body.type.trim()) {
       return NextResponse.json({ error: "command type is required", code: "command_type_required" }, { status: 400 });
     }

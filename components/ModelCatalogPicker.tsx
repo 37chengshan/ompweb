@@ -161,6 +161,7 @@ export function ModelCatalogPicker({ open, providerName, providerBaseUrl, existi
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              aria-label={t("modelsConfig.catalogSearchPlaceholder")}
               placeholder={t("modelsConfig.catalogSearchPlaceholder")}
               style={{
                 flex: 1, background: "none", border: "none", outline: "none",
@@ -173,11 +174,11 @@ export function ModelCatalogPicker({ open, providerName, providerBaseUrl, existi
         {/* Results */}
         <div style={{ flex: 1, overflowY: "auto", padding: "4px 14px 14px" }}>
           {error ? (
-            <div style={{ padding: "20px 0", fontSize: 12, color: "var(--status-error)", textAlign: "center" }}>
+            <div role="alert" style={{ padding: "20px 0", fontSize: 12, color: "var(--status-error)", textAlign: "center" }}>
               {t("modelsConfig.catalogError", { error })}
             </div>
           ) : loading ? (
-            <div style={{ padding: "20px 0", fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>{t("modelsConfig.catalogLoading")}</div>
+            <div role="status" aria-live="polite" style={{ padding: "20px 0", fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>{t("modelsConfig.catalogLoading")}</div>
           ) : results === null ? (
             <div style={{ padding: "20px 0", fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>{t("modelsConfig.catalogSearchPlaceholder")}</div>
           ) : results.length === 0 ? (
@@ -211,6 +212,7 @@ export function ModelCatalogPicker({ open, providerName, providerBaseUrl, existi
                   ) : (
                     <button
                       type="button"
+                      aria-label={"Add " + entry.id + " (" + entry.providerName + ")"}
                       onClick={() => onAdd(toPickedModel(entry), entry.providerBaseUrl)}
                       style={{ flexShrink: 0, padding: "5px 12px", background: "var(--accent)", border: "none", borderRadius: "var(--radius-control)", color: "var(--on-accent)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
                     >

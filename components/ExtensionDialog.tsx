@@ -130,6 +130,7 @@ export function ExtensionDialog({
           {request.method === "input" && (
             <input
               autoFocus
+              aria-label={request.title || request.placeholder || "Input value"}
               value={value}
               placeholder={request.placeholder}
               onChange={(e) => setValue(e.target.value)}
@@ -151,6 +152,7 @@ export function ExtensionDialog({
           {request.method === "editor" && (
             <textarea
               autoFocus
+              aria-label={request.title || "Input value"}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {

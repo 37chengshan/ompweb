@@ -470,6 +470,7 @@ function AddSkillPanel({
         {/* Search row */}
         <div style={{ display: "flex", gap: 8 }}>
           <input
+            aria-label={t("skillsConfig.searchSkills") || "Search skills"}
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -1156,16 +1157,10 @@ export function SkillsConfig({
                 flexShrink: 0,
               }}
             >
-              <div
+              <button
+                type="button"
                 onClick={() => setAddMode(true)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setAddMode(true);
-                  }
-                }}
+                className="ui-focus-ring"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1173,21 +1168,20 @@ export function SkillsConfig({
                   padding: "7px 8px",
                   borderRadius: 5,
                   cursor: "pointer",
-                  background: addMode ? "var(--bg-selected)" : "none",
-                  color: addMode ? "var(--accent)" : "var(--text-dim)",
+                  border: "none",
+                  background: "none",
+                  color: "var(--accent)",
                   fontSize: 12,
-                }}
-                onMouseEnter={(e) => {
-                  if (!addMode)
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "none";
+                  fontWeight: 500,
+                  width: "100%",
+                  boxSizing: "border-box",
+                  textAlign: "left",
+                  transition: "background var(--dur-fast)",
                 }}
               >
-                <Plus size={13} aria-hidden="true" />
-                {t("skillsConfig.addSkill")}
-              </div>
+                <Plus size={14} aria-hidden="true" />
+                <span>{t("skillsConfig.addCustomSkill")}</span>
+              </button>
             </div>
           </div>
 

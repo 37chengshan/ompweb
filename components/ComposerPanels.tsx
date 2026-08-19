@@ -163,13 +163,13 @@ function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }
           style={{
             color: "var(--text-dim)",
             transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
-            transition: "transform var(--dur-fast) var(--ease-out-warm)",
+            transition: "transform var(--dur-med) var(--ease-out-warm)",
           }}
         />
       </button>
       {!collapsed && (
         <div
-          className="flex flex-wrap gap-1.5 px-3 py-2.5"
+          className="flex flex-wrap gap-1.5 px-3 py-2.5 animate-slide-down"
           style={{ maxHeight: "min(30vh, 240px)", overflowY: "auto" }}
         >
           {subagents.map((subagent) => {

@@ -324,9 +324,13 @@ function SidebarPortalMenu({
     };
   }, [open, computePos, anchor]);
 
-  // Close on outside press / Escape.
+  // Close on outside press / Escape and handle keyboard arrow navigation.
   useEffect(() => {
     if (!open) return;
+    const timer = setTimeout(() => {
+      const firstBtn = menuRef.current?.querySelector<HTMLButtonElement>("button:not([disabled])");
+      firstBtn?.focus();
+    }, 0);
     const onPointerDown = (e: MouseEvent | TouchEvent) => {
       const target = e.target as Node;
       if (anchor.current?.contains(target)) return;
@@ -336,13 +340,25 @@ function SidebarPortalMenu({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
+        e.preventDefault();
         onClose();
+        anchor.current?.focus();
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? []);
+        if (buttons.length === 0) return;
+        const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const nextIndex = e.key === "ArrowDown"
+          ? (currentIndex + 1) % buttons.length
+          : (currentIndex - 1 + buttons.length) % buttons.length;
+        buttons[nextIndex]?.focus();
       }
     };
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("touchstart", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("touchstart", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
@@ -1577,6 +1593,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         <div
           style={{
             flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto",
+            transition: "flex var(--dur-med) var(--ease-out-warm)",
             overflowY: "auto",
             padding: "2px 10px 10px",
             minHeight: 80,
@@ -1658,6 +1675,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
             flex: explorerOpen ? "1 1 0" : "0 0 auto",
             minHeight: 0,
             overflow: "hidden",
+            transition: "flex var(--dur-med) var(--ease-out-warm)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
@@ -1680,67 +1698,92 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
                 textAlign: "left",
               }}
             >
-              <ChevronRight size={12} strokeWidth={1.8} style={{ transform: explorerOpen ? "rotate(90deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)", flexShrink: 0 }} aria-hidden="true" />
+              <ChevronRight
+                size={12}
+                strokeWidth={1.8}
+                style={{
+                  transform: explorerOpen ? "rotate(90deg)" : "none",
+                  transition: "transform var(--dur-med) var(--ease-out-warm)",
+                  flexShrink: 0,
+                }}
+                aria-hidden="true"
+              />
               {t("sessionSidebar.explorer")}
             </button>
-            {explorerOpen && (
+            <div
+              inert={!explorerOpen ? true : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                opacity: explorerOpen ? 1 : 0,
+                pointerEvents: explorerOpen ? "auto" : "none",
+                transition: "opacity var(--dur-fast) var(--ease-out-warm)",
+              }}
+            >
               <Tooltip content={t("sessionSidebar.uploadFilesTitle")} side="top">
+                <button
+                  onClick={() => fileExplorerRef.current?.openUploadPicker()}
+                  disabled={explorerUploadBusy}
+                  title={t("sessionSidebar.uploadFilesTitle")}
+                  aria-label={t("sessionSidebar.uploadFiles")}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 26, height: 26, padding: 0,
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-dim)",
+                    cursor: explorerUploadBusy ? "default" : "pointer",
+                    borderRadius: "var(--radius-control)",
+                    flexShrink: 0,
+                    opacity: explorerUploadBusy ? 0.6 : 1,
+                    transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
+                  }}
+                  onMouseEnter={(e) => { if (explorerUploadBusy) return; e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
+                  onMouseLeave={(e) => { if (explorerUploadBusy) return; e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+                >
+                  <Upload size={13} strokeWidth={2} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
+            <Tooltip content={t("sessionSidebar.refreshExplorer")} side="top">
               <button
-                onClick={() => fileExplorerRef.current?.openUploadPicker()}
-                disabled={explorerUploadBusy}
-                title={t("sessionSidebar.uploadFilesTitle")}
-                aria-label={t("sessionSidebar.uploadFiles")}
+                aria-label={t("sessionSidebar.refreshExplorer")}
+                onClick={() => {
+                  if (onExplorerRefresh) onExplorerRefresh();
+                  else setExplorerKey((k) => k + 1);
+                }}
+                title={t("sessionSidebar.refreshExplorer")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 26, height: 26, padding: 0,
+                  width: 26, height: 26, padding: 0, marginRight: 6,
                   background: "none",
                   border: "none",
-                  color: "var(--text-dim)",
-                  cursor: explorerUploadBusy ? "default" : "pointer",
+                  color: explorerRefreshing ? "var(--accent)" : "var(--text-dim)",
+                  cursor: "pointer",
                   borderRadius: "var(--radius-control)",
                   flexShrink: 0,
-                  opacity: explorerUploadBusy ? 0.6 : 1,
                   transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
                 }}
-                onMouseEnter={(e) => { if (explorerUploadBusy) return; e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                onMouseLeave={(e) => { if (explorerUploadBusy) return; e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+                onMouseEnter={(e) => { if (explorerRefreshing) return; e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { if (explorerRefreshing) return; e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
               >
-                <Upload size={13} strokeWidth={2} aria-hidden="true" />
+                {explorerRefreshing ? (
+                  <RefreshCw size={13} strokeWidth={2} aria-hidden="true" className="icon-spin" />
+                ) : (
+                  <RefreshCw size={13} strokeWidth={2} aria-hidden="true" />
+                )}
               </button>
-              </Tooltip>
-            )}
-            <Tooltip content={t("sessionSidebar.refreshExplorer")} side="top">
-            <button
-              aria-label={t("sessionSidebar.refreshExplorer")}
-              onClick={() => {
-                if (onExplorerRefresh) onExplorerRefresh();
-                else setExplorerKey((k) => k + 1);
-              }}
-              title={t("sessionSidebar.refreshExplorer")}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 26, height: 26, padding: 0, marginRight: 6,
-                background: "none",
-                border: "none",
-                color: explorerRefreshing ? "var(--accent)" : "var(--text-dim)",
-                cursor: "pointer",
-                borderRadius: "var(--radius-control)",
-                flexShrink: 0,
-                transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
-              }}
-              onMouseEnter={(e) => { if (explorerRefreshing) return; e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-              onMouseLeave={(e) => { if (explorerRefreshing) return; e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
-            >
-              {explorerRefreshing ? (
-                <RefreshCw size={13} strokeWidth={2} aria-hidden="true" className="icon-spin" />
-              ) : (
-                <RefreshCw size={13} strokeWidth={2} aria-hidden="true" />
-              )}
-            </button>
             </Tooltip>
           </div>
-          {explorerOpen && (
-            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+          <div
+            className={"accordion-flow " + (explorerOpen ? "is-open" : "")}
+            inert={!explorerOpen ? true : undefined}
+            style={{
+              flex: explorerOpen ? "1 1 auto" : "0 0 0px",
+              minHeight: 0,
+            }}
+          >
+            <div className="accordion-flow-inner" style={{ height: "100%", overflowY: "auto", overflowX: "hidden" }}>
               <FileExplorer
                 ref={fileExplorerRef}
                 cwd={selectedCwd ?? selectedCwdProp!}
@@ -1752,7 +1795,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
                 onRefreshDone={onExplorerRefreshDone}
               />
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -2716,15 +2759,15 @@ const SessionItem = memo(function SessionItem({
               ? t("sessionSidebar.archiveConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })
               : t("sessionSidebar.deleteConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })}
           </span>
-          <button onClick={(event) => { event.stopPropagation(); if (confirmArchive) handleArchive(); else handleDelete(); }} style={{ height: 26, padding: "0 9px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+          <button onClick={(event) => { event.stopPropagation(); if (confirmArchive) handleArchive(); else handleDelete(); }} style={{ height: 28, padding: "0 10px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
             {confirmArchive ? t("sessionSidebar.archive") : t("sessionSidebar.delete")}
           </button>
-          <button onClick={(event) => { event.stopPropagation(); closeConfirmation(); }} autoFocus style={{ height: 26, padding: "0 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}>
+          <button onClick={(event) => { event.stopPropagation(); closeConfirmation(); }} autoFocus style={{ height: 28, padding: "0 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}>
             {t("sessionSidebar.cancel")}
           </button>
         </>
       ) : renaming ? (
-        <input ref={inputRef} autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onBlur={commitRename} onKeyDown={(event) => { if (event.key === "Enter") void commitRename(); if (event.key === "Escape") { event.preventDefault(); renameCancelRef.current = true; setRenaming(false); } }} style={{ flex: 1, height: 25, padding: "3px 7px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", outline: "none", background: "var(--bg)", color: "var(--text)", fontSize: 12 }} />
+        <input ref={inputRef} autoFocus aria-label={t("sessionSidebar.rename")} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onBlur={commitRename} onKeyDown={(event) => { if (event.key === "Enter") void commitRename(); if (event.key === "Escape") { event.preventDefault(); renameCancelRef.current = true; setRenaming(false); } }} style={{ flex: 1, height: 25, padding: "3px 7px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", outline: "none", background: "var(--bg)", color: "var(--text)", fontSize: 12 }} />
       ) : (
         <>
           {depth > 0 && <GitBranch size={11} strokeWidth={2} style={{ flexShrink: 0, color: "var(--text-dim)" }} aria-hidden="true" />}
@@ -2739,7 +2782,7 @@ const SessionItem = memo(function SessionItem({
           {isRunning && <RunningSessionIndicator size={12} />}
           {!isRunning && isUnread && <UnreadSessionIndicator size={11} />}
           {relativeTime && <span title={new Date(session.modified).toLocaleString(locale)} style={{ flexShrink: 0, minWidth: 30, textAlign: "right", color: isSelected ? "var(--accent)" : "var(--text-dim)", fontSize: 10, fontVariantNumeric: "tabular-nums" }}>{relativeTime}</span>}
-          {hasChildren && <button className="session-item-icon-button" onClick={(event) => { event.stopPropagation(); onToggleCollapse?.(); }} title={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")} aria-label={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, padding: 0, flexShrink: 0, border: "none", background: "none", color: "var(--text-dim)", cursor: "pointer", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)" }}><ChevronDown size={12} strokeWidth={1.8} aria-hidden="true" /></button>}
+          {hasChildren && <button className="session-item-icon-button" onClick={(event) => { event.stopPropagation(); onToggleCollapse?.(); }} title={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")} aria-label={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, flexShrink: 0, border: "none", background: "none", color: "var(--text-dim)", cursor: "pointer", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)" }}><ChevronDown size={12} strokeWidth={1.8} aria-hidden="true" /></button>}
           {/* Reserved overflow-menu slot: invisible (but space-preserving) until
               hover/focus, so rows never reflow and titles never shift. */}
           <div

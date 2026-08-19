@@ -270,15 +270,44 @@ function TreeNode({
     }
   }, [node.isDir, node.fullPath, node.name, loaded, open, loadChildren, onOpenFile, onToggleExpanded]);
 
-  // Keyboard activation (Enter/Space) for the row, mirroring the click action so
-  // the tree is operable without a mouse. Only reacts when the focus is on the
-  // row itself, never when a nested action button (mention/download) is focused.
+  // Keyboard activation (Enter/Space + Arrow navigation) for tree items
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    handleClick();
-  }, [handleClick]);
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleClick();
+    } else if (event.key === "ArrowRight") {
+      if (node.isDir) {
+        event.preventDefault();
+        if (!open) {
+          onToggleExpanded(node.fullPath, true);
+          if (!loaded) loadChildren();
+        } else {
+          const next = event.currentTarget.parentElement?.querySelector<HTMLDivElement>('[role="group"] [role="treeitem"]');
+          next?.focus();
+        }
+      }
+    } else if (event.key === "ArrowLeft") {
+      if (node.isDir && open) {
+        event.preventDefault();
+        onToggleExpanded(node.fullPath, false);
+      } else {
+        const parentTreeItem = event.currentTarget.closest('[role="group"]')?.parentElement?.querySelector<HTMLDivElement>(':scope > [role="treeitem"]');
+        parentTreeItem?.focus();
+      }
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const tree = event.currentTarget.closest('[role="tree"]');
+      if (!tree) return;
+      const allItems = Array.from(tree.querySelectorAll<HTMLDivElement>('[role="treeitem"]'))
+        .filter((item) => !item.closest('[inert]'));
+      const idx = allItems.indexOf(event.currentTarget);
+      if (idx !== -1) {
+        const nextIdx = event.key === "ArrowDown" ? Math.min(allItems.length - 1, idx + 1) : Math.max(0, idx - 1);
+        allItems[nextIdx]?.focus();
+      }
+    }
+  }, [node.isDir, node.fullPath, open, loaded, loadChildren, onToggleExpanded, handleClick]);
 
   const mentionLabel = t("fileExplorer.insertPathIntoChat");
   const downloadLabel = t("fileExplorer.downloadFile");
@@ -322,7 +351,7 @@ function TreeNode({
             style={{
               flexShrink: 0,
               transform: open ? "rotate(90deg)" : "none",
-              transition: `transform var(--dur-fast) var(--ease-out-warm)`,
+              transition: `transform var(--dur-med) var(--ease-out-warm)`,
             }}
             aria-hidden="true"
           />
@@ -458,29 +487,31 @@ function TreeNode({
           </Tooltip>
         )}
       </div>
-      {node.isDir && open && (
-        <div role="group">
-          {children.map((child) => (
-            <TreeNode
-              key={child.fullPath}
-              node={child}
-              depth={depth + 1}
-              cwd={cwd}
-              onOpenFile={onOpenFile}
-              onAtMention={onAtMention}
-              expandedPaths={expandedPaths}
-              onToggleExpanded={onToggleExpanded}
-              refreshToken={refreshToken}
-              highlightedPaths={highlightedPaths}
-              gitStatusByPath={gitStatusByPath}
-              changedDirectoryPaths={changedDirectoryPaths}
-            />
-          ))}
-          {children.length === 0 && loaded && (
-            <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
-              {t("fileExplorer.emptyDir")}
-            </div>
-          )}
+      {node.isDir && (
+        <div role="group" inert={!open ? true : undefined} className={"accordion-flow " + (open ? "is-open" : "")}>
+          <div className="accordion-flow-inner">
+            {children.map((child) => (
+              <TreeNode
+                key={child.fullPath}
+                node={child}
+                depth={depth + 1}
+                cwd={cwd}
+                onOpenFile={onOpenFile}
+                onAtMention={onAtMention}
+                expandedPaths={expandedPaths}
+                onToggleExpanded={onToggleExpanded}
+                refreshToken={refreshToken}
+                highlightedPaths={highlightedPaths}
+                gitStatusByPath={gitStatusByPath}
+                changedDirectoryPaths={changedDirectoryPaths}
+              />
+            ))}
+            {children.length === 0 && loaded && (
+              <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
+                {t("fileExplorer.emptyDir")}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -724,13 +755,13 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
               </div>
             )}
             <div style={{ display: "flex", gap: 5, marginTop: 7 }}>
-              <button type="button" onClick={() => void performUpload(pendingConflict.files, "overwrite")} style={{ height: 22, padding: "0 7px", border: "1px solid var(--status-error)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--status-error)", cursor: "pointer", fontSize: 10 }}>
+              <button type="button" onClick={() => void performUpload(pendingConflict.files, "overwrite")} style={{ height: 24, minHeight: 24, padding: "0 8px", border: "1px solid var(--status-error)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--status-error)", cursor: "pointer", fontSize: 11 }}>
                 {t("fileExplorer.replace")}
               </button>
-              <button type="button" onClick={() => void performUpload(pendingConflict.files, "skip")} style={{ height: 22, padding: "0 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 10 }}>
+              <button type="button" onClick={() => void performUpload(pendingConflict.files, "skip")} style={{ height: 24, minHeight: 24, padding: "0 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}>
                 {t("fileExplorer.skipExisting")}
               </button>
-              <button type="button" onClick={() => setPendingConflict(null)} style={{ height: 22, padding: "0 7px", border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 10 }}>
+              <button type="button" onClick={() => setPendingConflict(null)} style={{ height: 24, minHeight: 24, padding: "0 8px", border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}>
                 {t("fileExplorer.cancel")}
               </button>
             </div>

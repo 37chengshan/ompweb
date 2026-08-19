@@ -292,7 +292,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 aria-label={t("messageView.copyMessage")}
                 style={{
                   display: "flex", alignItems: "center", gap: 4,
-                  padding: "3px 8px", height: 22,
+                  padding: "3px 8px", height: 24, minHeight: 24,
                   background: "none", border: "none",
                   borderRadius: 5,
                   color: copied ? "var(--accent)" : "var(--text-dim)",
@@ -327,7 +327,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     aria-label={t("messageView.editFromHereTitle")}
                     style={{
                       display: "flex", alignItems: "center", gap: 4,
-                      padding: "3px 8px", height: 22,
+                      padding: "3px 8px", height: 24, minHeight: 24,
                       background: "none", border: "none",
                       borderRadius: 5,
                       color: "var(--text-dim)",
@@ -352,7 +352,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     aria-label={forking ? t("messageView.creatingSession") : t("messageView.newSessionTitle")}
                     style={{
                       display: "flex", alignItems: "center", gap: 4,
-                      padding: "3px 8px", height: 22,
+                      padding: "3px 8px", height: 24, minHeight: 24,
                       background: "none", border: "none",
                       borderRadius: 5,
                       color: forking ? "var(--accent)" : "var(--text-dim)",
@@ -597,7 +597,7 @@ function AssistantMessageView({
               aria-label={t("messageView.copyMessage")}
               style={{
                 display: "flex", alignItems: "center", gap: 4,
-                padding: "3px 8px", height: 22,
+                padding: "3px 8px", height: 24, minHeight: 24,
                 background: "none", border: "none",
                 borderRadius: 5,
                 color: copied ? "var(--accent)" : "var(--text-dim)",

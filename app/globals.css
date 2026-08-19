@@ -1288,6 +1288,52 @@ span.token.table {
 /* Modal popups are centered via `transform: translate(-50%, -50%)`; the
    entrance animation must own that transform so it never fights the
    centering (an animation overrides inline styles for its lifetime). */
+
+/* Smooth modal entrance, backdrop fade, and fluid maximize/minimize */
+@keyframes dialog-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.dialog-backdrop-animate {
+  animation: dialog-backdrop-in var(--dur-med) var(--ease-out-warm) both;
+  transition: opacity var(--dur-med) var(--ease-out-warm);
+}
+
+.dialog-popup-animate {
+  animation: dialog-pop-in var(--dur-med) var(--ease-out-warm) both;
+  transition: width var(--dur-med) var(--ease-out-warm),
+              height var(--dur-med) var(--ease-out-warm),
+              max-width var(--dur-med) var(--ease-out-warm),
+              max-height var(--dur-med) var(--ease-out-warm),
+              border-radius var(--dur-med) var(--ease-out-warm),
+              box-shadow var(--dur-med) var(--ease-out-warm);
+  will-change: transform, opacity;
+}
+
+/* Fluid accordion / panel collapse and expand */
+.accordion-flow {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-med) var(--ease-out-warm),
+              opacity var(--dur-med) var(--ease-out-warm);
+  opacity: 0;
+}
+
+.accordion-flow.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-flow-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chevron-smooth {
+  transition: transform var(--dur-med) var(--ease-out-warm);
+}
+
 @keyframes dialog-pop-in {
   from { opacity: 0; transform: translate(-50%, -46%) scale(0.97); }
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }

@@ -69,7 +69,7 @@ export function TodoList({ phases = [], collapsible = false, defaultExpanded = f
             style={{
               color: "var(--text-dim)",
               transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
-              transition: "transform var(--dur-fast) var(--ease-out-warm)",
+              transition: "transform var(--dur-med) var(--ease-out-warm)",
             }}
           />
         </button>
@@ -82,7 +82,7 @@ export function TodoList({ phases = [], collapsible = false, defaultExpanded = f
       )}
       {!collapsed && (
         <>
-      <div className="grid gap-3 px-3 py-2.5">
+      <div className="grid gap-3 px-3 py-2.5 animate-slide-down">
         {displayedPhases.map((phase, phaseIndex) => (
           <div key={phase.id ?? `${phase.name}-${phaseIndex}`} className="grid gap-1.5">
             <div className="text-[11px] font-medium text-text-muted">{phase.name}</div>

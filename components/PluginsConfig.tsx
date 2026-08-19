@@ -351,7 +351,8 @@ function AddPluginPanel({
         <input
           id="plugin-source"
           ref={inputRef}
-          value={source}
+          aria-label="Plugin package or repository"
+            value={source}
           onChange={(e) => onSourceChange(e.target.value)}
           placeholder="npm:@scope/package"
           style={{

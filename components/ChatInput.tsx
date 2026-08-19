@@ -262,7 +262,7 @@ function QueuedActionButton({
       title={title}
       style={{
         flexShrink: 0,
-        padding: "3px 7px",
+        padding: "4px 8px", minHeight: 24,
         border: "none",
         borderRadius: 6,
         background: "transparent",
@@ -1525,7 +1525,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   aria-label="Remove image"
                   style={{
                     position: "absolute", top: -5, right: -5,
-                    width: 20, height: 20, borderRadius: "50%",
+                    width: 24, height: 24, borderRadius: "50%",
                     background: "var(--bg-panel)", border: "1px solid var(--border)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     cursor: "pointer", padding: 0, color: "var(--text-muted)",

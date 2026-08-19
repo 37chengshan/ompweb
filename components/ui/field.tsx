@@ -10,12 +10,16 @@
  * state on focus / blur so we don't need to touch globals.css.
  */
 import {
+  cloneElement,
+  isValidElement,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEventHandler,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
@@ -32,12 +36,29 @@ interface FieldProps {
   children: ReactNode;
   /** Inline style overrides for the outer wrapper. */
   style?: CSSProperties;
+  id?: string;
 }
 
-export function Field({ label, hint, error, required, children, style }: FieldProps) {
+export function Field({ label, hint, error, required, children, style, id }: FieldProps) {
+  const autoId = useId();
+  const childId = isValidElement(children) ? (children.props as { id?: string }).id : undefined;
+  const fieldId = id || childId || autoId;
+  const errorId = error ? `${fieldId}-error` : undefined;
+  const hintId = !error && hint ? `${fieldId}-hint` : undefined;
+  const describedBy = errorId || hintId;
+
+  let enhancedChildren = children;
+  if (isValidElement(children)) {
+    enhancedChildren = cloneElement(children as ReactElement<{ id?: string; "aria-describedby"?: string }>, {
+      id: childId || fieldId,
+      "aria-describedby": (children.props as { "aria-describedby"?: string })["aria-describedby"] || describedBy,
+    });
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, ...style }}>
       <label
+        htmlFor={fieldId}
         style={{
           fontSize: 11,
           fontWeight: 500,
@@ -51,19 +72,20 @@ export function Field({ label, hint, error, required, children, style }: FieldPr
         {label}
         {required && <span style={{ color: "var(--accent)" }}>*</span>}
       </label>
-      {children}
+      {enhancedChildren}
       {error ? (
-        <FieldError>{error}</FieldError>
+        <FieldError id={errorId}>{error}</FieldError>
       ) : hint ? (
-        <span style={{ fontSize: 10, color: "var(--text-dim)", lineHeight: 1.4 }}>{hint}</span>
+        <span id={hintId} style={{ fontSize: 10, color: "var(--text-dim)", lineHeight: 1.4 }}>{hint}</span>
       ) : null}
     </div>
   );
 }
 
-function FieldError({ children }: { children: ReactNode }) {
+function FieldError({ children, id }: { children: ReactNode; id?: string }) {
   return (
     <span
+      id={id}
       role="alert"
       style={{
         display: "inline-flex",
@@ -448,7 +470,7 @@ export function Check({ label, checked, onChange, disabled }: CheckProps) {
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        style={{ width: 13, height: 13, accentColor: "var(--accent)", cursor: disabled ? "not-allowed" : "pointer" }}
+        style={{ width: 14, height: 14, accentColor: "var(--accent)", cursor: disabled ? "not-allowed" : "pointer" }}
       />
       {label}
     </label>

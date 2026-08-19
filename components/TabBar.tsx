@@ -68,6 +68,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
             aria-label={tab.filePath}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectTab(tab.id); }
+              if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); onCloseTab(tab.id); }
               if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
                 event.preventDefault();
                 const index = tabs.findIndex((item) => item.id === tab.id);
@@ -142,6 +143,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
             </span>
             <button
               onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
+              tabIndex={-1}
               className="tabbar-close ui-focus-ring"
               onMouseEnter={() => setHoveredClose(tab.id)}
               onMouseLeave={() => setHoveredClose(null)}

@@ -149,6 +149,7 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
             id="directory-path"
             type="text"
             value={pathInput}
+            aria-label={t("directoryPicker.pathPlaceholder") || "Directory path"}
             placeholder={t("directoryPicker.pathPlaceholder")}
             autoFocus
             autoComplete="off"

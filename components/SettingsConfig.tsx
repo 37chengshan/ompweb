@@ -351,6 +351,9 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
   const [nativeSettingsError, setNativeSettingsError] = useState<string | null>(null);
   const [nativeSavesInFlight, setNativeSavesInFlight] = useState(0);
   const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTab>>(() => new Set(["general", activeTab]));
+  const latestNativeSettingsRef = useRef<NativeSettings | null>(null);
+  const nativeSaveDrainingRef = useRef(false);
+  const nativeSettingsMutatedRef = useRef(false);
 
   useEffect(() => {
     setVisitedTabs((tabs) => (tabs.has(activeTab) ? tabs : new Set([...tabs, activeTab])));
@@ -359,14 +362,14 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
   useEffect(() => {
     fetch("/api/omp-settings")
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
-      .then((data: { settings?: NativeSettings }) => setNativeSettings(data.settings ?? {}))
+      .then((data: { settings?: NativeSettings }) => {
+        if (!nativeSettingsMutatedRef.current) setNativeSettings(data.settings ?? {});
+      })
       .catch((error) => setNativeSettingsError(error instanceof Error ? error.message : String(error)));
   }, []);
 
-  const latestNativeSettingsRef = useRef<NativeSettings | null>(null);
-  const nativeSaveDrainingRef = useRef(false);
-
   const saveNativeSettings = useCallback((next: NativeSettings) => {
+    nativeSettingsMutatedRef.current = true;
     setNativeSettings(next);
     setNativeSettingsError(null);
     latestNativeSettingsRef.current = next;

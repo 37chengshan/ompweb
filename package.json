@@ -41,7 +41,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "prepack": "npm run build",
-    "release:check": "npm test && npm run build"
+    "release:check": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

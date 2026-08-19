@@ -23,6 +23,14 @@ export type McpUserConfig = {
 export type McpLiveStatus = "connected" | "connecting" | "not_connected" | "inactive" | "disabled" | "configured";
 export type McpLiveServer = { name: string; source: string; status: McpLiveStatus; type?: string };
 
+/** Browser-facing project config must never expose environment variables or HTTP headers. */
+export function redactMcpServer(server: McpServer): McpServer {
+  const safe = { ...server };
+  delete safe.env;
+  delete safe.headers;
+  return safe;
+}
+
 function serverEntries(config: McpFile): Array<{ name: string; config: McpServer }> {
   return Object.entries(config.mcpServers ?? {})
     .sort(([a], [b]) => a.localeCompare(b))
@@ -300,7 +308,14 @@ export function writeMcpServer(cwd: string, name: string, server: McpServer, pre
     const locked = readMcpConfig(cwd);
     const servers = { ...(locked.config.mcpServers ?? {}) };
     if (previousName && previousName !== name) delete servers[previousName];
-    servers[name] = server;
+    // The browser never receives existing credentials. Preserve them when an
+    // edited server omits those fields, rather than deleting them on save.
+    const existing = servers[previousName ?? name];
+    servers[name] = {
+      ...server,
+      ...(existing?.env !== undefined && server.env === undefined ? { env: existing.env } : {}),
+      ...(existing?.headers !== undefined && server.headers === undefined ? { headers: existing.headers } : {}),
+    };
     const config: McpFile = { ...locked.config, mcpServers: servers };
     mkdirSync(dirname(locked.path), { recursive: true });
     const temp = `${locked.path}.tmp-${process.pid}-${Date.now()}`;

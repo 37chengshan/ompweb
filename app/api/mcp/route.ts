@@ -3,8 +3,16 @@ import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-acces
 import { deleteMcpServer, parseMcpListOutput, readDiscoveredMcpServers, readMcpConfig, readUserMcpConfig, type McpLiveServer, validateMcpServer, writeMcpServer } from "@/lib/omp/mcp-config";
 import { readSessionHeader, resolveSessionPath } from "@/lib/session-reader";
 import { getRpcSession, resolveSpawnCwd, startRpcSession } from "@/lib/rpc-manager";
+import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
+import { redactMcpServer } from "@/lib/omp/mcp-config";
 
 export const dynamic = "force-dynamic";
+const MAX_MCP_REQUEST_BYTES = 1024 * 1024;
+
+function mcpErrorResponse(error: unknown) {
+  const status = error instanceof RequestBodyTooLargeError ? 413 : 400;
+  return NextResponse.json({ error: error instanceof RequestBodyTooLargeError ? "MCP request is too large" : error instanceof Error ? error.message : String(error) }, { status });
+}
 
 function mergeMcpServers(primary: McpLiveServer[], secondary: McpLiveServer[]): McpLiveServer[] {
   const result = [...primary];
@@ -76,41 +84,41 @@ export async function GET(request: Request) {
         liveError = error instanceof Error ? error.message : String(error);
       }
     }
-    return NextResponse.json({ root: file?.root ?? null, path: file?.path ?? null, exists: file?.exists ?? false, servers: Object.entries(file?.config.mcpServers ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, config]) => ({ name, config })), user: safeUser, inventory, liveServers, liveError });
+    return NextResponse.json({ root: file?.root ?? null, path: file?.path ?? null, exists: file?.exists ?? false, servers: Object.entries(file?.config.mcpServers ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, config]) => ({ name, config: redactMcpServer(config) })), user: safeUser, inventory, liveServers, liveError });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+    return mcpErrorResponse(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { cwd?: unknown; name?: unknown; previousName?: unknown; server?: unknown };
+    const body = await parseJsonWithinLimit<{ cwd?: unknown; name?: unknown; previousName?: unknown; server?: unknown }>(request, MAX_MCP_REQUEST_BYTES);
     const cwd = await allowedCwd(body.cwd);
     validateMcpServer(body.name, body.server);
     if (body.previousName !== undefined && typeof body.previousName !== "string") throw new Error("previousName must be a string");
     return NextResponse.json({ success: true, ...writeMcpServer(cwd, body.name as string, body.server, body.previousName) });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+    return mcpErrorResponse(error);
   }
 }
 
 export async function PUT(request: Request) {
   try {
-    const body = await request.json() as { name?: unknown; server?: unknown };
+    const body = await parseJsonWithinLimit<{ name?: unknown; server?: unknown }>(request, MAX_MCP_REQUEST_BYTES);
     validateMcpServer(body.name, body.server);
     return NextResponse.json({ success: true, message: "MCP server configuration is valid" });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+    return mcpErrorResponse(error);
   }
 }
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json() as { cwd?: unknown; name?: unknown };
+    const body = await parseJsonWithinLimit<{ cwd?: unknown; name?: unknown }>(request, MAX_MCP_REQUEST_BYTES);
     const cwd = await allowedCwd(body.cwd);
     if (typeof body.name !== "string") throw new Error("name is required");
     return NextResponse.json({ success: true, ...deleteMcpServer(cwd, body.name) });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+    return mcpErrorResponse(error);
   }
 }

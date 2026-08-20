@@ -33,11 +33,12 @@ export async function GET(req: Request) {
 
       // Sessions omp writes outside the web UI produce no RPC events, so the
       // only signal that they advanced is the file itself.
-      const unsubscribeFiles = subscribeSessionFileChanges((sessionIds) => {
+      let unsubscribeFiles: (() => void) | null = null;
+      unsubscribeFiles = subscribeSessionFileChanges((sessionIds) => {
         try {
           encode({ type: "sessions-changed", sessionIds, refreshSessionList: true });
         } catch {
-          // controller already closed
+          try { unsubscribeFiles?.(); } catch { /* already cleaned up */ }
         }
       });
 

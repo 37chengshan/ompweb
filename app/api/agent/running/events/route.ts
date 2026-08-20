@@ -33,14 +33,15 @@ export async function GET(req: Request) {
 
       // Sessions omp writes outside the web UI produce no RPC events, so the
       // only signal that they advanced is the file itself.
-      let unsubscribeFiles: (() => void) | null = null;
-      unsubscribeFiles = subscribeSessionFileChanges((sessionIds) => {
+      const holder: { fn: (() => void) | null } = { fn: null };
+      holder.fn = subscribeSessionFileChanges((sessionIds) => {
         try {
           encode({ type: "sessions-changed", sessionIds, refreshSessionList: true });
         } catch {
-          try { unsubscribeFiles?.(); } catch { /* already cleaned up */ }
+          try { holder.fn?.(); } catch { /* already cleaned up */ }
         }
       });
+      const unsubscribeFiles = holder.fn;
 
       // Initial snapshot so the client renders the correct state immediately.
       // (A duplicate frame here is harmless: the client just sets the same set.)

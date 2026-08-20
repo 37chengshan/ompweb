@@ -16,36 +16,15 @@ const execFileAsync = promisify(execFile);
  * directly via the current `node` binary, which works identically on every
  * platform and needs no shell.
  */
-function findNpxCli(): string | null {
+function findCli(name: string): string | null {
   const nodeDir = dirname(execPath);
-  const candidates = [
-    // Windows MSI installer layout: node.exe and node_modules share a dir
-    join(nodeDir, "node_modules", "npm", "bin", "npx-cli.js"),
-    // Unix layout: .../bin/node + .../lib/node_modules/npm/bin/npx-cli.js
-    join(nodeDir, "..", "lib", "node_modules", "npm", "bin", "npx-cli.js"),
-  ];
-  for (const p of candidates) {
+  for (const p of [
+    join(nodeDir, "node_modules", "npm", "bin", `${name}-cli.js`),
+    join(nodeDir, "..", "lib", "node_modules", "npm", "bin", `${name}-cli.js`),
+  ]) {
     try {
       if (existsSync(p)) return p;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
-function findNpmCli(): string | null {
-  const nodeDir = dirname(execPath);
-  const candidates = [
-    join(nodeDir, "node_modules", "npm", "bin", "npm-cli.js"),
-    join(nodeDir, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
-  ];
-  for (const p of candidates) {
-    try {
-      if (existsSync(p)) return p;
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }
   return null;
 }
@@ -66,7 +45,7 @@ export interface RunNpxResult {
  * shell, so user-controlled arguments are never interpreted as shell syntax.
  */
 export async function runNpx(args: string[], opts: RunNpxOptions = {}): Promise<RunNpxResult> {
-  const npxCli = findNpxCli();
+  const npxCli = findCli("npx");
   const { command, commandArgs } = npxCli
     ? { command: execPath, commandArgs: [npxCli, ...args] }
     : { command: "npx", commandArgs: args };
@@ -79,7 +58,7 @@ export async function runNpx(args: string[], opts: RunNpxOptions = {}): Promise<
 
 /** Run npm through Node's bundled CLI, including on Windows where npm.cmd cannot be execFile'd safely. */
 export async function runNpm(args: string[], opts: RunNpxOptions = {}): Promise<RunNpxResult> {
-  const npmCli = findNpmCli();
+  const npmCli = findCli("npm");
   const { command, commandArgs } = npmCli
     ? { command: execPath, commandArgs: [npmCli, ...args] }
     : { command: "npm", commandArgs: args };

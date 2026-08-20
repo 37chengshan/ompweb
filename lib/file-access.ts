@@ -1,8 +1,6 @@
-import path from "path";
 import { getAdditionalAllowedRoots, normalizeSlashes } from "./allowed-roots";
-import { isExistingPathWithinRoots } from "./path-security";
+import { isExistingPathWithinRoots, isPathWithinRoots } from "./path-security";
 import { listAllSessions } from "./session-reader";
-import { isWindowsAbsolutePath } from "./paths";
 export { allowFileRoot, normalizeSlashes } from "./allowed-roots";
 export { isWindowsAbsolutePath } from "./paths";
 
@@ -36,22 +34,7 @@ export async function getAllowedFileRoots(): Promise<Set<string>> {
   return roots;
 }
 
-export function isFilePathAllowed(target: string, allowedRoots: Set<string>): boolean {
-  for (const root of allowedRoots) {
-    const useWindowsRules = isWindowsAbsolutePath(target) || isWindowsAbsolutePath(root);
-    const resolver = useWindowsRules ? path.win32 : path;
-    const sep = useWindowsRules ? "\\" : path.sep;
-    const normalized = resolver.resolve(target);
-    const normalizedRoot = resolver.resolve(root);
-    const comparable = useWindowsRules ? normalized.toLowerCase() : normalized;
-    const comparableRoot = useWindowsRules ? normalizedRoot.toLowerCase() : normalizedRoot;
-    const rootWithSep = comparableRoot.endsWith(sep) ? comparableRoot : comparableRoot + sep;
-    if (comparable === comparableRoot || comparable.startsWith(rootWithSep)) {
-      return true;
-    }
-  }
-  return false;
-}
+export const isFilePathAllowed = isPathWithinRoots;
 
 /** Authorize an existing path after resolving symbolic links. */
 export function isExistingFilePathAllowed(target: string, allowedRoots: Set<string>): boolean {

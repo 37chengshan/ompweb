@@ -1,0 +1,37 @@
+# Normalize line endings to LF in the repository and the working tree.
+# Without this, editors/tools on Windows/WSL can rewrite files to CRLF,
+# producing whole-tree "modified" diffs that contain zero real changes.
+* text=auto eol=lf
+
+# Source, config, and docs — explicit text + LF (reinforces the rule above)
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.json  text eol=lf
+*.css   text eol=lf
+*.md    text eol=lf
+*.html  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# Generated / build manifests should never be reflowed
+*.lock text eol=lf
+
+# Binaries — never convert or diff
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.avif  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary

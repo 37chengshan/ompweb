@@ -21,9 +21,8 @@ import { normalizeToolCalls } from "./normalize";
 import { isRecord } from "./type-guards";
 import { taskResultRetryFailure, taskResultStructuredOutput, taskResultUsageCost } from "./task-result-details";
 import type { TodoPhase } from "./pi-types";
-import { sessionPathKey } from "./session-path";
+import { projectIdentityKey, sessionPathKey } from "./paths";
 import { resolveProject, type ProjectInfo } from "./worktree";
-import { projectIdentityKey } from "./project-identity";
 
 export { getAgentDir };
 

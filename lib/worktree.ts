@@ -2,7 +2,7 @@ import { execFile } from "child_process";
 import { existsSync, mkdirSync, realpathSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { promisify } from "util";
-import { allowFileRoot } from "./allowed-roots";
+import { allowFileRoot } from "./file-access";
 import { samePath, toNativePath } from "./paths";
 
 const execFileAsync = promisify(execFile);

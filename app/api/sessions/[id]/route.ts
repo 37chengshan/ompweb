@@ -22,7 +22,7 @@ import {
   readSessionHeader,
 } from "@/lib/session-reader";
 import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
-import { sessionPathKey } from "@/lib/session-path";
+import { sessionPathKey } from "@/lib/paths";
 import { getRpcSession } from "@/lib/rpc-manager";
 
 // BranchNavigator still traverses recursively, so keep the response tree shallow.

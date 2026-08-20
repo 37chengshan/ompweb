@@ -1,24 +1,18 @@
-/**
- * Canonical server-side path helpers (Node-only).
- *
- * - isWindowsAbsolutePath is the single source of truth for Windows-path
- *   detection (drive letter / UNC). lib/file-access.ts and
- *   lib/path-security.ts import it instead of duplicating the regex.
- * - samePath / normalizeForComparison handle server-side equality
- *   (normalize + strip trailing sep + case-fold on win32 via
- *   process.platform). For client-safe (no node:path) folding, use
- *   lib/comparable-path.ts:comparableProjectPath which sniffs the path form
- *   instead of process.platform.
- * - lib/project-identity.ts:projectIdentityKey is the stable grouping key
- *   for project roots and delegates to the same normalization; it exposes a
- *   platform param for testing.
- */
 import path, { normalize } from "path";
 
 const WINDOWS_ABSOLUTE_RE = /^[a-zA-Z]:[\\/]/;
 
 export function isWindowsAbsolutePath(filePath: string): boolean {
   return WINDOWS_ABSOLUTE_RE.test(filePath) || filePath.startsWith("\\\\") || filePath.startsWith("//");
+}
+
+export function sessionPathKey(filePath: string, platform: NodeJS.Platform = process.platform): string {
+  const normalized = platform === "win32" ? path.win32.normalize(filePath) : path.posix.normalize(filePath);
+  return platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+export function projectIdentityKey(projectRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return normalizeForComparison(projectRoot, platform);
 }
 
 /** Convert paths emitted by git to the host's native separator style. */

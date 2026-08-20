@@ -18,7 +18,6 @@ const nextConfig = (phase: string): NextConfig => {
     // root, Next can choose a parent lockfile on Windows and traverse protected
     // user-profile junctions while compiling.
     outputFileTracingRoot: process.cwd(),
-    serverExternalPackages: ["undici"],
     webpack(config: Parameters<NonNullable<NextConfig["webpack"]>>[0]) {
       // Next's entrypoint tracer does not automatically reject dynamic paths
       // outside the project root. Add parent/profile patterns to its ignore list

@@ -51,7 +51,6 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-syntax-highlighter": "^16.1.1",
-    "undici": "8.10.0",
     "yaml": "^2"
   },
   "devDependencies": {

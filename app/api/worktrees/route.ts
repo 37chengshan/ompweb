@@ -3,7 +3,7 @@ import { apiErrorResponse } from "@/lib/api-utils";
 import { existsSync } from "fs";
 import { addWorktree, findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
-import { projectIdentityKey } from "@/lib/project-identity";
+import { projectIdentityKey } from "@/lib/paths";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
  *  allowed dirs may be inspected or mutated through this endpoint. */

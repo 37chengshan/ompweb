@@ -4,7 +4,7 @@ import { statSync, type Stats } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
 import { allowFileRoot } from "@/lib/file-access";
-import { projectIdentityKey } from "@/lib/project-identity";
+import { projectIdentityKey } from "@/lib/paths";
 import { resolveProject } from "@/lib/worktree";
 
 function normalizeCwd(cwd: string): string {

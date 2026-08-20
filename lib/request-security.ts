@@ -16,8 +16,7 @@ function getRequestOrigin(request: Request): string | null {
 export function isApiRequestOriginAllowed(request: Request): boolean {
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
-  if (fetchSite === "cross-site") return false;
-  if (!origin) return true;
+  if (!origin) return fetchSite !== "cross-site";
 
   const requestOrigin = getRequestOrigin(request);
   return requestOrigin !== null && canonicalOrigin(origin) === requestOrigin;

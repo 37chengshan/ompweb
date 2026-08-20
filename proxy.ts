@@ -3,7 +3,7 @@ import { isApiRequestOriginAllowed, shouldCheckApiRequestOrigin } from "@/lib/re
 import { isValidWebSession, isWebPasswordEnabled, OMP_WEB_SESSION_COOKIE } from "@/lib/web-auth";
 
 export function proxy(request: NextRequest) {
-  if (shouldCheckApiRequestOrigin(request) && !isApiRequestOriginAllowed(request)) {
+  if (request.nextUrl.pathname.startsWith("/api/") && shouldCheckApiRequestOrigin(request) && !isApiRequestOriginAllowed(request)) {
     return NextResponse.json({ error: "Cross-origin API requests are not allowed" }, { status: 403 });
   }
   if (!isWebPasswordEnabled()) {

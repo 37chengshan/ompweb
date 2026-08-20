@@ -18,7 +18,7 @@ Local web UI for the [oh-my-pi (omp) coding agent](https://github.com/can1357/oh
 ## Requirements
 
 - [omp](https://github.com/can1357/oh-my-pi) installed and on your `PATH` (or point `OMP_WEB_OMP_BIN` at the binary)
-- Node.js 22.19.0 or newer (`node --version`)
+- Node.js 22.19.0 (`nvm use`; `node --version`)
 
 ## Quick Start
 

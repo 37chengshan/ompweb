@@ -153,14 +153,25 @@ function toImageContents(value: unknown): Array<{ type: "image"; data: string; m
  * the launch cwd (main.ts), so hand it a live directory and let it decide.
  */
 export function resolveSpawnCwd(recordedCwd?: string | null): string {
-  if (recordedCwd && existsSync(recordedCwd)) return recordedCwd;
+  return resolveSpawnCwdResult(recordedCwd).cwd;
+}
+
+/**
+ * Resolve a spawn cwd and report whether it differs from the session's recorded
+ * directory. Callers that surface a UI (the SSE resume paths) use the result to
+ * emit a notice so the user knows the agent is running somewhere other than the
+ * directory the sidebar/header still advertises — a silent wrong-tree fallback
+ * would let file tool calls edit an unexpected repo with no signal.
+ */
+export function resolveSpawnCwdResult(recordedCwd?: string | null): { cwd: string; fellBack: boolean } {
+  if (recordedCwd && existsSync(recordedCwd)) return { cwd: recordedCwd, fellBack: false };
   try {
     const serverCwd = process.cwd();
-    if (serverCwd && existsSync(serverCwd)) return serverCwd;
+    if (serverCwd && existsSync(serverCwd)) return { cwd: serverCwd, fellBack: true };
   } catch {
     // process.cwd() itself throws when the server's own cwd was removed.
   }
-  return homedir();
+  return { cwd: homedir(), fellBack: true };
 }
 
 /** omp's CompactionResult has no estimatedTokensAfter; approximate it from the
@@ -214,12 +225,17 @@ export class AgentSessionWrapper {
   private _sessionName: string | undefined;
   private proc: RpcProcess;
   readonly cwd: string;
+  /** The cwd recorded in the session file header; null for brand-new sessions
+   * or when the header lacks one. Used to detect a spawn fallback so a notice
+   * can warn the user the agent is running in a different directory. */
+  private readonly recordedCwd: string | null;
 
   // Plain field assignments (not TS parameter properties) keep this module
   // runnable under Node's strip-only TypeScript mode for probes/tests.
-  constructor(proc: RpcProcess, cwd: string) {
+  constructor(proc: RpcProcess, cwd: string, recordedCwd?: string | null) {
     this.proc = proc;
     this.cwd = cwd;
+    this.recordedCwd = recordedCwd ?? null;
   }
 
   get sessionId(): string {
@@ -259,6 +275,19 @@ export class AgentSessionWrapper {
     await this.proc.sendCommand({ type: "set_subagent_subscription", level: "events" }).catch(() => {});
     const state = await this.proc.sendCommand<RpcSessionState>({ type: "get_state" });
     this.applyIdentity(state);
+    // Warn when the spawn cwd differs from the session's recorded directory.
+    // This happens when the recorded cwd was deleted (removed worktree, moved
+    // repo, different machine): resolveSpawnCwd silently substituted a live
+    // directory so omp can spawn, but without a notice the user would see the
+    // sidebar/header still advertise the (gone) recorded path while file tool
+    // calls operate on a different tree.
+    if (this.recordedCwd && this.recordedCwd !== this.cwd) {
+      this.emit({
+        type: "notice",
+        level: "warning",
+        message: `This session's working directory no longer exists; the agent is running in ${this.cwd}.`,
+      });
+    }
   }
 
   private applyIdentity(state: RpcSessionState): void {
@@ -1191,6 +1220,9 @@ export async function startRpcSession(
   cwd: string,
   toolNames?: string[],
   advisor = false,
+  /** The cwd recorded in the session file header, used to detect a spawn
+   * fallback (recorded dir gone) and warn the user. Omit for new sessions. */
+  recordedCwd?: string | null,
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   const registry = getRegistry();
   const locks = getLocks();
@@ -1214,7 +1246,7 @@ export async function startRpcSession(
       extraArgs: buildSessionSpawnArgs(sessionFile, toolNames, advisor),
       onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
     });
-    const created = new AgentSessionWrapper(proc, cwd);
+    const created = new AgentSessionWrapper(proc, cwd, recordedCwd);
     holder.wrapper = created;
     created.start();
     try {

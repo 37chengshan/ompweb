@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readSessionHeader } from "@/lib/session-reader";
 import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
-import { startRpcSession, getRpcSession, resolveSpawnCwd, WebRpcError } from "@/lib/rpc-manager";
+import { startRpcSession, getRpcSession, resolveSpawnCwdResult, WebRpcError } from "@/lib/rpc-manager";
 import { RpcCommandError } from "@/lib/omp/rpc-process";
 import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 
@@ -49,9 +49,10 @@ export async function POST(
     if ("response" in resolved) return resolved.response;
     const filePath = resolved.filePath;
 
-    const cwd = resolveSpawnCwd(readSessionHeader(filePath)?.cwd);
+    const header = readSessionHeader(filePath);
+    const { cwd } = resolveSpawnCwdResult(header?.cwd);
 
-    const { session } = await startRpcSession(id, filePath, cwd);
+    const { session } = await startRpcSession(id, filePath, cwd, undefined, false, header?.cwd);
     const result = await session.send(body);
 
     return NextResponse.json({ success: true, data: result });

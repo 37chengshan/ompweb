@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { deleteMcpServer, parseMcpListOutput, readDiscoveredMcpServers, readMcpConfig, readUserMcpConfig, type McpLiveServer, validateMcpServer, writeMcpServer } from "@/lib/omp/mcp-config";
 import { readSessionHeader, resolveSessionPath } from "@/lib/session-reader";
-import { getRpcSession, resolveSpawnCwd, startRpcSession } from "@/lib/rpc-manager";
+import { getRpcSession, resolveSpawnCwdResult, startRpcSession } from "@/lib/rpc-manager";
 import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { redactMcpServer } from "@/lib/omp/mcp-config";
 
@@ -77,7 +77,9 @@ export async function GET(request: Request) {
         if (!session?.isAlive()) {
           const sessionFile = await resolveSessionPath(sessionId);
           if (!sessionFile) throw new Error("Session not found");
-          ({ session } = await startRpcSession(sessionId, sessionFile, resolveSpawnCwd(readSessionHeader(sessionFile)?.cwd)));
+          const header = readSessionHeader(sessionFile);
+          const { cwd } = resolveSpawnCwdResult(header?.cwd);
+          ({ session } = await startRpcSession(sessionId, sessionFile, cwd, undefined, false, header?.cwd));
         }
         liveServers = mergeMcpServers(parseMcpListOutput(await session.getMcpList()), inventory);
       } catch (error) {

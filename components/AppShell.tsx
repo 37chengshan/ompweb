@@ -27,9 +27,8 @@ import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { SettingsTab } from "./SettingsTabs";
-
-// Loaded on demand: the config modals open on click and the file viewer only
-// renders once a file tab exists, so none of them belong in the first-load chunk.
+import { SettingsConfig } from "./SettingsConfig";
+// The settings shell is part of the app bundle so opening it does not fetch or compile a modal chunk. The file viewer remains on demand.
 const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer), {
   ssr: false,
   loading: () => <PanelLoadingFallback />,
@@ -57,10 +56,6 @@ function loadSidebarWidth(): number {
     return SIDEBAR_DEFAULT_WIDTH;
   }
 }
-const SettingsConfig = dynamic(() => import("./SettingsConfig").then((m) => m.SettingsConfig), {
-  ssr: false,
-  loading: () => <ModalLoadingFallback />,
-});
 const CommandPalette = dynamic(() => import("./CommandPalette").then((m) => m.CommandPalette), {
   ssr: false,
 });
@@ -74,15 +69,6 @@ function PanelLoadingFallback() {
   );
 }
 
-// Mirrors the config modals' backdrop so the click feels instant while the chunk loads.
-function ModalLoadingFallback() {
-  const { t } = useI18n();
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "var(--overlay-backdrop)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
-      {t("appShell.loading")}
-    </div>
-  );
-}
 
 type SessionCopyField = "file" | "id";
 type AutoNameStatus =

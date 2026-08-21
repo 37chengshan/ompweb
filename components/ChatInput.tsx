@@ -1302,9 +1302,16 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const [visibleModelKeys, setVisibleModelKeys] = useState<Set<string> | null>(null);
   useEffect(() => {
     const refresh = () => setVisibleModelKeys(readVisibleModelKeys());
+    const refreshFromStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === COMPOSER_MODELS_STORAGE_KEY) refresh();
+    };
     refresh();
     window.addEventListener("omp-composer-models-change", refresh);
-    return () => window.removeEventListener("omp-composer-models-change", refresh);
+    window.addEventListener("storage", refreshFromStorage);
+    return () => {
+      window.removeEventListener("omp-composer-models-change", refresh);
+      window.removeEventListener("storage", refreshFromStorage);
+    };
   }, []);
 
   const modelOptions: ModelOption[] = React.useMemo(() => {
@@ -2082,6 +2089,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   title={modelOptions.length > 0
                     ? t("chatInput.changeModel")
                     : showModelsLoading ? t("chatInput.loadingModels") : t("chatInput.noAvailableModels")}
+                  aria-expanded={modelDropdownOpen}
+                  aria-haspopup="dialog"
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -2124,7 +2133,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                           <rect x="4" y="4" width="16" height="16" rx="2" />
                           <rect x="9" y="9" width="6" height="6" />
                         </svg>
-                        <span className="picker-panel-title">Models</span>
+                        <span className="picker-panel-title">{t("chatInput.modelsLabel")}</span>
                         <span className="picker-panel-count">{modelOptions.length}</span>
                       </div>
                       <label className="picker-search">
@@ -2220,7 +2229,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                         <path d="M9.5 2A5.5 5.5 0 0 0 4 7.5c0 1.7.78 3.21 2 4.21V14a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-2.29c1.22-1 2-2.51 2-4.21A5.5 5.5 0 0 0 9.5 2z" />
                         <line x1="7" y1="18" x2="12" y2="18" />
                       </svg>
-                      <span className="picker-panel-title">Reasoning</span>
+                      <span className="picker-panel-title">{t("chatInput.reasoningLabel")}</span>
                       <span className="picker-panel-count">{thinkingLevelOptions.length}</span>
                     </div>
                     <div className="picker-thinking-cards">
@@ -2246,7 +2255,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                       })}
                     </div>
                     <div className="picker-panel-footer">
-                      <span>Applies to next prompt</span>
+                      <span>{t("chatInput.appliesNextPrompt")}</span>
                       <span style={{ fontWeight: 600, color: "var(--text-muted)", textTransform: "capitalize" }}>{thinkingDisplayLabel}</span>
                     </div>
                   </div>

@@ -2217,6 +2217,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
       } else if (session) {
         sentSessionId = session.id;
+        // The event route is observer-only. Start or resume the web-owned RPC
+        // wrapper with a supported command before opening the SSE connection.
+        await sendAgentCommand(session.id, { type: "get_state" });
         await ensureEventsConnected(session.id);
         void refreshSubagentRoster(session.id);
         void registerHostTools(session.id);
@@ -2233,9 +2236,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return true;
     } catch (e) {
       console.error("Failed to send message:", e);
-      // Every failure here (stream connect, ensure_session, set_model, the
-      // prompt POST itself) means the prompt never started, so roll the
-      // optimistic bubble back instead of leaving a ghost message.
+      // Every failure here (stream connect, startup, set_model, or the prompt
+      // POST itself) means the prompt never started, so roll back the optimistic bubble.
       const optimisticKey = optimisticUserMessageKeyRef.current;
       if (optimisticKey) {
         setMessages((prev) => {
@@ -2580,7 +2582,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const modelCwd = newSessionCwd ?? session?.cwd ?? "";
       const modelsUrl = modelCwd ? `/api/models?cwd=${encodeURIComponent(modelCwd)}` : "/api/models";
-      const res = await fetch(modelsUrl, signal ? { signal } : undefined);
+      const res = await fetch(modelsUrl, { cache: "no-store", ...(signal ? { signal } : {}) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as ModelsResponse;
       setModelNames(d.models);

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState, useRef, useEffect, useMemo, useCallback, type ComponentProps } from "react";
-import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, Brain } from "lucide-react";
+import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, ChevronDown, Brain, EyeOff } from "lucide-react";
 import { MarkdownBody } from "./MarkdownBody";
 import { ClickableImage } from "./ImageLightbox";
 import { translate, useI18n, type Locale } from "@/lib/i18n";
@@ -154,13 +154,17 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     return null;
   }
   if (message.role === "custom") {
-    if ((message as CustomMessage).customType === "xdev-mount-notice") {
+    const custom = message as CustomMessage;
+    if (custom.customType === "xdev-mount-notice") {
       return null;
     }
-    if ((message as CustomMessage).customType === "compaction") {
-      return <CompactionMessageView message={message as CustomMessage} />;
+    if (custom.customType === "compaction") {
+      return <CompactionMessageView message={custom} />;
     }
-    return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
+    if (custom.display === false) {
+      return <HiddenExtensionView message={custom} cwd={cwd} onOpenFile={onOpenFile} />;
+    }
+    return <CustomMessageView message={custom} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (message.role === "bashExecution") {
     return <BashExecutionView message={message as BashExecutionMessage} sessionId={sessionId} />;
@@ -1348,10 +1352,226 @@ function CompactionFileList({ title, files }: { title: string; files: string[] }
   );
 }
 
+function stripHiddenWrappers(text: string): string {
+  let t = text.trim();
+  t = t.replace(/^<!--[\s\S]*?-->\s*/, "").trim();
+  const outer = t.match(/^<([a-zA-Z0-9_-]+)(?:\s[^>]*)?>\s*([\s\S]*?)\s*<\/\1>\s*$/);
+  if (outer) return outer[2].trim();
+  return t;
+}
+
+function friendlyHiddenLabel(customType: string, t: (key: string) => string): string {
+  const map: Record<string, string> = {
+    "mid-run-todo-nudge": "Todo reminder",
+    "todo-error-reminder": "Todo reminder",
+    "resolve-reminder": "Pending preview",
+    "interrupted-thinking": "Interrupted",
+    "autoresearch-resume": "Resume hint",
+    "plan-mode-context": "Plan context",
+    "plan-mode-reference": "Plan reference",
+    "goal-mode-context": "Goal context",
+    "goal-continuation": "Goal continuation",
+    "goal-budget-limit": "Budget limit",
+    "thinking-loop-redirect": "Loop guard",
+    "image-attachment-description": "Image note",
+    "extension_debug": "Extension",
+    "lsp-late-diagnostic": "Diagnostics",
+  };
+  if (map[customType]) return map[customType];
+  if (!customType) return t("messageView.extensionType");
+  return customType.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function HiddenExtensionView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void }) {
+  const { t, locale } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const { copied, copy: copyContent } = useCopyFeedback();
+  const rawText = getMessageText(message.content);
+  const images = getMessageImages(message.content);
+  const cleanText = useMemo(() => stripHiddenWrappers(rawText), [rawText]);
+  const preview = useMemo(() => {
+    const normalized = cleanText.replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    return normalized.length > 92 ? `${normalized.slice(0, 92)}…` : normalized;
+  }, [cleanText]);
+  const hasDetails = message.details !== undefined;
+  const detailsText = hasDetails ? safeJson(message.details) : "";
+  const label = friendlyHiddenLabel(message.customType, t);
+  const time = formatTime(message.timestamp, locale);
+
+  return (
+    <div style={{ marginBottom: 8, display: "flex", justifyContent: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, width: "100%", maxWidth: 640 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+          <div style={{ flex: 1, height: 1, background: "var(--border)", opacity: 0.55 }} />
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-label={expanded ? t("messageView.collapse") : t("messageView.expand")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              maxWidth: "78%",
+              padding: "4px 10px",
+              border: "1px dashed color-mix(in srgb, var(--border) 88%, transparent)",
+              borderRadius: 999,
+              background: "color-mix(in srgb, var(--bg-subtle) 92%, var(--bg))",
+              color: "var(--text-dim)",
+              cursor: "pointer",
+              fontSize: 11,
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <EyeOff size={12} strokeWidth={1.8} style={{ flexShrink: 0, opacity: 0.85 }} />
+            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 650, letterSpacing: "0.01em", color: "var(--text-muted)", fontSize: 11 }}>
+              {label}
+            </span>
+            {preview ? (
+              <>
+                <span style={{ width: 3, height: 3, borderRadius: 999, background: "var(--text-dim)", opacity: 0.5, flexShrink: 0 }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, fontSize: 11 }}>{preview}</span>
+              </>
+            ) : null}
+            <ChevronRight size={11} strokeWidth={1.8} style={{ flexShrink: 0, opacity: 0.7, transform: expanded ? "rotate(90deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)" }} />
+          </button>
+          <div style={{ flex: 1, height: 1, background: "var(--border)", opacity: 0.55 }} />
+        </div>
+        {time ? <span style={{ marginTop: 2, color: "var(--text-dim)", fontSize: 10, fontVariantNumeric: "tabular-nums", opacity: 0.75 }}>{time}</span> : null}
+        {expanded ? (
+          <div
+            style={{
+              marginTop: 6,
+              width: "100%",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              overflow: "hidden",
+              background: "var(--bg-subtle)",
+            }}
+          >
+            <div style={{ padding: "8px 10px" }}>
+              {images.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: cleanText ? 8 : 0 }}>
+                  {images.map((img, i) => {
+                    const src = imageSource(img);
+                    if (!src) return null;
+                    return (
+                      <ClickableImage
+                        key={i}
+                        src={src}
+                        alt=""
+                        style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+              {cleanText ? (
+                <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>
+                  {cleanText}
+                </MarkdownBody>
+              ) : (
+                <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("messageView.noMessage")}</span>
+              )}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 9px",
+                borderTop: "1px solid var(--border)",
+                background: "var(--bg-panel)",
+              }}
+            >
+              {(cleanText || detailsText) ? (
+                <button
+                  onClick={() => copyContent(cleanText || detailsText)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "3px 7px",
+                    border: "none",
+                    background: "none",
+                    color: copied ? "var(--accent)" : "var(--text-dim)",
+                    cursor: "pointer",
+                    fontSize: 11,
+                  }}
+                >
+                  {copied ? <Check size={11} strokeWidth={1.8} /> : <Copy size={11} strokeWidth={1.8} />}
+                  {copied ? t("messageView.copied") : t("messageView.copy")}
+                </button>
+              ) : null}
+              {hasDetails ? (
+                <button
+                  onClick={() => setDetailsExpanded((v) => !v)}
+                  style={{
+                    marginLeft: "auto",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "3px 7px",
+                    border: "none",
+                    background: "none",
+                    color: "var(--text-dim)",
+                    cursor: "pointer",
+                    fontSize: 11,
+                  }}
+                >
+                  {detailsExpanded ? t("messageView.hideDetails") : t("messageView.showDetails")}
+                  <ChevronDown size={11} strokeWidth={1.8} style={{ transform: detailsExpanded ? "rotate(180deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)" }} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setExpanded(false)}
+                  style={{
+                    marginLeft: "auto",
+                    padding: "3px 7px",
+                    border: "none",
+                    background: "none",
+                    color: "var(--text-dim)",
+                    cursor: "pointer",
+                    fontSize: 11,
+                  }}
+                >
+                  {t("messageView.collapse")}
+                </button>
+              )}
+            </div>
+            {hasDetails && detailsExpanded ? (
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "9px 10px",
+                  borderTop: "1px solid var(--border)",
+                  backgroundColor: "var(--bg)",
+                  color: "var(--text-muted)",
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  maxHeight: 360,
+                  overflow: "auto",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {detailsText}
+              </pre>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void }) {
   const { t, locale } = useI18n();
-  const isHiddenDisplay = message.display === false;
-  const [contentExpanded, setContentExpanded] = useState(!isHiddenDisplay);
+  const [contentExpanded, setContentExpanded] = useState(true);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const { copied, copy: copyContent } = useCopyFeedback();
   const text = getMessageText(message.content);
@@ -1376,8 +1596,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
           border: "1px solid var(--border)",
           borderRadius: 8,
           overflow: "hidden",
-          background: isHiddenDisplay ? "var(--bg-subtle)" : "var(--bg)",
-          opacity: isHiddenDisplay && !contentExpanded ? 0.82 : 1,
+          background: "var(--bg)",
         }}
       >
         <div
@@ -1395,7 +1614,6 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
           <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
             {isIrc && message.customType === "irc:incoming" ? `← ${title}` : title}
           </span>
-          {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{t("messageView.hiddenExtensionMessage")}</span>}
           {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
         </div>
 
@@ -1463,11 +1681,10 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
               {copied ? t("messageView.copied") : t("messageView.copy")}
             </button>
           ) : null}
-          {(hasDetails || isHiddenDisplay) && (
+          {hasDetails && (
             <button
               onClick={() => {
-                if (isHiddenDisplay) setContentExpanded((v) => !v);
-                else setDetailsExpanded((v) => !v);
+                setDetailsExpanded((v) => !v);
               }}
               style={{
                 marginLeft: "auto",
@@ -1479,14 +1696,12 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
                 fontSize: 11,
               }}
             >
-              {isHiddenDisplay
-                ? (contentExpanded ? t("messageView.collapse") : t("messageView.expand"))
-                : (detailsExpanded ? t("messageView.hideDetails") : t("messageView.showDetails"))}
+              {detailsExpanded ? t("messageView.hideDetails") : t("messageView.showDetails")}
             </button>
           )}
         </div>
 
-        {hasDetails && ((isHiddenDisplay && contentExpanded) || (!isHiddenDisplay && detailsExpanded)) && (
+        {hasDetails && detailsExpanded && (
           <pre
             style={{
               margin: 0,

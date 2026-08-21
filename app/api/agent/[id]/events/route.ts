@@ -1,5 +1,4 @@
-import { readSessionHeader, resolveSessionPath } from "@/lib/session-reader";
-import { getRpcSession, resolveSpawnCwdResult, startRpcSession } from "@/lib/rpc-manager";
+import { getRpcSession } from "@/lib/rpc-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -10,19 +9,12 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  // Fast path: already-running session. Otherwise only resolve the session file
-  // here (cheap, and a miss must still answer 404); the omp spawn itself happens
-  // inside the stream so it cannot race the client's connect timeout.
+  // SSE is observer-only: listing or opening a saved session must not create
+  // another omp process for a terminal-owned session. Explicit commands use
+  // POST /api/agent/[id], which starts the wrapper before this route attaches.
   const existing = getRpcSession(id);
-  const alive = existing?.isAlive() ? existing : undefined;
-  let filePath = "";
-  if (!alive) {
-    const resolved = await resolveSessionPath(id);
-    if (!resolved) {
-      return new Response("Session not found", { status: 404 });
-    }
-    filePath = resolved;
-  }
+  const session = existing?.isAlive() ? existing : undefined;
+  if (!session) return new Response("Session is not managed by omp-web", { status: 409 });
 
   const encoder = new TextEncoder();
   // Hoisted so the stream's cancel() (half-open disconnects that never fire
@@ -99,28 +91,9 @@ export async function GET(
         return;
       }
 
-      // Announce the stream before starting omp: a cold spawn takes seconds
-      // (extensions, LSP) and the client gives up waiting for `connected` long
-      // before that. Commands sent right after this frame still block on the
-      // same startRpcSession lock, so nothing runs against a missing process.
       encode({ type: "connected", sessionId: id });
-
-      void (async () => {
-        let session = alive;
-        if (!session) {
-          try {
-            const header = readSessionHeader(filePath);
-            const { cwd } = resolveSpawnCwdResult(header?.cwd);
-            ({ session } = await startRpcSession(id, filePath, cwd, undefined, false, header?.cwd));
-          } catch (error) {
-            encode({ type: "notice", level: "error", message: `Failed to start agent: ${error}` });
-            cleanup();
-            return;
-          }
-        }
-        if (closed) return;
-        unsubscribe = session.onEvent((event) => encode(event));
-      })();
+      if (closed) return;
+      unsubscribe = session.onEvent((event) => encode(event));
     },
     cancel() {
       streamCleanup?.();

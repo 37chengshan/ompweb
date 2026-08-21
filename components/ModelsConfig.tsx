@@ -22,89 +22,16 @@ import {
   ConfirmDialog,
   useFieldValidation,
 } from "@/components/ui/field";
-import { Plus, Trash2, RefreshCw, AlertCircle, Cpu, Settings, Sparkles, Check as CheckIcon, ArrowDown, ArrowUp, Layers, RotateCcw, SlidersHorizontal, BookOpen } from "lucide-react";
+import { Plus, Trash2, RefreshCw, AlertCircle, Cpu, Settings, Sparkles, Check as CheckIcon, ArrowDown, ArrowUp, Layers, RotateCcw, SlidersHorizontal, BookOpen, Search } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { SettingsTabs, type SettingsTab } from "./SettingsTabs";
 import { ModelCatalogPicker } from "./ModelCatalogPicker";
-// Color icons (have their own fill colors — no background needed)
-import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
-import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
-import GoogleColorIcon from "@lobehub/icons/es/Google/components/Color";
-import DeepSeekColorIcon from "@lobehub/icons/es/DeepSeek/components/Color";
-import GroqIcon from "@lobehub/icons/es/Groq/components/Mono";
-import MistralColorIcon from "@lobehub/icons/es/Mistral/components/Color";
-import MoonshotIcon from "@lobehub/icons/es/Moonshot/components/Mono";
-import MinimaxColorIcon from "@lobehub/icons/es/Minimax/components/Color";
-import FireworksColorIcon from "@lobehub/icons/es/Fireworks/components/Color";
-import HuggingFaceColorIcon from "@lobehub/icons/es/HuggingFace/components/Color";
-import CerebrasColorIcon from "@lobehub/icons/es/Cerebras/components/Color";
-import OpenRouterIcon from "@lobehub/icons/es/OpenRouter/components/Mono";
-import XAIIcon from "@lobehub/icons/es/XAI/components/Mono";
-import CloudflareColorIcon from "@lobehub/icons/es/Cloudflare/components/Color";
-import VercelIcon from "@lobehub/icons/es/Vercel/components/Mono";
-import GithubCopilotIcon from "@lobehub/icons/es/GithubCopilot/components/Mono";
-import AwsColorIcon from "@lobehub/icons/es/Aws/components/Color";
-import AzureColorIcon from "@lobehub/icons/es/Azure/components/Color";
-import KimiColorIcon from "@lobehub/icons/es/Kimi/components/Color";
-import QwenColorIcon from "@lobehub/icons/es/Qwen/components/Color";
-import ZhipuColorIcon from "@lobehub/icons/es/Zhipu/components/Color";
-import CohereColorIcon from "@lobehub/icons/es/Cohere/components/Color";
-import PerplexityColorIcon from "@lobehub/icons/es/Perplexity/components/Color";
-import TogetherColorIcon from "@lobehub/icons/es/Together/components/Color";
-import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
-import AntGroupColorIcon from "@lobehub/icons/es/AntGroup/components/Color";
-import NvidiaColorIcon from "@lobehub/icons/es/Nvidia/components/Color";
-import OpenCodeIcon from "@lobehub/icons/es/OpenCode/components/Mono";
-import XiaomiMiMoIcon from "@lobehub/icons/es/XiaomiMiMo/components/Mono";
-import ZAIIcon from "@lobehub/icons/es/ZAI/components/Mono";
+
 
 type IconComponent = React.ComponentType<{ size?: number | string; style?: React.CSSProperties }>;
 
-// hasColor=true → Color icon (self-colored SVG, no wrapper)
-// hasColor=false → Mono icon (rendered with currentColor, inherits theme text color)
-const PROVIDER_ICONS: Record<string, { Icon: IconComponent; hasColor: boolean }> = {
-  "anthropic":              { Icon: AnthropicIcon,        hasColor: false },
-  "openai":                 { Icon: OpenAIIcon,           hasColor: false },
-  "openai-codex":           { Icon: OpenAIIcon,           hasColor: false },
-  "google":                 { Icon: GoogleColorIcon,      hasColor: true },
-  "google-vertex":          { Icon: GoogleColorIcon,      hasColor: true },
-  "ant-ling":               { Icon: AntGroupColorIcon,    hasColor: true },
-  "deepseek":               { Icon: DeepSeekColorIcon,    hasColor: true },
-  "groq":                   { Icon: GroqIcon,             hasColor: false },
-  "mistral":                { Icon: MistralColorIcon,     hasColor: true },
-  "moonshotai":             { Icon: MoonshotIcon,         hasColor: false },
-  "moonshotai-cn":          { Icon: MoonshotIcon,         hasColor: false },
-  "moonshot":               { Icon: MoonshotIcon,         hasColor: false },
-  "minimax":                { Icon: MinimaxColorIcon,     hasColor: true },
-  "minimax-cn":             { Icon: MinimaxColorIcon,     hasColor: true },
-  "fireworks":              { Icon: FireworksColorIcon,   hasColor: true },
-  "huggingface":            { Icon: HuggingFaceColorIcon, hasColor: true },
-  "cerebras":               { Icon: CerebrasColorIcon,    hasColor: true },
-  "openrouter":             { Icon: OpenRouterIcon,       hasColor: false },
-  "xai":                    { Icon: XAIIcon,              hasColor: false },
-  "cloudflare-ai-gateway":  { Icon: CloudflareColorIcon,  hasColor: true },
-  "cloudflare-workers-ai":  { Icon: CloudflareColorIcon,  hasColor: true },
-  "vercel-ai-gateway":      { Icon: VercelIcon,           hasColor: false },
-  "github-copilot":         { Icon: GithubCopilotIcon,    hasColor: false },
-  "amazon-bedrock":         { Icon: AwsColorIcon,         hasColor: true },
-  "azure-openai-responses": { Icon: AzureColorIcon,       hasColor: true },
-  "kimi-coding":            { Icon: KimiColorIcon,        hasColor: true },
-  "nvidia":                 { Icon: NvidiaColorIcon,      hasColor: true },
-  "opencode":               { Icon: OpenCodeIcon,         hasColor: false },
-  "opencode-go":            { Icon: OpenCodeIcon,         hasColor: false },
-  "qwen":                   { Icon: QwenColorIcon,        hasColor: true },
-  "xiaomi":                 { Icon: XiaomiMiMoIcon,       hasColor: false },
-  "xiaomi-token-plan-ams":  { Icon: XiaomiMiMoIcon,       hasColor: false },
-  "xiaomi-token-plan-cn":   { Icon: XiaomiMiMoIcon,       hasColor: false },
-  "xiaomi-token-plan-sgp":  { Icon: XiaomiMiMoIcon,       hasColor: false },
-  "zai":                    { Icon: ZAIIcon,              hasColor: false },
-  "zai-coding-cn":          { Icon: ZAIIcon,              hasColor: false },
-  "zhipu":                  { Icon: ZhipuColorIcon,       hasColor: true },
-  "cohere":                 { Icon: CohereColorIcon,      hasColor: true },
-  "perplexity":             { Icon: PerplexityColorIcon,  hasColor: true },
-  "together":               { Icon: TogetherColorIcon,    hasColor: true },
-  "grok":                   { Icon: GrokIcon,             hasColor: false },
-};
+// Provider glyphs are derived from the provider id. Provider ids come from
+// OMP/models.yml at runtime, so adding one never requires a UI registry entry.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1595,42 +1522,38 @@ function ApiKeyDetail({ provider }: { provider: ApiKeyProvider }) {
 
 // ── Provider icon ─────────────────────────────────────────────────────────────
 
+export function providerInitials(id: string): string {
+  return id
+    .split(/[-_]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "?";
+}
+
 function ProviderIcon({ id, size }: { id: string; size: number }) {
-  const pi = PROVIDER_ICONS[id];
-  if (!pi) {
-    const label = id
-      .split(/[-_]/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase() || "?";
-    return (
-      <span
-        aria-hidden="true"
-        style={{
-          width: size,
-          height: size,
-          border: "1px solid var(--border)",
-          borderRadius: 4,
-          color: "var(--text-dim)",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          fontSize: Math.max(8, Math.floor(size * 0.42)),
-          fontWeight: 700,
-          lineHeight: 1,
-        }}
-      >
-        {label}
-      </span>
-    );
-  }
-  // Color icons: self-colored SVG, no wrapper needed
-  if (pi.hasColor) return <pi.Icon size={size} />;
-  // Mono icons: use currentColor so they adapt to light/dark theme
-  return <pi.Icon size={size} style={{ color: "var(--text-muted)" }} />;
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        border: "1px solid var(--border)",
+        borderRadius: 4,
+        color: "var(--text-dim)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        fontSize: Math.max(8, Math.floor(size * 0.42)),
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      {providerInitials(id)}
+    </span>
+  );
 }
 
 // ── Add provider picker ───────────────────────────────────────────────────────
@@ -1656,7 +1579,7 @@ function AddProviderPicker({
 
   const availableOAuth = oauthProviders.filter((p) => !p.loggedIn && (!q || p.name.toLowerCase().includes(q)));
   const availableApiKey = apiKeyProviders.filter((p) => !p.configured && (!q || p.displayName.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)));
-  const showCustom = !q || "custom".includes(q) || "openai-compatible".includes(q) || "anthropic-compatible".includes(q);
+  const showCustom = !q || "custom".includes(q);
 
   const totalCount = availableOAuth.length + availableApiKey.length + (showCustom ? 1 : 0);
 
@@ -1798,6 +1721,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
   const [connectedProviders, setConnectedProviders] = useState<ConnectedProvider[]>([]);
   const [runtimeModelsLoading, setRuntimeModelsLoading] = useState(true);
   const [visibleModelKeys, setVisibleModelKeys] = useState<Set<string> | null>(null);
+  const [composerPickerSearch, setComposerPickerSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   // Provider name whose catalog picker is open (null = closed).
   const [catalogPicker, setCatalogPicker] = useState<string | null>(null);
@@ -1827,7 +1751,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
   const loadRuntimeModels = useCallback(async () => {
     setRuntimeModelsLoading(true);
     try {
-      const response = await fetch("/api/models");
+      const response = await fetch("/api/models", { cache: "no-store" });
       const data = response.ok ? await response.json() as { modelList?: RuntimeModelEntry[]; connectedProviders?: ConnectedProvider[] } : null;
       setRuntimeModels(data?.modelList ?? []);
       setConnectedProviders(data?.connectedProviders ?? []);
@@ -1876,13 +1800,21 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
     }
   }, []);
 
+  useEffect(() => {
+    if (visibleModelKeys === null) return;
+    try {
+      localStorage.setItem(COMPOSER_MODELS_STORAGE_KEY, JSON.stringify([...visibleModelKeys]));
+      window.dispatchEvent(new Event("omp-composer-models-change"));
+    } catch {
+      // Storage is optional UI state; a disabled or full store must not break settings.
+    }
+  }, [visibleModelKeys]);
+
   const setComposerModelVisible = useCallback((model: RuntimeModelEntry, visible: boolean) => {
     setVisibleModelKeys((current) => {
       const next = new Set(current ?? runtimeModels.map((entry) => `${entry.provider}:${entry.id}`));
       const key = `${model.provider}:${model.id}`;
       if (visible) next.add(key); else next.delete(key);
-      localStorage.setItem(COMPOSER_MODELS_STORAGE_KEY, JSON.stringify([...next]));
-      window.dispatchEvent(new Event("omp-composer-models-change"));
       return next;
     });
   }, [runtimeModels]);
@@ -1895,11 +1827,10 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
         const key = `${model.provider}:${model.id}`;
         if (visible) next.add(key); else next.delete(key);
       }
-      localStorage.setItem(COMPOSER_MODELS_STORAGE_KEY, JSON.stringify([...next]));
-      window.dispatchEvent(new Event("omp-composer-models-change"));
       return next;
     });
   }, [runtimeModels]);
+
 
   const enableConnectedProvider = useCallback(async (provider: string) => {
     const response = await fetch("/api/providers/enable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider }) });
@@ -2060,46 +1991,80 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
     if (selection.type === "roles") return <ModelRolesDetail models={runtimeModels} />;
     if (selection.type === "registry") return <NativeRegistryDetail models={runtimeModels} connectedProviders={connectedProviders} onChanged={loadRuntimeModels} />;
     if (selection.type === "fallbacks") return <RetryFallbackDetail models={runtimeModels} />;
-    if (selection.type === "picker") return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-          <div>
-            <SectionTitle>Composer Model Picker</SectionTitle>
-            <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>Choose which native OMP models are available in the composer. This changes only omp-web&apos;s picker, not OMP&apos;s model registry.</p>
-          </div>
-          <button type="button" onClick={() => void loadRuntimeModels()} disabled={runtimeModelsLoading} title="Refresh OMP runtime models" style={{ padding: 7, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: runtimeModelsLoading ? "wait" : "pointer" }}><RefreshCw size={14} aria-hidden="true" /></button>
-        </div>
-        {runtimeModelsLoading ? <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Loading OMP runtime models...</div> : Object.entries(runtimeModelsByProvider).map(([provider, models]) => {
-          const providerVisible = models.every((model) => visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`));
-          const providerSomeVisible = models.some((model) => visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`));
-          return <section key={provider} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", overflow: "hidden" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "var(--bg-panel)", color: "var(--text)", fontSize: 12, fontWeight: 600 }}>
-              <input type="checkbox" checked={providerVisible} ref={(input) => { if (input) input.indeterminate = providerSomeVisible && !providerVisible; }} onChange={(event) => setComposerProviderVisible(provider, event.target.checked)} aria-label={`Show all ${provider} models in composer`} />
-              <ProviderIcon id={provider} size={15} />
-              <span>{provider}</span>
-              <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 11, fontWeight: 400 }}>{models.length} model{models.length === 1 ? "" : "s"}</span>
-            </label>
-            <div style={{ padding: "4px 0" }}>
-              {models.map((model) => (
-                <label key={`${model.provider}:${model.id}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 11px", color: "var(--text-muted)", cursor: "pointer" }}>
-                  <input type="checkbox" checked={visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`)} onChange={(event) => setComposerModelVisible(model, event.target.checked)} aria-label={`Show ${model.provider}/${model.id} in composer`} />
-                  <span style={{ minWidth: 0, flex: 1, fontSize: 12 }}>{model.name || model.id}</span>
-                  <code style={{ color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>{model.provider}/{model.id}</code>
-                </label>
-              ))}
+    if (selection.type === "picker") {
+      const pickerQuery = composerPickerSearch.trim().toLowerCase();
+      const matchesPicker = (model: RuntimeModelEntry) =>
+        !pickerQuery ||
+        model.id.toLowerCase().includes(pickerQuery) ||
+        (model.name ?? "").toLowerCase().includes(pickerQuery) ||
+        model.provider.toLowerCase().includes(pickerQuery);
+      const filteredProviders = Object.entries(runtimeModelsByProvider)
+        .map(([provider, models]) => [provider, models.filter(matchesPicker)] as const)
+        .filter(([, models]) => models.length > 0);
+      const totalVisible = runtimeModels.filter((m) => visibleModelKeys === null || visibleModelKeys.has(`${m.provider}:${m.id}`)).length;
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "14px 16px", border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", boxShadow: "var(--shadow-card)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <SectionTitle>Composer Model Picker</SectionTitle>
+                <p style={{ margin: "6px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>Choose which native OMP models appear in the composer. This is omp-web-only — it does not alter OMP&apos;s registry.</p>
+              </div>
+              <button type="button" onClick={() => void loadRuntimeModels()} disabled={runtimeModelsLoading} title="Refresh OMP runtime models" style={{ padding: 7, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text-muted)", cursor: runtimeModelsLoading ? "wait" : "pointer", flexShrink: 0 }}><RefreshCw size={14} aria-hidden="true" /></button>
             </div>
-          </section>;
-        })}
-        {!runtimeModelsLoading && runtimeModels.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 12 }}>OMP did not report any configured models.</div>}
-        {connectedProviders.filter((provider) => !runtimeModelsByProvider[provider.id]).map((provider) => (
-          <section key={provider.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", padding: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text)", fontSize: 12, fontWeight: 600 }}><ProviderIcon id={provider.id} size={15} />{provider.name}</div>
-            <p style={{ margin: "6px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{provider.disabled ? "Connected, but disabled in OMP. Enable it to discover its models." : "Connected, but OMP has not reported models for this provider yet."}</p>
-            {provider.disabled && <button type="button" onClick={() => void enableConnectedProvider(provider.id).catch((error) => toast.error("Could not enable provider", error instanceof Error ? error.message : String(error)))} style={{ marginTop: 8, padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: "pointer", fontSize: 12 }}>Enable in OMP</button>}
-          </section>
-        ))}
-      </div>
-    );
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>{totalVisible} / {runtimeModels.length} visible</span>
+              <span style={{ fontSize: 11, color: "var(--text-dim)" }}>·</span>
+              <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{Object.keys(runtimeModelsByProvider).length} provider{Object.keys(runtimeModelsByProvider).length === 1 ? "" : "s"}</span>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", cursor: "text" }}>
+              <Search size={14} aria-hidden="true" style={{ color: "var(--text-dim)", flexShrink: 0 }} />
+              <input
+                value={composerPickerSearch}
+                onChange={(e) => setComposerPickerSearch(e.target.value)}
+                placeholder="Filter models (e.g. gpt, deepseek, opencodex)…"
+                style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", color: "var(--text)", fontSize: 12 }}
+              />
+              {composerPickerSearch && (
+                <button type="button" onClick={() => setComposerPickerSearch("")} style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px" }} aria-label="Clear filter">×</button>
+              )}
+            </label>
+          </div>
+          {runtimeModelsLoading ? <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Loading OMP runtime models…</div> : filteredProviders.length === 0 ? (
+            <div style={{ padding: "24px 16px", border: "1px dashed var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", color: "var(--text-dim)", fontSize: 12, textAlign: "center" }}>
+              {pickerQuery ? `No models match “${composerPickerSearch}”.` : "OMP did not report any configured models."}
+            </div>
+          ) : filteredProviders.map(([provider, models]) => {
+            const providerVisible = models.every((model) => visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`));
+            const providerSomeVisible = models.some((model) => visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`));
+            return <section key={provider} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", overflow: "hidden", background: "var(--bg-panel)", boxShadow: "var(--shadow-card)" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", background: "var(--bg)", borderBottom: "1px solid var(--border)", color: "var(--text)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                <input type="checkbox" checked={providerVisible} ref={(input) => { if (input) input.indeterminate = providerSomeVisible && !providerVisible; }} onChange={(event) => setComposerProviderVisible(provider, event.target.checked)} aria-label={`Show all ${provider} models in composer`} />
+                <ProviderIcon id={provider} size={15} />
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{provider}</span>
+                <span style={{ color: "var(--text-dim)", fontSize: 11, fontWeight: 500, padding: "2px 7px", borderRadius: 10, background: "var(--bg-subtle)", border: "1px solid var(--border)" }}>{models.length}</span>
+              </label>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {models.map((model) => (
+                  <label key={`${model.provider}:${model.id}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", color: "var(--text)", cursor: "pointer", borderTop: "1px solid var(--border)", background: visibleModelKeys !== null && !visibleModelKeys.has(`${model.provider}:${model.id}`) ? "var(--bg)" : "var(--bg-panel)" }}>
+                    <input type="checkbox" checked={visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`)} onChange={(event) => setComposerModelVisible(model, event.target.checked)} aria-label={`Show ${model.provider}/${model.id} in composer`} />
+                    <span style={{ minWidth: 0, flex: 1, fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{model.name || model.id}</span>
+                    <code style={{ color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{model.provider}/{model.id}</code>
+                  </label>
+                ))}
+              </div>
+            </section>;
+          })}
+          {!runtimeModelsLoading && connectedProviders.filter((provider) => !runtimeModelsByProvider[provider.id]).map((provider) => (
+            <section key={provider.id} style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius-card)", padding: 14, background: "var(--bg-panel)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text)", fontSize: 12, fontWeight: 600 }}><ProviderIcon id={provider.id} size={15} />{provider.name}</div>
+              <p style={{ margin: "8px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{provider.disabled ? "Connected, but disabled in OMP. Enable it to discover its models." : "Connected, but OMP has not reported models for this provider yet."}</p>
+              {provider.disabled && <button type="button" onClick={() => void enableConnectedProvider(provider.id).catch((error) => toast.error("Could not enable provider", error instanceof Error ? error.message : String(error)))} style={{ marginTop: 10, padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", cursor: "pointer", fontSize: 12 }}>Enable in OMP</button>}
+            </section>
+          ))}
+        </div>
+      );
+    }
     if (selection.type === "provider") {
       const provider = config.providers?.[selection.name];
       if (!provider) return null;
@@ -2163,164 +2128,190 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
           </div>
         ) : (
         <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
-
-          {/* Left: tree */}
+          {/* Left: tree — zoned navigation */}
           <div style={{
-            width: isMobile ? "100%" : 235,
+            width: isMobile ? "100%" : 258,
             maxHeight: isMobile ? "40vh" : undefined,
             borderRight: isMobile ? "none" : "1px solid var(--border)",
             borderBottom: isMobile ? "1px solid var(--border)" : "none",
             display: "flex", flexDirection: "column", flexShrink: 0, background: "var(--bg-panel)",
+            overflow: "hidden",
           }}>
-            <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
-              <TreeNavButton icon={Layers} label="Native OMP registry" selected={selection?.type === "registry"} onClick={() => setSelection({ type: "registry" })} />
-              <TreeNavButton icon={RotateCcw} label="Retry & fallback" selected={selection?.type === "fallbacks"} onClick={() => setSelection({ type: "fallbacks" })} />
-              <TreeNavButton icon={BookOpen} label="Composer model picker" selected={selection?.type === "picker"} onClick={() => setSelection({ type: "picker" })} />
-              <TreeNavButton icon={SlidersHorizontal} label="OMP model roles" selected={selection?.type === "roles"} onClick={() => setSelection({ type: "roles" })} />
-
-              {(activeOAuth.length > 0 || activeApiKey.length > 0) && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "14px 10px 6px", color: "var(--text-dim)", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                  <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
-                  Connected through OMP
+            <div style={{ flex: 1, overflowY: "auto", padding: "10px 8px", display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* — OMP System — */}
+              <section style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)" }}>
+                  <Layers size={10} aria-hidden="true" style={{ opacity: 0.7 }} /> OMP System
                 </div>
-              )}
-
-              {/* Active OAuth subscriptions */}
-              {activeOAuth.map((p) => {
-                const isSelected = selection?.type === "oauth" && selection.providerId === p.id;
-                return (
-                  <button
-                    type="button"
-                    key={p.id}
-                    onClick={() => setSelection({ type: "oauth", providerId: p.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none", fontWeight: isSelected ? 600 : 400 }}
-                    {...hoverRow(isSelected)}
-                  >
-                    <ProviderIcon id={p.id} size={16} />
-                    <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                    <span title={`OMP OAuth provider: ${p.id}`} style={{ padding: "2px 5px", borderRadius: 4, background: "var(--bg-subtle)", color: "var(--text-muted)", fontSize: 9, fontWeight: 500, flexShrink: 0 }}>OAuth</span>
-                  </button>
-                );
-              })}
-
-              {/* Active API key providers */}
-              {activeApiKey.map((p) => {
-                const isSelected = selection?.type === "apikey" && selection.providerId === p.id;
-                return (
-                  <button
-                    type="button"
-                    key={p.id}
-                    onClick={() => setSelection({ type: "apikey", providerId: p.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none", fontWeight: isSelected ? 600 : 400 }}
-                    {...hoverRow(isSelected)}
-                  >
-                    <ProviderIcon id={p.id} size={16} />
-                    <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</span>
-                    <span title={`OMP API-key provider: ${p.id}`} style={{ padding: "2px 5px", borderRadius: 4, background: "var(--bg-subtle)", color: "var(--text-muted)", fontSize: 9, fontWeight: 500, flexShrink: 0 }}>API key</span>
-                  </button>
-                );
-              })}
-
-              {/* Divider before custom providers, only when there are active managed providers */}
-              {(activeOAuth.length > 0 || activeApiKey.length > 0) && providers.length > 0 && (
-                <div style={{ margin: "8px 10px", borderTop: "1px solid var(--border)" }} />
-              )}
-
-              {/* Custom providers header */}
-              {providers.length > 0 && (
-                <div style={{ padding: "10px 10px 4px", fontSize: 10, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  Configured Providers
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: 4, border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg)" }}>
+                  <TreeNavButton icon={Layers} label="Native OMP registry" selected={selection?.type === "registry"} onClick={() => setSelection({ type: "registry" })} />
+                  <TreeNavButton icon={RotateCcw} label="Retry & fallback" selected={selection?.type === "fallbacks"} onClick={() => setSelection({ type: "fallbacks" })} />
+                  <TreeNavButton icon={BookOpen} label="Composer model picker" selected={selection?.type === "picker"} onClick={() => setSelection({ type: "picker" })} />
+                  <TreeNavButton icon={SlidersHorizontal} label="OMP model roles" selected={selection?.type === "roles"} onClick={() => setSelection({ type: "roles" })} />
                 </div>
-              )}
+              </section>
 
-              {/* Custom providers */}
-              {loading ? (
-                <div style={{ padding: "10px 8px", fontSize: 12, color: "var(--text-muted)" }}>{t("modelsConfig.loading")}</div>
-              ) : providers.map(([pName, pData]) => {
-                const isProviderSelected = selection?.type === "provider" && selection.name === pName;
-                const models = pData.models ?? [];
-                return (
-                  <div key={pName} style={{ marginBottom: 6, padding: "4px 6px", borderRadius: "var(--radius-control)", background: isProviderSelected ? "var(--bg-panel)" : "transparent", border: isProviderSelected ? "1px solid var(--border)" : "1px solid transparent" }}>
-                    {/* Provider row */}
-                    <button
-                      type="button"
-                      onClick={() => setSelection({ type: "provider", name: pName })}
-                      style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isProviderSelected ? "var(--bg-selected)" : "none" }}
-                      {...hoverRow(isProviderSelected)}
-                    >
-                      <ProviderIcon id={pName} size={15} />
-                      <span style={{ fontSize: 12, fontWeight: isProviderSelected ? 600 : 500, color: "var(--text)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {pName}
-                      </span>
-                      <span style={{ fontSize: 10, color: "var(--text-dim)", padding: "1px 5px", borderRadius: 4, background: "var(--bg-subtle)" }}>
-                        {models.length} model{models.length === 1 ? "" : "s"}
-                      </span>
-                    </button>
-
-                    {/* Model rows */}
-                    {models.map((m, i) => {
-                      const isModelSelected = selection?.type === "model" && selection.providerName === pName && selection.index === i;
+              {/* — Connected accounts — */}
+              <section style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 6px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)" }}>
+                    <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: activeOAuth.length + activeApiKey.length > 0 ? "var(--status-success)" : "var(--border)", flexShrink: 0 }} />
+                    Connected accounts
+                  </div>
+                  {(activeOAuth.length + activeApiKey.length) > 0 && (
+                    <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-dim)", fontWeight: 600 }}>
+                      {activeOAuth.length + activeApiKey.length}
+                    </span>
+                  )}
+                </div>
+                {(activeOAuth.length === 0 && activeApiKey.length === 0) ? (
+                  <div style={{ padding: "10px 10px", border: "1px dashed var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.5, textAlign: "center" }}>
+                    No OAuth or API-key accounts connected.
+                    <br />
+                    <span style={{ color: "var(--text-muted)" }}>Add one with the button below.</span>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 4, border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg)" }}>
+                    {activeOAuth.map((p) => {
+                      const isSelected = selection?.type === "oauth" && selection.providerId === p.id;
                       return (
                         <button
                           type="button"
-                          key={i}
-                          onClick={() => setSelection({ type: "model", providerName: pName, index: i })}
-                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px 5px 28px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isModelSelected ? "var(--bg-selected)" : "none", marginTop: 1 }}
-                          {...hoverRow(isModelSelected)}
+                          key={p.id}
+                          onClick={() => setSelection({ type: "oauth", providerId: p.id })}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: isSelected ? "1px solid var(--accent)" : "1px solid transparent", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none", fontWeight: isSelected ? 600 : 400 }}
+                          {...hoverRow(isSelected)}
                         >
-                          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: m.id ? "var(--text-muted)" : "var(--text-dim)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {m.id || t("modelsConfig.newModel")}
-                          </span>
-                          {m.reasoning && (
-                            <span style={{ fontSize: 9, padding: "1px 4px", background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent)", borderRadius: 3, flexShrink: 0 }}>T</span>
-                          )}
+                          <ProviderIcon id={p.id} size={16} />
+                          <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                          <span title={`OMP OAuth provider: ${p.id}`} style={{ padding: "2px 6px", borderRadius: 4, background: isSelected ? "var(--accent)" : "var(--bg-subtle)", color: isSelected ? "var(--on-accent)" : "var(--text-muted)", fontSize: 9, fontWeight: 600, flexShrink: 0 }}>OAuth</span>
                         </button>
                       );
                     })}
-
-                    {/* Add model buttons */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px 4px 10px", marginTop: 2, flexWrap: "nowrap" }}>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); addModel(pName); }}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", color: "var(--text-muted)", border: "1px solid var(--border)", background: "var(--bg-subtle)", fontFamily: "inherit", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}
-                        {...hoverAccent}
-                      >
-                        <Plus size={11} aria-hidden="true" />
-                        <span>{t("modelsConfig.addModel")}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setCatalogPicker(pName); }}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", color: "var(--text-muted)", border: "1px solid var(--border)", background: "var(--bg-subtle)", fontFamily: "inherit", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}
-                        {...hoverAccent}
-                      >
-                        <BookOpen size={11} aria-hidden="true" />
-                        <span>{t("modelsConfig.addFromCatalog")}</span>
-                      </button>
-                    </div>
+                    {activeApiKey.map((p) => {
+                      const isSelected = selection?.type === "apikey" && selection.providerId === p.id;
+                      return (
+                        <button
+                          type="button"
+                          key={p.id}
+                          onClick={() => setSelection({ type: "apikey", providerId: p.id })}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", width: "100%", border: isSelected ? "1px solid var(--accent)" : "1px solid transparent", textAlign: "left", fontFamily: "inherit", background: isSelected ? "var(--bg-selected)" : "none", fontWeight: isSelected ? 600 : 400 }}
+                          {...hoverRow(isSelected)}
+                        >
+                          <ProviderIcon id={p.id} size={16} />
+                          <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</span>
+                          <span title={`OMP API-key provider: ${p.id}`} style={{ padding: "2px 6px", borderRadius: 4, background: isSelected ? "var(--accent)" : "var(--bg-subtle)", color: isSelected ? "var(--on-accent)" : "var(--text-muted)", fontSize: 9, fontWeight: 600, flexShrink: 0 }}>API key</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                )}
+              </section>
+
+              {/* — Custom providers (models.yml) — */}
+              <section style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minHeight: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 6px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    Custom providers
+                  </div>
+                  <code style={{ fontSize: 9, padding: "1px 5px", borderRadius: 4, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>models.yml</code>
+                </div>
+                {loading ? (
+                  <div style={{ padding: "10px 8px", fontSize: 12, color: "var(--text-muted)" }}>{t("modelsConfig.loading")}</div>
+                ) : providers.length === 0 ? (
+                  <div style={{ padding: "12px 10px", border: "1px dashed var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.5, textAlign: "center" }}>
+                    No custom providers yet.
+                    <br />
+                    <span style={{ color: "var(--text-muted)" }}>Add an OpenAI-compatible endpoint.</span>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {providers.map(([pName, pData]) => {
+                      const isProviderSelected = selection?.type === "provider" && selection.name === pName;
+                      const models = pData.models ?? [];
+                      return (
+                        <div key={pName} style={{ borderRadius: "var(--radius-card)", background: "var(--bg)", border: isProviderSelected ? "1px solid var(--accent)" : "1px solid var(--border)", overflow: "hidden", boxShadow: isProviderSelected ? "0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent)" : "none" }}>
+                          {/* Provider row */}
+                          <button
+                            type="button"
+                            onClick={() => setSelection({ type: "provider", name: pName })}
+                            style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 10px", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isProviderSelected ? "var(--bg-selected)" : "var(--bg)", borderBottom: models.length ? "1px solid var(--border)" : "none" }}
+                            {...hoverRow(isProviderSelected)}
+                          >
+                            <ProviderIcon id={pName} size={15} />
+                            <span style={{ fontSize: 12, fontWeight: isProviderSelected ? 700 : 600, color: "var(--text)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {pName}
+                            </span>
+                            <span style={{ fontSize: 10, color: isProviderSelected ? "var(--accent)" : "var(--text-dim)", padding: "2px 6px", borderRadius: 10, background: isProviderSelected ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--bg-subtle)", border: `1px solid ${isProviderSelected ? "color-mix(in srgb, var(--accent) 22%, transparent)" : "var(--border)"}`, fontWeight: 600 }}>
+                              {models.length} model{models.length === 1 ? "" : "s"}
+                            </span>
+                          </button>
+
+                          {/* Model rows */}
+                          {models.map((m, i) => {
+                            const isModelSelected = selection?.type === "model" && selection.providerName === pName && selection.index === i;
+                            return (
+                              <button
+                                type="button"
+                                key={i}
+                                onClick={() => setSelection({ type: "model", providerName: pName, index: i })}
+                                style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px 6px 32px", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isModelSelected ? "var(--bg-selected)" : "transparent", borderLeft: isModelSelected ? "2px solid var(--accent)" : "2px solid transparent", borderTop: "1px solid var(--border)" }}
+                                {...hoverRow(isModelSelected)}
+                              >
+                                <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: m.id ? (isModelSelected ? "var(--text)" : "var(--text-muted)") : "var(--text-dim)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: isModelSelected ? 600 : 400 }}>
+                                  {m.id || t("modelsConfig.newModel")}
+                                </span>
+                                {m.reasoning && (
+                                  <span style={{ fontSize: 9, padding: "1px 4px", background: isModelSelected ? "var(--accent)" : "color-mix(in srgb, var(--accent) 14%, transparent)", color: isModelSelected ? "var(--on-accent)" : "var(--accent)", borderRadius: 3, flexShrink: 0, fontWeight: 700 }}>T</span>
+                                )}
+                              </button>
+                            );
+                          })}
+
+                          {/* Add model buttons */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 8px", background: "var(--bg-subtle)", borderTop: "1px solid var(--border)", flexWrap: "nowrap" }}>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); addModel(pName); }}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", color: "var(--text-muted)", border: "1px solid var(--border)", background: "var(--bg)", fontFamily: "inherit", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0, fontWeight: 500 }}
+                              {...hoverAccent}
+                            >
+                              <Plus size={11} aria-hidden="true" />
+                              <span>{t("modelsConfig.addModel")}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setCatalogPicker(pName); }}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: "var(--radius-control)", cursor: "pointer", color: "var(--text-muted)", border: "1px solid var(--border)", background: "var(--bg)", fontFamily: "inherit", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0, fontWeight: 500 }}
+                              {...hoverAccent}
+                            >
+                              <BookOpen size={11} aria-hidden="true" />
+                              <span>{t("modelsConfig.addFromCatalog")}</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             </div>
 
-            {/* Add provider */}
-            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 6px" }}>
+            {/* Add provider — primary action */}
+            <div style={{ borderTop: "1px solid var(--border)", padding: "10px 8px", background: "var(--bg)", flexShrink: 0 }}>
               <button onClick={() => setPickerOpen(true)} style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                width: "100%", padding: "6px 0", background: "none", border: "1px dashed var(--border)", borderRadius: 5,
-                color: "var(--text-muted)", cursor: "pointer", fontSize: 12,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                width: "100%", padding: "8px 0", background: "var(--accent)", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)",
+                color: "var(--on-accent)", cursor: "pointer", fontSize: 12, fontWeight: 600,
               }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-muted)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(1.05)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
               >
-                {t("modelsConfig.addProvider")}
+                <Plus size={13} aria-hidden="true" /> {t("modelsConfig.addProvider")}
               </button>
             </div>
           </div>
-
-          {/* Right: detail */}
-          <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "var(--bg)" }}>
             {loading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div className="skeleton" style={{ height: 18, width: "40%" }} />

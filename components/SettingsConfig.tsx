@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import dynamic from "next/dynamic";
 import { Copy, ExternalLink, RefreshCw, RotateCcw, Sparkles, Search, AlertCircle } from "lucide-react";
@@ -11,11 +11,11 @@ import { useI18n } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
 
 const SettingsTabLoading = () => <div role="status" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>Loading settings…</div>;
-const ModelsConfig = dynamic(() => import("./ModelsConfig").then((module) => module.ModelsConfig), { loading: SettingsTabLoading });
-const SkillsConfig = dynamic(() => import("./SkillsConfig").then((module) => module.SkillsConfig), { loading: SettingsTabLoading });
-const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => module.PluginsConfig), { loading: SettingsTabLoading });
-const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading });
-const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading });
+const ModelsConfig = dynamic(() => import("./ModelsConfig").then((module) => module.ModelsConfig), { loading: SettingsTabLoading, ssr: false });
+const SkillsConfig = dynamic(() => import("./SkillsConfig").then((module) => module.SkillsConfig), { loading: SettingsTabLoading, ssr: false });
+const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => module.PluginsConfig), { loading: SettingsTabLoading, ssr: false });
+const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading, ssr: false });
+const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading, ssr: false });
 
 type UpdateState = {
   currentVersion: string | null;
@@ -342,22 +342,19 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
     }
   });
   const [update, setUpdate] = useState<UpdateState | null>(null);
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(false);
   const [appUpdate, setAppUpdate] = useState<UpdateState | null>(null);
-  const [checkingAppUpdate, setCheckingAppUpdate] = useState(true);
+  const [checkingAppUpdate, setCheckingAppUpdate] = useState(false);
+  const [hasCheckedUpdates, setHasCheckedUpdates] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [nativeSettings, setNativeSettings] = useState<NativeSettings | null>(null);
   const [nativeSettingsError, setNativeSettingsError] = useState<string | null>(null);
   const [nativeSavesInFlight, setNativeSavesInFlight] = useState(0);
-  const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTab>>(() => new Set(["general", activeTab]));
+  const [isPending, startTransition] = useTransition();
   const latestNativeSettingsRef = useRef<NativeSettings | null>(null);
   const nativeSaveDrainingRef = useRef(false);
   const nativeSettingsMutatedRef = useRef(false);
-
-  useEffect(() => {
-    setVisitedTabs((tabs) => (tabs.has(activeTab) ? tabs : new Set([...tabs, activeTab])));
-  }, [activeTab]);
 
   useEffect(() => {
     fetch("/api/omp-settings")
@@ -399,29 +396,23 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
     })();
   }, []);
 
-  const currentSettings = (): NativeSettings => latestNativeSettingsRef.current ?? nativeSettings ?? {};
+  const currentSettings = useCallback((): NativeSettings => latestNativeSettingsRef.current ?? nativeSettings ?? {}, [nativeSettings]);
 
-  const patchSettings = (patch: Partial<NativeSettings>) => {
+  const patchSettings = useCallback((patch: Partial<NativeSettings>) => {
     void saveNativeSettings({ ...currentSettings(), ...patch });
-  };
+  }, [currentSettings, saveNativeSettings]);
 
-  // `key` is always an object-valued section here (tools/advisor/compaction/...),
-  // so the section spread is safe; the cast keeps the generic index type-checkable.
-  const patchSection = <K extends keyof NativeSettings>(key: K, patch: Partial<NonNullable<NativeSettings[K]>>) => {
+  const patchSection = useCallback(<K extends keyof NativeSettings,>(key: K, patch: Partial<NonNullable<NativeSettings[K]>>) => {
     const base = latestNativeSettingsRef.current;
     const section = (base ?? nativeSettings?.[key] ?? {}) as object;
-    void saveNativeSettings({
-      ...currentSettings(),
-      [key]: { ...section, ...patch },
-    });
-  };
+    void saveNativeSettings({ ...currentSettings(), [key]: { ...section, ...patch } });
+  }, [currentSettings, nativeSettings, saveNativeSettings]);
 
-  // tools.approval is itself a nested object, so it needs its own base spread.
-  const patchApproval = (patch: Partial<NonNullable<NonNullable<NativeSettings["tools"]>["approval"]>>) => {
+  const patchApproval = useCallback((patch: Partial<NonNullable<NonNullable<NativeSettings["tools"]>["approval"]>>) => {
     const base = latestNativeSettingsRef.current ?? nativeSettings ?? {};
     const tools = base.tools ?? {};
     void saveNativeSettings({ ...base, tools: { ...tools, approval: { ...(tools.approval ?? {}), ...patch } } });
-  };
+  }, [nativeSettings, saveNativeSettings]);
 
   const checkForUpdate = useCallback(async () => {
     setChecking(true);
@@ -439,9 +430,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
     }
   }, [onOmpUpdateAvailabilityChange]);
 
-  useEffect(() => {
-    void checkForUpdate();
-  }, [checkForUpdate]);
+
 
   const checkForAppUpdate = useCallback(async (force = false) => {
     setCheckingAppUpdate(true);
@@ -457,9 +446,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
     }
   }, []);
 
-  useEffect(() => {
-    void checkForAppUpdate();
-  }, [checkForAppUpdate]);
+
 
   const restartSessions = useCallback(async () => {
     setRestarting(true);
@@ -476,6 +463,13 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
   }, [t]);
 
   const currentTab = getNormalizedActive(activeTab);
+
+  useEffect(() => {
+    if (currentTab !== "system" || hasCheckedUpdates) return;
+    setHasCheckedUpdates(true);
+    void checkForUpdate();
+    void checkForAppUpdate();
+  }, [currentTab, hasCheckedUpdates, checkForUpdate, checkForAppUpdate]);
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const searchActive = trimmedQuery.length > 0;
@@ -499,14 +493,29 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
   }, [trimmedQuery]);
 
   const openSearchResult = useCallback((result: SearchResult) => {
-    onSelectTab(result.tab);
+    startTransition(() => onSelectTab(result.tab));
     setHighlightId(result.kind === "setting" ? result.id : null);
     setSearchQuery("");
   }, [onSelectTab]);
 
+  const handleSelectTab = useCallback((tab: SettingsTab) => {
+    startTransition(() => onSelectTab(tab));
+  }, [onSelectTab]);
+
+  const contentStyle = useMemo(() => ({
+    flex: 1 as const,
+    minHeight: 0,
+    display: "flex" as const,
+    flexDirection: "column" as const,
+    overflowY: "auto" as const,
+    background: "var(--bg)" as const,
+    opacity: isPending ? 0.92 : 1,
+    transition: isPending ? "opacity 80ms ease-out" : "opacity 120ms ease-out",
+  }), [isPending]);
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent ariaLabel="Settings" style={{ width: isMobile ? "calc(100vw - 16px)" : 940, maxWidth: "calc(100vw - 16px)", height: isMobile ? "calc(100dvh - 16px)" : "82vh", maxHeight: "calc(100dvh - 16px)", padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <DialogContent ariaLabel="Settings" style={{ width: isMobile ? "calc(100vw - 16px)" : 940, maxWidth: "calc(100vw - 16px)", height: isMobile ? "calc(100dvh - 16px)" : "82vh", maxHeight: "calc(100dvh - 16px)", padding: 0, display: "flex", flexDirection: "column", overflow: "hidden", animation: "none" }}>
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-panel)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <DialogTitle style={{ fontSize: 16, margin: 0, fontWeight: 600 }}>Settings</DialogTitle>
@@ -548,13 +557,9 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             <SearchResultsList results={searchResults} query={searchQuery.trim()} onSelect={openSearchResult} />
           ) : (
             <SettingsHighlightContext.Provider value={highlightId}>
-              {isMobile ? (
-                <SettingsTabs active={currentTab} onSelect={onSelectTab} workspaceReady={workspaceReady} layout="horizontal" />
-              ) : (
-                <SettingsTabs active={currentTab} onSelect={onSelectTab} workspaceReady={workspaceReady} layout="vertical" />
-              )}
+              <SettingsTabs active={currentTab} onSelect={handleSelectTab} workspaceReady={workspaceReady} layout={isMobile ? "horizontal" : "vertical"} />
 
-              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflowY: "auto", background: "var(--bg)" }}>
+              <div style={contentStyle}>
             {nativeSettingsError && (
               <div role="alert" style={{ margin: 16, padding: "10px 14px", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", border: "1px solid var(--status-error)", color: "var(--status-error)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
                 <AlertCircle size={14} aria-hidden="true" /> {nativeSettingsError}
@@ -645,7 +650,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             )}
 
             {/* AI MODEL DEFAULTS TAB */}
-            {(activeTab === "models" || currentTab === "models") && (
+            {currentTab === "models" && (
               <div role="tabpanel" id="settings-panel-models" aria-labelledby="settings-tab-models" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>AI Model Defaults</h3>
@@ -702,8 +707,8 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             )}
 
             {/* API KEYS & PROVIDERS TAB */}
-            {(visitedTabs.has("providers") || visitedTabs.has("models")) && (
-              <div role="tabpanel" id="settings-panel-providers" aria-labelledby="settings-tab-providers" style={{ display: (currentTab === "providers" || activeTab === "providers") ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
+            {currentTab === "providers" && (
+              <div role="tabpanel" id="settings-panel-providers" aria-labelledby="settings-tab-providers" style={{ display: currentTab === "providers" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
                 <ModelsConfig embedded onClose={onClose} onSaved={onModelsSaved} />
               </div>
             )}
@@ -880,7 +885,7 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             )}
 
             {/* EXTENSIONS & TOOLS TAB (MCP, SKILLS, PLUGINS) */}
-            {(visitedTabs.has("mcp") || visitedTabs.has("skills") || visitedTabs.has("plugins")) && (
+            {currentTab === "mcp" && (
               <div role="tabpanel" id="settings-panel-mcp" aria-labelledby="settings-tab-mcp" style={{ display: currentTab === "mcp" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column", overflowY: "auto", padding: 20, gap: 16 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Extensions & Tools</h3>
@@ -914,21 +919,21 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             )}
 
             {/* SKILLS SUB-PANEL CONTRACT MATCH */}
-            {cwd && visitedTabs.has("skills") && (
-              <div role="tabpanel" id="settings-panel-skills" aria-labelledby="settings-tab-skills" style={{ display: activeTab === "skills" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
+            {cwd && currentTab === "skills" && (
+              <div role="tabpanel" id="settings-panel-skills" aria-labelledby="settings-tab-skills" style={{ display: currentTab === "skills" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
                 <SkillsConfig embedded cwd={cwd} onClose={onClose} />
               </div>
             )}
 
             {/* PLUGINS SUB-PANEL CONTRACT MATCH */}
-            {cwd && visitedTabs.has("plugins") && (
-              <div role="tabpanel" id="settings-panel-plugins" aria-labelledby="settings-tab-plugins" style={{ display: activeTab === "plugins" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
+            {cwd && currentTab === "plugins" && (
+              <div role="tabpanel" id="settings-panel-plugins" aria-labelledby="settings-tab-plugins" style={{ display: currentTab === "plugins" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column" }}>
                 <PluginsConfig embedded cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onPluginsReloaded} />
               </div>
             )}
 
             {/* AGENTS TAB */}
-            {visitedTabs.has("agents") && (
+            {currentTab === "agents" && (
               <div
                 role="tabpanel"
                 id="settings-panel-agents"

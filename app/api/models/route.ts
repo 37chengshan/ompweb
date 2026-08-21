@@ -1,5 +1,7 @@
-import { loadModelsWithCache, withModelRuntimeError, withSafeModelLoadFailure, type ModelsData } from "@/lib/models-cache";
-import { type OmpModel, runUtilityCommand } from "@/lib/omp/rpc-utility";
+import { statSync } from "fs";
+import { invalidateModelsCache, loadModelsWithCache, withModelRuntimeError, withSafeModelLoadFailure, type ModelsData } from "@/lib/models-cache";
+import { disposeUtilityRpc, runUtilityCommand, type OmpModel } from "@/lib/omp/rpc-utility";
+import { getModelsConfigPath } from "@/lib/omp/paths";
 import { readDisabledProviders } from "@/lib/omp/model-roles";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +10,31 @@ export const dynamic = "force-dynamic";
 // cache entry serves every request. The ?cwd= query parameter is still
 // accepted for client compatibility but no longer affects the result.
 const MODELS_CACHE_KEY = "global";
+
+declare global {
+  var __ompModelsConfigFingerprint: string | undefined;
+}
+
+function refreshModelsIfConfigChanged(): void {
+  const path = getModelsConfigPath();
+  let fingerprint = `${path}:missing`;
+  try {
+    const stat = statSync(path);
+    fingerprint = `${path}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
+  } catch {
+    // A missing models file is a valid state; the fingerprint still detects
+    // its later creation.
+  }
+
+  const previous = globalThis.__ompModelsConfigFingerprint;
+  globalThis.__ompModelsConfigFingerprint = fingerprint;
+  if (previous !== undefined && previous !== fingerprint) {
+    // The utility process reads models.yml once at startup. External edits
+    // therefore need the same invalidation as the web editor's PUT route.
+    invalidateModelsCache();
+    disposeUtilityRpc();
+  }
+}
 
 const modelNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
@@ -109,6 +136,7 @@ const EMPTY_MODELS: ModelsData = {
 };
 
 export async function GET() {
+  refreshModelsIfConfigChanged();
   try {
     return Response.json(await loadModelsWithCache(MODELS_CACHE_KEY, () => loadModels()));
   } catch {

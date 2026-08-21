@@ -1114,8 +1114,45 @@ pre, code {
 .sidebar-project:hover .sidebar-project-activity {
   transform: translateX(-1px);
 }
-
-/* The composer is calmer at rest and gains a small lift while editing. */
+.sidebar-project-activity[data-running="true"] .sidebar-project-activity-dot {
+  position: relative;
+  isolation: isolate;
+  animation: sidebar-activity-breathe 2.2s var(--ease-out-warm) infinite;
+  will-change: transform, opacity;
+}
+.sidebar-project-activity[data-running="true"] .sidebar-project-activity-dot::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
+  border-radius: 50%;
+  animation: sidebar-activity-ring 2.2s var(--ease-out-warm) infinite;
+  pointer-events: none;
+}
+@keyframes sidebar-activity-breathe {
+  0%, 100% { opacity: 0.82; transform: scale(0.92); }
+  45% { opacity: 1; transform: scale(1); }
+}
+@keyframes sidebar-activity-ring {
+  0% { opacity: 0.7; transform: scale(0.9); }
+  70%, 100% { opacity: 0; transform: scale(2.15); }
+}
+.sidebar-running-spinner {
+  display: block;
+  box-sizing: border-box;
+  border: 1.7px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-right-color: currentColor;
+  border-radius: 50%;
+  animation: sidebar-running-spin 1.05s linear infinite;
+  will-change: transform;
+}
+@keyframes sidebar-running-spin {
+  to { transform: rotate(360deg); }
+}
+.sidebar-running-spinner[data-reduced-motion="true"] {
+  animation: none;
+}
 .chat-input-shell {
   transition: border-color var(--dur-med) var(--ease-out-warm), box-shadow var(--dur-med) var(--ease-out-warm), transform var(--dur-med) var(--ease-out-warm);
 }

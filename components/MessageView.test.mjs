@@ -57,7 +57,7 @@ test("streaming tool calls start collapsed when the interface preference is enab
   assert.doesNotMatch(html, /<pre/);
 });
 
-test("streaming tool calls can still start expanded when the preference is disabled", () => {
+test("expanded tool calls show the compact command header", () => {
   const html = renderToStaticMarkup(React.createElement(MessageView, {
     isStreaming: true,
     toolCallsDefaultCollapsed: false,
@@ -68,10 +68,47 @@ test("streaming tool calls can still start expanded when the preference is disab
   }));
 
   assert.match(html, /aria-expanded="true"/);
-  assert.match(html, /<pre/);
+  assert.match(html, /tool-call-details/);
+  assert.match(html, /\$<\/span><code>read foo\.ts<\/code>/);
 });
 
+test("expanded read output uses compact terminal text without line gutters", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    isStreaming: true,
+    toolCallsDefaultCollapsed: false,
+    message: {
+      role: "assistant",
+      content: [{ type: "toolCall", toolCallId: "call-1", toolName: "read", input: { path: "foo.ts" } }],
+    },
+    toolResults: new Map([[
+      "call-1",
+      { role: "toolResult", toolCallId: "call-1", content: [{ type: "text", text: "1: const value = 1;\\n2: return value;" }] },
+    ]]),
+  }));
 
+  assert.match(html, /data-tool-output="true"/);
+  assert.match(html, /const value = 1;/);
+  assert.doesNotMatch(html, /1: const value/);
+});
+
+test("tool operations render as compact timeline rows", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    message: {
+      role: "assistant",
+      timestamp: 1000,
+      content: [{ type: "toolCall", toolCallId: "call-1", toolName: "bash", input: { command: "npm test" } }],
+    },
+    toolResults: new Map([[
+      "call-1",
+      { role: "toolResult", toolCallId: "call-1", content: [], timestamp: 3000 },
+    ]]),
+  }));
+
+  assert.match(html, /data-activity-operation="true"/);
+  assert.match(html, /activity-row-indicator/);
+  assert.match(html, /activity-row-duration/);
+  assert.doesNotMatch(html, /border-radius:7px/);
+});
 test("task tool results render a per-subagent summary panel", () => {
   const html = renderToStaticMarkup(React.createElement(TaskResultPanel, {
     details: {
@@ -131,3 +168,31 @@ test("advisor custom messages use the localized advisor label", () => {
   assert.doesNotMatch(html, /customType/);
 });
 
+
+test("expanded edit results with a patch render the split diff view", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    isStreaming: true,
+    toolCallsDefaultCollapsed: false,
+    message: {
+      role: "assistant",
+      content: [{ type: "toolCall", toolCallId: "call-1", toolName: "edit", input: { path: "demo.ts" } }],
+    },
+    toolResults: new Map([[
+      "call-1",
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        content: [{ type: "text", text: "Patch applied" }],
+        details: {
+          patch: "--- a/demo.ts\n+++ b/demo.ts\n@@ -1,1 +1,2 @@\n const keep = true;\n-dropped const gone = 1;\n+added const here = 2;",
+        },
+      },
+    ]]),
+  }));
+
+  // Split diff grid (before/after columns) instead of the raw output <pre>.
+  assert.match(html, /grid-template-columns:minmax\(0, ?1fr\) minmax\(0, ?1fr\)/);
+  assert.match(html, /added const here = 2;/);
+  assert.match(html, /dropped const gone = 1;/);
+  assert.doesNotMatch(html, /<pre/);
+});

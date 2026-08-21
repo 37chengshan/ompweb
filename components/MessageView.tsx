@@ -1,17 +1,18 @@
 "use client";
 
 import { memo, useState, useRef, useEffect, useMemo, useCallback, type ComponentProps } from "react";
-import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, ChevronDown, Brain, EyeOff } from "lucide-react";
+import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, ChevronDown, Brain, EyeOff, CircleAlert, LoaderCircle } from "lucide-react";
 import { MarkdownBody } from "./MarkdownBody";
 import { ClickableImage } from "./ImageLightbox";
 import { translate, useI18n, type Locale } from "@/lib/i18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { isEmptyThinkingBlock } from "@/lib/message-display";
-import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { Tooltip, Collapsible, CollapsibleTrigger, CollapsiblePanel } from "./ui/primitives";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { SubagentStatusIcon } from "./SubagentStatusIcon";
 import { formatCost, formatDuration, formatTokens, shortModel } from "@/lib/subagent-format";
+import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
+import { formatCompactNumber } from "@/lib/format";
 import type {
   AgentMessage,
   UserMessage,
@@ -25,6 +26,7 @@ import type {
   ToolCallContent,
   ThinkingContent,
 } from "@/lib/types";
+
 
 const MAX_THINKING_CACHE_ENTRIES = 100;
 const thinkingContentCache = new Map<string, Promise<string>>();
@@ -113,6 +115,8 @@ interface Props {
   prevTimestamp?: number;
   sessionId?: string;
   toolCallsDefaultCollapsed?: boolean;
+  onGenerationSpeedChange?: (speed: number | null) => void;
+  onGenerationSpeedComplete?: (speed: number) => void;
 }
 
 function formatTime(ts: number | undefined, locale: Locale): string | null {
@@ -142,12 +146,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, toolCallsDefaultCollapsed = true }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, toolCallsDefaultCollapsed = true, onGenerationSpeedChange, onGenerationSpeedComplete }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onGenerationSpeedChange={onGenerationSpeedChange} onGenerationSpeedComplete={onGenerationSpeedComplete} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -186,7 +190,9 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.showTimestamp === next.showTimestamp
     && prev.prevTimestamp === next.prevTimestamp
     && prev.sessionId === next.sessionId
-    && prev.toolCallsDefaultCollapsed === next.toolCallsDefaultCollapsed;
+    && prev.toolCallsDefaultCollapsed === next.toolCallsDefaultCollapsed
+    && prev.onGenerationSpeedChange === next.onGenerationSpeedChange
+    && prev.onGenerationSpeedComplete === next.onGenerationSpeedComplete;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {  message: UserMessage;
@@ -382,7 +388,6 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
     </div>
   );
 }
-
 function AssistantMessageView({
   message,
   isStreaming,
@@ -395,6 +400,8 @@ function AssistantMessageView({
   sessionId,
   entryId,
   toolCallsDefaultCollapsed,
+  onGenerationSpeedChange,
+  onGenerationSpeedComplete,
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
@@ -407,6 +414,8 @@ function AssistantMessageView({
   sessionId?: string;
   entryId?: string;
   toolCallsDefaultCollapsed: boolean;
+  onGenerationSpeedChange?: (speed: number | null) => void;
+  onGenerationSpeedComplete?: (speed: number) => void;
 }) {
   const { t, locale } = useI18n();
   const time = showTimestamp ? formatTime(message.timestamp, locale) : null;
@@ -414,13 +423,14 @@ function AssistantMessageView({
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming }));
   const blocks = blockItems.map(({ block }) => block);
-  const [hovered, setHovered] = useState(false);
-  const [actionsActive, setActionsActive] = useState(false);
-  const { copied, copy: copyContent } = useCopyFeedback();
+  const hasActivityBlocks = blocks.some((block) => block.type === "thinking" || block.type === "toolCall");
   const streamStartRef = useRef<number | null>(null);
+  const lastTpsRef = useRef<number | null>(null);
+  const speedCompletedRef = useRef(false);
   const [tps, setTps] = useState<number | null>(null);
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
+
 
   // Streaming-based timing for thinking blocks
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
@@ -448,19 +458,14 @@ function AssistantMessageView({
     }
     return map;
   }, [toolResults, message.timestamp]);
-
-  // The copy control (the only consumer) is hidden while streaming — don't
-  // re-join the growing text blocks on every token frame.
-  const textContent = isStreaming
-    ? ""
-    : blocks
-        .filter((b): b is TextContent => b.type === "text")
-        .map((b) => b.text)
-        .join("\n");
-
-
   useEffect(() => {
     if (!isStreaming) {
+      if (!speedCompletedRef.current && lastTpsRef.current !== null) {
+        onGenerationSpeedComplete?.(lastTpsRef.current);
+        speedCompletedRef.current = true;
+      }
+      // Keep the last completed speed visible in the top bar alongside AVG.
+      // A new streaming run clears only the current value below.
       // Finalise any un-finished thinking block durations on stream end
       const now = new Date().getTime();
       setStreamingDurations((prev: Map<number, number>) => {
@@ -474,6 +479,9 @@ function AssistantMessageView({
       setTps(null);
       return;
     }
+    // Clear only the live value when a new run starts; the completed average remains.
+    onGenerationSpeedChange?.(null);
+    speedCompletedRef.current = false;
     const tick = () => {
       const items = blockItemsRef.current;
       const bs = items.map(({ block }) => block);
@@ -509,20 +517,30 @@ function AssistantMessageView({
       if (chars === 0) return;
       if (streamStartRef.current === null) streamStartRef.current = now;
       const elapsed = (now - streamStartRef.current) / 1000;
-      if (elapsed > 0.5) setTps(chars / 4 / elapsed);
+      if (elapsed > 0.5) {
+        const currentTps = chars / 4 / elapsed;
+        lastTpsRef.current = currentTps;
+        setTps(currentTps);
+        onGenerationSpeedChange?.(currentTps);
+      }
     };
     const id = setInterval(tick, 300);
-    return () => clearInterval(id);
-  }, [isStreaming]);
+    tick();
+    return () => {
+      clearInterval(id);
+      if (!speedCompletedRef.current && lastTpsRef.current !== null) {
+        onGenerationSpeedComplete?.(lastTpsRef.current);
+        speedCompletedRef.current = true;
+      }
+    };
+  }, [isStreaming, onGenerationSpeedChange, onGenerationSpeedComplete]);
 
   if (blocks.length === 0 && !isStreaming) return null;
 
   return (
     <div
       className="chat-message"
-      style={{ marginBottom: 18 }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      style={{ marginBottom: 6 }}
     >
       {/* Model label */}
       <div
@@ -530,7 +548,7 @@ function AssistantMessageView({
           fontSize: 11,
           color: "var(--text-dim)",
           marginBottom: 4,
-          display: "flex",
+          display: hasActivityBlocks ? "none" : "flex",
           alignItems: "center",
           gap: 6,
         }}
@@ -575,52 +593,17 @@ function AssistantMessageView({
         })()}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         {blockItems.map(({ block, originalIndex }) => (
           <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} />
         ))}
       </div>
 
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginTop: 4,
-      }}>
-        {message.usage && !isStreaming && (
-          <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-            {formatUsage(message.usage, t, locale)}
-          </div>
-        )}
-        {textContent && !isStreaming && (
-          <Tooltip content={t("messageView.copyMessage")}>
-            <button
-              onClick={() => copyContent(textContent)}
-              aria-label={t("messageView.copyMessage")}
-              style={{
-                display: "flex", alignItems: "center", gap: 4,
-                padding: "3px 8px", height: 24, minHeight: 24,
-                background: "none", border: "none",
-                borderRadius: 5,
-                color: copied ? "var(--accent)" : "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11, fontWeight: 400,
-                whiteSpace: "nowrap",
-                opacity: (hovered || actionsActive) ? 1 : 0,
-                pointerEvents: (hovered || actionsActive) ? "auto" : "none",
-                transition: "opacity var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
-              }}
-              onFocus={() => setActionsActive(true)}
-              onBlur={() => setActionsActive(false)}
-              onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "var(--accent)"; }}
-              onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "var(--text-dim)"; }}
-            >
-              {copied ? <Check size={11} strokeWidth={1.8} /> : <Copy size={11} strokeWidth={1.8} />}
-              {copied ? t("messageView.copied") : t("messageView.copy")}
-            </button>
-          </Tooltip>
-        )}
-        {time && !isStreaming && (
-          <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: "auto" }}>{time}</span>
-        )}
-      </div>
+      {time && !isStreaming && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 3 }}>
+          <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{time}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -685,45 +668,26 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
   };
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        overflow: "hidden",
-        fontSize: 13,
-      }}
-    >
+    <div className="activity-row" data-activity-operation="true">
       <Collapsible
         open={expanded}
         onOpenChange={handleOpenChange}
       >
-        <CollapsibleTrigger
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            width: "100%",
-            padding: "6px 10px",
-            background: "var(--bg-panel)",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 400,
-            textAlign: "left",
-          }}
-        >
-          <Brain size={11} strokeWidth={1.8} style={{ flexShrink: 0 }} />
-          <span>{t("messageView.thinking")}</span>
+        <CollapsibleTrigger className="activity-row-trigger">
+          <span className="activity-row-indicator" aria-hidden>
+            <Brain size={12} strokeWidth={1.8} />
+          </span>
+          <span className="activity-row-tool">{t("messageView.thinking")}</span>
+          <span className="activity-row-preview" />
           {duration !== undefined && (
-            <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{t("messageView.durationSeconds", { seconds: duration })}</span>
+            <span className="activity-row-duration">{t("messageView.durationSeconds", { seconds: duration })}</span>
           )}
           <ChevronRight
-            size={10}
+            size={11}
             strokeWidth={1.6}
+            aria-hidden
             style={{
               flexShrink: 0,
-              marginLeft: duration === undefined ? "auto" : 4,
               transform: expanded ? "rotate(90deg)" : "none",
               transition: "transform var(--dur-fast) var(--ease-out-warm)",
             }}
@@ -731,13 +695,14 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
         </CollapsibleTrigger>
         <CollapsiblePanel
           style={{
-            padding: "8px 10px",
+            marginLeft: 20,
+            padding: "4px 8px 5px",
             color: error ? "var(--status-error)" : "var(--text-muted)",
-            fontSize: 12,
-            lineHeight: 1.6,
+            fontSize: 11.5,
+            lineHeight: 1.5,
             whiteSpace: "pre-wrap",
-            background: "var(--bg-panel)",
-            borderTop: "1px solid var(--border)",
+            background: "var(--bg-subtle)",
+            borderLeft: "1px solid var(--border)",
           }}
         >
           {loading ? t("messageView.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
@@ -758,10 +723,6 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
 const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isStreaming, defaultCollapsed = true }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean; defaultCollapsed?: boolean }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(Boolean(isStreaming) && !defaultCollapsed);
-  const isEditTool = isEditToolName(block.toolName);
-  const resultDiff = expanded && result && !result.isError ? getResultDiff(result) : null;
-
-  // Result display
   const resultText = result
     ? (typeof result.content === "string"
         ? result.content
@@ -772,103 +733,54 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
     : null;
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
+  const resultDiff = expanded && result && !isError ? getResultDiff(result) : null;
+  const resultMeta = getToolResultMeta(result);
+  const command = formatToolCommand(block);
 
   return (
-    <div
-      style={{
-        borderRadius: 7,
-        overflow: "hidden",
-        fontSize: 12,
-        border: isError ? "1px solid color-mix(in srgb, var(--status-error) 45%, transparent)" : "1px solid color-mix(in srgb, var(--status-success) 25%, transparent)",
-        background: isError ? "color-mix(in srgb, var(--status-error) 5%, transparent)" : "color-mix(in srgb, var(--status-success) 4%, transparent)",
-      }}
-    >
-      <Collapsible
-        open={expanded}
-        onOpenChange={setExpanded}
-      >
-        {/* ── Tool call header ── */}
-        <CollapsibleTrigger
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            width: "100%",
-            padding: "6px 10px",
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 400,
-            textAlign: "left",
-            minWidth: 0,
-          }}
-        >
-          <span style={{ color: isError ? "var(--status-error)" : "var(--status-success)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
-            {block.toolName}
+    <div className="activity-row" data-activity-operation="true">
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <CollapsibleTrigger className="activity-row-trigger">
+          <span className={`activity-row-indicator${isError ? " activity-row-indicator-error" : ""}`} aria-hidden>
+            {isError ? <CircleAlert size={12} strokeWidth={1.8} /> : result ? <Check size={12} strokeWidth={2} /> : <LoaderCircle size={12} strokeWidth={1.8} className="activity-row-spinner" />}
           </span>
-          <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
-            {getToolPreview(block)}
-          </span>
+          <span className={`activity-row-tool${isError ? " activity-row-tool-error" : ""}`}>{block.toolName}</span>
+          <span className="activity-row-preview">{getToolPreview(block)}</span>
           {duration !== undefined && (
-            <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{t("messageView.durationSeconds", { seconds: duration })}</span>
+            <span className="activity-row-duration">{t("messageView.durationSeconds", { seconds: duration })}</span>
           )}
-          <ChevronRight
-            size={10}
-            strokeWidth={1.6}
+          <ChevronDown
+            size={11}
+            strokeWidth={1.8}
+            aria-hidden
             style={{
               flexShrink: 0,
-              transform: expanded ? "rotate(90deg)" : "none",
+              transform: expanded ? "none" : "rotate(-90deg)",
               transition: "transform var(--dur-fast) var(--ease-out-warm)",
             }}
           />
         </CollapsibleTrigger>
-
-        {/* ── Expanded: input args ── */}
-        {expanded && !isEditTool && (
-          <pre
-            style={{
-              margin: 0,
-              padding: "8px 10px",
-              color: "var(--text-muted)",
-              fontSize: 12,
-              lineHeight: 1.5,
-              overflow: "auto",
-              backgroundColor: "var(--bg-subtle)",
-              borderTop: isError ? "1px solid color-mix(in srgb, var(--status-error) 25%, transparent)" : "1px solid color-mix(in srgb, var(--status-success) 20%, transparent)",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-all",
-            }}
-          >
-            {JSON.stringify(block.input, null, 2)}
-          </pre>
-        )}
-
-        {/* ── Paired result — only shown when expanded ── */}
-        {expanded && result && (
-          resultDiff ? (
-            <PairedDiffResult
-              diff={resultDiff}
-            />
-          ) : (
-            <>
-              <TaskResultPanel details={result.details} />
-              <PairedResult
-                text={resultText ?? ""}
-                isEmpty={resultIsEmpty}
-                isError={isError}
-              />
-            </>
-          )
+        {resultMeta && <div className="activity-row-secondary">{resultMeta}</div>}
+        {expanded && (
+          <div className={`tool-call-details${isError ? " tool-call-details-error" : ""}`}>
+            <div className="tool-call-command">
+              <span className="tool-call-command-prompt" aria-hidden>$</span>
+              <code>{command}</code>
+            </div>
+            <TaskResultPanel details={result?.details} />
+            {result ? (
+              resultDiff ? (
+                <PairedDiffResult diff={resultDiff} />
+              ) : (
+                <PairedResult text={formatToolOutput(resultText ?? "", block.toolName)} isEmpty={resultIsEmpty} isError={isError} />
+              )
+            ) : null}
+          </div>
         )}
       </Collapsible>
     </div>
   );
 }, (prev, next) => (
-  // Input compares by reference: a streaming tool call re-parses its input
-  // each frame (new object) and correctly re-renders; settled transcript
-  // blocks keep their identity and skip.
   prev.block.toolCallId === next.block.toolCallId
   && prev.block.toolName === next.block.toolName
   && prev.block.input === next.block.input
@@ -877,9 +789,6 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
   && prev.defaultCollapsed === next.defaultCollapsed
 ));
 
-interface ResultDiff {
-  text: string;
-}
 
 type TaskResultRowLike = Record<string, unknown>;
 
@@ -904,6 +813,9 @@ function TaskResultStatusIcon({ status }: { status: "started" | "completed" | "f
  * (lib/session-reader.ts stripToolResultDetails): settled results when
  * present, otherwise the mid-run progress snapshot.
  */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 export function TaskResultPanel({ details }: { details: unknown }) {
   const { t, tn } = useI18n();
   if (!isRecord(details)) return null;
@@ -987,9 +899,22 @@ export function TaskResultPanel({ details }: { details: unknown }) {
   );
 }
 
-function PairedDiffResult({ diff }: {
-  diff: ResultDiff;
-}) {
+interface ResultDiff {
+  text: string;
+}
+
+function getResultDiff(result: ToolResultMessage): ResultDiff | null {
+  const details = (result as ToolResultMessage & { details?: unknown }).details;
+  if (typeof details !== "object" || details === null || Array.isArray(details)) return null;
+  const record = details as Record<string, unknown>;
+  const patch = typeof record.patch === "string" ? record.patch : null;
+  if (patch) return { text: patch };
+  const diff = typeof record.diff === "string" ? record.diff : null;
+  if (diff) return { text: diff };
+  return null;
+}
+
+function PairedDiffResult({ diff }: { diff: ResultDiff }) {
   return (
     <div
       style={{
@@ -1202,33 +1127,6 @@ function PatchTextView({ text }: { text: string }) {
   );
 }
 
-function getResultDiff(result: ToolResultMessage): ResultDiff | null {
-  const details = (result as ToolResultMessage & { details?: unknown }).details;
-  if (!isRecord(details)) return null;
-
-  const patch = typeof details.patch === "string" ? details.patch : null;
-  if (patch) return { text: patch };
-
-  const diff = typeof details.diff === "string" ? details.diff : null;
-  if (diff) return { text: diff };
-
-  return null;
-}
-
-function isEditToolName(toolName: string): boolean {
-  const name = toolName.toLowerCase();
-  return name === "edit" ||
-    name.startsWith("edit_") ||
-    name.endsWith(".edit") ||
-    name.endsWith("_edit") ||
-    name.includes("str_replace") ||
-    name.includes("replace_editor");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function PairedResult({ text, isEmpty, isError }: {
   text: string;
   isEmpty: boolean;
@@ -1236,28 +1134,8 @@ function PairedResult({ text, isEmpty, isError }: {
 }) {
   const { t } = useI18n();
   return (
-    <div
-      style={{
-        borderTop: `1px solid ${isError ? "color-mix(in srgb, var(--status-error) 30%, transparent)" : "color-mix(in srgb, var(--status-success) 15%, transparent)"}`,
-        background: isError ? "color-mix(in srgb, var(--status-error) 4%, transparent)" : "var(--bg-subtle)",
-      }}
-    >
-      <pre
-        style={{
-          margin: 0,
-          padding: "8px 10px",
-          color: isError ? "var(--status-error)" : (isEmpty ? "var(--text-dim)" : "var(--text-muted)"),
-          fontSize: 12,
-          lineHeight: 1.5,
-          overflow: "auto",
-          maxHeight: 400,
-          backgroundColor: "var(--bg)",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-all",
-          fontStyle: isEmpty ? "italic" : "normal",
-          opacity: isEmpty ? 0.6 : 1,
-        }}
-      >
+    <div className={`tool-call-output${isError ? " tool-call-output-error" : ""}`}>
+      <pre className="tool-call-output-text" data-tool-output="true">
         {isEmpty ? t("messageView.noOutput") : text}
       </pre>
     </div>
@@ -1272,50 +1150,21 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          overflow: "hidden",
-          background: "var(--bg)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "7px 10px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--bg-panel)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
-            {t("messageView.compactionLabel")}
-          </span>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "var(--bg)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: "1px solid var(--border)", background: "var(--bg-panel)", color: "var(--text-muted)" }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>{t("messageView.compactionLabel")}</span>
           {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
         </div>
-
         <div style={{ padding: "11px 13px 12px" }}>
-          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}>
-            {t("messageView.conversationCompacted")}
-          </div>
-          <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>
-            {t("messageView.compactionDescription")}
-          </div>
-          {parsedSummary.body ? (
-            <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
-          ) : (
-            <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("messageView.noSummary")}</span>
-          )}
+          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}>{t("messageView.conversationCompacted")}</div>
+          <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>{t("messageView.compactionDescription")}</div>
+          {parsedSummary.body ? <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("messageView.noSummary")}</span>}
           <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
         </div>
       </div>
     </div>
   );
 }
-
 function CompactionFileMetadata({ readFiles, modifiedFiles }: { readFiles: string[]; modifiedFiles: string[] }) {
   const { t } = useI18n();
   const total = readFiles.length + modifiedFiles.length;
@@ -1799,25 +1648,54 @@ function getToolPreview(block: ToolCallContent): string {
   const first = input[keys[0]];
   return String(first).slice(0, 120);
 }
+function formatToolCommand(block: ToolCallContent): string {
+  const input = block.input;
+  if (input && typeof input.command === "string") return input.command;
+  if (input && typeof input.path === "string") return `${block.toolName} ${input.path}`;
+  if (input && typeof input.file_path === "string") return `${block.toolName} ${input.file_path}`;
+  if (input && typeof input.query === "string") return `${block.toolName} ${input.query}`;
+  try {
+    return `${block.toolName} ${JSON.stringify(input)}`;
+  } catch {
+    return block.toolName;
+  }
+}
 
-function formatUsage(
-  usage: {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-    cost: { total: number };
-  },
-  t: (key: string, vars?: Record<string, string | number>) => string,
-  locale: Locale,
-): string {
-  const parts = [];
-  if (usage.input) parts.push(t("messageView.usageInput", { tokens: usage.input.toLocaleString(locale) }));
-  if (usage.output) parts.push(t("messageView.usageOutput", { tokens: usage.output.toLocaleString(locale) }));
-  if (usage.cacheRead) parts.push(t("messageView.usageCacheRead", { tokens: usage.cacheRead.toLocaleString(locale) }));
-  if (usage.cacheWrite) parts.push(t("messageView.usageCacheWrite", { tokens: usage.cacheWrite.toLocaleString(locale) }));
-  if (usage.cost?.total) parts.push(`$${usage.cost.total.toFixed(4)}`);
-  return parts.join(" · ");
+function formatToolOutput(text: string, toolName: string): string {
+  if (!isReadToolName(toolName)) return text;
+  return text
+    .split("\n")
+    .map((line) => line.replace(/^\s*\d+:\s?/, ""))
+    .join("\n");
+}
+
+function isReadToolName(toolName: string): boolean {
+  const name = toolName.toLowerCase();
+  return name === "read" || name.endsWith(".read") || name.endsWith("_read");
+}
+
+function getToolResultMeta(result: ToolResultMessage | undefined): string | null {
+  if (!result || !isRecord(result.details)) return null;
+  const details = result.details;
+  const usage = isRecord(details.usage) ? details.usage : details;
+  const readNumber = (...keys: string[]): number | undefined => {
+    for (const key of keys) {
+      const value = usage[key];
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+    }
+    return undefined;
+  };
+  const input = readNumber("input", "inputTokens", "input_tokens");
+  const output = readNumber("output", "outputTokens", "output_tokens");
+  const cacheRead = readNumber("cacheRead", "cache_read", "cacheReadTokens");
+  const cacheWrite = readNumber("cacheWrite", "cache_write", "cacheWriteTokens");
+  const parts = [
+    input ? `in ${formatCompactNumber(input)}` : null,
+    output ? `out ${formatCompactNumber(output)}` : null,
+    cacheRead ? `cache R ${formatCompactNumber(cacheRead)}` : null,
+    cacheWrite ? `cache W ${formatCompactNumber(cacheWrite)}` : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function BashExecutionView({ message, sessionId }: { message: BashExecutionMessage; sessionId?: string }) {

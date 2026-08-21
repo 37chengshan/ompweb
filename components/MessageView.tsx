@@ -669,10 +669,7 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
 
   return (
     <div className="activity-row" data-activity-operation="true">
-      <Collapsible
-        open={expanded}
-        onOpenChange={handleOpenChange}
-      >
+      <Collapsible open={expanded} onOpenChange={handleOpenChange}>
         <CollapsibleTrigger className="activity-row-trigger">
           <span className="activity-row-indicator" aria-hidden>
             <Brain size={12} strokeWidth={1.8} />
@@ -682,31 +679,35 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
           {duration !== undefined && (
             <span className="activity-row-duration">{t("messageView.durationSeconds", { seconds: duration })}</span>
           )}
-          <ChevronRight
+          <ChevronDown
             size={11}
-            strokeWidth={1.6}
+            strokeWidth={1.8}
             aria-hidden
             style={{
               flexShrink: 0,
-              transform: expanded ? "rotate(90deg)" : "none",
+              transform: expanded ? "none" : "rotate(-90deg)",
               transition: "transform var(--dur-fast) var(--ease-out-warm)",
             }}
           />
         </CollapsibleTrigger>
-        <CollapsiblePanel
-          style={{
-            marginLeft: 20,
-            padding: "4px 8px 5px",
-            color: error ? "var(--status-error)" : "var(--text-muted)",
-            fontSize: 11.5,
-            lineHeight: 1.5,
-            whiteSpace: "pre-wrap",
-            background: "var(--bg-subtle)",
-            borderLeft: "1px solid var(--border)",
-          }}
-        >
-          {loading ? t("messageView.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
-        </CollapsiblePanel>
+        {expanded && (
+          <div className="tool-call-details">
+            <div
+              className={`tool-call-output${error ? " tool-call-output-error" : ""}`}
+              style={{
+                whiteSpace: "pre-wrap",
+                fontFamily: "var(--font-mono)",
+                fontSize: 10.5,
+                lineHeight: 1.45,
+                color: error ? "var(--status-error)" : "var(--text-muted)",
+              }}
+            >
+              <pre className="tool-call-output-text">
+                {loading ? t("messageView.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
+              </pre>
+            </div>
+          </div>
+        )}
       </Collapsible>
     </div>
   );

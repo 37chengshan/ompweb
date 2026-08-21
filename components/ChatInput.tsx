@@ -1039,6 +1039,15 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     }
     clearInput();
   }, [value, attachedImages, attachedTextFiles, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t]);
+  // A typed, text-only message during a run is a queued follow-up. Keep Stop
+  // as the action while the composer is empty or contains attachments.
+  const primaryActionQueuesMessage =
+    isStreaming
+    && Boolean(value.trim())
+    && attachedImages.length === 0
+    && attachedTextFiles.length === 0
+    && Boolean(onFollowUp);
+
 
   // ── Queued follow-up bar ────────────────────────────────────────────────
   // omp reports only a queued count over RPC; the texts are tracked in a
@@ -2319,8 +2328,30 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               </span>
             )}
 
-            {/* Primary action: Send (idle) / Stop (running) */}
-            {isStreaming ? (
+            {/* Primary action: Send (idle) / Queue (typed while running) / Stop (running) */}
+            {primaryActionQueuesMessage ? (
+              <button
+                type="button"
+                onClick={() => sendQueued("followup")}
+                title={t("chatInput.queueMessage")}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  height: 28,
+                  padding: "0 14px",
+                  background: "var(--accent-strong)",
+                  border: "none",
+                  borderRadius: 8,
+                  color: "var(--on-accent)",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  transition: "background var(--dur-fast) var(--ease-out-warm)",
+                }}
+              >
+                <ListChecks size={13} strokeWidth={2} aria-hidden="true" />
+                {t("chatInput.queue")}
+              </button>
+            ) : isStreaming ? (
               <button
                 type="button"
                 onClick={isCompacting ? onAbortCompaction : onAbort}

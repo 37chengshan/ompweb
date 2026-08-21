@@ -9,6 +9,29 @@ const jiti = createJiti(import.meta.url, {
   tsconfigPaths: true,
 });
 const { ChatInput, ModelErrorBanner, filterModelOptions } = await jiti.import("./ChatInput.tsx");
+const { setDraft, clearDraft } = await jiti.import("@/lib/draft-store");
+
+test("shows Queue instead of Stop for typed text during a run", () => {
+  const draftKey = "chat-input-queue-action-test";
+  setDraft(draftKey, { value: "Continue after the current run", images: [], files: [] });
+  try {
+    const html = renderToStaticMarkup(
+      React.createElement(ChatInput, {
+        onSend() {},
+        onAbort() {},
+        onFollowUp() {},
+        isStreaming: true,
+        draftKey,
+      }),
+    );
+
+    assert.match(html, />(Queue|chatInput\.queue)</);
+    assert.match(html, /title="(Queue this message after the agent finishes|chatInput\.queueMessage)"/);
+    assert.doesNotMatch(html, />(Stop|chatInput\.stop)</);
+  } finally {
+    clearDraft(draftKey);
+  }
+});
 
 test("renders the upstream model error", () => {
   const html = renderToStaticMarkup(

@@ -137,6 +137,11 @@ export interface BashResultInfo {
   workingDir?: string;
 }
 
+export interface GenerationSpeedInfo {
+  current: number | null;
+  average: number | null;
+}
+
 export interface SessionStatsInfo {
   sessionFile?: string;
   sessionId: string;

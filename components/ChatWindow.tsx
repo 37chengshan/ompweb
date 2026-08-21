@@ -16,7 +16,7 @@ import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentInfo } 
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import type { SessionStatsInfo } from "@/lib/pi-types";
+import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { resolveAvailableThinkingLevels } from "@/lib/thinking-levels";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
@@ -43,6 +43,7 @@ interface Props {
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
+  onGenerationSpeedChange?: (speed: GenerationSpeedInfo | null) => void;
 }
 
 function phaseLabel(phase: AgentPhase): string {
@@ -57,7 +58,6 @@ function phaseLabel(phase: AgentPhase): string {
   return translate("chatWindow.thinking");
 }
 
-const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
 // Trigger the next history page while the sentinel is still this far below
 // the top edge, so a normal upward scroll seamlessly continues into the newly
@@ -167,7 +167,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
   if (toolCallCount > 0) parts.push(tn("chatWindow.toolCallCount", toolCallCount));
 
   return (
-    <div style={{ marginBottom: 12 }}>
+    <div style={{ marginBottom: 4 }}>
       <button
         type="button"
         aria-expanded={expanded}
@@ -190,7 +190,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
         </span>
       </button>
       {expanded && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 3 }}>
           {children}
         </div>
       )}
@@ -410,7 +410,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
   );
 });
 
-export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onGenerationSpeedChange, onOpenFile }: Props) {
   const { t, tn } = useI18n();
   const { playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
@@ -446,7 +446,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
-    handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
+    handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction, handleCompact,
     removeQueuedMessage, promoteQueuedToSteer,
     handleBuiltinSlashCommand,
     handleThinkingLevelChange, handleFastModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, loadSlashCommands,
@@ -456,6 +456,81 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     onOpenFile,
   });
   const sessionBusy = agentRunning || bashRunning;
+  const [generationSpeed, setGenerationSpeed] = useState<GenerationSpeedInfo | null>(null);
+  const speedSamplesRef = useRef<number[]>([]);
+  // Streaming ticks arrive ~3Hz with raw t/s; the indicator shows one decimal.
+  // Publishing only when that decimal changes keeps the lift to AppShell from
+  // re-rendering the whole shell several times a second for no visible change.
+  const lastPublishedSpeedRef = useRef<number | null>(null);
+  const handleGenerationSpeedChange = useCallback((current: number | null) => {
+    if (current === null || !Number.isFinite(current) || current <= 0) {
+      if (lastPublishedSpeedRef.current !== null) {
+        lastPublishedSpeedRef.current = null;
+        setGenerationSpeed((previous) => previous ? { ...previous, current: null } : null);
+      }
+      return;
+    }
+    const quantized = Math.round(current * 10) / 10;
+    if (quantized === lastPublishedSpeedRef.current) return;
+    lastPublishedSpeedRef.current = quantized;
+    const completed = speedSamplesRef.current;
+    const total = completed.reduce((sum, sample) => sum + sample, 0) + current;
+    setGenerationSpeed({
+      current: quantized,
+      average: total / (completed.length + 1),
+    });
+  }, []);
+  const handleGenerationSpeedComplete = useCallback((speed: number) => {
+    if (!Number.isFinite(speed) || speed <= 0) return;
+    const samples = [...speedSamplesRef.current, speed].slice(-32);
+    speedSamplesRef.current = samples;
+    setGenerationSpeed({
+      current: speed,
+      average: samples.reduce((sum, sample) => sum + sample, 0) / samples.length,
+    });
+  }, []);
+  // Rehydrate the session average from on-disk history after a reload: the
+  // per-message generation speed is derivable from assistant usage.output and
+  // the timestamp gap to the previous message, so AVG survives refreshes.
+  const speedHydratedSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (sessionBusy || messages.length === 0) return;
+    const sessionKey = session?.id ?? newSessionCwd ?? null;
+    if (!sessionKey || speedHydratedSessionRef.current === sessionKey) return;
+    speedHydratedSessionRef.current = sessionKey;
+    const samples: number[] = [];
+    // One forward pass carrying the latest seen timestamp: a per-assistant
+    // backward scan is O(N²) on long histories full of timestamp-less roles.
+    let prevTs: number | undefined;
+    for (const msg of messages) {
+      const hasTs = "timestamp" in msg && typeof msg.timestamp === "number";
+      const ts = hasTs ? msg.timestamp : undefined;
+      if (msg.role !== "assistant" || !msg.usage || ts === undefined) {
+        if (ts !== undefined) prevTs = ts;
+        continue;
+      }
+      if (prevTs !== undefined) {
+        const secs = (ts - prevTs) / 1000;
+        // The timestamp gap includes thinking + tool time, so a naive
+        // output/secs rate can be absurdly low; and tool-only turns (zero
+        // output) divide by near-zero gaps into absurdly high spikes. Keep
+        // only plausible text-generation rates.
+        if (secs > 1) {
+          const sample = msg.usage.output / secs;
+          if (Number.isFinite(sample) && sample > 0.5 && sample <= 500) samples.push(sample);
+        }
+      }
+      prevTs = ts;
+    }
+    if (samples.length === 0) return;
+    const recent = samples.slice(-32);
+    speedSamplesRef.current = recent;
+    setGenerationSpeed((previous) => ({
+      current: previous?.current ?? null,
+      average: recent.reduce((sum, sample) => sum + sample, 0) / recent.length,
+    }));
+  }, [messages, sessionBusy, session?.id, newSessionCwd]);
+
 
   // Register the abort handler for the global Esc shortcut. The cleanup
   // matters: unmounting mid-run must not leave the module-global handler
@@ -588,12 +663,23 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   const handleLoadMoreClick = useCallback(() => {
     const container = scrollContainerRef.current;
     if (container) {
-      // Sentinel value so the restore effect above runs and reveals the page.
+      // Sentinel value so the restore effect above runs and reveals the loaded messages.
       prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
     }
     loadMoreModeRef.current = "click";
     setVisibleCount((prev) => getNextVisibleCount(prev));
   }, [scrollContainerRef]);
+
+  const generationSpeedKey = generationSpeed
+    ? `${generationSpeed.current ?? "null"}|${generationSpeed.average ?? "null"}`
+    : null;
+  const generationSpeedRef = useRef(generationSpeed);
+  generationSpeedRef.current = generationSpeed;
+  useEffect(() => {
+    onGenerationSpeedChange?.(generationSpeedRef.current);
+  }, [generationSpeedKey, onGenerationSpeedChange]);
+  useEffect(() => () => { onGenerationSpeedChange?.(null); }, [onGenerationSpeedChange]);
+
   // Push session stats up to AppShell for the top bar.
   // Compare scalar fields to avoid loops from new object identity each render.
   const statsKey = sessionStats
@@ -773,9 +859,10 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
       advisorEnabled={advisorEnabled}
       onAdvisorChange={handleAdvisorChange}
       advisorModel={advisorModelMeta}
-      advisorActive={advisorActive}
       queuedMessages={queuedMessages}
       inputHistory={inputHistory}
+      advisorActive={advisorActive}
+      onCompact={handleCompact}
       onRemoveQueuedMessage={removeQueuedMessage}
       onPromoteQueuedToSteer={promoteQueuedToSteer}
       slashCommands={slashCommands}
@@ -909,7 +996,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
             position: "absolute",
             top: 12,
             left: 0,
-            right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
+            right: 0,
             zIndex: 40,
             padding: `0 ${CHAT_COLUMN_PADDING}px`,
             pointerEvents: "none",
@@ -951,7 +1038,16 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               handleLoadMoreClick={handleLoadMoreClick}
             />
             {streamState.isStreaming && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} />
+              <MessageView
+                message={streamState.streamingMessage as AgentMessage}
+                isStreaming
+                modelNames={modelNames}
+                cwd={messageCwd}
+                onOpenFile={onOpenFile}
+                toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
+                onGenerationSpeedChange={handleGenerationSpeedChange}
+                onGenerationSpeedComplete={handleGenerationSpeedComplete}
+              />
             )}
 
             {toolCallsDefaultCollapsed && pendingToolHeaders.map((tool) => (
@@ -1022,11 +1118,13 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
           </div>
         </div>
         {isMobile ? null : (
-          <ChatMinimap
-            messages={messages}
-            scrollContainer={scrollContainerRef}
-            messageRefs={messageRefs}
-          />
+          <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, zIndex: 30, display: "flex" }}>
+            <ChatMinimap
+              messages={messages}
+              scrollContainer={scrollContainerRef}
+              messageRefs={messageRefs}
+            />
+          </div>
         )}
       </div>
 

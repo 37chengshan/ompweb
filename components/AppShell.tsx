@@ -25,7 +25,7 @@ import { comparableProjectPath } from "@/lib/comparable-path";
 import { showCompletionNotification } from "@/lib/browser-notifications";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
-import type { SessionStatsInfo } from "@/lib/pi-types";
+import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
 import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
 import { ArchiveBrowser } from "./ArchiveBrowser";
@@ -296,12 +296,16 @@ export function AppShell() {
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "session" | null>(null);
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
-
   const toggleTopPanel = useCallback((panel: "branches" | "system" | "session") => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile]);
 
+  // Generation speed — current live t/s and the session average.
+  const [generationSpeed, setGenerationSpeed] = useState<GenerationSpeedInfo | null>(null);
+  const handleGenerationSpeedChange = useCallback((speed: GenerationSpeedInfo | null) => {
+    setGenerationSpeed(speed);
+  }, []);
   const handleSystemPromptToggle = useCallback(() => {
     const opening = activeTopPanel !== "system";
     toggleTopPanel("system");
@@ -1052,11 +1056,17 @@ export function AppShell() {
             </div>
           </>
         )}
-          {/* Session stats — right-aligned in top bar */}
-          {showChat && (sessionStats || contextUsage) && (() => {
+          {/* Session stats and generation speed — right-aligned in top bar */}
+          {showChat && (sessionStats || contextUsage || generationSpeed) && (() => {
             const tok = sessionStats?.tokens;
             const c = sessionStats?.cost ?? 0;
             const costStr = c > 0 ? (c >= 0.01 ? `$${c.toFixed(2)}` : `<$0.01`) : null;
+            const currentSpeedStr = generationSpeed?.current !== null && generationSpeed?.current !== undefined
+              ? `${generationSpeed.current.toFixed(1)} t/s`
+              : null;
+            const averageSpeedStr = generationSpeed?.average !== null && generationSpeed?.average !== undefined
+              ? `AVG ${generationSpeed.average.toFixed(1)} t/s`
+              : null;
 
             let ctxColor = "var(--text-muted)";
             let ctxStr: string | null = null;
@@ -1082,6 +1092,8 @@ export function AppShell() {
                 tokens: contextUsage.contextWindow.toLocaleString(locale),
               }));
             }
+            if (currentSpeedStr) tooltipParts.push(t("appShell.tooltipCurrentSpeed", { value: currentSpeedStr }));
+            if (averageSpeedStr) tooltipParts.push(t("appShell.tooltipAverageSpeed", { value: averageSpeedStr }));
             const tooltip = tooltipParts.join("  |  ");
 
             return (
@@ -1151,6 +1163,16 @@ export function AppShell() {
                 {!isMobile && costStr && (
                   <span style={{ display: "flex", alignItems: "center", color: "var(--text)", fontWeight: 500 }}>
                     {costStr}
+                  </span>
+                )}
+                {!isMobile && currentSpeedStr && (
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text)", fontWeight: 600 }}>
+                    {currentSpeedStr}
+                  </span>
+                )}
+                {!isMobile && averageSpeedStr && (
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
+                    {averageSpeedStr}
                   </span>
                 )}
                 {ctxStr && (
@@ -1379,13 +1401,14 @@ export function AppShell() {
               onSessionForked={handleSessionForked}
               modelsRefreshKey={modelsRefreshKey}
               chatInputRef={chatInputRef}
+              onOpenFile={handleOpenLinkedFile}
               onBranchDataChange={handleBranchDataChange}
               onSystemPromptChange={handleSystemPromptChange}
               onSystemPromptLoaderChange={handleSystemPromptLoaderChange}
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
-              onOpenFile={handleOpenLinkedFile}
+              onGenerationSpeedChange={handleGenerationSpeedChange}
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
             />
           ) : initialCwdStatus === "validating" ? (

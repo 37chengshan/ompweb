@@ -1422,7 +1422,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
         flexShrink: 0,
         background: "transparent",
          padding: "0 16px calc(8px + env(safe-area-inset-bottom))",
-        paddingRight: isMobile ? 16 : 52, // desktop: 16px base + 36px for ChatMinimap alignment
       }}
     >
       {/* Hidden file input */}

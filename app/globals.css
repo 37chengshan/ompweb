@@ -137,8 +137,6 @@ html.dark {
 html {
   /* Respect prefers-reduced-motion via the media query at the bottom. */
   scroll-behavior: smooth;
-  /* Reserve a gutter so appearing/disappearing scrollbars don't shift layout. */
-  scrollbar-gutter: stable;
 }
 
 html, body {

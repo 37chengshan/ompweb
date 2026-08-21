@@ -106,6 +106,12 @@ export class RpcProcess {
       detached: process.platform !== "win32",
     });
 
+    // A write queued when the child dies fails both the write callback and an
+    // 'error' event on the pipe. Without a listener that event becomes an
+    // uncaughtException (Next merely logs it today; other hosts die).
+    this.child.stdin.on("error", () => {});
+    this.child.stdout.on("error", () => {});
+
     let resolveReady: (frame: RpcFrame) => void;
     let rejectReady: (error: Error) => void;
     this.readyPromise = new Promise<RpcFrame>((resolve, reject) => {

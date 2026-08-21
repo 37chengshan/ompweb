@@ -23,6 +23,7 @@ import { expandWebSlashCommand } from "@/lib/web-slash-commands";
 import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } from "@/lib/web-mode-state";
 import type { HostToolDefinition, HostUriSchemeDefinition, RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 import { isRecord } from "@/lib/type-guards";
+import { subscribeSessionsChanged } from "@/lib/session-change-bus";
 import {
   parseSubagentActivityEvent,
   parseSubagentLifecycle,
@@ -1152,6 +1153,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setSlashCommandsLoading(false);
     }
   }, [ensureNewSession]);
+
+  // A session omp is writing outside the web UI has no RPC stream to deliver
+  // its turns, so reload the transcript when the watcher reports that this
+  // session's file grew. Skipped while an event stream is attached: that
+  // stream is already the authority and a reload would fight it.
+  useEffect(() => {
+    return subscribeSessionsChanged((sessionIds) => {
+      const sid = sessionIdRef.current;
+      if (!sid || eventSourceRef.current || !sessionIds.includes(sid)) return;
+      void loadSession(sid);
+    });
+  }, [loadSession]);
 
   // Reconnect actions captured after their definitions (host-tool and URI
   // registrations are per-wrapper and are not persisted by omp, and the

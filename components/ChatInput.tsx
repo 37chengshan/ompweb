@@ -132,16 +132,6 @@ export function filterModelOptions(options: ModelOption[], query: string, locale
   ));
 }
 
-const THINKING_LEVEL_DESC_KEYS: Record<string, string> = {
-  auto: "chatInput.thinkingAuto",
-  off: "chatInput.thinkingOff",
-  minimal: "chatInput.thinkingMinimal",
-  low: "chatInput.thinkingLow",
-  medium: "chatInput.thinkingMedium",
-  high: "chatInput.thinkingHigh",
-  xhigh: "chatInput.thinkingXhigh",
-  max: "chatInput.thinkingMax",
-};
 
 function formatTokenCount(tokens: number, locale: string): string {
   return formatCompactNumber(tokens, locale);
@@ -2121,22 +2111,23 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     ? { left: 8, right: 8, maxWidth: "calc(100vw - 16px)" }
                     : { left: modelDropdownRect.left, width: "max-content", minWidth: modelDropdownRect.width, maxWidth: "calc(100vw - 16px)" };
                   return (
-                    <div ref={modelDropdownPanelRef} className="dropdown-surface" style={{
-                    position: "fixed",
-                    bottom,
-                    ...panelPos,
-                    zIndex: 500,
-                    display: "flex", flexDirection: "column",
-                    overflow: "hidden", maxHeight: maxH,
+                    <div ref={modelDropdownPanelRef} className="picker-panel" style={{
+                      position: "fixed",
+                      bottom,
+                      ...panelPos,
+                      zIndex: 500,
+                      display: "flex", flexDirection: "column",
+                      maxHeight: maxH,
                     }}>
-                    <div style={{ padding: "8px 8px 6px", flexShrink: 0 }}>
-                      <div style={{
-                        display: "flex", alignItems: "center", gap: 8,
-                        padding: "6px 10px",
-                        background: "var(--bg)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "var(--radius-control)",
-                      }}>
+                      <div className="picker-panel-header">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--text-muted)" }}>
+                          <rect x="4" y="4" width="16" height="16" rx="2" />
+                          <rect x="9" y="9" width="6" height="6" />
+                        </svg>
+                        <span className="picker-panel-title">Models</span>
+                        <span className="picker-panel-count">{modelOptions.length}</span>
+                      </div>
+                      <label className="picker-search">
                         <Search size={13} strokeWidth={1.8} color="var(--text-dim)" aria-hidden="true" />
                         <input
                           ref={modelSearchInputRef}
@@ -2153,68 +2144,42 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                           }}
                           placeholder={t("chatInput.searchModels")}
                           aria-label={t("chatInput.searchModels")}
-                          style={{
-                            flex: 1, background: "none", border: "none", outline: "none",
-                            color: "var(--text)", fontSize: 13, boxSizing: "border-box", minWidth: 0,
-                          }}
                         />
-                      </div>
-                    </div>
-                    <div style={{ overflowY: "auto", minHeight: 0, paddingBottom: 4 }}>
-                    {modelsByProvider.length === 0 ? (
-                      <div style={{ padding: "8px 12px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
-                        {modelSearchQuery.trim() ? t("chatInput.noMatchingModels") : showModelsLoading ? t("chatInput.loadingModels") : t("chatInput.noAvailableModels")}
-                      </div>
-                    ) : modelsByProvider.map((group, gi) => (
-                      <div key={group.provider}>
-                        {(modelsByProvider.length > 1) && (
-                          <div style={{
-                            padding: "6px 12px 4px",
-                            fontSize: 10, fontWeight: 600, color: "var(--text-dim)",
-                            textTransform: "uppercase", letterSpacing: "0.07em",
-                            borderTop: gi > 0 ? "1px solid var(--border)" : "none",
-                          }}>
-                            {group.provider}
+                      </label>
+                      <div className="picker-list">
+                        {modelsByProvider.length === 0 ? (
+                          <div style={{ padding: "9px 8px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
+                            {modelSearchQuery.trim() ? t("chatInput.noMatchingModels") : showModelsLoading ? t("chatInput.loadingModels") : t("chatInput.noAvailableModels")}
                           </div>
-                        )}
-                        {group.options.map((opt) => {
-                          const isActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
-                          return (
-                            <button
-                              className="dropdown-item"
-                              key={`${opt.provider}:${opt.modelId}`}
-                              onClick={() => { setModelDropdownOpen(false); if (!isActive || isAutoModelSelection) onModelChange(opt.provider, opt.modelId); }}
-                              style={{
-                                display: "flex", alignItems: "center", gap: 8,
-                                width: "100%", padding: "7px 12px",
-                                background: isActive ? "var(--bg-selected)" : "transparent",
-                                border: "none",
-                                color: isActive ? "var(--text)" : "var(--text-muted)",
-                                cursor: "pointer", fontSize: 12, textAlign: "left",
-                                fontWeight: isActive ? 600 : 400,
-                                whiteSpace: "nowrap",
-                              }}
-                              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
-                            >
-                              {isActive
-                                ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
-                                : <span style={{ width: 10, flexShrink: 0 }} />}
-                              {opt.name}
-                            </button>
-                          );
-                        })}
+                        ) : modelsByProvider.map((group) => (
+                          <div key={group.provider}>
+                            <div className="picker-group-label">{group.provider}</div>
+                            {group.options.map((opt) => {
+                              const isActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
+                              return (
+                                <button
+                                  className="picker-row"
+                                  data-active={isActive}
+                                  key={`${opt.provider}:${opt.modelId}`}
+                                  onClick={() => { setModelDropdownOpen(false); if (!isActive || isAutoModelSelection) onModelChange(opt.provider, opt.modelId); }}
+                                >
+                                  <span className="picker-check">
+                                    {isActive && <svg width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>}
+                                  </span>
+                                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ))}
                       </div>
-                    ))}
                     </div>
-                  </div>
                   );
                 })()}
               </div>
             )}
 
-            {/* Reasoning level selector — stays visible while the agent
-                runs (disabled) so the level never looks like it reset. */}
+            {/* Thinking selector — compact, expressive, and consistent with models */}
             {onThinkingLevelChange && (
               <div ref={thinkingDropdownRef} style={{ position: "relative" }}>
                 <button
@@ -2222,79 +2187,68 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   disabled={isStreaming}
                   title={t("chatInput.changeReasoningTitle", { level: thinkingDisplayLabel })}
                   aria-label={`${t("chatInput.changeReasoning")}: ${thinkingDisplayLabel}`}
+                  aria-expanded={thinkingDropdownOpen}
+                  aria-haspopup="menu"
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
-                    height: 28,
-                    padding: "0 8px",
-                    background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
-                    border: "none",
-                    borderRadius: 7,
-                    color: "var(--text-muted)",
-                    cursor: isStreaming ? "not-allowed" : "pointer",
-                    opacity: isStreaming ? 0.5 : 1,
-                    fontSize: 12,
+                    height: 28, padding: "0 8px", background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
+                    border: "none", borderRadius: 7, color: "var(--text-muted)", cursor: isStreaming ? "not-allowed" : "pointer",
+                    opacity: isStreaming ? 0.5 : 1, fontSize: 12,
                     transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
                   }}
-                  onMouseEnter={(e) => {
-                    if (isStreaming) return;
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                    e.currentTarget.style.color = "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = thinkingDropdownOpen ? "var(--bg-hover)" : "none";
-                    e.currentTarget.style.color = "var(--text-muted)";
-                  }}
+                  onMouseEnter={(e) => { if (!isStreaming) { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; } }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = thinkingDropdownOpen ? "var(--bg-hover)" : "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden="true">
                     <path d="M9.5 2A5.5 5.5 0 0 0 4 7.5c0 1.7.78 3.21 2 4.21V14a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-2.29c1.22-1 2-2.51 2-4.21A5.5 5.5 0 0 0 9.5 2z" />
-                    <line x1="7" y1="18" x2="12" y2="18" />
-                    <line x1="8" y1="21" x2="11" y2="21" />
+                    <line x1="7" y1="18" x2="12" y2="18" /><line x1="8" y1="21" x2="11" y2="21" />
                   </svg>
-                  <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>
-                  <ChevronDown size={12} strokeWidth={1.8} style={{ flexShrink: 0, opacity: 0.7 }} aria-hidden="true" />
+                  <span style={{ whiteSpace: "nowrap", textTransform: "capitalize" }}>{thinkingDisplayLabel}</span>
+                  <ChevronDown size={12} strokeWidth={1.8} style={{ flexShrink: 0, opacity: 0.7, transform: thinkingDropdownOpen ? "rotate(180deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)" }} aria-hidden="true" />
                 </button>
                 {thinkingDropdownOpen && (
-                  <div className="dropdown-surface" style={{
-                    position: "absolute", bottom: "calc(100% + 6px)", left: 0,
-                    zIndex: 100, minWidth: 250, maxWidth: "calc(100vw - 32px)",
-                  }}>
-                    {thinkingLevelOptions.map((lvl) => {
-                      const isActive = (thinkingLevel ?? "auto") === lvl;
-                      const descKey = THINKING_LEVEL_DESC_KEYS[lvl];
-                      const desc = descKey ? t(descKey) : "";
-                      const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
-                      const displayLabel = (mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl;
-                      const showOriginal = mappedVal != null && mappedVal !== lvl;
-                      return (
-                        <button
-                          className="dropdown-item"
-                          key={lvl}
-                          onClick={() => { setThinkingDropdownOpen(false); if (!isActive && !isStreaming) onThinkingLevelChange(lvl); }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 8,
-                            width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "transparent",
-                            border: "none",
-                            color: isActive ? "var(--text)" : "var(--text-muted)",
-                            cursor: "pointer", fontSize: 12, textAlign: "left",
-                            fontWeight: isActive ? 600 : 400,
-                            whiteSpace: "nowrap",
-                          }}
-                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-                        >
-                          {isActive
-                            ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
-                            : <span style={{ width: 10, flexShrink: 0 }} />}
-                          <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{displayLabel}{showOriginal && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}> ({lvl})</span>}</span>
-                          {desc && (
-                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>
-                              {desc}
+                  <div
+                    className="picker-panel"
+                    role="menu"
+                    style={{
+                      position: "absolute", bottom: "calc(100% + 6px)", left: 0,
+                      zIndex: 100, width: 250, maxWidth: "calc(100vw - 32px)",
+                    }}
+                  >
+                    <div className="picker-panel-header">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--text-muted)" }}>
+                        <path d="M9.5 2A5.5 5.5 0 0 0 4 7.5c0 1.7.78 3.21 2 4.21V14a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-2.29c1.22-1 2-2.51 2-4.21A5.5 5.5 0 0 0 9.5 2z" />
+                        <line x1="7" y1="18" x2="12" y2="18" />
+                      </svg>
+                      <span className="picker-panel-title">Reasoning</span>
+                      <span className="picker-panel-count">{thinkingLevelOptions.length}</span>
+                    </div>
+                    <div className="picker-thinking-cards">
+                      {thinkingLevelOptions.map((lvl) => {
+                        const isActive = (thinkingLevel ?? "auto") === lvl;
+                        const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
+                        const displayLabel = (mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl;
+                        return (
+                          <button
+                            className="picker-thinking-card"
+                            data-active={isActive}
+                            role="menuitemradio"
+                            aria-checked={isActive}
+                            key={lvl}
+                            onClick={() => { setThinkingDropdownOpen(false); if (!isActive && !isStreaming) onThinkingLevelChange(lvl); }}
+                          >
+                            <span className="picker-check">
+                              {isActive && <svg width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>}
                             </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "capitalize" }}>{displayLabel}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="picker-panel-footer">
+                      <span>Applies to next prompt</span>
+                      <span style={{ fontWeight: 600, color: "var(--text-muted)", textTransform: "capitalize" }}>{thinkingDisplayLabel}</span>
+                    </div>
                   </div>
                 )}
               </div>

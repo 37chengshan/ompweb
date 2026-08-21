@@ -1347,6 +1347,173 @@ span.token.table {
   overflow: hidden;
   animation: ui-scale-in var(--dur-fast) var(--ease-out-warm) both;
 }
+.picker-panel {
+  overflow: hidden;
+  color: var(--text);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+  animation: ui-scale-in var(--dur-fast) var(--ease-out-warm) both;
+}
+.picker-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.picker-panel-title {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+.picker-panel-count {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  margin: 8px 8px 6px;
+  padding: 0 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm);
+}
+.picker-search:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  box-shadow: var(--focus-ring);
+}
+.picker-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  color: var(--text);
+  font-size: 12px;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+.picker-list {
+  min-height: 0;
+  padding: 0 4px 5px;
+  overflow-y: auto;
+}
+.picker-group-label {
+  display: flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 3px 8px 2px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+.picker-group-label + .picker-row { margin-top: 0; }
+.picker-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 6px 8px;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 12px;
+  transition: background-color var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);
+}
+.picker-row:hover,
+.picker-row:focus-visible {
+  color: var(--text);
+  background: var(--bg-hover);
+  outline: none;
+}
+.picker-row[data-active="true"] {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--bg-selected);
+}
+.picker-check {
+  display: inline-flex;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+.picker-row-meta {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker-thinking-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 340px;
+  padding: 6px;
+  overflow-y: auto;
+}
+.picker-thinking-card {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  gap: 8px;
+  padding: 7px 8px;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  transition: background-color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);
+}
+.picker-thinking-card:hover,
+.picker-thinking-card:focus-visible {
+  color: var(--text);
+  background: var(--bg-hover);
+  outline: none;
+}
+.picker-thinking-card[data-active="true"] {
+  color: var(--text);
+  background: var(--bg-selected);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  font-weight: 600;
+}
+.picker-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 6px 10px;
+  color: var(--text-dim);
+  font-size: 10px;
+  border-top: 1px solid var(--border);
+}
 .dropdown-item {
   color: var(--text-muted);
   transition: background-color var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm);

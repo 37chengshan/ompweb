@@ -307,14 +307,16 @@ export function writeMcpServer(cwd: string, name: string, server: McpServer, pre
     // Re-read INSIDE the lock so a concurrent writer's mutation is not lost.
     const locked = readMcpConfig(cwd);
     const servers = { ...(locked.config.mcpServers ?? {}) };
+    // Capture the old entry before deleting it: a rename must retain credentials
+    // that the browser intentionally redacts from its payload.
+    const previous = servers[previousName ?? name];
     if (previousName && previousName !== name) delete servers[previousName];
     // The browser never receives existing credentials. Preserve them when an
     // edited server omits those fields, rather than deleting them on save.
-    const existing = servers[previousName ?? name];
     servers[name] = {
       ...server,
-      ...(existing?.env !== undefined && server.env === undefined ? { env: existing.env } : {}),
-      ...(existing?.headers !== undefined && server.headers === undefined ? { headers: existing.headers } : {}),
+      ...(previous?.env !== undefined && server.env === undefined ? { env: previous.env } : {}),
+      ...(previous?.headers !== undefined && server.headers === undefined ? { headers: previous.headers } : {}),
     };
     const config: McpFile = { ...locked.config, mcpServers: servers };
     mkdirSync(dirname(locked.path), { recursive: true });

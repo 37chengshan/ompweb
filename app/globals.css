@@ -1593,39 +1593,10 @@ html.dark .dropdown-surface :is(select, option) {
   transform: none;
 }
 
-/* Unboxed assistant message: entrance animation only. Tool-call and
-   thinking blocks carry their own boxes; the --live variant pulses a
-   soft left accent bar instead of a card glow so streaming stays
-   visible without boxing the message text. The component only applies
-   --live to fully unboxed streaming messages (no toolCall/thinking
-   blocks), because the full-height bar would paint over a boxed
-   block's left edge. The pulse drives opacity on an absolute
-   pseudo-layer instead of an inset box-shadow keyframe: box-shadow
-   cannot be composited, so a continuous ring/bar pulse would repaint
-   the layer on every animation frame for the whole run. */
+/* Unboxed assistant messages use the same entrance animation as other chat
+   content. */
 .chat-message {
   animation: chat-message-in var(--dur-med) var(--ease-out-warm) both;
-}
-.chat-message--live {
-  position: relative;
-  animation: chat-message-in var(--dur-med) var(--ease-out-warm) both;
-}
-.chat-message--live::before {
-  content: "";
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 0;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--accent);
-  opacity: 0;
-  animation: live-text-pulse 2.4s ease-in-out var(--dur-med) infinite;
-  pointer-events: none;
-}
-@keyframes live-text-pulse {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 0.3; }
 }
 
 @keyframes toast-in {

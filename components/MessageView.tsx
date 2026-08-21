@@ -517,14 +517,9 @@ function AssistantMessageView({
 
   if (blocks.length === 0 && !isStreaming) return null;
 
-  // The --live bar is an unboxed-text affordance: boxed blocks (tool calls,
-  // thinking) carry their own borders, and the full-height accent bar would
-  // paint over their left edge while a tool is running.
-  const isLiveText = isStreaming && !blocks.some((b) => b.type === "toolCall" || b.type === "thinking");
-
   return (
     <div
-      className={`chat-message${isLiveText ? " chat-message--live" : ""}`}
+      className="chat-message"
       style={{ marginBottom: 18 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}

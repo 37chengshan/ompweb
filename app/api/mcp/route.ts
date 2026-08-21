@@ -79,7 +79,9 @@ export async function GET(request: Request) {
           if (!sessionFile) throw new Error("Session not found");
           const header = readSessionHeader(sessionFile);
           const { cwd } = resolveSpawnCwdResult(header?.cwd);
-          ({ session } = await startRpcSession(sessionId, sessionFile, cwd, undefined, false, header?.cwd));
+          // No advisor opinion: this spawn is a side effect of listing MCP
+          // servers and must not replace a child spawned with --advisor.
+          ({ session } = await startRpcSession(sessionId, sessionFile, cwd, undefined, undefined, header?.cwd));
         }
         liveServers = mergeMcpServers(parseMcpListOutput(await session.getMcpList()), inventory);
       } catch (error) {

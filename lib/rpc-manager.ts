@@ -225,6 +225,10 @@ export class AgentSessionWrapper {
   private _sessionName: string | undefined;
   private proc: RpcProcess;
   readonly cwd: string;
+  /** Whether the child was spawned with --advisor. The flag is spawn-time
+   * only (no runtime RPC toggles it), so applying a changed advisor setting
+   * means replacing an idle child on the next startRpcSession call. */
+  readonly advisorSpawned: boolean;
   /** The cwd recorded in the session file header; null for brand-new sessions
    * or when the header lacks one. Used to detect a spawn fallback so a notice
    * can warn the user the agent is running in a different directory. */
@@ -232,10 +236,11 @@ export class AgentSessionWrapper {
 
   // Plain field assignments (not TS parameter properties) keep this module
   // runnable under Node's strip-only TypeScript mode for probes/tests.
-  constructor(proc: RpcProcess, cwd: string, recordedCwd?: string | null) {
+  constructor(proc: RpcProcess, cwd: string, recordedCwd?: string | null, advisorSpawned = false) {
     this.proc = proc;
     this.cwd = cwd;
     this.recordedCwd = recordedCwd ?? null;
+    this.advisorSpawned = advisorSpawned;
   }
 
   get sessionId(): string {
@@ -1223,7 +1228,9 @@ export async function startRpcSession(
   sessionFile: string,
   cwd: string,
   toolNames?: string[],
-  advisor = false,
+  /** Spawn-time --advisor flag. Pass an explicit boolean to replace an idle
+   * child whose flag differs; pass undefined to reuse whatever is alive. */
+  advisor?: boolean,
   /** The cwd recorded in the session file header, used to detect a spawn
    * fallback (recorded dir gone) and warn the user. Omit for new sessions. */
   recordedCwd?: string | null,
@@ -1232,7 +1239,18 @@ export async function startRpcSession(
   const locks = getLocks();
 
   const existing = registry.get(sessionId);
-  if (existing?.isAlive()) return { session: existing, realSessionId: sessionId };
+  if (existing?.isAlive()) {
+    // --advisor is a spawn-time flag with no runtime RPC. When the caller
+    // carries an explicit advisor setting that differs from the live child's,
+    // replace the child so the toggle takes effect on the next prompt. Busy
+    // children are kept (a mid-run swap would drop in-flight work) and pick
+    // the new flag up at the next natural respawn; callers that pass no
+    // advisor opinion (undefined) simply reuse whatever is running.
+    if (advisor === undefined || existing.advisorSpawned === advisor || existing.isRunning()) {
+      return { session: existing, realSessionId: sessionId };
+    }
+    await existing.destroyAndWait();
+  }
   // A wrapper whose omp child is still flushing/exiting must fully dispose
   // before a replacement spawns — two children touching the same .jsonl would
   // race on resume/delete/archive.
@@ -1247,10 +1265,10 @@ export async function startRpcSession(
     const holder: { wrapper?: AgentSessionWrapper } = {};
     const proc = new RpcProcess({
       cwd,
-      extraArgs: buildSessionSpawnArgs(sessionFile, toolNames, advisor),
+      extraArgs: buildSessionSpawnArgs(sessionFile, toolNames, advisor === true),
       onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
     });
-    const created = new AgentSessionWrapper(proc, cwd, recordedCwd);
+    const created = new AgentSessionWrapper(proc, cwd, recordedCwd, advisor === true);
     holder.wrapper = created;
     created.start();
     try {

@@ -342,7 +342,7 @@ export function getTodoPhasesFromEntries(entries: SessionEntry[], leafId?: strin
       const phases = isRecord(current.data) ? parseTodoPhases(current.data.phases) : null;
       if (phases) return phases;
     }
-    if (current.type === "message" && current.message.role === "toolResult") {
+    if (current.type === "message" && isRecord(current.message) && current.message.role === "toolResult") {
       const message = current.message as { role?: string; toolName?: string; isError?: boolean; details?: unknown };
       if (message.toolName !== "todo" || message.isError) continue;
       const phases = isRecord(message.details) ? parseTodoPhases(message.details.phases) : null;
@@ -412,7 +412,7 @@ export function buildSessionContext(
         models.default = `${entry.provider}/${entry.modelId}`;
         hasExplicitDefaultModel = true;
       }
-    } else if (entry.type === "message" && entry.message.role === "assistant") {
+    } else if (entry.type === "message" && isRecord(entry.message) && entry.message.role === "assistant") {
       if (!hasExplicitDefaultModel && entry.message.provider && entry.message.model) {
         models.default = `${entry.message.provider}/${entry.message.model}`;
       }
@@ -655,6 +655,10 @@ export function entryToUiMessage(
 ): AgentMessage | null {
   switch (entry.type) {
     case "message": {
+      // Imports and hand-edits can produce message entries whose `message`
+      // object is missing; skip them like any other unmappable entry instead
+      // of crashing every reader of the file.
+      if (!isRecord(entry.message)) return null;
       const raw = entry.message;
       // omp-only roles are folded into displayable custom messages so the
       // existing role-keyed UI renders them without new components.

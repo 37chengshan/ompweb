@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionEntries } from "@/lib/session-reader";
 import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
+import { isRecord } from "@/lib/type-guards";
 
 export async function GET(
   req: Request,
@@ -20,7 +21,7 @@ export async function GET(
 
     // Lenient JSONL parsing keeps omp's malformed-line tolerance.
     const entry = getSessionEntries(filePath).find((candidate) => candidate.id === entryId);
-    if (!entry || entry.type !== "message" || entry.message.role !== "assistant") {
+    if (!entry || entry.type !== "message" || !isRecord(entry.message) || entry.message.role !== "assistant") {
       return NextResponse.json({ error: "Assistant message not found", code: "assistant_message_not_found" }, { status: 404 });
     }
 

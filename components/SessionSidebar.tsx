@@ -183,18 +183,23 @@ function PathLabel({ text, style }: { text: string; style?: CSSProperties }) {
   );
 }
 
-function formatRelativeTime(value: string, locale: string, now: number): string | null {
+function formatRelativeTime(value: string, _locale: string, now: number): string | null {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return null;
 
   const minutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
-  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "narrow" });
-  if (minutes < 1) return formatter.format(0, "minute");
-  if (minutes < 60) return formatter.format(-minutes, "minute");
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return formatter.format(-hours, "hour");
-  return formatter.format(-Math.floor(hours / 24), "day");
+  if (hours < 24) return `${hours}h`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d`;
+
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo`;
+  return `${Math.floor(months / 12)}y`;
 }
 
 const SIDEBAR_BUTTON_TRANSITION = "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)";
@@ -2027,18 +2032,19 @@ function ProjectRow({
             aria-label={t("projects.activity", { running: activity?.running ?? 0, unread: activity?.unread ?? 0 })}
             title={t("projects.activity", { running: activity?.running ?? 0, unread: activity?.unread ?? 0 })}
             className="sidebar-project-activity"
+            data-running={(activity?.running ?? 0) > 0 ? "true" : "false"}
             role="status"
             aria-live="polite"
-            style={{ display: "flex", alignItems: "center", margin: "0 2px 0 0", flexShrink: 0, lineHeight: 0 }}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 11, height: 11, margin: "0 2px 0 0", flexShrink: 0, lineHeight: 0 }}
           >
             <span
               aria-hidden="true"
+              className="sidebar-project-activity-dot"
               style={{
                 width: 7,
                 height: 7,
                 borderRadius: "50%",
                 background: "var(--accent)",
-                boxShadow: (activity?.running ?? 0) > 0 ? "0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent)" : "none",
               }}
             />
           </span>
@@ -2529,7 +2535,6 @@ const SessionTreeItem = memo(function SessionTreeItem({
     || prev.onSessionDeleted !== next.onSessionDeleted) return false;
   return true;
 });
-
 function RunningSessionIndicator({ size = 14 }: { size?: number }) {
   const { t } = useI18n();
   const reducedMotion = usePrefersReducedMotion();
@@ -2547,26 +2552,12 @@ function RunningSessionIndicator({ size = 14 }: { size?: number }) {
         color: "var(--accent)",
       }}
     >
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
-        <g>
-          <path
-            d="M21 12a9 9 0 1 1-3.8-7.4"
-            stroke="currentColor"
-            strokeWidth="2.8"
-            strokeLinecap="round"
-          />
-          {!reducedMotion && (
-            <animateTransform
-              attributeName="transform"
-              type="rotate"
-              from="0 12 12"
-              to="360 12 12"
-              dur="0.9s"
-              repeatCount="indefinite"
-            />
-          )}
-        </g>
-      </svg>
+      <span
+        aria-hidden="true"
+        className="sidebar-running-spinner"
+        data-reduced-motion={reducedMotion ? "true" : "false"}
+        style={{ width: size - 2, height: size - 2 }}
+      />
     </span>
   );
 }
@@ -2634,7 +2625,6 @@ const SessionItem = memo(function SessionItem({
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const renameCancelRef = useRef(false);
-  const [confirmArchive, setConfirmArchive] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -2643,9 +2633,8 @@ const SessionItem = memo(function SessionItem({
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
   const relativeTime = formatRelativeTime(session.modified, locale, relativeTimeNow);
-  const confirming = confirmArchive || confirmDelete;
-  // Active session: an extremely subtle warm-gray wash — the selection is
-  // carried by the orange indicator and timestamp, not a card-like fill.
+  const confirming = confirmDelete;
+  const showActions = hovered || focusWithin || actionMenuOpen;
   const rowBackground = confirming
     ? "color-mix(in srgb, var(--accent) 6%, transparent)"
     : isSelected
@@ -2658,6 +2647,7 @@ const SessionItem = memo(function SessionItem({
     setRenaming(true);
     setTimeout(() => inputRef.current?.select(), 0);
   }, [session.name]);
+
   const commitRename = useCallback(async () => {
     if (renameCancelRef.current) {
       renameCancelRef.current = false;
@@ -2678,8 +2668,8 @@ const SessionItem = memo(function SessionItem({
       // The next refresh remains authoritative if the rename fails.
     }
   }, [renameValue, session.id, session.name, onRenamed]);
+
   const handleArchive = useCallback(async () => {
-    setConfirmArchive(false);
     setDeleting(true);
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}/archive`, { method: "POST" });
@@ -2690,6 +2680,7 @@ const SessionItem = memo(function SessionItem({
       toast.error(translate("sessionSidebar.archiveFailed"));
     }
   }, [session.id, onDeleted]);
+
   const handleDelete = useCallback(async () => {
     setConfirmDelete(false);
     setDeleting(true);
@@ -2702,8 +2693,8 @@ const SessionItem = memo(function SessionItem({
       toast.error(translate("sessionSidebar.deleteFailed"));
     }
   }, [session.id, onDeleted]);
+
   const closeConfirmation = useCallback(() => {
-    setConfirmArchive(false);
     setConfirmDelete(false);
     setActionMenuOpen(false);
     requestAnimationFrame(() => contentButtonRef.current?.focus());
@@ -2711,7 +2702,7 @@ const SessionItem = memo(function SessionItem({
 
   return (
     <div
-      onClick={confirmArchive || confirmDelete || renaming ? undefined : onClick}
+      onClick={confirmDelete || renaming ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocusWithin(true)}
@@ -2719,7 +2710,7 @@ const SessionItem = memo(function SessionItem({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false);
       }}
       onKeyDown={(event) => {
-        if ((confirmArchive || confirmDelete || actionMenuOpen) && event.key === "Escape") {
+        if ((confirmDelete || actionMenuOpen) && event.key === "Escape") {
           event.stopPropagation();
           closeConfirmation();
         }
@@ -2740,8 +2731,6 @@ const SessionItem = memo(function SessionItem({
         transition: "background var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
       }}
     >
-      {/* Thin orange indicator at the session's indent column — not a border
-          around the row, so the active state never reads as a card. */}
       {(isSelected || confirming) && (
         <span
           aria-hidden="true"
@@ -2760,12 +2749,10 @@ const SessionItem = memo(function SessionItem({
       {confirming ? (
         <>
           <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, color: "var(--text)" }}>
-            {confirmArchive
-              ? t("sessionSidebar.archiveConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })
-              : t("sessionSidebar.deleteConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })}
+            {t("sessionSidebar.deleteConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })}
           </span>
-          <button onClick={(event) => { event.stopPropagation(); if (confirmArchive) handleArchive(); else handleDelete(); }} style={{ height: 28, padding: "0 10px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
-            {confirmArchive ? t("sessionSidebar.archive") : t("sessionSidebar.delete")}
+          <button onClick={(event) => { event.stopPropagation(); void handleDelete(); }} style={{ height: 28, padding: "0 10px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+            {t("sessionSidebar.delete")}
           </button>
           <button onClick={(event) => { event.stopPropagation(); closeConfirmation(); }} autoFocus style={{ height: 28, padding: "0 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}>
             {t("sessionSidebar.cancel")}
@@ -2776,50 +2763,31 @@ const SessionItem = memo(function SessionItem({
       ) : (
         <>
           {depth > 0 && <GitBranch size={11} strokeWidth={2} style={{ flexShrink: 0, color: "var(--text-dim)" }} aria-hidden="true" />}
-          {/* Flexible title — always ellipsized; the fixed-width right rail
-              (timestamp + menu) can never be pushed off-screen. */}
           <button ref={contentButtonRef} type="button" className="session-item-button" aria-current={isSelected ? "true" : undefined} onKeyDown={(event) => { if (event.key === "Delete") { event.preventDefault(); setConfirmDelete(true); } }} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
             <span title={title} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 12.5, fontWeight: isSelected ? 600 : 500, lineHeight: 1.35, letterSpacing: "-0.005em" }}>
               {title}
             </span>
           </button>
           {session.worktreeBranch && <span title={t("sessionSidebar.worktreeTitle", { path: session.cwd })} style={{ display: "flex", alignItems: "center", gap: 3, maxWidth: 56, minWidth: 0, overflow: "hidden", color: "var(--text-dim)", fontSize: 10, flexShrink: 1 }}><GitBranch size={10} strokeWidth={2.4} aria-hidden="true" /><span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.worktreeBranch}</span></span>}
-          {isRunning && <RunningSessionIndicator size={12} />}
-          {!isRunning && isUnread && <UnreadSessionIndicator size={11} />}
-          {relativeTime && <span title={new Date(session.modified).toLocaleString(locale)} style={{ flexShrink: 0, minWidth: 30, textAlign: "right", color: isSelected ? "var(--accent)" : "var(--text-dim)", fontSize: 10, fontVariantNumeric: "tabular-nums" }}>{relativeTime}</span>}
           {hasChildren && <button className="session-item-icon-button" onClick={(event) => { event.stopPropagation(); onToggleCollapse?.(); }} title={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")} aria-label={collapsed ? t("sessionSidebar.expandForks") : t("sessionSidebar.collapseForks")} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, flexShrink: 0, border: "none", background: "none", color: "var(--text-dim)", cursor: "pointer", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)" }}><ChevronDown size={12} strokeWidth={1.8} aria-hidden="true" /></button>}
-          {/* Reserved overflow-menu slot: invisible (but space-preserving) until
-              hover/focus, so rows never reflow and titles never shift. */}
-          <div
-            style={{
-              position: "relative",
-              flexShrink: 0,
-              visibility: hovered || focusWithin || actionMenuOpen ? "visible" : "hidden",
-            }}
-          >
-            <button
-              type="button"
-              ref={menuButtonRef}
-              className="session-item-icon-button"
-              onClick={(event) => { event.stopPropagation(); setActionMenuOpen((open) => !open); }}
-              title="Session actions"
-              aria-label="Session actions"
-              aria-expanded={actionMenuOpen}
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, lineHeight: 0, border: "none", borderRadius: "var(--radius-control)", background: actionMenuOpen ? "var(--bg-selected)" : "transparent", color: actionMenuOpen ? "var(--text)" : "var(--text-dim)", cursor: "pointer" }}
-            >
-              <MoreHorizontal size={14} strokeWidth={2} aria-hidden="true" />
-            </button>
-            <SidebarPortalMenu
-              anchor={menuButtonRef}
-              open={actionMenuOpen}
-              onClose={() => setActionMenuOpen(false)}
-              placement="above"
-              minWidth={128}
-            >
-              <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmArchive(true); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: hasChildren ? "var(--text-dim)" : "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", textAlign: "left", fontSize: 11, opacity: hasChildren ? 0.55 : 1 }}>{t("sessionSidebar.archive")}</button>
-              <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { startRename(event); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.rename")}</button>
-              <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmDelete(true); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.delete")}</button>
-            </SidebarPortalMenu>
+          <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "flex-end", width: 64, height: 24, flexShrink: 0 }}>
+              <div aria-hidden={showActions} style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 2, width: "100%", whiteSpace: "nowrap", opacity: showActions ? 0 : 1, pointerEvents: showActions ? "none" : "auto", transition: "opacity var(--dur-fast) var(--ease-out-warm)" }}>
+                {isRunning && <RunningSessionIndicator size={12} />}
+                {!isRunning && isUnread && <UnreadSessionIndicator size={11} />}
+                {relativeTime && <span title={new Date(session.modified).toLocaleString(locale)} style={{ minWidth: 42, whiteSpace: "nowrap", textAlign: "right", color: isSelected ? "var(--accent)" : "var(--text-dim)", fontSize: 10, fontVariantNumeric: "tabular-nums" }}>{relativeTime}</span>}
+              </div>
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", opacity: showActions ? 1 : 0, pointerEvents: showActions ? "auto" : "none", transition: "opacity var(--dur-fast) var(--ease-out-warm)" }}>
+                <button type="button" ref={menuButtonRef} className="session-item-icon-button" onClick={(event) => { event.stopPropagation(); setActionMenuOpen((open) => !open); }} title="Session actions" aria-label="Session actions" aria-expanded={actionMenuOpen} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, lineHeight: 0, border: "none", borderRadius: "var(--radius-control)", background: actionMenuOpen ? "var(--bg-selected)" : "transparent", color: actionMenuOpen ? "var(--text)" : "var(--text-dim)", cursor: "pointer" }}>
+                  <MoreHorizontal size={14} strokeWidth={2} aria-hidden="true" />
+                </button>
+                <SidebarPortalMenu anchor={menuButtonRef} open={actionMenuOpen} onClose={() => setActionMenuOpen(false)} placement="above" minWidth={128}>
+                  <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); void handleArchive(); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: hasChildren ? "var(--text-dim)" : "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", textAlign: "left", fontSize: 11, opacity: hasChildren ? 0.55 : 1 }}>{t("sessionSidebar.archive")}</button>
+                  <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { startRename(event); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.rename")}</button>
+                  <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmDelete(true); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.delete")}</button>
+                </SidebarPortalMenu>
+              </div>
+            </div>
           </div>
         </>
       )}

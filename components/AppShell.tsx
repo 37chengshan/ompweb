@@ -100,7 +100,6 @@ export function AppShell() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [archiveBrowserOpen, setArchiveBrowserOpen] = useState(false);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
-  const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
@@ -152,13 +151,6 @@ export function AppShell() {
   }, [isMobile]);
   useEffect(() => {
     setMobileSidebarReady(true);
-  }, []);
-  useEffect(() => {
-    setAdvisorEnabled(localStorage.getItem("omp-advisor-enabled") === "true");
-  }, []);
-  const handleAdvisorChange = useCallback((enabled: boolean) => {
-    setAdvisorEnabled(enabled);
-    localStorage.setItem("omp-advisor-enabled", String(enabled));
   }, []);
   useEffect(() => {
     const controller = new AbortController();
@@ -1394,7 +1386,6 @@ export function AppShell() {
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
-              advisorEnabled={advisorEnabled}
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
             />
           ) : initialCwdStatus === "validating" ? (
@@ -1523,7 +1514,7 @@ export function AppShell() {
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
-    {settingsTab && <SettingsConfig activeTab={settingsTab} advisorEnabled={advisorEnabled} onAdvisorChange={handleAdvisorChange} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onToolCallsDefaultCollapsedChange={handleToolCallsDefaultCollapsedChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onOmpUpdateAvailabilityChange={setOmpUpdateAvailable} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
+    {settingsTab && <SettingsConfig activeTab={settingsTab} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onToolCallsDefaultCollapsedChange={handleToolCallsDefaultCollapsedChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onOmpUpdateAvailabilityChange={setOmpUpdateAvailable} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
     {archiveBrowserOpen && (
       <ArchiveBrowser
         open={archiveBrowserOpen}

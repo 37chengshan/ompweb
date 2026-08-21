@@ -30,7 +30,6 @@ import {
 interface Props {
   session: SessionInfo | null;
   newSessionCwd: string | null;
-  advisorEnabled?: boolean;
   toolCallsDefaultCollapsed?: boolean;
   onAgentEnd?: () => void;
   onSessionCreated?: (session: SessionInfo) => void;
@@ -411,7 +410,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
   );
 });
 
-export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
   const { t, tn } = useI18n();
   const { playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
@@ -439,7 +438,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     liveModelMeta,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactResult, displayModel: displayModelValue, sessionStats,
-    slashCommands, slashCommandsLoading, queuedMessages,
+    slashCommands, slashCommandsLoading, queuedMessages, advisorActive, advisorEnabled, handleAdvisorChange,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase, activeGoal, activePlan,
@@ -452,7 +451,7 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     handleBuiltinSlashCommand,
     handleThinkingLevelChange, handleFastModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, loadSlashCommands,
   } = useAgentSession({
-    session, newSessionCwd, advisorEnabled, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
+    session, newSessionCwd, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
     onOpenFile,
   });
@@ -709,6 +708,36 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
     ? (modelThinkingLevelMaps[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
     : null;
 
+  // Resolve the advisor role's display model + reasoning effort for the
+  // composer tooltips. The raw selector is "provider/id[:effort]" from
+  // ~/.omp/agent/config.yml.
+  const [advisorRoleSelector, setAdvisorRoleSelector] = useState<string | null>(null);
+  useEffect(() => {
+    if (!advisorEnabled) {
+      setAdvisorRoleSelector(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch("/api/model-roles", { signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<{ roles?: Record<string, string> }> : null)
+      .then((data) => setAdvisorRoleSelector(data?.roles?.advisor ?? null))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [advisorEnabled]);
+
+  const advisorModelMeta = useMemo(() => {
+    if (!advisorRoleSelector) return null;
+    const [qualified, effort] = advisorRoleSelector.split(":");
+    const separator = qualified.indexOf("/");
+    const provider = separator === -1 ? "" : qualified.slice(0, separator);
+    const id = separator === -1 ? qualified : qualified.slice(separator + 1);
+    return {
+      name: modelList.find((entry) => entry.provider === provider && entry.id === id)?.name ?? advisorRoleSelector,
+      reasoning: effort || null,
+    };
+  }, [advisorRoleSelector, modelList]);
+
+
   const chatInputElement = (
     <ChatInput
       ref={chatInputRef}
@@ -742,9 +771,11 @@ export function ChatWindow({ session, newSessionCwd, advisorEnabled, toolCallsDe
       activeGoal={activeGoal}
       activePlan={activePlan}
       advisorEnabled={advisorEnabled}
+      onAdvisorChange={handleAdvisorChange}
+      advisorModel={advisorModelMeta}
+      advisorActive={advisorActive}
       queuedMessages={queuedMessages}
       inputHistory={inputHistory}
-      contextUsage={contextUsage}
       onRemoveQueuedMessage={removeQueuedMessage}
       onPromoteQueuedToSteer={promoteQueuedToSteer}
       slashCommands={slashCommands}

@@ -136,7 +136,7 @@ export function buildSessionSpawnArgs(sessionFile: string, toolNames?: string[],
       if (mapped.length > 0) args.push("--tools", mapped.join(","));
     }
   }
-  if (advisor && !sessionFile) args.push("--advisor");
+  if (advisor) args.push("--advisor");
   return args;
 }
 

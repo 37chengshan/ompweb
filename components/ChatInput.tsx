@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, memo, KeyboardEvent } from "react";
-import { ChevronDown, ListChecks, Search, Sparkles, Target } from "lucide-react";
+import { ChevronDown, ListChecks, Search, Shrink, Sparkles, Target, Zap } from "lucide-react";
 import { getSubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { ActiveGoal, ActivePlan } from "@/lib/web-mode-state";
@@ -76,8 +76,12 @@ interface Props {
   onAbortRetry?: () => void;
   queuedMessages?: QueuedMessages | null;
   inputHistory?: string[];
-  /** Context window usage for the circular indicator (percentage only). */
-  contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
+  /** True while the advisor model is actively reviewing the running turn. */
+  advisorActive?: boolean;
+  /** Resolved advisor role (display model + reasoning) for the composer tooltips. */
+  advisorModel?: { name: string; reasoning: string | null } | null;
+  /** Compact the session context from the composer toolbar. */
+  onCompact?: () => void;
   /** Remove one queued message from the queue panel (Edit/Delete/Steer). */
   onRemoveQueuedMessage?: (text: string) => void;
   /** Relabel the first queued follow-up as a steering message. */
@@ -93,6 +97,8 @@ interface Props {
   activeGoal?: ActiveGoal | null;
   activePlan?: ActivePlan | null;
   advisorEnabled?: boolean;
+  /** Toggle the per-chat advisor (composer icon + /advisor command). */
+  onAdvisorChange?: (enabled: boolean) => void;
 }
 
 export interface ChatInputHandle {
@@ -103,8 +109,6 @@ export interface ChatInputHandle {
 }
 
 const COMPOSITION_END_ENTER_GRACE_MS = 100;
-/** Circumference of the context ring (r = 9.5). */
-const RING_CIRCUMFERENCE = 2 * Math.PI * 9.5;
 const COMPOSER_MODELS_STORAGE_KEY = "omp-composer-models";
 
 function readVisibleModelKeys(): Set<string> | null {
@@ -383,7 +387,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   onBuiltinCommand,
   onAudioUnlock,
   onPromptWithStreamingBehavior,
-  contextUsage,
+  advisorActive,
+  advisorModel,
+  onCompact,
   onRemoveQueuedMessage,
   onPromoteQueuedToSteer,
   draftKey,
@@ -391,6 +397,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   activeGoal,
   activePlan,
   advisorEnabled,
+  onAdvisorChange,
 }: Props, ref) {
   const isMobile = useIsMobile();
   const { t, tn, locale } = useI18n();
@@ -761,13 +768,17 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   }, [cwd, slashQuery]);
 
   const builtinSlashCommands: SlashCommandPaletteItem[] = React.useMemo(
-    () => BUILTIN_SLASH_COMMAND_DEFS.map((def) => ({
-      name: def.name,
-      description: t(def.descriptionKey),
-      ...(def.argumentHintKey ? { argumentHint: t(def.argumentHintKey) } : {}),
-      source: "builtin" as const,
-    })),
-    [t],
+    () => BUILTIN_SLASH_COMMAND_DEFS
+      // The /advisor command is linked to Settings → Enable Advisor: hidden
+      // from the palette while the advisor is disabled.
+      .filter((def) => def.name !== "advisor" || advisorEnabled)
+      .map((def) => ({
+        name: def.name,
+        description: t(def.descriptionKey),
+        ...(def.argumentHintKey ? { argumentHint: t(def.argumentHintKey) } : {}),
+        source: "builtin" as const,
+      })),
+    [t, advisorEnabled],
   );
 
   // Externally reported commands (extension/prompt/skill/ompBuiltin) group
@@ -1011,6 +1022,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     onAudioUnlock?.();
     const streamingBehavior = mode === "steer" ? "steer" : "followUp";
     if (msg.startsWith("/") && onPromptWithStreamingBehavior) {
+      const commandName = msg.slice(1).split(/\s+/)[0];
+      // Same gate as the direct path (useAgentSession refuses /advisor while
+      // disabled): queueing must not become a bypass around the toggle.
+      if (commandName === "advisor" && !advisorEnabled) {
+        toast.error(t("agentSession.advisorDisabled"));
+        return;
+      }
       // Web commands must be expanded even when queued: the raw slash text
       // would otherwise reach omp as a literal message (its /goal //plan are
       // TUI-only). Action commands (compact/...) keep the raw text so omp's
@@ -1038,7 +1056,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       onFollowUp(msg, attachedImages.length ? attachedImages : undefined);
     }
     clearInput();
-  }, [value, attachedImages, attachedTextFiles, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t]);
+  }, [value, attachedImages, attachedTextFiles, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t, advisorEnabled]);
   // A typed, text-only message during a run is a queued follow-up. Keep Stop
   // as the action while the composer is empty or contains attachments.
   const primaryActionQueuesMessage =
@@ -1047,7 +1065,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     && attachedImages.length === 0
     && attachedTextFiles.length === 0
     && Boolean(onFollowUp);
-
 
   // ── Queued follow-up bar ────────────────────────────────────────────────
   // omp reports only a queued count over RPC; the texts are tracked in a
@@ -1385,7 +1402,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     if (lvl === "auto" || !thinkingLevelMap) return lvl;
     return thinkingLevelMap[lvl] ?? lvl;
   })();
-  const clampedContextPercent = Math.max(0, Math.min(100, contextUsage?.percent ?? 0));
   const thinkingLevelOptions = React.useMemo(
     () => selectableThinkingLevels(availableThinkingLevels),
     [availableThinkingLevels],
@@ -2018,6 +2034,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
             }}
           />
 
+          {/* Toolbar: attachment · advisor · model · settings · reasoning · fast · compact · send/queue/stop */}
+
           {/* Toolbar: attachment · model · settings · reasoning · fast · context ring · send/stop */}
           <div style={{
             display: "flex",
@@ -2059,6 +2077,35 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 <polyline points="14 2 14 8 20 8" />
               </svg>
             </button>
+
+            {/* Advisor toggle — per-chat: gates the /advisor command and the
+                thunder indicator; active state follows this session only. */}
+            {onAdvisorChange && (
+              <button
+                type="button"
+                onClick={() => onAdvisorChange(!advisorEnabled)}
+                aria-pressed={advisorEnabled}
+                title={advisorEnabled
+                  ? t("chatInput.advisorDisableTitle", { model: advisorModel?.name ?? t("messageView.advisorLabel"), reasoning: advisorModel?.reasoning ?? t("chatInput.advisorReasoningDefault") })
+                  : t("chatInput.advisorEnableTitle")}
+                aria-label={advisorEnabled
+                  ? t("chatInput.advisorDisableTitle", { model: advisorModel?.name ?? t("messageView.advisorLabel"), reasoning: advisorModel?.reasoning ?? t("chatInput.advisorReasoningDefault") })
+                  : t("chatInput.advisorEnableTitle")}
+                style={{
+                  flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 28, height: 28, padding: 0,
+                  background: "none", border: "none",
+                  borderRadius: 7,
+                  color: advisorEnabled ? "var(--accent)" : "var(--text-muted)",
+                  cursor: "pointer",
+                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+              >
+                <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
+              </button>
+            )}
 
             {/* Model selector — compact text button with dropdown */}
             {(modelOptions.length > 0 || currentName || modelError || showModelsLoading) && onModelChange && (
@@ -2108,11 +2155,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
                     <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
                   </svg>
-                  {advisorEnabled && (
-                    <span title={t("chatInput.advisorEnabled")} aria-label={t("chatInput.advisorEnabled")} style={{ display: "flex", flexShrink: 0, color: "var(--accent)" }}>
-                      <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
-                    </span>
-                  )}
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                     {currentName ?? (modelOptions.length > 0
                       ? t("chatInput.selectModel")
@@ -2306,26 +2348,46 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
 
             <div style={{ flex: 1 }} />
 
-            {/* Context usage ring — small, percentage only, no label */}
-            {contextUsage?.percent != null && (
+            {/* Advisor activity — thunder while the advisor model reviews this run */}
+            {advisorActive && (
               <span
-                title={`${Math.round(clampedContextPercent)}% · ${formatCompactNumber(contextUsage.tokens ?? 0, locale)} / ${formatCompactNumber(contextUsage.contextWindow, locale)}`}
-                style={{ position: "relative", width: 26, height: 26, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                title={t("chatInput.advisorReviewingTitle", {
+                  model: advisorModel?.name ?? t("messageView.advisorLabel"),
+                  reasoning: advisorModel?.reasoning ?? t("chatInput.advisorReasoningDefault"),
+                })}
+                aria-label={t("chatInput.advisorReviewingTitle", {
+                  model: advisorModel?.name ?? t("messageView.advisorLabel"),
+                  reasoning: advisorModel?.reasoning ?? t("chatInput.advisorReasoningDefault"),
+                })}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, flexShrink: 0, color: "var(--accent)" }}
               >
-                <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
-                  <circle cx="13" cy="13" r="9.5" fill="none" stroke="var(--border)" strokeWidth="2.5" />
-                  <circle
-                    cx="13" cy="13" r="9.5" fill="none"
-                    stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round"
-                    strokeDasharray={RING_CIRCUMFERENCE}
-                    strokeDashoffset={RING_CIRCUMFERENCE * (1 - clampedContextPercent / 100)}
-                    transform="rotate(-90 13 13)"
-                  />
-                </svg>
-                <span style={{ fontSize: 8, fontWeight: 600, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                  {Math.round(clampedContextPercent)}%
-                </span>
+                <Zap size={14} strokeWidth={2} fill="currentColor" aria-hidden="true" />
               </span>
+            )}
+
+            {/* Compact context — replaces the context ring (usage lives in the top bar) */}
+            {onCompact && (
+              <button
+                type="button"
+                onClick={isCompacting ? onAbortCompaction : onCompact}
+                disabled={isStreaming && !isCompacting}
+                title={isCompacting ? t("chatInput.stopCompaction") : t("chatInput.compactContext")}
+                aria-label={isCompacting ? t("chatInput.stopCompaction") : t("chatInput.compactContext")}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 28, height: 28, padding: 0,
+                  background: "none", border: "none",
+                  borderRadius: 7,
+                  color: isCompacting ? "var(--accent)" : "var(--text-muted)",
+                  cursor: isStreaming && !isCompacting ? "not-allowed" : "pointer",
+                  opacity: isStreaming && !isCompacting ? 0.5 : 1,
+                  transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
+                }}
+                onMouseEnter={(e) => { if (!(isStreaming && !isCompacting)) e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+              >
+                <Shrink size={14} strokeWidth={1.8} aria-hidden="true" />
+              </button>
             )}
 
             {/* Primary action: Send (idle) / Queue (typed while running) / Stop (running) */}

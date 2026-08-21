@@ -9,11 +9,22 @@
 
 import { formatApiError } from "@/lib/i18n/api-error";
 
+// Sessions whose per-chat advisor toggle is on: their lazily spawned omp
+// process must start with --advisor. Keyed by session id because the spawn
+// decision happens inside the route, which only sees id + query string.
+const advisorSpawnSessions = new Set<string>();
+
+export function setSessionAdvisorSpawn(sessionId: string, enabled: boolean) {
+  if (enabled) advisorSpawnSessions.add(sessionId);
+  else advisorSpawnSessions.delete(sessionId);
+}
+
 export async function sendAgentCommand<T = unknown>(
   sessionId: string,
   command: Record<string, unknown>,
 ): Promise<T> {
-  const res = await fetch(`/api/agent/${encodeURIComponent(sessionId)}`, {
+  const query = advisorSpawnSessions.has(sessionId) ? "?advisor=1" : "";
+  const res = await fetch(`/api/agent/${encodeURIComponent(sessionId)}${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(command),

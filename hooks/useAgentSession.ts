@@ -12,7 +12,7 @@ import type {
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
 import type { ThinkingModelMeta } from "@/lib/thinking-levels";
-import { sendAgentCommand } from "@/lib/agent-client";
+import { sendAgentCommand, setSessionAdvisorSpawn } from "@/lib/agent-client";
 import { translate } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { createMessageUpdateCoalescer, type MessageUpdateCoalescer } from "@/lib/message-update-coalescer";
@@ -331,8 +331,8 @@ export interface UseAgentSessionOptions {
   onAgentEnd?: () => void;
   onSessionCreated?: (session: SessionInfo) => void;
   onSessionForked?: (newSessionId: string) => void;
-  modelsRefreshKey?: number;
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
+  modelsRefreshKey?: number;
   onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   /** Registers an action that lazily starts the session and loads its system prompt. */
@@ -581,11 +581,10 @@ function toSlashCommandInfo(command: RpcAvailableSlashCommand): SlashCommandInfo
 
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
-    session, newSessionCwd, advisorEnabled, onAgentEnd, onSessionCreated, onSessionForked,
+    session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
     onOpenFile,
   } = opts;
-
   const reducedMotion = usePrefersReducedMotion();
   const isNew = session === null && newSessionCwd !== null;
 
@@ -648,6 +647,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [todoPhases, setTodoPhases] = useState<TodoPhase[]>([]);
   const [activeGoal, setActiveGoal] = useState<ActiveGoal | null>(null);
   const [activePlan, setActivePlan] = useState<ActivePlan | null>(null);
+  const [advisorActiveAt, setAdvisorActiveAt] = useState(0);
+  // Advisor is a per-chat toggle (composer Sparkles + /advisor command), not a
+  // global setting: each session remembers its own choice in localStorage.
+  const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const activeSubagentCount = subagents.filter((subagent) => subagent.source !== "history" && subagent.status === "started").length;
 
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -792,6 +795,37 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     return null;
   }, [todoPhases]);
+  // Load the per-session advisor choice on session switch; brand-new chats
+  // start disabled until the user toggles the composer icon.
+  useEffect(() => {
+    const sid = session?.id;
+    if (!sid) {
+      setAdvisorEnabled(false);
+      return;
+    }
+    let stored = false;
+    try {
+      stored = localStorage.getItem(`omp-advisor-enabled:${sid}`) === "true";
+    } catch {
+      stored = false;
+    }
+    setAdvisorEnabled(stored);
+    // The spawn registry must match before any command POST can lazily start
+    // the omp process; localStorage alone would leave resumed sessions dark.
+    setSessionAdvisorSpawn(sid, stored);
+  }, [session?.id]);
+
+  const handleAdvisorChange = useCallback((enabled: boolean) => {
+    setAdvisorEnabled(enabled);
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    setSessionAdvisorSpawn(sid, enabled);
+    try {
+      localStorage.setItem(`omp-advisor-enabled:${sid}`, String(enabled));
+    } catch {
+      // In-memory state still applies for this page load.
+    }
+  }, []);
 
   // Merge a batch of roster entries, keeping live frames over history.
   // `skipNewerThan` lets callers refuse to overwrite entries updated by live
@@ -1109,6 +1143,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const result = await res.json() as { sessionId: string };
       const realId = result.sessionId;
       sessionIdRef.current = realId;
+      // The toggle handler could not persist while the chat had no id; carry
+      // the pre-prompt choice over so it survives a reload after this point.
+      if (advisorEnabled) {
+        setSessionAdvisorSpawn(realId, true);
+        try {
+          localStorage.setItem(`omp-advisor-enabled:${realId}`, "true");
+        } catch {
+          // Best-effort: the spawned process already has --advisor.
+        }
+      }
       return realId;
     })();
 
@@ -1582,6 +1626,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentPhase(null);
       setRetryInfo(null);
       setSubagents([]);
+      setAdvisorActiveAt(0);
       subagentRosterGenerationRef.current += 1;
       // Bound per-run activity state: without this, subagentEvents and the
       // transcript-version map retain one entry per subagent id forever.
@@ -1807,6 +1852,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setAgentPhase(null);
         setRetryInfo(null);
         setSubagents([]);
+        setAdvisorActiveAt(0);
         subagentRosterGenerationRef.current += 1;
         resetSubagentActivityState();
         dispatch({ type: "end" });
@@ -1927,6 +1973,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (msg?.role === "user") {
           break;
         }
+        if (msg?.role === "custom" && (msg as CustomMessage).customType === "advisor") {
+          // The advisor review streams in mid-run: light the composer thunder
+          // while it works, not only once its message completes. Functional
+          // update keeps per-frame updates from re-rendering needlessly.
+          setAdvisorActiveAt((prev) => (prev === 0 ? Date.now() : prev));
+        }
         if (msg) {
           dispatch({ type: "update", message: normalizeToolCalls(msg as AgentMessage) });
         }
@@ -1962,6 +2014,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else if (completed?.role === "custom" && (completed as CustomMessage).customType === "xdev-mount-notice") {
           toast.info("MCP tools updated", describeMcpMountNotice(completed as CustomMessage), { clamp: true });
         } else if (completed) {
+          // The advisor model injects its review as a custom message mid-run;
+          // surface it as live advisor activity for the composer thunder icon.
+          if ((completed as CustomMessage).customType === "advisor") setAdvisorActiveAt(Date.now());
           setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
         }
         dispatch({ type: "reset" });
@@ -2182,6 +2237,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunningRef.current = true;
     setAgentRunning(true);
     setAgentPhase(isSlashCommandPrompt ? { kind: "running_command" } : { kind: "waiting_model" });
+    setAdvisorActiveAt(0);
     dispatch({ type: "start" });
     pendingScrollToUserRef.current = true;
     completionScrollAllowedRef.current = true;
@@ -2693,6 +2749,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           // shows these instead (CLIENT_BUILTIN_COMMAND_NAMES drops omp's
           // copies). handleSend runs the full prompt pipeline — optimistic
           // bubble, running state, settlement — with the expanded text.
+          // /advisor is gated on the per-chat composer toggle: refuse with a
+          // pointer to that toggle while the advisor is disabled.
+          if (commandName === "advisor" && !advisorEnabled) {
+            return complete({ handled: true, error: translate("agentSession.advisorDisabled") });
+          }
           const expansion = expandWebSlashCommand(text);
           if (expansion.kind === "not-web") return { handled: false };
           if (expansion.kind === "usage-error") {
@@ -2728,7 +2789,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setIsCompacting(false);
       }
     }
-  }, [addNotice, ensureNewSession, handleSend, isCompacting, loadModels, loadSession, loadSlashCommands, promoteNewSession, onSessionStatsPanelOpen]);
+  }, [addNotice, advisorEnabled, ensureNewSession, handleSend, isCompacting, loadModels, loadSession, loadSlashCommands, promoteNewSession, onSessionStatsPanelOpen]);
 
   // Queued (undelivered) messages live in the queue panel only; the chat gets
   // the real user message when pi delivers it (user message_end event). An
@@ -3101,11 +3162,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled, fastModeActive, autoRetryEnabled, interruptMode, autoCompactionEnabled, steeringMode, followUpMode,
     liveModelMeta,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
-    isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,
+    isCompacting, compactError, compactResult, currentModel, displayModel, isAutoModelSelection: !displayModel, sessionStats, agentPhase,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
-    isAutoModelSelection: isNew && newSessionModel === null,
-    agentPhase,
+    advisorActive: advisorActiveAt > 0, advisorEnabled, handleAdvisorChange,
     subagents, subagentEvents, subagentTranscriptVersions, activeSubagentCount, currentTodoPhase, todoPhases,
     activeGoal, activePlan,
     isNew,

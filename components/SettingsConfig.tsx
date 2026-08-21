@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import dynamic from "next/dynamic";
-import { Copy, ExternalLink, RefreshCw, RotateCcw, Sparkles, Search, AlertCircle } from "lucide-react";
+import { Copy, ExternalLink, RefreshCw, RotateCcw, Search, AlertCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
@@ -122,10 +122,6 @@ const SETTING_INDEX: SettingIndexEntry[] = [
   { tab: "models", section: "AI Model Defaults", label: "Personality", description: "Style included in OMP's system prompt.", scope: "Native OMP" },
   { tab: "models", section: "AI Model Defaults", label: "Thinking Blocks", description: "Hide model reasoning from output view.", scope: "Native OMP" },
   { tab: "models", section: "AI Model Defaults", label: "External Thinking", description: "Private scratchpad reasoning via think tool.", scope: "Native OMP" },
-  // Agent & Intelligence — Advisor Review
-  { tab: "intelligence", section: "Advisor Review", label: "Enable Advisor", description: "Enable Advisor for new sessions with the advisor role.", scope: "Native OMP" },
-  { tab: "intelligence", section: "Advisor Review", label: "Advisor Backlog", description: "Wait briefly when advisor falls behind.", scope: "Native OMP" },
-  { tab: "intelligence", section: "Advisor Review", label: "Review Subagents", description: "Apply Advisor passive review to subagent tasks.", scope: "Native OMP" },
   // Context Compaction
   { tab: "intelligence", section: "Context Compaction", label: "Automatic Compaction", description: "Compact context before model context limit is hit.", scope: "Native OMP" },
   { tab: "intelligence", section: "Context Compaction", label: "Continue After Compaction", description: "Resume task execution after compaction completes.", scope: "Native OMP" },
@@ -312,10 +308,8 @@ function NativeSetting({ label, description, scope, children }: { label: string;
   );
 }
 
-export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onOmpUpdateAvailabilityChange, onSelectTab, onClose }: {
+export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onOmpUpdateAvailabilityChange, onSelectTab, onClose }: {
   activeTab: SettingsTab;
-  advisorEnabled: boolean;
-  onAdvisorChange: (enabled: boolean) => void;
   toolCallsDefaultCollapsed: boolean;
   onToolCallsDefaultCollapsedChange: (collapsed: boolean) => void;
   cwd: string | null;
@@ -716,47 +710,6 @@ export function SettingsConfig({ activeTab, advisorEnabled, onAdvisorChange, too
             {/* AGENT INTELLIGENCE TAB */}
             {currentTab === "intelligence" && (
               <div role="tabpanel" id="settings-panel-intelligence" aria-labelledby="settings-tab-intelligence" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
-                {/* Advisor Section */}
-                <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                    <Sparkles size={14} aria-hidden="true" style={{ color: "var(--accent)" }} /> Advisor Review
-                  </div>
-                  <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 12 }}>Configured advisor model role passively reviews turns and injects guidance notes.</p>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                    <NativeSetting label="Enable Advisor" description="Enable Advisor for new sessions with the advisor role." scope="Native OMP">
-                      <ToggleSwitch
-                        checked={nativeSettings?.advisor?.enabled ?? advisorEnabled}
-                        onChange={(enabled) => {
-                          onAdvisorChange(enabled);
-                          patchSection("advisor", { enabled });
-                        }}
-                      />
-                    </NativeSetting>
-                    {(nativeSettings?.advisor?.enabled ?? advisorEnabled) && (
-                      <NativeSetting label="Advisor Backlog" description="Wait briefly when advisor falls behind." scope="Native OMP">
-                        <select
-                          style={nativeSelectStyle}
-                          value={nativeSettings?.advisor?.syncBacklog ?? "off"}
-                          onChange={(e) => patchSection("advisor", { syncBacklog: e.target.value as "off" | "1" | "3" | "5" })}
-                        >
-                          <option value="off" style={nativeOptionStyle}>Off</option>
-                          <option value="1" style={nativeOptionStyle}>1 turn</option>
-                          <option value="3" style={nativeOptionStyle}>3 turns</option>
-                          <option value="5" style={nativeOptionStyle}>5 turns</option>
-                        </select>
-                      </NativeSetting>
-                    )}
-                  </div>
-                  {(nativeSettings?.advisor?.enabled ?? advisorEnabled) && (
-                    <NativeSetting label="Review Subagents" description="Apply Advisor passive review to subagent tasks." scope="Native OMP">
-                      <ToggleSwitch
-                        checked={nativeSettings?.advisor?.subagents ?? false}
-                        onChange={(checked) => patchSection("advisor", { subagents: checked })}
-                      />
-                    </NativeSetting>
-                  )}
-                </section>
-
                 {/* Context Compaction Section */}
                 <section style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>Context Compaction</div>

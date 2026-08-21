@@ -52,7 +52,11 @@ export async function POST(
     const header = readSessionHeader(filePath);
     const { cwd } = resolveSpawnCwdResult(header?.cwd);
 
-    const { session } = await startRpcSession(id, filePath, cwd, undefined, false, header?.cwd);
+    // The per-chat advisor choice rides on the query string (never the RPC
+    // body, which is forwarded to omp verbatim) and only matters when this
+    // request lazily spawns the session's omp process.
+    const advisor = new URL(req.url).searchParams.get("advisor") === "1";
+    const { session } = await startRpcSession(id, filePath, cwd, undefined, advisor, header?.cwd);
     const result = await session.send(body);
 
     return NextResponse.json({ success: true, data: result });

@@ -81,12 +81,42 @@ test("renders goal, planning, and advisor indicators at the composer", () => {
       activeGoal: { objective: "Ship the active goal bar", startedAt: 0 },
       activePlan: { objective: "Plan the implementation" },
       advisorEnabled: true,
+      onAdvisorChange() {},
     }),
   );
 
   assert.match(html, /Ship the active goal bar/);
   assert.match(html, /(Planning in progress|chatInput\.planningInProgress)/);
-  assert.match(html, /(Advisor enabled|chatInput\.advisorEnabled)/);
+  // The per-chat advisor toggle renders pressed with its disable title.
+  assert.match(html, /aria-pressed="true"/);
+  assert.match(html, /title="(Disable advisor for this chat|chatInput\.advisorDisableTitle|Advisor: [^"]*)"/);
+});
+
+test("renders the compact toolbar action", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      onCompact() {},
+      isStreaming: false,
+    }),
+  );
+
+  assert.match(html, /title="(Compact context|chatInput\.compactContext)"/);
+});
+
+test("shows the advisor thunder indicator with the reviewing model and reasoning", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: true,
+      advisorActive: true,
+      advisorModel: { name: "GPT-5.6 Luna", reasoning: "xhigh" },
+    }),
+  );
+
+  assert.match(html, /aria-label="[^"]*GPT-5\.6 Luna[^"]*xhigh[^"]*"/);
 });
 
 test("filters model options by display name, identifier, and provider", () => {
@@ -99,4 +129,17 @@ test("filters model options by display name, identifier, and provider", () => {
   assert.deepEqual(filterModelOptions(options, "5.2", "en"), [options[0]]);
   assert.deepEqual(filterModelOptions(options, "OPENAI", "en"), [options[0]]);
   assert.equal(filterModelOptions(options, "   ", "en"), options);
+});
+test("queued slash commands gate /advisor behind the per-chat toggle", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  const sendQueued = source.slice(
+    source.indexOf("const sendQueued = useCallback"),
+    source.indexOf("const primaryActionQueuesMessage"),
+  );
+  const guard = sendQueued.indexOf('commandName === "advisor" && !advisorEnabled');
+  const expansion = sendQueued.indexOf("expandWebSlashCommand(msg)");
+
+  assert.ok(guard > 0, "advisor guard missing from sendQueued");
+  assert.ok(expansion > guard, "advisor guard must run before command expansion");
 });

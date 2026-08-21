@@ -229,6 +229,7 @@
   "chatInput.loadingFiles": "Loading files...",
   "chatInput.loadingModels": "Loading models...",
   "chatInput.matchCount.one": "1 match",
+  "chatInput.matchCount.other": "{count} matches",
   "chatInput.queue": "Queue",
   "chatInput.queueMessage": "Queue this message after the agent finishes",
   "chatInput.modelError": "Model error",

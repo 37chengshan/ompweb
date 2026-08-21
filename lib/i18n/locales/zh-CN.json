@@ -229,6 +229,7 @@
   "chatInput.loadingFiles": "正在加载文件...",
   "chatInput.loadingModels": "正在加载模型...",
   "chatInput.matchCount.one": "{count} 个匹配",
+  "chatInput.matchCount.other": "{count} 个匹配",
   "chatInput.queue": "排队",
   "chatInput.queueMessage": "智能体完成后将此消息排队发送",
   "chatInput.modelError": "模型错误",

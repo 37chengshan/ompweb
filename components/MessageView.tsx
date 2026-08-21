@@ -7,7 +7,7 @@ import { ClickableImage } from "./ImageLightbox";
 import { translate, useI18n, type Locale } from "@/lib/i18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { isEmptyThinkingBlock } from "@/lib/message-display";
-import { Tooltip, Collapsible, CollapsibleTrigger, CollapsiblePanel } from "./ui/primitives";
+import { Tooltip, Collapsible, CollapsibleTrigger } from "./ui/primitives";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { SubagentStatusIcon } from "./SubagentStatusIcon";
 import { formatCost, formatDuration, formatTokens, shortModel } from "@/lib/subagent-format";

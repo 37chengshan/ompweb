@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -152,6 +152,19 @@ export function AppShell() {
   useEffect(() => {
     setMobileSidebarReady(true);
   }, []);
+  // Chrome does not blur a focused descendant when a subtree becomes
+  // aria-hidden + inert (e.g. tapping a session button closes the mobile
+  // drawer), which leaves focus trapped where assistive tech cannot see it.
+  // Blur synchronously in the same commit so the AX tree never observes a
+  // focused element inside the hidden sidebar.
+  useLayoutEffect(() => {
+    if (sidebarOpen || !mobileSidebarReady) return;
+    const container = sidebarContainerRef.current;
+    const active = document.activeElement;
+    if (container && active instanceof HTMLElement && container.contains(active)) {
+      active.blur();
+    }
+  }, [sidebarOpen, mobileSidebarReady]);
   useEffect(() => {
     const controller = new AbortController();
     void fetch("/api/omp-update", {

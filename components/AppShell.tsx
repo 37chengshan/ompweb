@@ -28,6 +28,8 @@ import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
+import { ArchiveBrowser } from "./ArchiveBrowser";
+import { publishSessionsChanged } from "@/lib/session-change-bus";
 // The settings shell is part of the app bundle so opening it does not fetch or compile a modal chunk. The file viewer remains on demand.
 const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer), {
   ssr: false,
@@ -96,6 +98,7 @@ export function AppShell() {
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [explorerRefreshing, setExplorerRefreshing] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
+  const [archiveBrowserOpen, setArchiveBrowserOpen] = useState(false);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -694,6 +697,35 @@ export function AppShell() {
       router.replace("/", { scroll: false });
     }
   }, [selectedSession, router]);
+  const handleArchiveRestored = useCallback(async (sessionId: string) => {
+    setArchiveBrowserOpen(false);
+    publishSessionsChanged([sessionId]);
+    setRefreshKey((k) => k + 1);
+
+    const selectRestoredSession = async (attemptsLeft = 5): Promise<void> => {
+      try {
+        const res = await fetch("/api/sessions");
+        if (res.ok) {
+          const data = (await res.json()) as { sessions?: SessionInfo[] };
+          const found = data.sessions?.find((s) => s.id === sessionId);
+          if (found) {
+            handleSelectSession(found, false);
+            return;
+          }
+        }
+      } catch {
+        // network error / abort
+      }
+
+      if (attemptsLeft > 0) {
+        setTimeout(() => void selectRestoredSession(attemptsLeft - 1), 300);
+      } else {
+        router.replace(`?session=${encodeURIComponent(sessionId)}`, { scroll: false });
+      }
+    };
+
+    void selectRestoredSession();
+  }, [handleSelectSession, router]);
 
   const handleOpenFile = useCallback((filePath: string, fileName: string, sourceSessionId?: string | null) => {
     const tabId = `file:${filePath}`;
@@ -783,6 +815,7 @@ export function AppShell() {
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
         onOpenSettings={() => setSettingsTab("general")}
+        onOpenArchive={() => setArchiveBrowserOpen(true)}
         updateAvailable={appUpdateAvailable || ompUpdateAvailable}
       />
     </>
@@ -1491,6 +1524,13 @@ export function AppShell() {
       </svg>
     </button>
     {settingsTab && <SettingsConfig activeTab={settingsTab} advisorEnabled={advisorEnabled} onAdvisorChange={handleAdvisorChange} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onToolCallsDefaultCollapsedChange={handleToolCallsDefaultCollapsedChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onOmpUpdateAvailabilityChange={setOmpUpdateAvailable} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
+    {archiveBrowserOpen && (
+      <ArchiveBrowser
+        open={archiveBrowserOpen}
+        onClose={() => setArchiveBrowserOpen(false)}
+        onRestored={handleArchiveRestored}
+      />
+    )}
     </ToastProvider>
     </>
   );

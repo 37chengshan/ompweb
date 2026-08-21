@@ -13,7 +13,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
-import { Check, ChevronDown, ChevronRight, FileUp, Folder, GitBranch, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, GitBranch, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 
 declare global {
@@ -48,6 +48,8 @@ interface Props {
   onOpenSettings?: () => void;
   /** True when an omp/ompweb update is available — shows a badge on the gear. */
   updateAvailable?: boolean;
+  /** Opens the archived sessions browser. */
+  onOpenArchive?: () => void;
 }
 
 interface WorktreeEntry {
@@ -549,7 +551,7 @@ function OmpWebTitle() {
     </button>
   );
 }
-export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions, onOpenSettings, updateAvailable }: Props) {
+export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions, onOpenSettings, onOpenArchive, updateAvailable }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1443,6 +1445,16 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <OmpWebTitle />
           <div style={{ display: "flex", gap: 2 }}>
+            {onOpenArchive && (
+              <Tooltip content={t("sessionSidebar.archiveBrowserTitle")} side="bottom">
+                <SidebarIconButton
+                  label={t("sessionSidebar.archiveBrowser")}
+                  onClick={onOpenArchive}
+                >
+                  <Archive size={14} strokeWidth={1.9} aria-hidden="true" />
+                </SidebarIconButton>
+              </Tooltip>
+            )}
             <Tooltip content={t("sessionSidebar.importTitle")} side="bottom">
               <SidebarIconButton
                 label={t("sessionSidebar.import")}
@@ -2625,7 +2637,8 @@ const SessionItem = memo(function SessionItem({
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const renameCancelRef = useRef(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+ const [confirmArchive, setConfirmArchive] = useState(false);
+ const [confirmDelete, setConfirmDelete] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -2633,8 +2646,8 @@ const SessionItem = memo(function SessionItem({
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
   const relativeTime = formatRelativeTime(session.modified, locale, relativeTimeNow);
-  const confirming = confirmDelete;
-  const showActions = hovered || focusWithin || actionMenuOpen;
+ const confirming = confirmArchive || confirmDelete;
+ const showActions = hovered || focusWithin || actionMenuOpen;
   const rowBackground = confirming
     ? "color-mix(in srgb, var(--accent) 6%, transparent)"
     : isSelected
@@ -2669,17 +2682,18 @@ const SessionItem = memo(function SessionItem({
     }
   }, [renameValue, session.id, session.name, onRenamed]);
 
-  const handleArchive = useCallback(async () => {
-    setDeleting(true);
-    try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}/archive`, { method: "POST" });
-      if (!response.ok) throw new Error("Session archive failed");
-      onDeleted?.(session.id);
-    } catch {
-      setDeleting(false);
-      toast.error(translate("sessionSidebar.archiveFailed"));
-    }
-  }, [session.id, onDeleted]);
+ const handleArchive = useCallback(async () => {
+ setConfirmArchive(false);
+ setDeleting(true);
+ try {
+ const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}/archive`, { method: "POST" });
+ if (!response.ok) throw new Error("Session archive failed");
+ onDeleted?.(session.id);
+ } catch {
+ setDeleting(false);
+ toast.error(translate("sessionSidebar.archiveFailed"));
+ }
+ }, [session.id, onDeleted]);
 
   const handleDelete = useCallback(async () => {
     setConfirmDelete(false);
@@ -2694,15 +2708,16 @@ const SessionItem = memo(function SessionItem({
     }
   }, [session.id, onDeleted]);
 
-  const closeConfirmation = useCallback(() => {
-    setConfirmDelete(false);
-    setActionMenuOpen(false);
-    requestAnimationFrame(() => contentButtonRef.current?.focus());
-  }, []);
+ const closeConfirmation = useCallback(() => {
+ setConfirmArchive(false);
+ setConfirmDelete(false);
+ setActionMenuOpen(false);
+ requestAnimationFrame(() => contentButtonRef.current?.focus());
+ }, []);
 
   return (
     <div
-      onClick={confirmDelete || renaming ? undefined : onClick}
+ onClick={confirmArchive || confirmDelete || renaming ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocusWithin(true)}
@@ -2710,7 +2725,7 @@ const SessionItem = memo(function SessionItem({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false);
       }}
       onKeyDown={(event) => {
-        if ((confirmDelete || actionMenuOpen) && event.key === "Escape") {
+        if ((confirmArchive || confirmDelete || actionMenuOpen) && event.key === "Escape") {
           event.stopPropagation();
           closeConfirmation();
         }
@@ -2749,10 +2764,12 @@ const SessionItem = memo(function SessionItem({
       {confirming ? (
         <>
           <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, color: "var(--text)" }}>
-            {t("sessionSidebar.deleteConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })}
+            {confirmArchive
+              ? t("sessionSidebar.archiveConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })
+              : t("sessionSidebar.deleteConfirm", { title: title.length > 22 ? `${title.slice(0, 22)}…` : title })}
           </span>
-          <button onClick={(event) => { event.stopPropagation(); void handleDelete(); }} style={{ height: 28, padding: "0 10px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
-            {t("sessionSidebar.delete")}
+          <button onClick={(event) => { event.stopPropagation(); if (confirmArchive) void handleArchive(); else void handleDelete(); }} style={{ height: 28, padding: "0 10px", border: "none", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+            {confirmArchive ? t("sessionSidebar.archive") : t("sessionSidebar.delete")}
           </button>
           <button onClick={(event) => { event.stopPropagation(); closeConfirmation(); }} autoFocus style={{ height: 28, padding: "0 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}>
             {t("sessionSidebar.cancel")}
@@ -2782,7 +2799,7 @@ const SessionItem = memo(function SessionItem({
                   <MoreHorizontal size={14} strokeWidth={2} aria-hidden="true" />
                 </button>
                 <SidebarPortalMenu anchor={menuButtonRef} open={actionMenuOpen} onClose={() => setActionMenuOpen(false)} placement="above" minWidth={128}>
-                  <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); void handleArchive(); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: hasChildren ? "var(--text-dim)" : "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", textAlign: "left", fontSize: 11, opacity: hasChildren ? 0.55 : 1 }}>{t("sessionSidebar.archive")}</button>
+ <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmArchive(true); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: hasChildren ? "var(--text-dim)" : "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", textAlign: "left", fontSize: 11, opacity: hasChildren ? 0.55 : 1 }}>{t("sessionSidebar.archive")}</button>
                   <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { startRename(event); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.rename")}</button>
                   <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmDelete(true); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.delete")}</button>
                 </SidebarPortalMenu>

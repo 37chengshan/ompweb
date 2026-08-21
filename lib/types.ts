@@ -428,6 +428,20 @@ export interface SessionInfo {
   worktreeBranch?: string;
 }
 
+/** Metadata for a gzip-compressed session in OMP's archive tree. */
+export interface ArchivedSessionInfo {
+  key: string;
+  id: string;
+  cwd: string;
+  name?: string;
+  created: string;
+  archivedAt: string;
+  messageCount: number;
+  firstMessage: string;
+  size: number;
+  status?: "complete" | "interrupted" | "aborted" | "error" | "pending" | "unknown";
+}
+
 /** A project in the sidebar: an explicitly added directory (registered in the
  *  on-disk registry) or one discovered from existing sessions. Paths are the
  *  canonical projectRoot — worktrees resolve to their main repository. */

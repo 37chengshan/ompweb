@@ -2271,7 +2271,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     role="menu"
                     style={{
                       position: "absolute", bottom: "calc(100% + 6px)", left: 0,
-                      zIndex: 100, width: 250, maxWidth: "calc(100vw - 32px)",
+                      zIndex: 100, width: 190, maxWidth: "calc(100vw - 32px)",
                     }}
                   >
                     <div className="picker-panel-header">

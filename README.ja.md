@@ -6,14 +6,14 @@
 
 [oh-my-pi (omp) コーディングエージェント](https://github.com/can1357/oh-my-pi)のローカル Web UI です。ompweb はローカルの omp セッションファイルを読み込み、セッションの閲覧、リアルタイムチャット、モデル設定、スキル管理、プロジェクトファイルのプレビューを行えるブラウザワークスペースを提供します。
 
-![ompweb — ライトテーマ](docs/screenshot-light.png)
+![ompweb — デモ](docs/demo.gif)
 
 <details>
-<summary>ダークテーマとコマンドパレット</summary>
+<summary>スクリーンショット（ライト / ダークテーマ）</summary>
+
+![ompweb — ライトテーマ](docs/screenshot-light.png)
 
 ![ompweb — ダークテーマ](docs/screenshot-dark.png)
-
-![ompweb — コマンドパレット](docs/screenshot-palette.png)
 
 </details>
 

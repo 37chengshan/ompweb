@@ -6,14 +6,14 @@
 
 [oh-my-pi (omp) 编程智能体](https://github.com/can1357/oh-my-pi)的本地 Web UI。ompweb 读取本机的 omp 会话文件，在浏览器中提供一个工作区，支持会话浏览、实时对话、模型配置、技能管理和项目文件预览。
 
-![ompweb — 浅色主题](docs/screenshot-light.png)
+![ompweb — 演示](docs/demo.gif)
 
 <details>
-<summary>深色主题与命令面板</summary>
+<summary>截图（浅色 / 深色主题）</summary>
+
+![ompweb — 浅色主题](docs/screenshot-light.png)
 
 ![ompweb — 深色主题](docs/screenshot-dark.png)
-
-![ompweb — 命令面板](docs/screenshot-palette.png)
 
 </details>
 

@@ -91,7 +91,7 @@ export function Tooltip({ content, children, side = "top" }: {
       <BaseTooltip.Root>
         <BaseTooltip.Trigger render={children} />
         <BaseTooltip.Portal>
-          <BaseTooltip.Positioner side={side} sideOffset={6} style={{ zIndex: 120 }}>
+          <BaseTooltip.Positioner side={side} sideOffset={6} style={{ zIndex: 1100 }}>
             <BaseTooltip.Popup
               style={{
                 background: "var(--bg-panel)",

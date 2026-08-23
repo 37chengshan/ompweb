@@ -1593,6 +1593,14 @@ span.token.table {
   color: var(--text);
 }
 
+/* Command palette (cmdk): the highlighted row is only exposed as
+   data-selected — without this rule keyboard users cannot see what Enter
+   activates. Inline styles on the items set color, so background carries the cue. */
+[cmdk-item=''][data-selected='true'] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .dropdown-surface :is(select, option) {
   color-scheme: light;
 }

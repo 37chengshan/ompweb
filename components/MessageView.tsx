@@ -115,8 +115,8 @@ interface Props {
   prevTimestamp?: number;
   sessionId?: string;
   toolCallsDefaultCollapsed?: boolean;
-  onGenerationSpeedChange?: (speed: number | null) => void;
-  onGenerationSpeedComplete?: (speed: number) => void;
+  /** omp-reported output throughput (get_state.tokensPerSecond), live while streaming. */
+  liveTokensPerSecond?: number | null;
 }
 
 function formatTime(ts: number | undefined, locale: Locale): string | null {
@@ -146,12 +146,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, toolCallsDefaultCollapsed = true, onGenerationSpeedChange, onGenerationSpeedComplete }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, toolCallsDefaultCollapsed = true, liveTokensPerSecond }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onGenerationSpeedChange={onGenerationSpeedChange} onGenerationSpeedComplete={onGenerationSpeedComplete} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} liveTokensPerSecond={liveTokensPerSecond} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -191,8 +191,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.prevTimestamp === next.prevTimestamp
     && prev.sessionId === next.sessionId
     && prev.toolCallsDefaultCollapsed === next.toolCallsDefaultCollapsed
-    && prev.onGenerationSpeedChange === next.onGenerationSpeedChange
-    && prev.onGenerationSpeedComplete === next.onGenerationSpeedComplete;
+    && prev.liveTokensPerSecond === next.liveTokensPerSecond;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {  message: UserMessage;
@@ -400,8 +399,7 @@ function AssistantMessageView({
   sessionId,
   entryId,
   toolCallsDefaultCollapsed,
-  onGenerationSpeedChange,
-  onGenerationSpeedComplete,
+  liveTokensPerSecond,
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
@@ -414,8 +412,7 @@ function AssistantMessageView({
   sessionId?: string;
   entryId?: string;
   toolCallsDefaultCollapsed: boolean;
-  onGenerationSpeedChange?: (speed: number | null) => void;
-  onGenerationSpeedComplete?: (speed: number) => void;
+  liveTokensPerSecond?: number | null;
 }) {
   const { t, locale } = useI18n();
   const time = showTimestamp ? formatTime(message.timestamp, locale) : null;
@@ -424,10 +421,6 @@ function AssistantMessageView({
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming }));
   const blocks = blockItems.map(({ block }) => block);
   const hasActivityBlocks = blocks.some((block) => block.type === "thinking" || block.type === "toolCall");
-  const streamStartRef = useRef<number | null>(null);
-  const lastTpsRef = useRef<number | null>(null);
-  const speedCompletedRef = useRef(false);
-  const [tps, setTps] = useState<number | null>(null);
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
 
@@ -460,12 +453,6 @@ function AssistantMessageView({
   }, [toolResults, message.timestamp]);
   useEffect(() => {
     if (!isStreaming) {
-      if (!speedCompletedRef.current && lastTpsRef.current !== null) {
-        onGenerationSpeedComplete?.(lastTpsRef.current);
-        speedCompletedRef.current = true;
-      }
-      // Keep the last completed speed visible in the top bar alongside AVG.
-      // A new streaming run clears only the current value below.
       // Finalise any un-finished thinking block durations on stream end
       const now = new Date().getTime();
       setStreamingDurations((prev: Map<number, number>) => {
@@ -475,16 +462,10 @@ function AssistantMessageView({
         }
         return next;
       });
-      streamStartRef.current = null;
-      setTps(null);
       return;
     }
-    // Clear only the live value when a new run starts; the completed average remains.
-    onGenerationSpeedChange?.(null);
-    speedCompletedRef.current = false;
     const tick = () => {
       const items = blockItemsRef.current;
-      const bs = items.map(({ block }) => block);
       const now = Date.now();
 
       // Record start time for each block the first time we see it
@@ -508,32 +489,11 @@ function AssistantMessageView({
         }
         return changed ? next : prev;
       });
-
-      let chars = 0;
-      for (const b of bs) {
-        if (b.type === "text") chars += (b as TextContent).text?.length ?? 0;
-        else if (b.type === "thinking") chars += (b as ThinkingContent).thinking?.length ?? 0;
-      }
-      if (chars === 0) return;
-      if (streamStartRef.current === null) streamStartRef.current = now;
-      const elapsed = (now - streamStartRef.current) / 1000;
-      if (elapsed > 0.5) {
-        const currentTps = chars / 4 / elapsed;
-        lastTpsRef.current = currentTps;
-        setTps(currentTps);
-        onGenerationSpeedChange?.(currentTps);
-      }
     };
     const id = setInterval(tick, 300);
     tick();
-    return () => {
-      clearInterval(id);
-      if (!speedCompletedRef.current && lastTpsRef.current !== null) {
-        onGenerationSpeedComplete?.(lastTpsRef.current);
-        speedCompletedRef.current = true;
-      }
-    };
-  }, [isStreaming, onGenerationSpeedChange, onGenerationSpeedComplete]);
+    return () => clearInterval(id);
+  }, [isStreaming]);
 
   if (blocks.length === 0 && !isStreaming) return null;
 
@@ -574,15 +534,15 @@ function AssistantMessageView({
                     </svg>
                     {est}
                   </span>
-                  {tps !== null && (() => {
+                  {liveTokensPerSecond != null && (() => {
                     // Speed tiers use the semantic status tokens as TEXT color
                     // (theme-adaptive, AA-verified) over a subtle tint — the
                     // old hardcoded palette failed AA for white-on-fill.
-                    const tier = tps >= 50 ? "success" : tps >= 30 ? "renamed" : tps >= 15 ? "warning" : "error";
+                    const tier = liveTokensPerSecond >= 50 ? "success" : liveTokensPerSecond >= 30 ? "renamed" : liveTokensPerSecond >= 15 ? "warning" : "error";
                     const tone = `var(--status-${tier})`;
                     return (
                       <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: `color-mix(in srgb, ${tone} 14%, var(--bg-panel))`, color: tone, fontSize: 11, fontWeight: 400 }}>
-                        {t("messageView.tokensPerSecond", { tps: tps.toFixed(1) })}
+                        {t("messageView.tokensPerSecond", { tps: liveTokensPerSecond.toFixed(1) })}
                       </span>
                     );
                   })()}

@@ -184,6 +184,7 @@ type AgentStateResponse = {
   isPromptRunning?: boolean;
   isBashRunning?: boolean;
   isCompacting?: boolean;
+  tokensPerSecond?: number | null;
   extensionStatuses?: ExtensionStatusItem[];
   extensionWidgets?: ExtensionWidgetItem[];
   // omp only reports a count; the queued texts are tracked client-side.
@@ -629,6 +630,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [currentModelOverride, setCurrentModelOverride] = useState<{ provider: string; modelId: string } | null>(null);
   const [pendingModel, setPendingModel] = useState<{ provider: string; modelId: string } | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
+  // omp's own output throughput from get_state. omp reports a number only
+  // when it has throughput data (typically around generation); null otherwise.
+  const [tokensPerSecond, setTokensPerSecond] = useState<number | null>(null);
   const [compactError, setCompactError] = useState<string | null>(null);
   const [compactResult, setCompactResult] = useState<CompactResultInfo | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
@@ -1761,6 +1765,44 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       window.removeEventListener("online", reconcile);
     };
   }, [agentRunning, reconcileAgentState]);
+
+  // Sample omp's own tokensPerSecond (get_state) at a gauge-friendly cadence
+  // while a run is active; the 15s reconcile above is too slow for a gauge.
+  // On run end take one trailing sample: omp publishes its final throughput
+  // right around agent_end, possibly after the last in-run poll.
+  useEffect(() => {
+    if (!agentRunning) {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+      let cancelled = false;
+      void fetch(`/api/agent/${encodeURIComponent(sid)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { state?: AgentStateResponse } | null) => {
+          if (cancelled) return;
+          const tps = data?.state?.tokensPerSecond;
+          setTokensPerSecond(typeof tps === "number" && Number.isFinite(tps) && tps > 0 ? tps : null);
+        })
+        .catch(() => {});
+      return () => { cancelled = true; };
+    }
+    const id = setInterval(() => {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+      void fetch(`/api/agent/${encodeURIComponent(sid)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { state?: AgentStateResponse } | null) => {
+          const tps = data?.state?.tokensPerSecond;
+          setTokensPerSecond(typeof tps === "number" && Number.isFinite(tps) && tps > 0 ? tps : null);
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(id);
+  }, [agentRunning]);
+
+  // A different session starts from a clean slate — no stale gauge carry-over.
+  useEffect(() => {
+    setTokensPerSecond(null);
+  }, [data?.sessionId]);
 
   useEffect(() => {
     agentRunningRef.current = agentRunning;
@@ -3162,7 +3204,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunning, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel, fastModeEnabled, fastModeActive, autoRetryEnabled, interruptMode, autoCompactionEnabled, steeringMode, followUpMode,
     liveModelMeta,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
-    isCompacting, compactError, compactResult, currentModel, displayModel, isAutoModelSelection: !displayModel, sessionStats, agentPhase,
+    isCompacting, compactError, compactResult, tokensPerSecond, currentModel, displayModel, isAutoModelSelection: !displayModel, sessionStats, agentPhase,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     advisorActive: advisorActiveAt > 0, advisorEnabled, handleAdvisorChange,

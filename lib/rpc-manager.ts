@@ -762,6 +762,7 @@ export class AgentSessionWrapper {
         : undefined,
       messageCount: state.messageCount,
       queuedMessageCount: state.queuedMessageCount,
+      tokensPerSecond: state.tokensPerSecond ?? null,
       contextUsage: state.contextUsage ?? null,
       systemPrompt: state.systemPrompt?.join("\n\n") ?? "",
       thinkingLevel: state.thinkingLevel ?? "off",

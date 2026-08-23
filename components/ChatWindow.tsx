@@ -437,7 +437,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, thinkingLevel, fastModeEnabled, fastModeActive,
     liveModelMeta,
     retryInfo, contextUsage, forkingEntryId,
-    isCompacting, compactResult, displayModel: displayModelValue, sessionStats,
+    isCompacting, compactResult, tokensPerSecond, displayModel: displayModelValue, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages, advisorActive, advisorEnabled, handleAdvisorChange,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
@@ -458,37 +458,29 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   const sessionBusy = agentRunning || bashRunning;
   const [generationSpeed, setGenerationSpeed] = useState<GenerationSpeedInfo | null>(null);
   const speedSamplesRef = useRef<number[]>([]);
-  // Streaming ticks arrive ~3Hz with raw t/s; the indicator shows one decimal.
-  // Publishing only when that decimal changes keeps the lift to AppShell from
-  // re-rendering the whole shell several times a second for no visible change.
+  // Source of truth is omp's own get_state.tokensPerSecond (polled by the
+  // session hook), not a client-side char-count estimate. Distinct reported
+  // values feed the rolling AVG; repeated polls of the same value are ignored.
   const lastPublishedSpeedRef = useRef<number | null>(null);
-  const handleGenerationSpeedChange = useCallback((current: number | null) => {
-    if (current === null || !Number.isFinite(current) || current <= 0) {
+  useEffect(() => {
+    if (tokensPerSecond === null || !Number.isFinite(tokensPerSecond) || tokensPerSecond <= 0) {
+      // Clear the live value; the session average remains visible.
       if (lastPublishedSpeedRef.current !== null) {
         lastPublishedSpeedRef.current = null;
-        setGenerationSpeed((previous) => previous ? { ...previous, current: null } : null);
+        setGenerationSpeed((previous) => previous ? { ...previous, current: null } : previous);
       }
       return;
     }
-    const quantized = Math.round(current * 10) / 10;
+    const quantized = Math.round(tokensPerSecond * 10) / 10;
     if (quantized === lastPublishedSpeedRef.current) return;
     lastPublishedSpeedRef.current = quantized;
-    const completed = speedSamplesRef.current;
-    const total = completed.reduce((sum, sample) => sum + sample, 0) + current;
-    setGenerationSpeed({
-      current: quantized,
-      average: total / (completed.length + 1),
-    });
-  }, []);
-  const handleGenerationSpeedComplete = useCallback((speed: number) => {
-    if (!Number.isFinite(speed) || speed <= 0) return;
-    const samples = [...speedSamplesRef.current, speed].slice(-32);
+    const samples = [...speedSamplesRef.current, quantized].slice(-32);
     speedSamplesRef.current = samples;
     setGenerationSpeed({
-      current: speed,
+      current: quantized,
       average: samples.reduce((sum, sample) => sum + sample, 0) / samples.length,
     });
-  }, []);
+  }, [tokensPerSecond]);
   // Rehydrate the session average from on-disk history after a reload: the
   // per-message generation speed is derivable from assistant usage.output and
   // the timestamp gap to the previous message, so AVG survives refreshes.
@@ -1045,8 +1037,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
                 cwd={messageCwd}
                 onOpenFile={onOpenFile}
                 toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
-                onGenerationSpeedChange={handleGenerationSpeedChange}
-                onGenerationSpeedComplete={handleGenerationSpeedComplete}
+                liveTokensPerSecond={tokensPerSecond}
               />
             )}
 

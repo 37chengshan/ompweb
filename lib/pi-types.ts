@@ -72,6 +72,8 @@ export interface RpcSessionState {
   fastMode?: boolean;
   fastModeEnabled?: boolean;
   fastModeActive?: boolean;
+  /** omp's reported output throughput; null/undefined when not generating. */
+  tokensPerSecond?: number | null;
 }
 
 /**
@@ -99,6 +101,7 @@ export interface WebSessionState {
   fastModeEnabled: boolean;
   fastModeActive?: boolean;
   autoRetryEnabled?: boolean;
+  tokensPerSecond?: number | null;
   todoPhases: TodoPhase[];
   extensionStatuses: Array<{ key: string; text: string }>;
   extensionWidgets: Array<{ key: string; lines: string[]; placement: "aboveEditor" | "belowEditor" }>;

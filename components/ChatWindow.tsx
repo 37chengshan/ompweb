@@ -1060,7 +1060,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               </div>
             ))}
 
-            {agentRunning && !streamState.streamingMessage && pendingToolHeaders.length === 0 && (
+            {(isCompacting || (agentRunning && !streamState.streamingMessage && pendingToolHeaders.length === 0)) && (
               <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">
                 <span
                   aria-hidden
@@ -1070,6 +1070,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
                   {[
                     phaseLabel(agentPhase),
                     activeSubagentCount > 0 ? tn("chatWindow.subagentCount", activeSubagentCount) : null,
+                    isCompacting ? t("chatWindow.compactingContext") : null,
                     currentTodoPhase
                       ? t("chatWindow.todoPhaseStatus", {
                           name: currentTodoPhase.name,

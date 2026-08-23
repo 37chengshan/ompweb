@@ -299,6 +299,9 @@ export interface CompactionEntry extends SessionEntryBase {
   shortSummary?: string;
   firstKeptEntryId: string;
   tokensBefore: number;
+  /** omp ≥17.4: maintenance method that fired (e.g. "remote-compacted", "handoff"). */
+  method?: string;
+  tokensAfter?: number;
   details?: unknown;
   preserveData?: Record<string, unknown>;
   fromExtension?: boolean;

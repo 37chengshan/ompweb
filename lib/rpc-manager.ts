@@ -31,6 +31,8 @@ interface CompactionResultLike {
   summary?: string;
   tokensBefore?: number;
   estimatedTokensAfter?: number;
+  /** omp ≥17.4 reports the real post-compaction count when available. */
+  tokensAfter?: number;
 }
 
 const IDLE_DESTROY_MS = 10 * 60 * 1000;
@@ -174,13 +176,20 @@ export function resolveSpawnCwdResult(recordedCwd?: string | null): { cwd: strin
   return { cwd: homedir(), fellBack: true };
 }
 
-/** omp's CompactionResult has no estimatedTokensAfter; approximate it from the
- * summary so the compaction banner can show savings instead of "→ 0 tokens". */
+/** omp's CompactionResult historically omitted any post-compaction token
+ * count; approximate it from the summary so the compaction banner can show
+ * savings instead of "→ 0 tokens". Newer omp reports a real `tokensAfter` —
+ * prefer it when present. */
 function patchEstimatedTokensAfter(result: unknown): void {
   if (!result || typeof result !== "object") return;
   const compaction = result as CompactionResultLike;
   if (compaction.estimatedTokensAfter === undefined) {
-    compaction.estimatedTokensAfter = Math.round((compaction.summary?.length ?? 0) / 4);
+    // Prefer omp ≥17.4's real post-compaction count; fall back to the
+    // summary-length estimate for older builds.
+    const rawTokensAfter = typeof compaction.tokensAfter === "number"
+      ? Math.max(0, compaction.tokensAfter)
+      : (compaction.summary?.length ?? 0) / 4;
+    compaction.estimatedTokensAfter = Math.round(rawTokensAfter);
   }
 }
 

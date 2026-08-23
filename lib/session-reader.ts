@@ -641,6 +641,8 @@ function compactionUiMessage(entry: CompactionEntry, active: boolean): CustomMes
     display: true,
     details: {
       tokensBefore: entry.tokensBefore,
+      ...(entry.tokensAfter !== undefined ? { tokensAfter: entry.tokensAfter } : {}),
+      ...(entry.method !== undefined ? { method: entry.method } : {}),
       firstKeptEntryId: entry.firstKeptEntryId,
     },
     timestamp: parseEntryTimestamp(entry.timestamp),

@@ -225,8 +225,10 @@ function migrateV2ToV3(header: SessionHeader, entries: MutableEntry[]): void {
   header.version = 3;
   for (const entry of entries) {
     if (entry.type === "message") {
-      const message = entry.message as { role?: string };
-      if (message.role === "hookMessage") message.role = "custom";
+      // Imports and hand-edits can produce message entries whose message
+      // object is missing — entryToUiMessage tolerates that, so must we.
+      const message = entry.message as { role?: string } | null | undefined;
+      if (message?.role === "hookMessage") message.role = "custom";
     }
   }
 }
@@ -352,7 +354,7 @@ export function resolveBlobRefsInEntries(entries: SessionEntry[], options: Resol
     if (
       options.skipToolResultImages &&
       entry.type === "message" &&
-      (entry.message as { role?: string }).role === "toolResult"
+      ((entry.message as { role?: string } | null | undefined)?.role === "toolResult")
     ) {
       continue;
     }
@@ -1006,7 +1008,8 @@ export async function listAllSessionInfos(): Promise<OmpSessionInfo[]> {
 }
 
 interface SessionFileListCacheEntry {
-  mtimeMs: number;
+  rootMtimeMs: number;
+  subMaxMtimeMs: number;
   files: string[];
 }
 
@@ -1034,7 +1037,7 @@ async function listSessionFiles(sessionsRoot: string): Promise<string[]> {
   if (!globalThis.__ompSessionFileListCache) globalThis.__ompSessionFileListCache = new Map();
   const cache = globalThis.__ompSessionFileListCache;
   const cached = cache.get(sessionsRoot);
-  if (cached && cached.mtimeMs === rootStat.mtimeMs) {
+  if (cached && cached.rootMtimeMs === rootStat.mtimeMs) {
     // Windows/NTFS: root mtime may not bump when a file is added inside a project subdir.
     // Validate by sampling subdir mtimes (cheap: stat per project dir, not per file).
     let stale = false;
@@ -1043,22 +1046,24 @@ async function listSessionFiles(sessionsRoot: string): Promise<string[]> {
         if (!dirent.isDirectory()) continue;
         const subPath = path.join(sessionsRoot, dirent.name);
         const subMtime = statSync(subPath).mtimeMs;
-        if (subMtime > cached.mtimeMs) { stale = true; break; }
+        if (subMtime > cached.subMaxMtimeMs) { stale = true; break; }
       }
     } catch { stale = true; }
     if (!stale) return cached.files;
   }
 
   const files = collectSessionFiles(sessionsRoot);
-  // Store max mtime across root + subdirs so future NTFS checks are accurate
-  let maxMtime = rootStat.mtimeMs;
+  // Remember the root mtime separately from the sampled subdir max: comparing
+  // the combined max against the current root mtime never matches once any
+  // subdir outgrows the root (the normal NTFS steady state), defeating the cache.
+  let subMaxMtimeMs = 0;
   try {
     for (const dirent of readDirectorySyncRuntime(sessionsRoot, { withFileTypes: true })) {
       if (!dirent.isDirectory()) continue;
-      maxMtime = Math.max(maxMtime, statSync(path.join(sessionsRoot, dirent.name)).mtimeMs);
+      subMaxMtimeMs = Math.max(subMaxMtimeMs, statSync(path.join(sessionsRoot, dirent.name)).mtimeMs);
     }
   } catch {}
-  cache.set(sessionsRoot, { mtimeMs: maxMtime, files });
+  cache.set(sessionsRoot, { rootMtimeMs: rootStat.mtimeMs, subMaxMtimeMs, files });
   return files;
 }
 
@@ -1250,14 +1255,21 @@ export function archiveSessionFileWithArtifacts(filePath: string, roots: Session
     if (artifactsMoved) {
       try { renameSync(destinationArtifacts, sourceArtifacts); } catch { /* preserve original error */ }
     }
+    // Restore the source if it was already removed. Only after the restore
+    // SUCCEEDS is the archive safe to delete — if the restore fails, the
+    // archive is the only copy of the session left, and deleting it would
+    // lose both copies permanently.
+    let restored = true; // nothing to restore unless the source was removed
     if (sourceRemoved && destinationCreated) {
+      restored = false;
       try {
         writeFileSync(tempRestore, gunzipSync(readFileSync(destination)));
         mkdirSync(path.dirname(source), { recursive: true });
         renameSync(tempRestore, source);
-      } catch { /* preserve original error; archive remains recoverable */ }
+        restored = true;
+      } catch { /* preserve original error */ }
     }
-    if (destinationCreated) {
+    if (destinationCreated && restored) {
       try { unlinkSync(destination); } catch { /* preserve original error */ }
     }
     throw error;

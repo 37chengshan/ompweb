@@ -55,6 +55,9 @@ export function useModalDialog<T extends HTMLElement>({ onClose, active = true }
       if (e.key === "Escape") {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
+        // Swallow the event: the window-level shortcut handler (Esc = stop
+        // agent) must not also fire just because focus sat inside a dialog.
+        e.stopPropagation();
         onCloseRef.current();
         return;
       }

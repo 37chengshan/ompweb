@@ -859,7 +859,7 @@ export function AppShell() {
       }
       .session-info-popover {
         position: relative;
-        overflow: hidden;
+        overflow: visible;
         transform-origin: top right;
         animation: session-info-pop var(--dur-slow) var(--ease-out-warm) both;
         will-change: transform, opacity;
@@ -1216,12 +1216,15 @@ export function AppShell() {
             <div data-top-panel className="dropdown-surface" style={{
               position: "fixed",
               top: topPanelPos.top,
-              left: topPanelPos.left,
-              width: topPanelPos.width,
-              maxHeight: `calc(100dvh - ${topPanelPos.top}px)`,
-              // Scroll (not clip) when the window is too narrow for the stat
-              // columns — usage/cost must never be cut off.
-              overflow: "auto",
+              // Right-aligned, width auto based on content — prevents cut-off and lets the window resize with its content
+              right: 12,
+              left: "auto",
+              width: "auto",
+              minWidth: 360,
+              maxWidth: "min(560px, calc(100vw - 24px))",
+              maxHeight: `min(70vh, calc(100dvh - ${topPanelPos.top}px - 12px))`,
+              overflowY: "auto",
+              overflowX: "hidden",
               zIndex: 500,
             }}>
               {activeTopPanel === "system" && (

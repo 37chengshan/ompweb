@@ -11,9 +11,9 @@ import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { Check, History, Menu, Moon, PanelLeft, Sun, Terminal, Wand2 } from "lucide-react";
+import { Check, CircleCheck, History, Menu, Moon, PanelLeft, Sun, Terminal, Wand2 } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
-import { formatCompactNumber, formatPercent } from "@/lib/format";
+import { formatCompactNumber, formatPercent, getCacheHitRate } from "@/lib/format";
 import { translate, useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -1074,6 +1074,8 @@ export function AppShell() {
             const tok = sessionStats?.tokens;
             const c = sessionStats?.cost ?? 0;
             const costStr = c > 0 ? (c >= 0.01 ? `$${c.toFixed(2)}` : `<$0.01`) : null;
+            const cacheHitRate = tok ? getCacheHitRate(tok.input, tok.cacheRead) : null;
+            const cacheRateStr = cacheHitRate !== null ? formatPercent(cacheHitRate) : null;
             const currentSpeedStr = generationSpeed?.current !== null && generationSpeed?.current !== undefined
               ? `${generationSpeed.current.toFixed(1)} t/s`
               : null;
@@ -1096,6 +1098,7 @@ export function AppShell() {
               tooltipParts.push(t("appShell.tooltipOutput", { value: tok.output.toLocaleString(locale) }));
               tooltipParts.push(t("appShell.tooltipCacheRead", { value: tok.cacheRead.toLocaleString(locale) }));
               tooltipParts.push(t("appShell.tooltipCacheWrite", { value: tok.cacheWrite.toLocaleString(locale) }));
+              if (cacheRateStr) tooltipParts.push(t("appShell.tooltipCacheRate", { percent: cacheRateStr }));
               if (c > 0) tooltipParts.push(t("appShell.tooltipCost", { value: c.toFixed(4) }));
             }
             if (contextUsage?.contextWindow) {
@@ -1173,6 +1176,20 @@ export function AppShell() {
                     {formatCompactNumber(tok.cacheRead)}
                   </span>
                 )}
+                {!isMobile && cacheRateStr && (
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
+                    <CircleCheck size={12} strokeWidth={1.8} aria-hidden="true" />
+                    {cacheRateStr}
+                  </span>
+                )}
+                {ctxStr && (
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: ctxColor, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 9 L1 5 Q1 1 5 1 Q9 1 9 5 L9 9" /><line x1="1" y1="9" x2="9" y2="9" />
+                    </svg>
+                    {ctxStr}
+                  </span>
+                )}
                 {!isMobile && costStr && (
                   <span style={{ display: "flex", alignItems: "center", color: "var(--text)", fontWeight: 500 }}>
                     {costStr}
@@ -1186,14 +1203,6 @@ export function AppShell() {
                 {!isMobile && averageSpeedStr && (
                   <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
                     {averageSpeedStr}
-                  </span>
-                )}
-                {ctxStr && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: ctxColor, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 9 L1 5 Q1 1 5 1 Q9 1 9 5 L9 9" /><line x1="1" y1="9" x2="9" y2="9" />
-                    </svg>
-                    {ctxStr}
                   </span>
                 )}
               </button>
@@ -1272,9 +1281,11 @@ export function AppShell() {
                       [t("appShell.statTotal"), sessionStats.tokens.total.toLocaleString(locale)],
                     ];
                     const ctx = contextUsage ?? sessionStats.contextUsage;
+                    const cacheHitRate = getCacheHitRate(sessionStats.tokens.input, sessionStats.tokens.cacheRead);
                     const extraTokenRows = [
-                      ...(sessionStats.cost > 0 ? [[t("appShell.statCost"), `$${sessionStats.cost.toFixed(4)}`]] : []),
+                      ...(cacheHitRate !== null ? [[t("appShell.statCacheRate"), formatPercent(cacheHitRate)]] : []),
                       ...(ctx?.contextWindow ? [[t("appShell.statContext"), `${ctx.percent !== null ? formatPercent(ctx.percent) : "?"} / ${formatCompactNumber(ctx.contextWindow)}`]] : []),
+                      ...(sessionStats.cost > 0 ? [[t("appShell.statCost"), `$${sessionStats.cost.toFixed(4)}`]] : []),
                     ];
                     const section = (
                       title: string,

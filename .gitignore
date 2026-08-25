@@ -11,14 +11,15 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
 
 # next.js
 /.next/
 /out/
-
-# production
 /build
+/dist
+.turbo/
+.cache/
 
 # rendered / generated artifacts (mockups, screenshots, images)
 /output/
@@ -32,6 +33,7 @@ screenshots/
 
 # debug
 .logs/
+*.log
 /.next-dev.log
 /.next-dev-error.log
 npm-debug.log*
@@ -41,6 +43,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -48,15 +51,24 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# editor / IDE
+.idea/
+*.swp
+*.swo
+*~
 .factory.claude/worktrees/
 
 # editor/agent tooling
 .claude/
-/.vscode/
-.vscode/settings.json
-/.pi/
+.vscode/
+.pi/
 
 # ephemeral / temp dirs (auto-generated, not tracked)
+.tmp/
+tmp/
+tmp-agents/
+tmp-agents-test/
 .agent-teams/
 .freebuff/
 .jspace/
@@ -69,9 +81,5 @@ Thumbs.db
 Desktop.ini
 
 # local tooling cruft
-.tmp/
-tmp/
-*.log
-/tmp-agents/
 /.commandcode/
 /patch-paths.mjs

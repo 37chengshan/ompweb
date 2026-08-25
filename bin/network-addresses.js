@@ -3,20 +3,27 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const os = require("os");
 
-const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-const WILDCARD_HOSTNAMES = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0", ""]);
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1", "[::1]", "0:0:0:0:0:0:0:1", "[0:0:0:0:0:0:0:1]"]);
+const WILDCARD_HOSTNAMES = new Set(["0.0.0.0", "::", "[::]", "0:0:0:0:0:0:0:0", "[0:0:0:0:0:0:0:0]", ""]);
 
 function isWildcardHost(hostname) {
-  return !hostname || WILDCARD_HOSTNAMES.has(String(hostname).trim());
+  if (hostname == null) return true;
+  if (typeof hostname !== "string") return false;
+  return WILDCARD_HOSTNAMES.has(hostname.trim());
 }
 
 function isLoopbackHost(hostname) {
-  return typeof hostname === "string" && LOOPBACK_HOSTNAMES.has(hostname.trim().toLowerCase());
+  if (typeof hostname !== "string") return false;
+  const h = hostname.trim().toLowerCase();
+  if (h.startsWith("127.")) return true;
+  return LOOPBACK_HOSTNAMES.has(h);
 }
-
 function getBrowserUrl(hostname, port) {
   if (isWildcardHost(hostname)) {
     return `http://localhost:${port}`;
+  }
+  if (typeof hostname === "string" && hostname.includes(":") && !hostname.startsWith("[")) {
+    return `http://[${hostname}]:${port}`;
   }
   return `http://${hostname}:${port}`;
 }

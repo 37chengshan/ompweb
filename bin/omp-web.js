@@ -102,10 +102,13 @@ async function main() {
 
   let bannerPrinted = false;
   let browserOpened = false;
+  let readyBuffer = "";
   child.stdout.on("data", (chunk) => {
     const text = chunk.toString();
     process.stdout.write(text);
-    if (text.includes("Ready")) {
+    readyBuffer += text;
+    if (readyBuffer.length > 500) readyBuffer = readyBuffer.slice(-500);
+    if (readyBuffer.includes("Ready")) {
       if (!bannerPrinted) {
         bannerPrinted = true;
         const { entries, hint } = getAccessibleAddresses({ hostname, port });

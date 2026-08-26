@@ -42,6 +42,7 @@ interface Props {
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
+  onModelCapacityChange?: (capacity: { contextWindow?: number; maxTokens?: number } | null) => void;
   onOpenFile?: (filePath: string) => void;
   onGenerationSpeedChange?: (speed: GenerationSpeedInfo | null) => void;
 }
@@ -410,7 +411,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
   );
 });
 
-export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onGenerationSpeedChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile }: Props) {
   const { t, tn } = useI18n();
   const { playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
@@ -433,7 +434,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   }, [chatInputRef]);
 
   const {
-    loading, error, messages, entryIds, streamState,
+    loading, error, messages, entryIds, showPreCompactionHistory, streamState,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelsLoading, modelError, modelThinkingLevels, modelThinkingLevelMaps, thinkingLevel, fastModeEnabled, fastModeActive,
     liveModelMeta,
     retryInfo, contextUsage, forkingEntryId,
@@ -448,7 +449,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction, handleCompact,
     removeQueuedMessage, promoteQueuedToSteer,
-    handleBuiltinSlashCommand,
+    handleBuiltinSlashCommand, togglePreCompactionHistory,
     handleThinkingLevelChange, handleFastModeChange, handleCycleModel, handleCycleThinkingLevel, handleAbortRetry, loadSlashCommands,
   } = useAgentSession({
     session, newSessionCwd, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
@@ -456,6 +457,17 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     onOpenFile,
   });
   const sessionBusy = agentRunning || bashRunning;
+  const modelCapacity = useMemo(() => {
+    if (!displayModelValue) return null;
+    const model = modelList.find((entry) => entry.provider === displayModelValue.provider && entry.id === displayModelValue.modelId);
+    if (!model || (!model.contextWindow && !model.maxTokens)) return null;
+    return { contextWindow: model.contextWindow, maxTokens: model.maxTokens };
+  }, [displayModelValue, modelList]);
+  const modelCapacityKey = modelCapacity ? `${modelCapacity.contextWindow ?? ""}|${modelCapacity.maxTokens ?? ""}` : "";
+  const modelCapacityRef = useRef(modelCapacity);
+  modelCapacityRef.current = modelCapacity;
+  useEffect(() => { onModelCapacityChange?.(modelCapacityRef.current); }, [modelCapacityKey, onModelCapacityChange]);
+  const hasCompaction = messages.some((message) => message.role === "custom" && (message as CustomMessage).customType === "compaction");
   const [generationSpeed, setGenerationSpeed] = useState<GenerationSpeedInfo | null>(null);
   const speedSamplesRef = useRef<number[]>([]);
   // Source of truth is omp's own get_state.tokensPerSecond (polled by the
@@ -1000,6 +1012,29 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               <ExtensionStatusBar statuses={extensionStatuses} />
               <ExtensionWidgets widgets={aboveEditorWidgets} />
 
+            {hasCompaction && (
+              <div
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  marginBottom: 8, padding: "7px 10px", border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-control)", background: "var(--bg-subtle)",
+                }}
+              >
+                <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                  {showPreCompactionHistory ? t("chatWindow.fullHistoryVisible") : t("chatWindow.compactedHistoryNotice")}
+                </span>
+                <button
+                  type="button"
+                  onClick={togglePreCompactionHistory}
+                  style={{
+                    flexShrink: 0, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)",
+                    background: "var(--bg)", color: "var(--text)", cursor: "pointer", fontSize: 12,
+                  }}
+                >
+                  {showPreCompactionHistory ? t("chatWindow.returnToCompactHistory") : t("chatWindow.viewPreCompactionHistory")}
+                </button>
+              </div>
+            )}
             <CommittedTranscript
               messages={messages}
               entryIds={entryIds}

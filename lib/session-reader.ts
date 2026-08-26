@@ -366,7 +366,7 @@ const SUPERSEDED_COMPACTION_SUMMARY = "[Superseded compaction summary elided aft
 export function buildSessionContext(
   entries: SessionEntry[],
   leafId?: string | null,
-  options: { deferThinking?: boolean; deferToolResultImages?: boolean } = {},
+  options: { deferThinking?: boolean; deferToolResultImages?: boolean; includePreCompaction?: boolean } = {},
 ): SessionContext {
   const emptyContext: SessionContext = { messages: [], entryIds: [], thinkingLevel: "off", model: null, todoPhases: [] };
   const byId = new Map<string, SessionEntry>();
@@ -433,9 +433,9 @@ export function buildSessionContext(
     }
   };
 
-  if (compaction) {
+  if (compaction && !options.includePreCompaction) {
     const activeCompaction = compaction;
-    // Collapsed view: active summary first, then entries kept from
+    // Agent-context view: active summary first, then entries kept from
     // firstKeptEntryId up to the compaction, then everything after it.
     appendEntry(activeCompaction);
     const compactionIdx = path.findIndex((e) => e.type === "compaction" && e.id === activeCompaction.id);

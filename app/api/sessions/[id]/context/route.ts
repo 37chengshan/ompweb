@@ -12,6 +12,8 @@ export async function GET(
   const leafId = url.searchParams.get("leafId") ?? undefined;
   const deferThinking = url.searchParams.has("deferThinking");
   const deferToolResultImages = url.searchParams.has("deferMedia");
+  // Read-only transcript mode: include entries omitted from the active agent context.
+  const includePreCompaction = url.searchParams.has("includePreCompaction");
 
   try {
     const resolved = await resolveSessionPathOr404(id);
@@ -34,6 +36,7 @@ export async function GET(
     const context = buildSessionContext(entries, leafId, {
       deferThinking,
       deferToolResultImages,
+      includePreCompaction,
     });
 
     return NextResponse.json({ context });

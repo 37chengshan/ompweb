@@ -28,15 +28,20 @@ export type ExtensionDialogResponse =
 export function ExtensionDialog({
   request,
   onRespond,
+  attached = false,
 }: {
   request: ExtensionDialogRequest;
   onRespond: (request: ExtensionDialogRequest, response: ExtensionDialogResponse) => void;
+  /** Render as a composer panel instead of a full-chat overlay. */
+  attached?: boolean;
 }) {
   const { t } = useI18n();
   const [value, setValue] = useState(request.method === "editor" ? request.prefill ?? "" : "");
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
 
   useEffect(() => {
     setValue(request.method === "editor" ? request.prefill ?? "" : "");
+    setSelectedOption(null);
   }, [request]);
 
   const cancel = () => onRespond(request, { cancelled: true });
@@ -45,12 +50,15 @@ export function ExtensionDialog({
   // document-level Escape (top-of-stack), and Tab wrapping inside the panel.
   const panelRef = useModalDialog<HTMLDivElement>({
     onClose: cancel,
-    active: true,
+    // A composer-attached request is a regular in-flow panel, not a modal.
+    active: !attached,
   });
 
   const submitValue = () => {
     if (request.method === "confirm") {
       onRespond(request, { confirmed: true });
+    } else if (request.method === "select") {
+      if (selectedOption) onRespond(request, { value: selectedOption });
     } else {
       onRespond(request, { value });
     }
@@ -58,13 +66,13 @@ export function ExtensionDialog({
 
   return (
     <div
-      className="animate-fade-in"
-      onMouseDown={(event) => {
+      className={attached ? undefined : "animate-fade-in"}
+      onMouseDown={attached ? undefined : (event) => {
         // Close when the pointer goes down on the backdrop itself (not when
         // the press starts inside the panel and is dragged out).
         if (event.target === event.currentTarget) cancel();
       }}
-      style={{
+      style={attached ? { width: "100%", flexShrink: 0 } : {
         position: "absolute",
         inset: 0,
         zIndex: 90,
@@ -78,18 +86,19 @@ export function ExtensionDialog({
       <div
         ref={panelRef}
         role="dialog"
-        aria-modal="true"
+        aria-modal={attached ? undefined : "true"}
         aria-label={request.title}
         tabIndex={-1}
-        className="animate-scale-in"
+        className={attached ? undefined : "animate-scale-in"}
         style={{
-          width: "min(560px, 100%)",
+          width: attached ? "100%" : "min(560px, 100%)",
           border: "1px solid var(--border)",
-          borderRadius: "var(--radius-modal)",
+          borderRadius: attached ? "var(--radius-card)" : "var(--radius-modal)",
           background: "var(--bg)",
-          boxShadow: "var(--shadow-modal)",
+          boxShadow: attached ? "var(--shadow-card)" : "var(--shadow-modal)",
           overflow: "hidden",
           outline: "none",
+          maxHeight: attached ? "min(420px, 60vh)" : undefined,
         }}
       >
         <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
@@ -103,28 +112,32 @@ export function ExtensionDialog({
           )}
           {request.method === "select" && (
             <div style={{ display: "grid", gap: 8 }}>
-              {request.options.map((option) => (
-                <button
-                  key={option}
-                  onClick={() => onRespond(request, { value: option })}
-                  style={{
-                    width: "100%",
-                    padding: "9px 10px",
-                    borderRadius: 7,
-                    border: "1px solid var(--border)",
-                    background: "var(--bg-panel)",
-                    color: "var(--text)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontSize: 13,
-                    transition: "background-color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-panel)"; }}
-                >
-                  {option}
-                </button>
-              ))}
+              {request.options.map((option) => {
+                const selected = selectedOption === option;
+                return (
+                  <button
+                    key={option}
+                    onClick={() => attached ? setSelectedOption(option) : onRespond(request, { value: option })}
+                    aria-pressed={attached ? selected : undefined}
+                    style={{
+                      width: "100%",
+                      padding: "9px 10px",
+                      borderRadius: 7,
+                      border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
+                      background: selected ? "color-mix(in srgb, var(--accent) 10%, var(--bg-panel))" : "var(--bg-panel)",
+                      color: "var(--text)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      fontSize: 13,
+                      transition: attached ? undefined : "background-color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
+                    }}
+                    onMouseEnter={attached ? undefined : (e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                    onMouseLeave={attached ? undefined : (e) => { e.currentTarget.style.background = "var(--bg-panel)"; }}
+                  >
+                    {option}
+                  </button>
+                );
+              })}
             </div>
           )}
           {request.method === "input" && (
@@ -209,6 +222,22 @@ export function ExtensionDialog({
               onMouseLeave={(e) => { e.currentTarget.style.background = "var(--accent)"; }}
             >
               {t("chatWindow.confirm")}
+            </button>
+          ) : request.method === "select" && attached ? (
+            <button
+              onClick={submitValue}
+              disabled={!selectedOption}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: "1px solid var(--accent)",
+                background: selectedOption ? "var(--accent)" : "var(--bg-subtle)",
+                color: selectedOption ? "var(--on-accent)" : "var(--text-dim)",
+                cursor: selectedOption ? "pointer" : "not-allowed",
+                opacity: selectedOption ? 1 : 0.65,
+              }}
+            >
+              {t("chatWindow.next")}
             </button>
           ) : request.method !== "select" ? (
             <button

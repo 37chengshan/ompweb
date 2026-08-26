@@ -641,6 +641,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [noticeState, dispatchNotice] = useReducer(noticeReducer, { visible: [], pending: [] });
   const [sessionStatsOverride, setSessionStatsOverride] = useState<SessionStatsInfo | null>(null);
   const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
+  const extensionDialogClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (extensionDialogClearTimerRef.current) clearTimeout(extensionDialogClearTimerRef.current);
+  }, []);
   const [extensionCustomUi, setExtensionCustomUi] = useState<ExtensionUiCustomRequest | null>(null);
   const [extensionStatuses, setExtensionStatuses] = useState<ExtensionStatusItem[]>([]);
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
@@ -1291,8 +1295,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     response: { value: string } | { confirmed: boolean } | { cancelled: true },
   ) => {
     const sid = sessionIdRef.current;
-    setExtensionDialog((current) => current?.id === request.id ? null : current);
-    if (!sid) return;
+    if (!sid) {
+      setExtensionDialog((current) => current?.id === request.id ? null : current);
+      return;
+    }
     try {
       await sendAgentCommand(sid, {
         type: "extension_ui_response",
@@ -1301,6 +1307,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     } catch (e) {
       console.error("Failed to send extension UI response:", e);
+    } finally {
+      // OMP commonly emits the next Ask select immediately after this response.
+      // Keep the current panel mounted for a short hand-off window so the composer
+      // never flashes empty between sequential questions.
+      if (extensionDialogClearTimerRef.current) clearTimeout(extensionDialogClearTimerRef.current);
+      extensionDialogClearTimerRef.current = setTimeout(() => {
+        setExtensionDialog((current) => current?.id === request.id ? null : current);
+        extensionDialogClearTimerRef.current = null;
+      }, 250);
     }
   }, []);
 
@@ -1544,6 +1559,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "confirm":
       case "input":
       case "editor":
+        if (extensionDialogClearTimerRef.current) {
+          clearTimeout(extensionDialogClearTimerRef.current);
+          extensionDialogClearTimerRef.current = null;
+        }
         setExtensionDialog(request);
         break;
       case "cancel":

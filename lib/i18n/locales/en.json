@@ -294,6 +294,7 @@
   "chatWindow.compactingContext": "Compacting context…",
   "chatWindow.scrollUpToLoad": "Scroll up to load earlier messages ({count} hidden)",
   "chatWindow.submit": "Submit",
+  "chatWindow.next": "Next",
   "chatWindow.thinking": "Thinking...",
   "chatWindow.subagentCount.one": "{count} subagent",
   "chatWindow.subagentCount.other": "{count} subagents",

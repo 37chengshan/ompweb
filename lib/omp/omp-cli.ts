@@ -55,7 +55,10 @@ function probeOmpBin(): string | null {
  * null when omp is not installed. A hit is cached for the process lifetime; a
  * miss is re-probed after MISS_TTL_MS. */
 export function resolveOmpBin(): string | null {
-  if (cachedBin) return cachedBin;
+  // A global Bun/npm update can replace or remove its launcher while this
+  // Next.js process is still alive. Never keep returning a stale cache entry.
+  if (cachedBin && existsSync(cachedBin)) return cachedBin;
+  cachedBin = null;
   if (Date.now() - binMissAt < MISS_TTL_MS) return null;
   const found = probeOmpBin();
   if (found) {

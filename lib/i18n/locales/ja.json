@@ -294,6 +294,7 @@
   "chatWindow.compactingContext": "コンテキストを圧縮中…",
   "chatWindow.scrollUpToLoad": "上にスクロールすると以前のメッセージを読み込みます（{count} 件非表示）",
   "chatWindow.submit": "送信",
+  "chatWindow.next": "次へ",
   "chatWindow.thinking": "思考中...",
   "chatWindow.subagentCount.one": "サブエージェント {count} 件",
   "chatWindow.subagentCount.other": "サブエージェント {count} 件",

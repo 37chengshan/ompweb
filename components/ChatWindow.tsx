@@ -926,13 +926,6 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
         </div>
       )}
 
-      {extensionDialog && (
-        <ExtensionDialog
-          request={extensionDialog}
-          onRespond={respondToExtensionUi}
-        />
-      )}
-
       <SubagentTranscriptDialog
         subagent={selectedSubagent}
         sessionId={session?.id ?? sessionIdRef.current ?? null}
@@ -1127,6 +1120,15 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
           }}
         >
           <div style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH, margin: "0 auto" }}>
+            {extensionDialog && (
+              <div style={{ marginBottom: 8 }}>
+                <ExtensionDialog
+                  request={extensionDialog}
+                  onRespond={respondToExtensionUi}
+                  attached
+                />
+              </div>
+            )}
             <ComposerPanels
               todoPhases={todoPhases}
               subagents={subagents}

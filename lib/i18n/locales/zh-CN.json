@@ -294,6 +294,7 @@
   "chatWindow.compactingContext": "正在压缩上下文…",
   "chatWindow.scrollUpToLoad": "向上滚动加载更早的消息（隐藏 {count} 条）",
   "chatWindow.submit": "提交",
+  "chatWindow.next": "下一题",
   "chatWindow.thinking": "思考中...",
   "chatWindow.subagentCount.one": "{count} 个子代理",
   "chatWindow.subagentCount.other": "{count} 个子代理",

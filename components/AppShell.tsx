@@ -302,8 +302,12 @@ export function AppShell() {
 
   // Context usage — populated by ChatWindow, displayed in top bar
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
+  const [modelCapacity, setModelCapacity] = useState<{ contextWindow?: number; maxTokens?: number } | null>(null);
   const handleContextUsageChange = useCallback((usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => {
     setContextUsage(usage);
+  }, []);
+  const handleModelCapacityChange = useCallback((capacity: { contextWindow?: number; maxTokens?: number } | null) => {
+    setModelCapacity(capacity);
   }, []);
 
   // Single active panel — only one dropdown open at a time
@@ -1070,7 +1074,7 @@ export function AppShell() {
           </>
         )}
           {/* Session stats and generation speed — right-aligned in top bar */}
-          {showChat && (sessionStats || contextUsage || generationSpeed) && (() => {
+          {showChat && (sessionStats || contextUsage || modelCapacity || generationSpeed) && (() => {
             const tok = sessionStats?.tokens;
             const c = sessionStats?.cost ?? 0;
             const costStr = c > 0 ? (c >= 0.01 ? `$${c.toFixed(2)}` : `<$0.01`) : null;
@@ -1101,6 +1105,7 @@ export function AppShell() {
               if (cacheRateStr) tooltipParts.push(t("appShell.tooltipCacheRate", { percent: cacheRateStr }));
               if (c > 0) tooltipParts.push(t("appShell.tooltipCost", { value: c.toFixed(4) }));
             }
+            if (modelCapacity?.maxTokens) tooltipParts.push(t("appShell.tooltipMaxOutput", { tokens: modelCapacity.maxTokens.toLocaleString(locale) }));
             if (contextUsage?.contextWindow) {
               const pct = contextUsage.percent;
               tooltipParts.push(t("appShell.tooltipContext", {
@@ -1175,6 +1180,9 @@ export function AppShell() {
                     </svg>
                     {formatCompactNumber(tok.cacheRead)}
                   </span>
+                )}
+                {!isMobile && modelCapacity?.maxTokens && (
+                  <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>↗ {formatCompactNumber(modelCapacity.maxTokens)}</span>
                 )}
                 {!isMobile && cacheRateStr && (
                   <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
@@ -1435,6 +1443,7 @@ export function AppShell() {
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
+              onModelCapacityChange={handleModelCapacityChange}
               onGenerationSpeedChange={handleGenerationSpeedChange}
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
             />

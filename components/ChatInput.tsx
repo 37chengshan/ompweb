@@ -1077,34 +1077,47 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const firstQueued = queuedEntries[0] ?? null;
   const queuedCount = queuedEntries.length;
 
-  const handleQueuedEdit = useCallback(() => {
-    if (!firstQueued) return;
-    onRemoveQueuedMessage?.(firstQueued.text);
-    setValue(firstQueued.text);
+  const [queueExpanded, setQueueExpanded] = useState(false);
+
+  const handleItemEdit = useCallback((text: string) => {
+    onRemoveQueuedMessage?.(text);
+    setValue(text);
     setAtQuery(null);
     setHistoryMenuOpen(false);
     requestAnimationFrame(() => {
       const ta = textareaRef.current;
       if (!ta) return;
       ta.focus();
-      ta.setSelectionRange(firstQueued.text.length, firstQueued.text.length);
+      ta.setSelectionRange(text.length, text.length);
       ta.style.height = "auto";
       ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
     });
-  }, [firstQueued, onRemoveQueuedMessage]);
+  }, [onRemoveQueuedMessage]);
+
+  const handleItemDelete = useCallback((text: string) => {
+    onRemoveQueuedMessage?.(text);
+  }, [onRemoveQueuedMessage]);
+
+  const handleItemSteer = useCallback((entry: { kind: "follow-up" | "steer"; text: string }) => {
+    if (entry.kind === "follow-up") {
+      onPromoteQueuedToSteer?.(entry.text);
+    }
+  }, [onPromoteQueuedToSteer]);
+
+  const handleQueuedEdit = useCallback(() => {
+    if (!firstQueued) return;
+    handleItemEdit(firstQueued.text);
+  }, [firstQueued, handleItemEdit]);
 
   const handleQueuedDelete = useCallback(() => {
     if (!firstQueued) return;
-    onRemoveQueuedMessage?.(firstQueued.text);
-  }, [firstQueued, onRemoveQueuedMessage]);
+    handleItemDelete(firstQueued.text);
+  }, [firstQueued, handleItemDelete]);
 
   const handleQueuedSteer = useCallback(() => {
     if (!firstQueued) return;
-    if (firstQueued.kind === "follow-up") {
-      onPromoteQueuedToSteer?.(firstQueued.text);
-    }
-    // Already a steering message: nothing to promote.
-  }, [firstQueued, onPromoteQueuedToSteer]);
+    handleItemSteer(firstQueued);
+  }, [firstQueued, handleItemSteer]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
     const lastIndex = filteredSlashCommands.length - 1;
@@ -1929,54 +1942,208 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               </div>
             );
           })()}
-        {/* Queued follow-up bar — thin strip attached to the composer's top
-            edge. Hidden entirely when nothing is queued. */}
-        {firstQueued && (
-          <div style={{
-            border: "1px solid var(--border)",
-            borderBottom: "none",
-            borderRadius: "var(--radius-card) var(--radius-card) 0 0",
-            background: "var(--bg-panel)",
-            padding: "5px 8px 5px 12px",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            minWidth: 0,
-          }}>
-            <span style={{
-              flexShrink: 0,
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: "var(--text-muted)",
-            }}>
-              {firstQueued.kind === "steer" ? t("chatInput.queuedSteer") : t("chatInput.queuedFollowUp")}
-              {queuedCount > 1 && <span style={{ color: "var(--text-dim)" }}>{" · " + queuedCount}</span>}
-            </span>
-            <span
-              title={firstQueued.text}
-              style={{
-                flex: 1,
+        {/* Queued prompts panel / bar — attached to composer's top edge.
+            When 1 item: compact single row. When multiple items: compact row with expand toggle, or full list when expanded. */}
+        {queuedCount > 0 && (
+          <div
+            aria-label={t("chatInput.queuedPrompts")}
+            style={{
+              border: "1px solid var(--border)",
+              borderBottom: "none",
+              borderRadius: "var(--radius-card) var(--radius-card) 0 0",
+              background: "var(--bg-panel)",
+              overflow: "hidden",
+            }}
+          >
+            {queuedCount === 1 ? (
+              <div style={{
+                padding: "5px 8px 5px 12px",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
                 minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                fontSize: 12,
-                color: "var(--text-muted)",
-              }}
-            >
-              {firstQueued.text}
-            </span>
-            <QueuedActionButton onClick={handleQueuedEdit} title={t("chatInput.queuedEditTitle")}>
-              {t("chatInput.queuedEdit")}
-            </QueuedActionButton>
-            <QueuedActionButton onClick={handleQueuedDelete} title={t("chatInput.queuedDeleteTitle")}>
-              {t("chatInput.queuedDelete")}
-            </QueuedActionButton>
-            <QueuedActionButton onClick={handleQueuedSteer} title={t("chatInput.queuedSteerTitle")} accent>
-              {t("chatInput.queuedSteerAction")}
-            </QueuedActionButton>
+              }}>
+                <span style={{
+                  flexShrink: 0,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "var(--text-muted)",
+                }}>
+                  {firstQueued?.kind === "steer" ? t("chatInput.queuedSteer") : t("chatInput.queuedFollowUp")}
+                </span>
+                <span
+                  title={firstQueued?.text}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    fontSize: 12,
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  {firstQueued?.text}
+                </span>
+                <QueuedActionButton onClick={handleQueuedEdit} title={t("chatInput.queuedEditTitle")}>
+                  {t("chatInput.queuedEdit")}
+                </QueuedActionButton>
+                <QueuedActionButton onClick={handleQueuedDelete} title={t("chatInput.queuedDeleteTitle")}>
+                  {t("chatInput.queuedDelete")}
+                </QueuedActionButton>
+                <QueuedActionButton onClick={handleQueuedSteer} title={t("chatInput.queuedSteerTitle")} accent>
+                  {t("chatInput.queuedSteerAction")}
+                </QueuedActionButton>
+              </div>
+            ) : (
+              <div>
+                <div style={{
+                  padding: "5px 8px 5px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  borderBottom: queueExpanded ? "1px solid var(--border)" : "none",
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => setQueueExpanded((prev) => !prev)}
+                    aria-expanded={queueExpanded}
+                    title={queueExpanded ? t("chatInput.collapseQueued") : t("chatInput.expandQueued")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      color: "var(--text-muted)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      minWidth: 0,
+                      flex: 1,
+                      textAlign: "left",
+                    }}
+                  >
+                    <ChevronDown
+                      size={13}
+                      strokeWidth={2}
+                      style={{
+                        transform: queueExpanded ? "rotate(0deg)" : "rotate(-90deg)",
+                        transition: "transform var(--dur-fast) var(--ease-out-warm)",
+                        flexShrink: 0,
+                      }}
+                      aria-hidden
+                    />
+                    <span>{t("chatInput.queuedPrompts")}</span>
+                    <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 10 }}>({queuedCount})</span>
+                    {!queueExpanded && firstQueued && (
+                      <span
+                        style={{
+                          marginLeft: 4,
+                          color: "var(--text-dim)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: 11,
+                          fontWeight: 400,
+                          textTransform: "none",
+                        }}
+                      >
+                        {firstQueued.kind === "steer" ? `[${t("chatInput.queuedSteer")}] ` : ""}{firstQueued.text}
+                      </span>
+                    )}
+                  </button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => setQueueExpanded((prev) => !prev)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: "2px 6px",
+                        cursor: "pointer",
+                        color: "var(--text-dim)",
+                        fontSize: 11,
+                      }}
+                    >
+                      {queueExpanded ? t("chatInput.collapseQueued") : t("chatInput.expandQueued")}
+                    </button>
+                  </div>
+                </div>
+                {queueExpanded && (
+                  <div style={{
+                    maxHeight: 180,
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                    background: "var(--bg-subtle)",
+                    padding: "4px 0",
+                  }}>
+                    {queuedEntries.map((entry, idx) => (
+                      <div
+                        key={`${entry.kind}:${idx}:${entry.text}`}
+                        style={{
+                          padding: "4px 8px 4px 12px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          background: "var(--bg-panel)",
+                          fontSize: 12,
+                        }}
+                      >
+                        <span style={{
+                          flexShrink: 0,
+                          fontSize: 9.5,
+                          fontWeight: 600,
+                          letterSpacing: "0.05em",
+                          textTransform: "uppercase",
+                          padding: "1px 4px",
+                          borderRadius: 4,
+                          background: entry.kind === "steer" ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "var(--bg)",
+                          border: `1px solid ${entry.kind === "steer" ? "var(--accent)" : "var(--border)"}`,
+                          color: entry.kind === "steer" ? "var(--accent)" : "var(--text-muted)",
+                        }}>
+                          {entry.kind === "steer" ? t("chatInput.queuedSteer") : t("chatInput.queuedFollowUp")}
+                        </span>
+                        <span
+                          title={entry.text}
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            color: "var(--text)",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 11.5,
+                          }}
+                        >
+                          {entry.text}
+                        </span>
+                        <QueuedActionButton onClick={() => handleItemEdit(entry.text)} title={t("chatInput.queuedEditTitle")}>
+                          {t("chatInput.queuedEdit")}
+                        </QueuedActionButton>
+                        <QueuedActionButton onClick={() => handleItemDelete(entry.text)} title={t("chatInput.queuedDeleteTitle")}>
+                          {t("chatInput.queuedDelete")}
+                        </QueuedActionButton>
+                        {entry.kind === "follow-up" && (
+                          <QueuedActionButton onClick={() => handleItemSteer(entry)} title={t("chatInput.queuedSteerTitle")} accent>
+                            {t("chatInput.queuedSteerAction")}
+                          </QueuedActionButton>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
           <div

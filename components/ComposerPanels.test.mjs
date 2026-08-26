@@ -111,6 +111,16 @@ test("retrying chips surface retry state instead of the activity line", () => {
   assert.doesNotMatch(html, />retrying 2\/5</);
 });
 
+test("coexists with composer layout and keeps todo progress summary accessible", () => {
+  const html = renderToStaticMarkup(React.createElement(ComposerPanels, {
+    todoPhases: [{ name: "Implementation", tasks: [{ content: "Checklist item 1", status: "pending" }, { content: "Checklist item 2", status: "completed" }] }],
+    subagents: [],
+    onSelectSubagent: noop,
+  }));
+  assert.match(html, /Tasks/);
+  assert.match(html, /1\/2 complete/);
+});
+
 test("history chips render terminal telemetry without pulsing state", () => {
   const html = renderToStaticMarkup(React.createElement(ComposerPanels, {
     todoPhases: [],

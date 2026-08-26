@@ -143,3 +143,40 @@ test("queued slash commands gate /advisor behind the per-chat toggle", async () 
   assert.ok(guard > 0, "advisor guard missing from sendQueued");
   assert.ok(expansion > guard, "advisor guard must run before command expansion");
 });
+
+test("renders single queued prompt in compact bar", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: true,
+      queuedMessages: {
+        followUp: ["First follow-up task"],
+        steering: [],
+      },
+    }),
+  );
+
+  assert.match(html, /First follow-up task/);
+  assert.match(html, />(Edit|chatInput\.queuedEdit)</);
+  assert.match(html, />(Delete|chatInput\.queuedDelete)</);
+  assert.match(html, />(Steer|chatInput\.queuedSteerAction)</);
+});
+
+test("renders multiple queued prompts with count and expand action", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: true,
+      queuedMessages: {
+        followUp: ["First task", "Second task"],
+        steering: ["Priority steer"],
+      },
+    }),
+  );
+
+  assert.match(html, /\(3\)/);
+  assert.match(html, />(Show all queued prompts|Show all|chatInput\.expandQueued)</);
+  assert.match(html, /First task/);
+});

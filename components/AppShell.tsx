@@ -1229,7 +1229,7 @@ export function AppShell() {
               left: "auto",
               width: "auto",
               minWidth: 360,
-              maxWidth: "min(560px, calc(100vw - 24px))",
+              maxWidth: "min(680px, calc(100vw - 24px))",
               maxHeight: `min(70vh, calc(100dvh - ${topPanelPos.top}px - 12px))`,
               overflowY: "auto",
               overflowX: "hidden",
@@ -1401,7 +1401,11 @@ export function AppShell() {
                         display: "grid",
                         gridTemplateColumns: isMobile
                           ? "1fr"
-                          : "minmax(300px, 1.7fr) minmax(120px, 0.55fr) minmax(160px, 0.75fr)",
+                          // Mins must fit inside the popover's 680px max-width
+                          // (3 columns + 2×24px gaps): 240+110+140+48 = 538.
+                          // Larger mins overflow and clip the Messages/Tokens
+                          // values off the right edge.
+                          : "minmax(240px, 1.6fr) minmax(110px, 0.55fr) minmax(140px, 0.65fr)",
                         gap: isMobile ? 16 : 24,
                         fontSize: 12,
                         lineHeight: 1.5,

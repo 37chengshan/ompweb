@@ -22,6 +22,10 @@ import { workspaceKeyOf } from "./workspace-memory";
  *  so project rows stay put while sessions refresh. */
 export function sortManagedProjects(projects: ManagedProject[]): ManagedProject[] {
   return [...projects].sort((a, b) => {
+    const aManual = a.sortOrder !== undefined;
+    const bManual = b.sortOrder !== undefined;
+    if (aManual !== bManual) return aManual ? -1 : 1;
+    if (aManual && bManual && a.sortOrder !== b.sortOrder) return a.sortOrder! - b.sortOrder!;
     const aHas = a.addedAt !== undefined;
     const bHas = b.addedAt !== undefined;
     if (aHas !== bHas) return aHas ? -1 : 1;

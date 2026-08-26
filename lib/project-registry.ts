@@ -25,6 +25,10 @@ export interface ProjectRegistryEntry {
   /** True when the user removed the project from the sidebar. Hidden entries
    *  suppress session re-discovery until the project is added again. */
   hidden: boolean;
+  /** Optional display-only workspace name. */
+  alias?: string;
+  /** Explicit sidebar position; lower values appear first. */
+  sortOrder?: number;
 }
 
 export interface ProjectRegistryFile {
@@ -70,6 +74,8 @@ export function parseProjectRegistry(raw: string): ProjectRegistryFile {
           ? item.addedAt
           : new Date(0).toISOString(),
         hidden: "hidden" in item && item.hidden === true,
+        alias: "alias" in item && typeof item.alias === "string" && item.alias.trim() ? item.alias.trim() : undefined,
+        sortOrder: "sortOrder" in item && typeof item.sortOrder === "number" && Number.isFinite(item.sortOrder) ? item.sortOrder : undefined,
       });
     }
     return { version: 1, projects: entries };
@@ -121,8 +127,38 @@ export function upsertProject(
   return { version: 1, projects };
 }
 
-/** Mark a project hidden (or add a hidden entry for a session-discovered
- *  project that was never explicitly added). Reversible via upsertProject. */
+/** Apply display-only updates (alias, sortOrder) to any number of projects in
+ *  ONE atomic operation — the caller persists the result once, so concurrent
+ *  single-entry writes can never lose each other's changes. Paths that match
+ *  no registry entry are ignored; callers wanting session-discovered projects
+ *  managed must register them in the same cycle (see /api/projects PATCH). */
+export function updateProjectsPresentation(
+  registry: ProjectRegistryFile,
+  updates: ReadonlyArray<{ path: string; alias?: string | null; sortOrder?: number | null }>,
+): ProjectRegistryFile {
+  const keyed = new Map(updates.map((update) =>
+    [comparableProjectPath(canonicalProjectPath(update.path)), update] as const,
+  ));
+  return {
+    version: 1,
+    projects: registry.projects.map((project) => {
+      const update = keyed.get(comparableProjectPath(project.path));
+      if (!update) return project;
+      const next = { ...project };
+      if (update.alias !== undefined) {
+        const alias = update.alias?.trim();
+        if (alias) next.alias = alias;
+        else delete next.alias;
+      }
+      if (update.sortOrder !== undefined) {
+        if (update.sortOrder === null) delete next.sortOrder;
+        else next.sortOrder = update.sortOrder;
+      }
+      return next;
+    }),
+  };
+}
+
 export function hideProject(registry: ProjectRegistryFile, path: string): ProjectRegistryFile {
   const canonical = canonicalProjectPath(path);
   const key = comparableProjectPath(canonical);
@@ -149,11 +185,16 @@ export function mergeProjects(registry: ProjectRegistryFile, discovered: Iterabl
   const registeredSeen = new Set<string>();
   for (const p of registry.projects
     .filter((entry) => !entry.hidden)
-    .sort((a, b) => b.addedAt.localeCompare(a.addedAt))) {
+    .sort((a, b) => {
+      const aOrder = a.sortOrder ?? Number.POSITIVE_INFINITY;
+      const bOrder = b.sortOrder ?? Number.POSITIVE_INFINITY;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return b.addedAt.localeCompare(a.addedAt);
+    })) {
     const key = comparableProjectPath(p.path);
     if (registeredSeen.has(key)) continue; // tolerate hand-edited duplicates
     registeredSeen.add(key);
-    registered.push({ path: p.path, addedAt: p.addedAt });
+    registered.push({ path: p.path, addedAt: p.addedAt, alias: p.alias, sortOrder: p.sortOrder });
   }
   const extra: ManagedProject[] = [];
   const extraSeen = new Set<string>();

@@ -454,6 +454,10 @@ export interface ManagedProject {
    *  projects and used to order the project list (most recently added
    *  first). The order is stable and never driven by session activity. */
   addedAt?: string;
+  /** User-defined display name; never changes the directory path. */
+  alias?: string;
+  /** Explicit sidebar position for registered projects. */
+  sortOrder?: number;
 }
 
 export interface SessionContext {

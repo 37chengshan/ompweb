@@ -560,6 +560,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
   const [homeDir, setHomeDir] = useState<string>("");
   // Managed + session-discovered projects (server-merged, hidden excluded).
   const [projects, setProjects] = useState<ManagedProject[]>([]);
+  const [draggedProjectPath, setDraggedProjectPath] = useState<string | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   // Add-project picker state.
   const [addProjectOpen, setAddProjectOpen] = useState(false);
@@ -1039,11 +1040,11 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
       let list = sessionsByProject.get(project.path) ?? [];
       if (runningOnly) list = list.filter((s) => runningSessionIds.has(s.id));
       if (q) {
-        const labelLower = projectLabel(project.path).toLowerCase();
         list = list.filter((s) => (s.name ?? "").toLowerCase().includes(q) || s.firstMessage.toLowerCase().includes(q));
-        if (list.length === 0 && !labelLower.includes(q)) continue;
       }
-      if (list.length === 0 && (runningOnly || q)) continue;
+      // Label/alias-only matches surface as empty workspaces; without this
+      // clause a custom workspace name would be unfindable by search.
+      if (list.length === 0 && (runningOnly || (q && !projectLabel(project.path).toLowerCase().includes(q) && !(project.alias ?? "").toLowerCase().includes(q)))) continue;
       entries.push({ project, sessions: list });
     }
     return entries;
@@ -1171,6 +1172,58 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
       setAddProjectBusy(false);
     }
   }, [addProjectBusy, loadProjects, expandProject]);
+
+  const handleUpdateProjectPresentation = useCallback(async (projectPath: string, updates: { alias?: string | null; sortOrder?: number | null }) => {
+    try {
+      const response = await fetch("/api/projects", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cwd: projectPath, ...updates }) });
+      if (!response.ok) throw new Error(t("projects.updateFailed"));
+      await loadProjects();
+    } catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+  }, [loadProjects, t]);
+
+  /** Persist one whole-list order as a single atomic batched PATCH. */
+  const persistProjectOrder = useCallback(async (next: ManagedProject[]) => {
+    try {
+      // One batched request: the server applies every entry in a single
+      // atomic registry save, so per-project writes can't interleave and lose
+      // updates. Discovered projects included here are registered server-side.
+      const response = await fetch("/api/projects", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: next.map((project, index) => ({ cwd: project.path, sortOrder: index })) }),
+      });
+      if (!response.ok) throw new Error(t("projects.reorderFailed"));
+      await loadProjects();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  }, [loadProjects, t]);
+
+  const handleProjectDrop = useCallback(async (targetPath: string) => {
+    const sourcePath = draggedProjectPath;
+    setDraggedProjectPath(null);
+    if (!sourcePath || sourcePath === targetPath) return;
+    const next = [...sortedProjects];
+    const from = next.findIndex((project) => project.path === sourcePath);
+    const to = next.findIndex((project) => project.path === targetPath);
+    if (from < 0 || to < 0) return;
+    const [moved] = next.splice(from, 1);
+    if (!moved) return;
+    next.splice(to, 0, moved);
+    await persistProjectOrder(next);
+  }, [draggedProjectPath, sortedProjects, persistProjectOrder]);
+
+  /** Keyboard-accessible reorder: move one project up/down the list. */
+  const handleMoveProject = useCallback(async (projectPath: string, delta: -1 | 1) => {
+    const next = [...sortedProjects];
+    const index = next.findIndex((project) => project.path === projectPath);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= next.length) return;
+    const [moved] = next.splice(index, 1);
+    if (!moved) return;
+    next.splice(target, 0, moved);
+    await persistProjectOrder(next);
+  }, [sortedProjects, persistProjectOrder]);
 
   const handleRemoveProject = useCallback(async (projectPath: string) => {
     if (removeProjectPath) return;
@@ -1672,6 +1725,11 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
                 onActivate={activateProject}
                 onToggleExpand={toggleProjectExpanded}
                 onRemoveProject={handleRemoveProject}
+                onUpdatePresentation={handleUpdateProjectPresentation}
+                onDragPathChange={setDraggedProjectPath}
+                onDropProject={(path) => void handleProjectDrop(path)}
+                onMoveProject={(path, delta) => void handleMoveProject(path, delta)}
+                isDragTarget={draggedProjectPath !== null && draggedProjectPath !== project.path}
                 removeBusy={removeProjectPath === project.path}
                 onSelectSession={handleSelectSessionFromList}
                 onRenamed={loadSessions}
@@ -1883,6 +1941,11 @@ interface ProjectRowProps {
   onActivate: (path: string) => void;
   onToggleExpand: (path: string) => void;
   onRemoveProject: (path: string) => void;
+  onUpdatePresentation: (path: string, updates: { alias?: string | null; sortOrder?: number | null }) => void;
+  onDragPathChange: (path: string | null) => void;
+  onDropProject: (path: string) => void;
+  onMoveProject: (path: string, delta: -1 | 1) => void;
+  isDragTarget: boolean;
   removeBusy: boolean;
   onSelectSession: (s: SessionInfo) => void;
   onRenamed?: () => void;
@@ -1914,6 +1977,11 @@ function ProjectRow({
   onActivate,
   onToggleExpand,
   onRemoveProject,
+  onUpdatePresentation,
+  onDragPathChange,
+  onDropProject,
+  onMoveProject,
+  isDragTarget,
   removeBusy,
   onSelectSession,
   onRenamed,
@@ -1930,7 +1998,29 @@ function ProjectRow({
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const actionButtonRef = useRef<HTMLButtonElement>(null);
-  const label = projectLabel(project.path);
+  const [aliasEditing, setAliasEditing] = useState(false);
+  const [aliasValue, setAliasValue] = useState("");
+  const aliasInputRef = useRef<HTMLInputElement>(null);
+  const aliasCancelRef = useRef(false);
+
+  const startAliasEdit = useCallback(() => {
+    setAliasValue(project.alias ?? "");
+    setAliasEditing(true);
+    setTimeout(() => aliasInputRef.current?.select(), 0);
+  }, [project.alias]);
+
+  const commitAliasEdit = useCallback(() => {
+    if (aliasCancelRef.current) {
+      aliasCancelRef.current = false;
+      setAliasEditing(false);
+      return;
+    }
+    const alias = aliasValue.trim();
+    setAliasEditing(false);
+    if (alias === (project.alias ?? "")) return;
+    void onUpdatePresentation(project.path, { alias });
+  }, [aliasValue, project.alias, project.path, onUpdatePresentation]);
+  const label = project.alias ?? projectLabel(project.path);
   const hasActivity = Boolean(activity && (activity.running > 0 || activity.unread > 0));
   const visibleRoots = hiddenCount > 0 && !showAllSessions
     ? tree.slice(0, MAX_PROJECT_SESSIONS)
@@ -1941,6 +2031,11 @@ function ProjectRow({
     <section className="sidebar-project" data-active={isActive ? "true" : "false"} style={{ marginBottom: 12 }}>
       <div
         className="sidebar-project-header"
+        draggable={!aliasEditing}
+        onDragStart={(event) => { event.dataTransfer.setData("text/plain", project.path); event.dataTransfer.effectAllowed = "move"; onDragPathChange(project.path); }}
+        onDragOver={(event) => { if (isDragTarget) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
+        onDrop={(event) => { event.preventDefault(); onDropProject(project.path); }}
+        onDragEnd={() => onDragPathChange(null)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onFocus={() => setFocusWithin(true)}
@@ -1963,49 +2058,93 @@ function ProjectRow({
           borderRadius: "var(--radius-control)",
           background: hovered ? "var(--bg-hover)" : "transparent",
           transition: SIDEBAR_BUTTON_TRANSITION,
+          ...(isDragTarget ? { outline: "1px solid var(--accent)", outlineOffset: -1 } : {}),
         }}
       >
-        <button
-          className="sidebar-project-identity"
-          onClick={() => onActivate(project.path)}
-          aria-current={isActive ? "true" : undefined}
-          title={project.path}
-          style={{
-            flex: "0 1 auto",
-            minWidth: 0,
-            alignSelf: "stretch",
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "0 4px 0 10px",
-            background: "none", border: "none",
-            color: hovered ? "var(--text)" : "var(--text-muted)",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          <Folder
-            size={15}
-            strokeWidth={1.8}
-            style={{ flexShrink: 0, color: isActive ? "var(--accent)" : hovered ? "var(--text-muted)" : "var(--text-dim)", transition: "color var(--dur-fast) var(--ease-out-warm)" }}
-            aria-hidden="true"
-          />
-          <span
+        {aliasEditing ? (
+          <div
+            className="sidebar-project-identity"
+            onClick={(event) => event.stopPropagation()}
             style={{
+              flex: "0 1 auto",
               minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontFamily: "var(--font-mono)",
-              fontSize: 12,
-              fontWeight: 600,
-              letterSpacing: "-0.01em",
-              lineHeight: 1.25,
+              alignSelf: "stretch",
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "0 4px 0 10px",
             }}
           >
-            {label}
-          </span>
-        </button>
+            <Folder
+              size={15}
+              strokeWidth={1.8}
+              style={{ flexShrink: 0, color: "var(--text-muted)" }}
+              aria-hidden="true"
+            />
+            <input
+              ref={aliasInputRef}
+              autoFocus
+              aria-label={t("projects.aliasPrompt")}
+              value={aliasValue}
+              onChange={(event) => setAliasValue(event.target.value)}
+              onBlur={commitAliasEdit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitAliasEdit();
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  aliasCancelRef.current = true;
+                  setAliasEditing(false);
+                }
+              }}
+              style={{ flex: 1, minWidth: 0, height: 22, padding: "2px 6px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", outline: "none", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "var(--font-mono)", fontWeight: 600 }}
+            />
+          </div>
+        ) : (
+          <button
+            className="sidebar-project-identity"
+            onClick={() => onActivate(project.path)}
+            aria-current={isActive ? "true" : undefined}
+            title={project.path}
+            style={{
+              flex: "0 1 auto",
+              minWidth: 0,
+              alignSelf: "stretch",
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "0 4px 0 10px",
+              background: "none", border: "none",
+              color: hovered ? "var(--text)" : "var(--text-muted)",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <Folder
+              size={15}
+              strokeWidth={1.8}
+              style={{ flexShrink: 0, color: isActive ? "var(--accent)" : hovered ? "var(--text-muted)" : "var(--text-dim)", transition: "color var(--dur-fast) var(--ease-out-warm)" }}
+              aria-hidden="true"
+            />
+            <span
+              style={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: "-0.01em",
+                lineHeight: 1.25,
+              }}
+            >
+              {label}
+            </span>
+          </button>
+        )}
         {worktreeBranch && worktreeToggleRef && (
           <button
             type="button"
@@ -2088,6 +2227,15 @@ function ProjectRow({
             placement="below"
             minWidth={136}
           >
+            <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { startAliasEdit(); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
+              {project.alias ? t("projects.editAlias") : t("projects.nameAlias")}
+            </button>
+            <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { setActionMenuOpen(false); void onMoveProject(project.path, -1); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
+              {t("projects.moveUp")}
+            </button>
+            <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { setActionMenuOpen(false); void onMoveProject(project.path, 1); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
+              {t("projects.moveDown")}
+            </button>
             <button type="button" role="menuitem" className="sidebar-menu-item" disabled={removeBusy} onClick={() => { setActionMenuOpen(false); onRemoveProject(project.path); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: removeBusy ? "default" : "pointer", textAlign: "left", fontSize: 11 }}>
               {t("projects.remove", { name: label })}
             </button>

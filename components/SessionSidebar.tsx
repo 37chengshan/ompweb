@@ -13,7 +13,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
-import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, GitBranch, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 
 declare global {
@@ -2020,6 +2020,19 @@ function ProjectRow({
     if (alias === (project.alias ?? "")) return;
     void onUpdatePresentation(project.path, { alias });
   }, [aliasValue, project.alias, project.path, onUpdatePresentation]);
+  const revealInFileManager = useCallback(async (dir: string) => {
+    try {
+      const res = await fetch("/api/reveal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: dir }),
+      });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) toast.error(data.error ?? t("fileExplorer.revealFailed"));
+    } catch {
+      toast.error(t("fileExplorer.revealFailed"));
+    }
+  }, [t]);
   const label = project.alias ?? projectLabel(project.path);
   const hasActivity = Boolean(activity && (activity.running > 0 || activity.unread > 0));
   const visibleRoots = hiddenCount > 0 && !showAllSessions
@@ -2178,6 +2191,19 @@ function ProjectRow({
           </button>
         )}
         <div style={{ flex: 1 }} />
+        {/* Always-visible: open the workspace folder in the system file manager. */}
+        <Tooltip content={t("fileExplorer.revealInFileManager")}>
+          <button
+            type="button"
+            className="sidebar-project-action"
+            onClick={() => void revealInFileManager(project.path)}
+            aria-label={t("fileExplorer.revealInFileManager")}
+            title={t("fileExplorer.revealInFileManager")}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-dim)", cursor: "pointer", lineHeight: 0, transition: SIDEBAR_BUTTON_TRANSITION }}
+          >
+            <FolderSearch size={13} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </Tooltip>
         {hasActivity && (
           <span
             aria-label={t("projects.activity", { running: activity?.running ?? 0, unread: activity?.unread ?? 0 })}

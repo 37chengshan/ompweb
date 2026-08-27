@@ -17,31 +17,42 @@ Local web UI for the [oh-my-pi (omp) coding agent](https://github.com/can1357/oh
 
 </details>
 
-## 🌟 Optimizations & Enhancements over Upstream (相比上游仓库的优化与增强)
+## 🌟 Enhancements & Optimizations over Upstream (相比上游仓库的优化与增强)
 
-This repository ([37chengshan/ompweb](https://github.com/37chengshan/ompweb)) is a tuned, hardened fork of [kahme247/ompweb](https://github.com/kahme247/ompweb). Based on a complete code-level audit, the following architectural improvements, memory safety protections, and rendering optimizations have been implemented:
+This repository ([37chengshan/ompweb](https://github.com/37chengshan/ompweb)) is a feature-rich, hardened fork of [kahme247/ompweb](https://github.com/kahme247/ompweb). Based on actual code implementations, the following key features, architectural upgrades, and performance optimizations have been added:
 
-### 1. ⚡ Frontend Rendering & Viewport Safety
-- **Streaming Markdown AST Bypass (`components/MarkdownBody.tsx`)**: During token streaming (`isStreaming: true`), expensive full-text math regex scans (`normalizeDisplayMath`) and dynamic KaTeX plugin imports are bypassed. The AST is built cleanly once when the message is committed, eliminating token-by-token garbage collection pressure and keeping streaming smooth at 60fps.
-- **LRU Memoization Caches (`lib/markdown.ts`, `lib/patch.ts`)**:
-  - `normalizeDisplayMath`: 200-slot LRU memory cache (`cachedNormalizeDisplayMath`) skips redundant line scans on scroll, re-renders, or theme switches for immutable historical messages.
-  - `parseUnifiedPatch`: 20-slot LRU cache (`patchCache`) prevents re-parsing unified diff strings when toggling view modes or scrolling.
-- **Viewport DOM Explosion & Memory Caps (`components/MessageView.tsx`)**:
-  - `SplitPatchView` & `PatchTextView`: Hard cap at 800 rows (`MAX_ROWS = 800`) with an inline truncation indicator to prevent browser freezes when rendering multi-thousand-line Git patches.
-  - `ThinkingBlock` & `PairedResult`: 100,000-character safety cutoff on raw thinking traces and tool output blocks.
-- **Component Memoization (`components/PlanPanel.tsx`, `components/MessageView.tsx`)**: Wrapped in `React.memo` to eliminate cascading re-renders when parent states (timers, token rates, composer focus) update.
+### 1. 🖥️ Interactive Web Terminal (内置交互式终端)
+- **Real PTY Shell Integration (`app/api/terminal/route.ts`, `components/EmbeddedTerminal.tsx`)**: Spawns true pseudo-terminals (`python3 -c "import pty; pty.spawn(...)"`) with ANSI color decoding, bidirectional SSE streaming, serialized inputs, and dynamic window resize (`cols`/`rows`).
+- **Dockable Bottom Panel**: Run Git commands, build scripts, tests, and CLI tools directly within ompweb without leaving the browser. Includes auto session reaping and bounded output ring buffers.
 
-### 2. 🛡️ Backend Node.js, RPC & File I/O Hardening
-- **Git Project Resolution In-Flight Dedup (`lib/worktree.ts`)**: Extended `PROJECT_CACHE_TTL_MS` to 300,000ms (5 minutes) and added `__piProjectPendingCache` to coalesce concurrent parallel `resolveProject` calls into a single Promise, eliminating redundant `git rev-parse` subprocess storms.
-- **SSE Socket & Memory Leak Prevention (`app/api/agent/[id]/events/route.ts`, `lib/rpc-manager.ts`)**: `AgentSessionWrapper.destroyAndWait()` emits an explicit `session_destroyed` event on session termination, which immediately closes the SSE `ReadableStream` and unregisters event listeners, preventing zombie file descriptor leaks.
-- **Child Process Dispose Failsafe (`lib/omp/rpc-process.ts`)**: Wrapped `RpcProcess.dispose()` with a `Promise.race` timeout fallback to prevent hanging promises if the OS delays reaping terminated child processes. Standardized line reader with `crlfDelay: Infinity`.
-- **Atomic File Write Cleanup (`lib/omp/mcp-config.ts`)**: Wrapped atomic temporary file operations in `try ... finally { try { unlinkSync(temp); } catch {} }` blocks, preventing orphaned `.tmp-*` files during disk or permission errors.
-- **Context Payload Shrinking (`lib/session-reader.ts`, `lib/types.ts`)**: Made `thinking?: string` optional in `ThinkingContent`. When `deferThinking: true` is requested, the field is fully destructured and omitted from JSON responses rather than serializing empty strings.
+### 2. 📂 Native File Manager Integration & Workspace Ordering (文件管理与工作区排序)
+- **Always-Visible Reveal Action (`components/FileExplorer.tsx`, `app/api/files/open/route.ts`)**: Permanent "Reveal in Finder / Explorer / File Manager" quick-actions on workspace headers and file tree nodes (not hover-gated) with cross-platform support (macOS `open`, Windows `explorer.exe`, Linux `xdg-open`).
+- **Workspace Aliases & Custom Ordering (`lib/project-registry.ts`, `lib/project-ordering.ts`)**: Rename workspace display labels (aliases) and customize project sidebar ordering persistently without mutating repository paths on disk.
 
-### 3. ⚙️ Redesigned MCP Management & Built-in Agent MCP
-- **Dual-Mode Visual Form Editor (`components/McpConfig.tsx`)**: Form-based editing (Transport, Command, Args, URL, Enabled switch) alongside raw JSON, featuring one-click quick templates (`Python stdio`, `NPX stdio`, `Remote HTTP`) and support for both User-level (`~/.omp/agent/mcp.json`) and Project-level configurations.
-- **Categorized Accordion & Filter (`components/McpConfig.tsx`)**: Groups multi-client discovered MCP servers by source into collapsible accordions with real-time search, preventing card overflow.
-- **Built-in Agent MCP Integration**: Includes native `agent-mcp` (v3.0.0) orchestration tools and presets with high-concurrency SQLite tuning (`PRAGMA temp_store=MEMORY`, `isolation_level=None`), lock-free SSE broadcaster queues (`daemon_http.py`), and exponential backoff polling (`mcp_server.py`).
+### 3. 🎨 Visual Theme Studio & Motion Controls (主题工作室与动效偏好)
+- **Theme Studio (`components/ThemeStudio.tsx`, `hooks/useTheme.ts`)**: Live preview and customize paper/ember design tokens with WCAG AA contrast verification, instant light/dark/system cycling, and custom color accents.
+- **Motion Accessibility (`hooks/useMotionPrefs.ts`)**: OS `prefers-reduced-motion` integration that instantly disables heavy SVG SMIL animations and replaces smooth-scrolling with instant jumps for users sensitive to motion.
+
+### 4. 🧭 Plan Mode Surface & History Traceability (计划看板与压缩前历史追溯)
+- **Interactive Plan Panel (`components/PlanPanel.tsx`, `lib/plan-reader.ts`)**: Live plan document rendering from `<session>/local/*-plan.md`, one-click plan execution, and a dedicated critique/feedback modal (`onRejectPlan`).
+- **Pre-Compaction History Browsing (`lib/session-reader.ts`)**: Toggle and inspect full pre-compaction message history without polluting the active agent context.
+
+### 5. ⚡ Frontend Rendering & Viewport Safety (前端渲染极致优化)
+- **Streaming Markdown AST Bypass (`components/MarkdownBody.tsx`)**: Bypasses expensive math regex scans (`normalizeDisplayMath`) and dynamic KaTeX imports during streaming, compiling AST only once on message commit for a smooth 60fps experience.
+- **LRU Memory Caches (`lib/markdown.ts`, `lib/patch.ts`)**: 200-slot LRU cache for display math normalization and 20-slot LRU cache for unified diff parsing (`parseUnifiedPatch`).
+- **DOM Explosion Protection (`components/MessageView.tsx`)**: 800-row limit (`MAX_ROWS = 800`) on Git diff views and 100KB safety caps on thinking/tool outputs.
+- **Component Memoization (`components/PlanPanel.tsx`, `components/MessageView.tsx`)**: `React.memo` wrappers prevent cascading re-renders during active streaming.
+
+### 6. 🛡️ Backend Node.js, RPC & File I/O Hardening (后端 RPC 内存安全加固)
+- **Git ProjectRoot Dedup & 5-minute Cache (`lib/worktree.ts`)**: `__piProjectPendingCache` coalesces concurrent `resolveProject` calls into a single Promise and caches results for 5 minutes.
+- **SSE Socket & Memory Leak Prevention (`app/api/agent/[id]/events/route.ts`, `lib/rpc-manager.ts`)**: Emits `session_destroyed` upon session termination to immediately close SSE streams and unregister listeners.
+- **Child Process Dispose Failsafe (`lib/omp/rpc-process.ts`)**: `Promise.race` timeout fallback prevents hanging promises on un-reaped processes; `crlfDelay: Infinity` standardizes NDJSON parsing.
+- **Context Payload Shrinking (`lib/session-reader.ts`, `lib/types.ts`)**: Completely strips deferred `thinking` fields from JSON payloads rather than sending empty strings.
+
+### 7. ⚙️ Redesigned MCP Manager & Built-in Agent MCP (MCP 管理器重构与 Agent MCP 集成)
+- **Dual-Mode Visual Form Editor (`components/McpConfig.tsx`)**: Form-based editing (Transport, Command, Args, URL, Enabled switch) + JSON mode with quick templates (`Python stdio`, `NPX stdio`, `Remote HTTP`) and project/global configuration support.
+- **Categorized Accordion & Filter (`components/McpConfig.tsx`)**: Accordion grouping with real-time search for multi-client discovered MCP servers.
+- **Built-in Agent MCP Integration (`vendor/agent-mcp/`)**: Vendored `agent-mcp` (v3.0.0) multi-agent orchestration tools with SQLite tuning (`PRAGMA temp_store=MEMORY`, autocommit mode) and lock-free SSE broadcaster queues.
 
 ## Requirements
 

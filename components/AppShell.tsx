@@ -269,7 +269,7 @@ export function AppShell() {
       .then((data: { currentVersion?: string; availableVersion?: string | null; updateAvailable?: boolean; updateCommand?: string } | null) => {
         setAppUpdateAvailable(Boolean(data?.updateAvailable));
         if (!data?.updateAvailable || !data.availableVersion) return;
-        const cmd = data.updateCommand || "npm install -g @kahme247/ompweb";
+        const cmd = data.updateCommand || "npm install -g @37chengshan/ompweb";
         toast.info(
           translate("appShell.appUpdateAvailable"),
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>

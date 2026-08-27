@@ -2,7 +2,7 @@ import packageJson from "../package.json";
 import { homedir } from "os";
 import { join, normalize, sep } from "path";
 
-const NPM_PACKAGE = "@kahme247/ompweb";
+const NPM_PACKAGE = "@37chengshan/ompweb";
 const CHECK_TTL_MS = 60 * 60 * 1000;
 
 export interface NpmUpdateStatus {
@@ -39,7 +39,7 @@ export async function checkNpmUpdate(force = false): Promise<NpmUpdateStatus> {
   const currentVersion = packageJson.version;
   const packageDir = process.env.OMP_WEB_PACKAGE_DIR ?? process.cwd();
   const method = detectInstallMethod(packageDir);
-  const updateCommand = method === "bun" ? "bun add -g @kahme247/ompweb" : "npm install -g @kahme247/ompweb";
+  const updateCommand = method === "bun" ? "bun add -g @37chengshan/ompweb" : "npm install -g @37chengshan/ompweb";
 
   try {
     const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(NPM_PACKAGE)}/latest`, {

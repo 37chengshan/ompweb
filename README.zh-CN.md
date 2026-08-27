@@ -8,32 +8,44 @@
 
 ![ompweb — 演示](docs/demo.gif)
 
-<details>
-<summary>截图（浅色 / 深色主题）</summary>
+<d## 🌟 相比上游仓库的优化与增强 (Optimizations & Enhancements)
 
-![ompweb — 浅色主题](docs/screenshot-light.png)
+本仓库（[37chengshan/ompweb](https://github.com/37chengshan/ompweb)）是基于 [kahme247/ompweb](https://github.com/kahme247/ompweb) 的功能增强与深度调优版本。基于实际代码实现，包含了以下关键特性新增、架构升级与性能优化：
 
-![ompweb — 深色主题](docs/screenshot-dark.png)
+### 1. 🖥️ 内置交互式 Web 终端 (Interactive Web Terminal)
+- **真 PTY 伪终端支持 (`app/api/terminal/route.ts`, `components/EmbeddedTerminal.tsx`)**：利用 `python3 -c "import pty; pty.spawn(...)"` 生成原生 PTY，支持 ANSI 全彩高亮解析、双向 SSE 流式传输、有序输入序列化与终端窗口动态缩放（`cols`/`rows`）。
+- **底部可停靠面板**：直接在 Web 界面执行 Git 命令、调试脚本和运行测试，自带超时会话自动回收与环形缓冲区溢出保护。
 
-</details>
+### 2. 📂 系统原生文件管理器联动与工作区排序 (File Explorer & Workspace Alias)
+- **常驻「在文件管理器中显示」快捷键 (`components/FileExplorer.tsx`, `app/api/files/open/route.ts`)**：工作区卡片与文件树节点提供常驻快捷按钮（无需 hover 悬停），跨平台调用系统原生文件管理器（macOS `open`、Windows `explorer.exe`、Linux `xdg-open`）。
+- **工作区别名与自定义排序 (`lib/project-registry.ts`, `lib/project-ordering.ts`)**：支持为工作区设置显示别名（Alias）并在侧边栏持久化自定义排序，不破坏磁盘目录结构。
 
-## 🌟 相比上游仓库的优化与增强 (Optimizations & Enhancements)
+### 3. 🎨 视觉主题工作室与无障碍动效控制 (Theme Studio & Motion Controls)
+- **主题调色工作室 (`components/ThemeStudio.tsx`, `hooks/useTheme.ts`)**：支持自定义纸感/余烬设计系统 Token，所有色彩均通过 WCAG AA 对比度验证，提供浅色/深色/跟随系统一键轮转与个性化强调色调节。
+- **动效无障碍支持 (`hooks/useMotionPrefs.ts`)**：自动适配系统 `prefers-reduced-motion` 偏好，立即禁用耗性能的 SVG SMIL 动效并将平滑滚动转换为瞬时跳跃，保障低配设备流畅度。
 
-本仓库（[37chengshan/ompweb](https://github.com/37chengshan/ompweb)）是基于 [kahme247/ompweb](https://github.com/kahme247/ompweb) 的深度性能调优与安全加固版本。根据对代码库的全量审计，在前端渲染、后端 RPC/IO 内存安全与 MCP 管理上落地了以下代码级优化：
+### 4. 🧭 计划模式看板与压缩前历史追溯 (Plan Mode & History Traceability)
+- **交互式计划看板 (`components/PlanPanel.tsx`, `lib/plan-reader.ts`)**：实时同步并渲染 `<session>/local/*-plan.md` 计划草稿，支持一键执行计划与弹窗提交结构化修改意见（`onRejectPlan`）。
+- **压缩前历史追溯 (`lib/session-reader.ts`)**：允许用户在顶栏展开浏览上下文压缩前的全部原始历史记录，不污染当前活跃上下文。
 
-### 1. ⚡ 前端渲染与视口安全防御
-- **流式 Markdown 增量绕过 (`components/MarkdownBody.tsx`)**：在 Token 流式输出期间（`isStreaming: true`），跳过开销巨大的全文 Math 正则扫描（`normalizeDisplayMath`）与 KaTeX 插件动态加载；仅在消息提交（Commit）时执行一次完整 AST 解析，彻底消除逐 Token 垃圾回收卡顿，保持 60fps 丝滑渲染。
-- **内存级 LRU 缓存加速 (`lib/markdown.ts`, `lib/patch.ts`)**：
-  - `normalizeDisplayMath`：引入 200 条容量的 LRU 内存缓存（`cachedNormalizeDisplayMath`），历史消息在滚动、组件重渲染或切换主题时直接命中缓存，零二次计算。
-  - `parseUnifiedPatch`：引入 20 条容量的 LRU 缓存（`patchCache`），避免频繁展开/收起对比视图时重复正则解析 Git Patch。
-- **DOM 节点防雪崩与内存截断 (`components/MessageView.tsx`)**：
-  - `SplitPatchView` & `PatchTextView`：对 Git Diff 视图设置 800 行硬上限（`MAX_ROWS = 800`）并附带截断提示，防止数千行巨型补丁撑爆浏览器 DOM 树。
-  - `ThinkingBlock` & `PairedResult`：对超长思考链与工具输出设置 100,000 字符安全截断，防止极端日志导致页面假死。
-- **组件细粒度 Memo 优化 (`components/PlanPanel.tsx`, `components/MessageView.tsx`)**：使用 `React.memo` 阻断非必要级联重渲染。
+### 5. ⚡ 前端渲染引擎与视口安全防御 (UI & React Rendering)
+- **流式 Markdown 增量绕过 (`components/MarkdownBody.tsx`)**：Token 流式输出期间跳过全文公式正则扫描（`normalizeDisplayMath`）与 KaTeX 插件动态加载，仅在消息提交时执行一次 AST 构建，保持 60fps 丝滑渲染。
+- **内存级 LRU 缓存加速 (`lib/markdown.ts`, `lib/patch.ts`)**：公式标准化内置 200 条容量 LRU 缓存，Unified Diff 解析内置 20 条容量 LRU 缓存（`patchCache`），消除重复计算。
+- **DOM 防雪崩与极端输出截断保护 (`components/MessageView.tsx`)**：Git Diff 视图设置 800 行硬上限（`MAX_ROWS = 800`），超长思考与 ToolResult 设置 100KB 防崩保护。
+- **组件细粒度 Memo 包装 (`components/PlanPanel.tsx`, `components/MessageView.tsx`)**：`React.memo` 阻断非必要级联重渲染。
 
-### 2. 🛡️ 后端 Node.js、RPC 进程与文件 I/O 加固
-- **Git 根目录内存持久缓存 + 并发去重 (`lib/worktree.ts`)**：将 `PROJECT_CACHE_TTL_MS` 延长至 300,000ms（5 分钟），并加入 `__piProjectPendingCache` 全局 Map，合并并行解析同一工作区时的 Promise，彻底消除重复的 `git rev-parse` 子进程风暴。
-- **SSE 僵尸连接彻底清理 (`app/api/agent/[id]/events/route.ts`, `lib/rpc-manager.ts`)**：会话终结或销毁时主动派发 `session_destroyed` 事件，SSE 流监听到后立即关闭 `ReadableStream` 并注销监听器，杜绝文件描述符与内存泄漏。
+### 6. 🛡️ 后端 Node.js、RPC 进程与文件 I/O 加固 (Backend & Process Safety)
+- **Git 根目录内存持久缓存 + 并发去重 (`lib/worktree.ts`)**：延长 `PROJECT_CACHE_TTL_MS` 至 5 分钟，加入 `__piProjectPendingCache` 全局 Map 合并并行 Promise，杜绝重复 `git rev-parse` 进程风暴。
+- **SSE 僵尸连接彻底清理 (`app/api/agent/[id]/events/route.ts`, `lib/rpc-manager.ts`)**：会话终结或销毁时主动派发 `session_destroyed` 事件并安全关闭 `ReadableStream`，杜绝文件描述符与内存泄漏。
+- **子进程 Dispose 熔断保护 (`lib/omp/rpc-process.ts`)**：`RpcProcess.dispose()` 加入 `Promise.race` 熔断锁防止僵死进程挂起，`crlfDelay: Infinity` 标准化流式行解析。
+- **`deferThinking` 载荷瘦身 (`lib/session-reader.ts`, `lib/types.ts`)**：在延迟加载模式下直接从 JSON 结构中解构移除 thinking 字段，显著降低网络传输体积。
+
+### 7. ⚙️ MCP 管理器体验重构与内置 Agent MCP
+- **双模式可视化表单编辑器 (`components/McpConfig.tsx`)**：提供「可视化表单（协议、命令/URL、参数、启用开关）」与「JSON 代码」双模式，内置 `Python stdio`、`NPX stdio`、`Remote HTTP` 一键模板，支持项目与全局（`~/.omp/agent/mcp.json`）配置自由切换。
+- **多源分类折叠手风琴 (`components/McpConfig.tsx`)**：对跨客户端自动发现的 50+ 个服务端按来源折叠并支持实时搜索。
+- **内置 Agent MCP 预设与微调 (`vendor/agent-mcp/`)**：自带多 Agent 编排工具库，配合 SQLite 高并发优化（`PRAGMA temp_store=MEMORY`、autocommit 事务无锁化）、SSE 广播队列无锁化原子置换与指数退避等待算法。
+
+## 环境要求�会话终结或销毁时主动派发 `session_destroyed` 事件，SSE 流监听到后立即关闭 `ReadableStream` 并注销监听器，杜绝文件描述符与内存泄漏。
 - **子进程 Dispose 熔断保护 (`lib/omp/rpc-process.ts`)**：在 `RpcProcess.dispose()` 中加入 `Promise.race` 熔断定时器，即使操作系统偶发未能回收僵死进程，也能安全 resolve，防止 Promise 永久挂起；以 `crlfDelay: Infinity` 标准化流式行解析。
 - **原子文件操作异常清理 (`lib/omp/mcp-config.ts`)**：在原子写入中使用 `try ... finally { try { unlinkSync(temp); } catch {} }`，防止异常时残留 `.tmp-*` 孤儿文件。
 - **`deferThinking` 载荷瘦身 (`lib/session-reader.ts`, `lib/types.ts`)**：将 `ThinkingContent.thinking` 改为可选字段，在延迟加载模式下直接从 JSON 结构中解构移除该 key 而非返回空字符串，显著降低会话上下文网络传输开销。

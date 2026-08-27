@@ -1038,11 +1038,11 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                     <div style={{ marginTop: 6, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 6 }}>
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.runAppUpdateCommand")}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{appUpdate.updateCommand || "npm install -g @kahme247/ompweb"}</code>
+                        <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{appUpdate.updateCommand || "npm install -g @37chengshan/ompweb"}</code>
                         <button
                           type="button"
                           onClick={() => {
-                            void copyText(appUpdate.updateCommand || "npm install -g @kahme247/ompweb")
+                            void copyText(appUpdate.updateCommand || "npm install -g @37chengshan/ompweb")
                               .then(() => setMessage(t("appShell.commandCopied")))
                               .catch(() => setMessage(t("appShell.commandCopyFailed")));
                           }}

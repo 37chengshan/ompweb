@@ -1819,8 +1819,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     };
   }, [agentRunning, reconcileAgentState]);
 
-  // Sample omp's own tokensPerSecond (get_state) at a gauge-friendly cadence
-  // while a run is active; the 15s reconcile above is too slow for a gauge.
+  // Sample omp's own tokensPerSecond (get_state) at an adaptive cadence while
+  // a run is active. Start at 2s; back off to 4s after 3 consecutive null
+  // samples (tool execution / thinking, not generating tokens) to reduce
+  // server-side round-trips; snap back to 2s on the first non-null sample.
   // On run end take one trailing sample: omp publishes its final throughput
   // right around agent_end, possibly after the last in-run poll.
   useEffect(() => {
@@ -1838,18 +1840,40 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         .catch(() => {});
       return () => { cancelled = true; };
     }
-    const id = setInterval(() => {
+    let consecutiveNulls = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const BASE_MS = 2000;
+    const BACKOFF_MS = 4000;
+    const NULL_THRESHOLD = 3;
+    let pollCancelled = false;
+    const poll = () => {
+      if (pollCancelled) return;
       const sid = sessionIdRef.current;
       if (!sid) return;
       void fetch(`/api/agent/${encodeURIComponent(sid)}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data: { state?: AgentStateResponse } | null) => {
+          if (pollCancelled) return;
           const tps = data?.state?.tokensPerSecond;
-          setTokensPerSecond(typeof tps === "number" && Number.isFinite(tps) && tps > 0 ? tps : null);
+          const hasValue = typeof tps === "number" && Number.isFinite(tps) && tps > 0;
+          setTokensPerSecond(hasValue ? tps : null);
+          if (hasValue) {
+            consecutiveNulls = 0;
+          } else {
+            consecutiveNulls = Math.min(consecutiveNulls + 1, NULL_THRESHOLD + 1);
+          }
+          const next = consecutiveNulls >= NULL_THRESHOLD ? BACKOFF_MS : BASE_MS;
+          timeoutId = setTimeout(poll, next);
         })
-        .catch(() => {});
-    }, 2000);
-    return () => clearInterval(id);
+        .catch(() => {
+          if (!pollCancelled) timeoutId = setTimeout(poll, BASE_MS);
+        });
+    };
+    timeoutId = setTimeout(poll, BASE_MS);
+    return () => {
+      pollCancelled = true;
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    };
   }, [agentRunning]);
 
   // A different session starts from a clean slate — no stale gauge carry-over.

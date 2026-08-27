@@ -17,8 +17,16 @@ interface MarkdownBodyProps {
 }
 
 export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
-  const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
-  const { remarkPlugins, rehypePlugins } = useMarkdownPlugins(normalizedMarkdown);
+  // Skip normalizeDisplayMath while streaming: it scans the entire document
+  // on every token batch but math content almost never arrives mid-stream.
+  // The normalization runs once on the final committed message instead.
+  const normalizedMarkdown = useMemo(
+    () => (isStreaming ? children : normalizeDisplayMath(children)),
+    [children, isStreaming],
+  );
+  // Similarly, skip KaTeX plugin loading during streaming — containsMathSyntax
+  // is cheap, but triggering the async import mid-stream wastes a round-trip.
+  const { remarkPlugins, rehypePlugins } = useMarkdownPlugins(isStreaming ? "" : normalizedMarkdown);
 
   // Rebuilt only when its captured props change, not on every render.
   const components = useMemo<Components>(() => {

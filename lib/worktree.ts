@@ -36,9 +36,15 @@ export interface WorktreeInfo {
 
 declare global {
   var __piProjectCache: Map<string, { info: ProjectInfo; expiresAt: number }> | undefined;
+  var __piProjectPendingCache: Map<string, Promise<ProjectInfo>> | undefined;
 }
 
-const PROJECT_CACHE_TTL_MS = 60_000;
+const PROJECT_CACHE_TTL_MS = 300_000; // 5 min — git project roots are stable
+
+function getProjectPendingCache(): Map<string, Promise<ProjectInfo>> {
+  if (!globalThis.__piProjectPendingCache) globalThis.__piProjectPendingCache = new Map();
+  return globalThis.__piProjectPendingCache;
+}
 
 function realPathOrSelf(filePath: string): string {
   try {
@@ -87,45 +93,49 @@ export async function resolveProject(cwd: string): Promise<ProjectInfo> {
   const cached = cache.get(cwd);
   if (cached && cached.expiresAt > Date.now()) return cached.info;
 
-  let info: ProjectInfo;
-  try {
-    if (!existsSync(cwd)) {
-      info = inferRemovedWorktree(cwd) ?? { projectRoot: cwd, branch: null, isWorktree: false, isTopLevel: false };
-      cache.set(cwd, { info, expiresAt: Date.now() + PROJECT_CACHE_TTL_MS });
-      return info;
-    }
-    const out = await git(cwd, [
-      "rev-parse", "--path-format=absolute",
-      "--git-common-dir", "--git-dir", "--show-toplevel",
-      "--abbrev-ref", "HEAD",
-    ]);
-    const [commonDirRaw, gitDirRaw, toplevelRaw, ref] = out.split("\n").map((l) => l.trim());
-    const [commonDir, gitDir, toplevel] = [commonDirRaw, gitDirRaw, toplevelRaw].map(toNativePath);
-    // git prints resolved (symlink-free) paths; normalize cwd the same way
-    const realCwd = realPathOrSelf(cwd);
-    // For a linked worktree, --git-dir differs from --git-common-dir.
-    // Only collapse *worktree toplevels* into the main repo. A session whose
-    // cwd is a subdirectory of a repo keeps its own project identity —
-    // grouping subdirs under the repo root would change where new sessions
-    // are created for existing users.
-    const isTopLevel = samePath(toplevel, realCwd);
-    const isWorktreeTopLevel = !samePath(gitDir, commonDir) && isTopLevel;
-    const topLevelProjectRoot = isWorktreeTopLevel ? dirname(commonDir) : toplevel;
-    info = {
-      // realCwd is the symlink-free, on-disk-cased form git itself resolved;
-      // use it for the non-worktree root too so the project registry and the
-      // session-discovered roots produce identical strings (Windows casing).
-      projectRoot: isTopLevel ? realPathOrSelf(topLevelProjectRoot) : realPathOrSelf(cwd),
-      branch: ref && ref !== "HEAD" ? ref : null,
-      isWorktree: isWorktreeTopLevel,
-      isTopLevel,
-    };
-  } catch {
-    info = { projectRoot: cwd, branch: null, isWorktree: false, isTopLevel: false };
-  }
+  // Coalesce concurrent callers: a session-list refresh may resolve dozens of
+  // cwds in parallel — return the same in-flight promise rather than spawning
+  // N git processes for the same path.
+  const pending = getProjectPendingCache();
+  const inflight = pending.get(cwd);
+  if (inflight) return inflight;
 
-  cache.set(cwd, { info, expiresAt: Date.now() + PROJECT_CACHE_TTL_MS });
-  return info;
+  const promise = (async (): Promise<ProjectInfo> => {
+    let info: ProjectInfo;
+    try {
+      if (!existsSync(cwd)) {
+        info = inferRemovedWorktree(cwd) ?? { projectRoot: cwd, branch: null, isWorktree: false, isTopLevel: false };
+        cache.set(cwd, { info, expiresAt: Date.now() + PROJECT_CACHE_TTL_MS });
+        return info;
+      }
+      const out = await git(cwd, [
+        "rev-parse", "--path-format=absolute",
+        "--git-common-dir", "--git-dir", "--show-toplevel",
+        "--abbrev-ref", "HEAD",
+      ]);
+      const [commonDirRaw, gitDirRaw, toplevelRaw, ref] = out.split("\n").map((l) => l.trim());
+      const [commonDir, gitDir, toplevel] = [commonDirRaw, gitDirRaw, toplevelRaw].map(toNativePath);
+      const realCwd = realPathOrSelf(cwd);
+      const isTopLevel = samePath(toplevel, realCwd);
+      const isWorktreeTopLevel = !samePath(gitDir, commonDir) && isTopLevel;
+      const topLevelProjectRoot = isWorktreeTopLevel ? dirname(commonDir) : toplevel;
+      info = {
+        projectRoot: isTopLevel ? realPathOrSelf(topLevelProjectRoot) : realPathOrSelf(cwd),
+        branch: ref && ref !== "HEAD" ? ref : null,
+        isWorktree: isWorktreeTopLevel,
+        isTopLevel,
+      };
+    } catch {
+      info = { projectRoot: cwd, branch: null, isWorktree: false, isTopLevel: false };
+    }
+    cache.set(cwd, { info, expiresAt: Date.now() + PROJECT_CACHE_TTL_MS });
+    return info;
+  })();
+
+  pending.set(cwd, promise);
+  return promise.finally(() => {
+    if (pending.get(cwd) === promise) pending.delete(cwd);
+  });
 }
 
 // ============================================================================

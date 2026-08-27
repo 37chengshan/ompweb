@@ -97,7 +97,32 @@ export function useMarkdownPlugins(markdown: string): MarkdownPlugins {
   return hasMath && mathMarkdownPlugins ? mathMarkdownPlugins : baseMarkdownPlugins;
 }
 
-export function normalizeDisplayMath(markdown: string): string {
+// ---------------------------------------------------------------------------
+// normalizeDisplayMath memo cache
+// ---------------------------------------------------------------------------
+// Committed messages are immutable; re-rendering (theme switch, sidebar scroll,
+// session switch back) must not re-scan thousands of characters per message.
+// LRU eviction at MAX entries keeps memory bounded even in marathon sessions.
+const NORMALIZE_CACHE_MAX = 200;
+const normalizeCacheKeys: string[] = [];
+const normalizeCacheValues = new Map<string, string>();
+
+function cachedNormalizeDisplayMath(raw: string): string {
+  const hit = normalizeCacheValues.get(raw);
+  if (hit !== undefined) return hit;
+  const result = normalizeDisplayMathImpl(raw);
+  if (normalizeCacheKeys.length >= NORMALIZE_CACHE_MAX) {
+    const evict = normalizeCacheKeys.shift()!;
+    normalizeCacheValues.delete(evict);
+  }
+  normalizeCacheKeys.push(raw);
+  normalizeCacheValues.set(raw, result);
+  return result;
+}
+
+
+/** The public export is the memoized wrapper below. */
+function normalizeDisplayMathImpl(markdown: string): string {
   const lineBreak = markdown.includes("\r\n") ? "\r\n" : "\n";
   const lines = markdown.split(/\r?\n/);
   const normalized: string[] = [];
@@ -240,6 +265,15 @@ export function normalizeDisplayMath(markdown: string): string {
   }
 
   return normalized.join(lineBreak);
+}
+
+/**
+ * Memoized normalizeDisplayMath: committed messages are immutable so the
+ * expensive line-scan only runs once per unique document string. The cache
+ * is capped at NORMALIZE_CACHE_MAX entries to bound heap usage.
+ */
+export function normalizeDisplayMath(markdown: string): string {
+  return cachedNormalizeDisplayMath(markdown);
 }
 
 interface DisplayMathClose {

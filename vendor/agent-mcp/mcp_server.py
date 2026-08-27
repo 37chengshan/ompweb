@@ -638,6 +638,7 @@ def _daemon_spawner(prompt: str, cli: str, cwd: str | None) -> int:
 def _daemon_waiter(agent_id: int) -> dict[str, Any]:
     """编排 waiter：循环 wait_agent 直至终止态（单次 25s，总预算由外层控制）。"""
     deadline = time.monotonic() + 600.0
+    backoff = 0.1
     while time.monotonic() < deadline:
         resp = _daemon_post("/api/agents/wait", {
             "agent_id": agent_id, "timeout": 25, "session_id": _session_id(),
@@ -645,7 +646,8 @@ def _daemon_waiter(agent_id: int) -> dict[str, Any]:
         status = str((resp or {}).get("status") or "running")
         if status in ("terminated", "error", "cancelled", "incomplete"):
             return {"status": status, "summary": str((resp or {}).get("summary") or "")}
-        time.sleep(0.5)
+        time.sleep(backoff)
+        backoff = min(2.0, backoff * 2.0)
     return {"status": "incomplete",
             "summary": "编排等待超时（600s）。可继续 wait_agent 等待或 followup_task 续接。"}
 

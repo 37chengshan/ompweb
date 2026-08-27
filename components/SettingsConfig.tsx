@@ -5,6 +5,7 @@ import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuri
 import dynamic from "next/dynamic";
 import { Copy, ExternalLink, RefreshCw, RotateCcw, Search, AlertCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useMotionPrefs } from "@/hooks/useMotionPrefs";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
 import { useI18n } from "@/lib/i18n";
@@ -114,8 +115,13 @@ type SettingIndexEntry = {
 const SETTING_INDEX: SettingIndexEntry[] = [
   // Interface & Behavior
   { id: "keep-tool-calls-collapsed", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.keepToolCallsCollapsed", descKey: "settingsConfig.keepToolCallsCollapsedDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Keep tool calls collapsed", fallbackDesc: "Show only compact headers while tools execute.", scope: "UI" },
+  { id: "thinking-display-mode", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.thinkingDisplayMode", descKey: "settingsConfig.thinkingDisplayModeDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Thinking Display Behavior", fallbackDesc: "Configure whether model thinking blocks default to collapsed, auto-collapse, or always expanded.", scope: "UI" },
   { id: "completion-sound", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.completionSound", descKey: "settingsConfig.completionSoundDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Completion sound", fallbackDesc: "Play a tone when the agent completes a run.", scope: "UI" },
   { id: "message-during-active-run", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.messageDuringActiveRun", descKey: "settingsConfig.messageDuringActiveRunDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Message during active run", fallbackDesc: "What composer does on submit while agent runs. Steer interrupts; Queue follow-up delivers after finish.", scope: "UI" },
+  { id: "global-animations", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.globalAnimations", descKey: "settingsConfig.globalAnimationsDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Global Animations", fallbackDesc: "Enable or disable all UI animations across the application.", scope: "UI" },
+  { id: "chat-border-beam", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.chatBorderBeam", descKey: "settingsConfig.chatBorderBeamDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Chat Border Flow", fallbackDesc: "Clockwise luminous beam on input border during active conversation.", scope: "UI" },
+  { id: "omp-bouncing-letters", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.ompBouncingLetters", descKey: "settingsConfig.ompBouncingLettersDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "OMP Loader Jump", fallbackDesc: "Sequential jumping letters animation while waiting for response.", scope: "UI" },
+  { id: "thinking-pulse", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.thinkingPulse", descKey: "settingsConfig.thinkingPulseDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Thinking Pulse", fallbackDesc: "Breathing brain pulse animation on the reasoning icon.", scope: "UI" },
   // Tool Safety & Approvals
   { id: "approval-mode", tab: "safety", sectionKey: "settingsConfig.toolSafetyApprovals", labelKey: "settingsConfig.approvalMode", descKey: "settingsConfig.approvalModeDesc", fallbackSection: "Tool Safety & Approvals", fallbackLabel: "Approval Mode", fallbackDesc: "Choose when OMP asks before tool calls.", scope: "Native OMP" },
   { id: "bash-override", tab: "safety", sectionKey: "settingsConfig.toolSafetyApprovals", labelKey: "settingsConfig.bashOverride", descKey: "settingsConfig.bashOverrideDesc", fallbackSection: "Tool Safety & Approvals", fallbackLabel: "Bash Override", fallbackDesc: "Override default approval policy specifically for terminal commands.", scope: "Native OMP" },
@@ -328,10 +334,12 @@ function NativeSetting({ label, description, scope, searchId, children }: { labe
   );
 }
 
-export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onOmpUpdateAvailabilityChange, onSelectTab, onClose }: {
+export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, thinkingDisplayMode = "auto", onThinkingDisplayModeChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onOmpUpdateAvailabilityChange, onSelectTab, onClose }: {
   activeTab: SettingsTab;
   toolCallsDefaultCollapsed: boolean;
   onToolCallsDefaultCollapsedChange: (collapsed: boolean) => void;
+  thinkingDisplayMode?: "auto" | "collapsed" | "expanded";
+  onThinkingDisplayModeChange?: (mode: "auto" | "collapsed" | "expanded") => void;
   cwd: string | null;
   sessionId: string | null;
   onModelsSaved: () => void;
@@ -355,6 +363,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       return true;
     }
   });
+  const { motionPrefs, setMotionPrefs } = useMotionPrefs();
   const [update, setUpdate] = useState<UpdateState | null>(null);
   const [checking, setChecking] = useState(false);
   const [appUpdate, setAppUpdate] = useState<UpdateState | null>(null);
@@ -599,6 +608,19 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                   <NativeSetting searchId="keep-tool-calls-collapsed" label={t("settingsConfig.keepToolCallsCollapsed")} description={t("settingsConfig.keepToolCallsCollapsedDesc")} scope="UI">
                     <ToggleSwitch checked={toolCallsDefaultCollapsed} onChange={onToolCallsDefaultCollapsedChange} />
                   </NativeSetting>
+                  <NativeSetting searchId="thinking-display-mode" label={t("settingsConfig.thinkingDisplayMode")} description={t("settingsConfig.thinkingDisplayModeDesc")} scope="UI">
+                    <select
+                      style={nativeSelectStyle}
+                      value={thinkingDisplayMode}
+                      onChange={(event) => {
+                        onThinkingDisplayModeChange?.(event.target.value as "auto" | "collapsed" | "expanded");
+                      }}
+                    >
+                      <option value="auto" style={nativeOptionStyle}>{t("settingsConfig.thinkingModeAuto")}</option>
+                      <option value="collapsed" style={nativeOptionStyle}>{t("settingsConfig.thinkingModeCollapsed")}</option>
+                      <option value="expanded" style={nativeOptionStyle}>{t("settingsConfig.thinkingModeExpanded")}</option>
+                    </select>
+                  </NativeSetting>
                   <NativeSetting searchId="completion-sound" label={t("settingsConfig.completionSound")} description={t("settingsConfig.completionSoundDesc")} scope="UI">
                     <ToggleSwitch
                       checked={soundEnabled}
@@ -609,21 +631,69 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                       }}
                     />
                   </NativeSetting>
+                  <NativeSetting searchId="message-during-active-run" label={t("settingsConfig.messageDuringActiveRun")} description={t("settingsConfig.messageDuringActiveRunDesc")} scope="UI">
+                    <select
+                      style={nativeSelectStyle}
+                      value={submitBehavior}
+                      onChange={(event) => {
+                        const next = event.target.value as SubmitDuringRunBehavior;
+                        setSubmitDuringRunBehavior(next);
+                        setSubmitBehavior(next);
+                      }}
+                    >
+                      <option value="steer" style={nativeOptionStyle}>{t("settingsConfig.steerCurrentRun")}</option>
+                      <option value="queue" style={nativeOptionStyle}>{t("settingsConfig.queueFollowUp")}</option>
+                    </select>
+                  </NativeSetting>
                 </div>
-                <NativeSetting searchId="message-during-active-run" label={t("settingsConfig.messageDuringActiveRun")} description={t("settingsConfig.messageDuringActiveRunDesc")} scope="UI">
-                  <select
-                    style={nativeSelectStyle}
-                    value={submitBehavior}
-                    onChange={(event) => {
-                      const next = event.target.value as SubmitDuringRunBehavior;
-                      setSubmitDuringRunBehavior(next);
-                      setSubmitBehavior(next);
-                    }}
-                  >
-                    <option value="steer" style={nativeOptionStyle}>{t("settingsConfig.steerCurrentRun")}</option>
-                    <option value="queue" style={nativeOptionStyle}>{t("settingsConfig.queueFollowUp")}</option>
-                  </select>
-                </NativeSetting>
+
+                <div style={{ marginTop: 12, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 4px", color: "var(--text)" }}>动画与动效 (Animations & Motion)</h4>
+                  <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--text-muted)" }}>管理全站交互动效、边框流光与跳动动画开关</p>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                    <NativeSetting searchId="global-animations" label="全局动效总开关" description="开启或关闭全站所有动态效果与过渡动画" scope="UI">
+                      <ToggleSwitch checked={motionPrefs.enabled} onChange={(next) => setMotionPrefs({ enabled: next })} />
+                    </NativeSetting>
+
+                    <NativeSetting searchId="chat-border-beam" label="对话框边框流光" description="对话响应中沿输入框边缘顺时针流淌" scope="UI">
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {motionPrefs.enabled && motionPrefs.chatBorderBeam && (
+                          <select
+                            style={nativeSelectStyle}
+                            value={motionPrefs.beamSpeed}
+                            onChange={(e) => setMotionPrefs({ beamSpeed: Number(e.target.value) })}
+                          >
+                            <option value={8} style={nativeOptionStyle}>极慢 (8.0s)</option>
+                            <option value={5.5} style={nativeOptionStyle}>慢速 (5.5s)</option>
+                            <option value={3.8} style={nativeOptionStyle}>标准 (3.8s)</option>
+                            <option value={2.2} style={nativeOptionStyle}>快速 (2.2s)</option>
+                          </select>
+                        )}
+                        <ToggleSwitch
+                          checked={motionPrefs.enabled && motionPrefs.chatBorderBeam}
+                          disabled={!motionPrefs.enabled}
+                          onChange={(next) => setMotionPrefs({ chatBorderBeam: next })}
+                        />
+                      </div>
+                    </NativeSetting>
+
+                    <NativeSetting searchId="omp-bouncing-letters" label="OMP 字符跳动动效" description="等待响应时 o·m·p 字母独立循环跳动" scope="UI">
+                      <ToggleSwitch
+                        checked={motionPrefs.enabled && motionPrefs.ompBouncing}
+                        disabled={!motionPrefs.enabled}
+                        onChange={(next) => setMotionPrefs({ ompBouncing: next })}
+                      />
+                    </NativeSetting>
+
+                    <NativeSetting searchId="thinking-pulse" label="思考脑波呼吸动效" description="模型深度思考状态图标脉冲" scope="UI">
+                      <ToggleSwitch
+                        checked={motionPrefs.enabled && motionPrefs.thinkingPulse}
+                        disabled={!motionPrefs.enabled}
+                        onChange={(next) => setMotionPrefs({ thinkingPulse: next })}
+                      />
+                    </NativeSetting>
+                  </div>
+                </div>
               </div>
             )}
 

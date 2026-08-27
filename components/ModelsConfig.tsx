@@ -537,6 +537,41 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
   };
   const apiKeyV = useFieldValidation(apiKeyValidate);
 
+  const [fetchingModels, setFetchingModels] = useState(false);
+
+  const handleAutoFetchModels = async () => {
+    if (!provider.baseUrl?.trim()) {
+      toast.error(t("modelsConfig.baseUrlRequired") || "请先输入 Base URL");
+      return;
+    }
+    setFetchingModels(true);
+    try {
+      const res = await fetch("/api/models/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+          headers: provider.headers,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.models && data.models.length > 0) {
+        const existingIds = new Set((provider.models ?? []).map((m: ModelEntry) => m.id));
+        const newModels = data.models.filter((m: ModelEntry) => !existingIds.has(m.id));
+        const merged = [...(provider.models ?? []), ...newModels];
+        onChange({ ...provider, models: merged });
+        toast.success(t("modelsConfig.autoFetchedSuccess", { count: newModels.length, total: data.models.length }) || `成功发现 ${data.models.length} 个模型（新增 ${newModels.length} 个）！`);
+      } else {
+        toast.error(data.error || "未能从该端点探测到模型列表");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "获取模型请求失败";
+      toast.error(msg);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
   const trimmedRename = editingName.trim();
   const hostName = provider.baseUrl ? (provider.baseUrl.replace(/^https?:\/\//, "").split("/")[0] || provider.baseUrl) : t("modelsConfig.defaultEndpoint");
 
@@ -653,6 +688,32 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
             onBlurValidate={baseUrlV.onBlur}
           />
         </FormField>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 10, marginTop: -2, marginBottom: 4 }}>
+          <button
+            type="button"
+            onClick={handleAutoFetchModels}
+            disabled={fetchingModels || !provider.baseUrl}
+            className="ui-focus-ring"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "5px 12px",
+              borderRadius: "var(--radius-control)",
+              background: "color-mix(in srgb, var(--accent) 12%, var(--bg-panel))",
+              border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+              color: "var(--accent)",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: fetchingModels || !provider.baseUrl ? "not-allowed" : "pointer",
+              opacity: fetchingModels || !provider.baseUrl ? 0.6 : 1,
+              transition: "all var(--dur-fast)",
+            }}
+          >
+            <RefreshCw size={12} className={fetchingModels ? "animate-spin" : undefined} />
+            <span>{fetchingModels ? (t("modelsConfig.fetchingModels") || "正在探测模型列表…") : (t("modelsConfig.autoFetchModels") || "自动获取模型列表 (GET /models)")}</span>
+          </button>
+        </div>
 
         <FormField
           label={t("modelsConfig.apiKey")}

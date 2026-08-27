@@ -2,6 +2,7 @@
    on Windows, where a parent user-profile package can make the scanner walk
    protected junctions such as "My Documents" during production builds. */
 @import "tailwindcss" source(none);
+@import "@xterm/xterm/css/xterm.css";
 @source "../app";
 @source "../components";
 @source "../hooks";
@@ -55,26 +56,170 @@
   --status-renamed: #2563EB;
   --on-accent: #FFFFFF;
   --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --omp-o: #B03E22;
+  --omp-m: #D97706;
+  --omp-p: #2D6A4F;
 }
 
-/* Warm-ember palette (dark). Same AA verification as light. */
-html.dark {
+/* ── 1. Static Themes (10 Elegant Presets) ────────────────────────────────── */
+
+/* 1.1 暖阳手帐 (Warm Paper - Light Default) */
+:root, html[data-theme="light"], html.theme-light {
+  --bg: #FAF9F6;
+  --bg-panel: #F2F0EA;
+  --bg-hover: #EAE7DF;
+  --bg-selected: #E5E0D4;
+  --border: #E2DDD2;
+  --text: #2B2823;
+  --text-muted: #69635A;
+  --text-dim: #6A6458;
+  --accent: #B03E22;
+  --accent-strong: #B03E22;
+  --accent-hover: #96331B;
+  --user-bg: #F5EDE1;
+  --tool-bg: #F6F3ED;
+  --bg-subtle: rgba(60,50,35,0.04);
+  --status-error: #B42318;
+  --status-success: #18794E;
+  --status-warning: #8A5A00;
+  --status-modified: #A87B1F;
+  --status-renamed: #2563EB;
+  --on-accent: #FFFFFF;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --omp-o: #B03E22;
+  --omp-m: #D97706;
+  --omp-p: #2D6A4F;
+}
+
+/* 1.2 极地雪原 (Nord Arctic - Cool Dark Default) */
+html[data-theme="nord"], html.theme-nord {
+  --bg: #2E3440;
+  --bg-panel: #3B4252;
+  --bg-hover: #434C5E;
+  --bg-selected: #4C566A;
+  --border: #434C5E;
+  --text: #ECEFF4;
+  --text-muted: #D8DEE9;
+  --text-dim: #E5E9F0;
+  --accent: #88C0D0;
+  --accent-strong: #81A1C1;
+  --accent-hover: #8FBCBB;
+  --user-bg: #3B4252;
+  --tool-bg: #353C4A;
+  --bg-subtle: rgba(236,239,244,0.04);
+  --status-error: #BF616A;
+  --status-success: #A3BE8C;
+  --status-warning: #EBCB8B;
+  --status-modified: #D08770;
+  --status-renamed: #B48EAD;
+  --on-accent: #2E3440;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(236,239,244,0.04);
+  --shadow-pop: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(236,239,244,0.06);
+  --shadow-modal: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(236,239,244,0.08);
+  --omp-o: #88C0D0;
+  --omp-m: #A3BE8C;
+  --omp-p: #B48EAD;
+}
+
+/* 1.3 燕麦拿铁 (Oatmeal Latte) */
+html[data-theme="oatmeal"], html.theme-oatmeal {
+  --bg: #F7F4EE;
+  --bg-panel: #EFECE4;
+  --bg-hover: #E6E2D8;
+  --bg-selected: #DDD8CB;
+  --border: #D8D2C4;
+  --text: #342C24;
+  --text-muted: #72675C;
+  --text-dim: #60564C;
+  --accent: #965A38;
+  --accent-strong: #7C4526;
+  --accent-hover: #AF6E47;
+  --user-bg: #EAE4D8;
+  --tool-bg: #F2EEE5;
+  --bg-subtle: rgba(70,50,30,0.04);
+  --status-error: #B42318;
+  --status-success: #28724F;
+  --status-warning: #946000;
+  --status-modified: #B37D14;
+  --status-renamed: #2E5A88;
+  --on-accent: #FFFFFF;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --omp-o: #965A38;
+  --omp-m: #D97706;
+  --omp-p: #3B7A57;
+}
+
+/* 1.4 京都抹茶 (Kyoto Matcha) */
+html[data-theme="matcha"], html.theme-matcha {
+  --bg: #F3F6F3;
+  --bg-panel: #E8EDE7;
+  --bg-hover: #DDE4DC;
+  --bg-selected: #D0DCD0;
+  --border: #CAD6C8;
+  --text: #1C2B1E;
+  --text-muted: #4F6652;
+  --text-dim: #3E5441;
+  --accent: #2D6A4F;
+  --accent-strong: #20533C;
+  --accent-hover: #3E8565;
+  --user-bg: #E3ECE2;
+  --tool-bg: #ECF2EB;
+  --bg-subtle: rgba(45,106,79,0.04);
+  --status-error: #B92E2E;
+  --status-success: #2D6A4F;
+  --status-warning: #996B00;
+  --status-modified: #B8860B;
+  --status-renamed: #2E5A88;
+  --on-accent: #FFFFFF;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --omp-o: #2D6A4F;
+  --omp-m: #65A30D;
+  --omp-p: #D97706;
+}
+
+/* 1.5 极夜黑曜 (OLED Obsidian) */
+html[data-theme="oled"], html.theme-oled {
+  --bg: #000000;
+  --bg-panel: #0A0A0A;
+  --bg-hover: #141414;
+  --bg-selected: #1E1E1E;
+  --border: #242424;
+  --text: #F8FAFC;
+  --text-muted: #94A3B8;
+  --text-dim: #64748B;
+  --accent: #38BDF8;
+  --accent-strong: #0284C7;
+  --accent-hover: #7DD3FC;
+  --user-bg: #0F172A;
+  --tool-bg: #0B0F19;
+  --bg-subtle: rgba(255,255,255,0.03);
+  --status-error: #F87171;
+  --status-success: #4ADE80;
+  --status-warning: #FBBF24;
+  --status-modified: #FCD34D;
+  --status-renamed: #60A5FA;
+  --on-accent: #000000;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06);
+  --shadow-pop: 0 4px 16px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.08);
+  --shadow-modal: 0 12px 48px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.1);
+  --omp-o: #38BDF8;
+  --omp-m: #A855F7;
+  --omp-p: #34D399;
+}
+
+/* 1.6 暗夜余烬 (Warm Ember) */
+html.dark:not([data-theme]), html[data-theme="dark"], html.theme-dark {
   --bg: #1B1916;
   --bg-panel: #231F1B;
   --bg-hover: #2B2721;
   --bg-selected: #332E26;
   --border: #38322B;
-  /* 14.10:1 on --bg, 13.16:1 on --bg-panel */
   --text: #EBE6DC;
-  /* 6.38:1 on --bg, 5.95:1 on --bg-panel, 5.40:1 on --bg-hover */
   --text-muted: #A39B8E;
-  /* 5.27:1 on --bg, 4.92:1 on --bg-panel */
   --text-dim: #938C81;
-  /* Lifted terracotta for dark surfaces: 5.96:1 as link on --bg.
-     As a white-text button fill it would fail AA, so filled buttons use
-     --accent-strong below (same split as the previous palette). */
   --accent: #E07B54;
-  /* White-on-fill: 4.56:1 (passes AA) */
   --accent-strong: #C2542E;
   --accent-hover: #E89371;
   --user-bg: #2C2721;
@@ -87,6 +232,342 @@ html.dark {
   --status-renamed: #7CA8FF;
   --on-accent: #FFFFFF;
   --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --omp-o: #E07B54;
+  --omp-m: #F59E0B;
+  --omp-p: #38BDF8;
+}
+
+/* 1.7 大英古籍 (Antique Vellum / Sepia) */
+html[data-theme="sepia"], html.theme-sepia {
+  --bg: #F5EEDC;
+  --bg-panel: #EBDDC3;
+  --bg-hover: #E2CFB0;
+  --bg-selected: #D9C3A0;
+  --border: #D5BE99;
+  --text: #3D2B1F;
+  --text-muted: #785E4A;
+  --text-dim: #644E3C;
+  --accent: #8C4820;
+  --accent-strong: #703817;
+  --accent-hover: #A65727;
+  --user-bg: #E8D8BC;
+  --tool-bg: #EFE4CD;
+  --bg-subtle: rgba(61,43,31,0.04);
+  --status-error: #B3261E;
+  --status-success: #2E6B38;
+  --status-warning: #946000;
+  --status-modified: #B37D14;
+  --status-renamed: #2E5A88;
+  --on-accent: #FFFFFF;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --omp-o: #8C4820;
+  --omp-m: #C2410C;
+  --omp-p: #2E6B38;
+}
+
+/* 1.8 德古拉之夜 (Dracula Velvet) */
+html[data-theme="dracula"], html.theme-dracula {
+  --bg: #282A36;
+  --bg-panel: #21222C;
+  --bg-hover: #343746;
+  --bg-selected: #44475A;
+  --border: #44475A;
+  --text: #F8F8F2;
+  --text-muted: #B8BFD6;
+  --text-dim: #9DA5B4;
+  --accent: #BD93F9;
+  --accent-strong: #9867E8;
+  --accent-hover: #D1B3FF;
+  --user-bg: #323544;
+  --tool-bg: #2B2D3A;
+  --bg-subtle: rgba(248,248,242,0.04);
+  --status-error: #FF5555;
+  --status-success: #50FA7B;
+  --status-warning: #F1FA8C;
+  --status-modified: #FFB86C;
+  --status-renamed: #8BE9FD;
+  --on-accent: #282A36;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(189,147,249,0.06);
+  --shadow-pop: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(189,147,249,0.08);
+  --shadow-modal: 0 12px 48px rgba(0,0,0,0.65), 0 0 0 1px rgba(189,147,249,0.1);
+  --omp-o: #BD93F9;
+  --omp-m: #8BE9FD;
+  --omp-p: #50FA7B;
+}
+
+/* 1.9 松林深翠 (Pine Forest) */
+html[data-theme="pine"], html.theme-pine {
+  --bg: #121B17;
+  --bg-panel: #1A2621;
+  --bg-hover: #22322C;
+  --bg-selected: #2B3F37;
+  --border: #2C4037;
+  --text: #E8F5EE;
+  --text-muted: #9BB8A9;
+  --text-dim: #799C8B;
+  --accent: #52B788;
+  --accent-strong: #40916C;
+  --accent-hover: #74C69D;
+  --user-bg: #1E2E27;
+  --tool-bg: #16221D;
+  --bg-subtle: rgba(82,183,136,0.05);
+  --status-error: #E63946;
+  --status-success: #52B788;
+  --status-warning: #FFB703;
+  --status-modified: #FB8500;
+  --status-renamed: #8ECAE6;
+  --on-accent: #081C15;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --omp-o: #52B788;
+  --omp-m: #FBBF24;
+  --omp-p: #38BDF8;
+}
+
+/* 1.10 远山黛蓝 (Horizon Navy) */
+html[data-theme="navy"], html.theme-navy {
+  --bg: #0F172A;
+  --bg-panel: #1E293B;
+  --bg-hover: #293548;
+  --bg-selected: #334155;
+  --border: #334155;
+  --text: #F1F5F9;
+  --text-muted: #94A3B8;
+  --text-dim: #64748B;
+  --accent: #60A5FA;
+  --accent-strong: #3B82F6;
+  --accent-hover: #93C5FD;
+  --user-bg: #1E293B;
+  --tool-bg: #172033;
+  --bg-subtle: rgba(96,165,250,0.05);
+  --status-error: #F87171;
+  --status-success: #4ADE80;
+  --status-warning: #FBBF24;
+  --status-modified: #FCD34D;
+  --status-renamed: #60A5FA;
+  --on-accent: #0F172A;
+  --overlay-backdrop: color-mix(in srgb, var(--text) 24%, transparent);
+  --omp-o: #60A5FA;
+  --omp-m: #38BDF8;
+  --omp-p: #818CF8;
+}
+
+/* ── 2. Multi-Color Flowing Aurora Themes (6 Ultra-Soft, Luminous Presets) ────────── */
+
+/* 2.1 极光幻境 (Aurora Borealis Flow) */
+html[data-theme="aurora-flow"], html.theme-aurora-flow {
+  --bg: #0c1417;
+  --bg-panel: rgba(18, 28, 32, 0.78);
+  --bg-hover: rgba(28, 44, 50, 0.82);
+  --bg-selected: rgba(38, 60, 68, 0.88);
+  --border: rgba(78, 237, 178, 0.18);
+  --text: #e8fdf5;
+  --text-muted: #9adbc5;
+  --text-dim: #70b39e;
+  --accent: #34d399;
+  --accent-strong: #10b981;
+  --accent-hover: #6ee7b7;
+  --user-bg: rgba(20, 36, 40, 0.72);
+  --tool-bg: rgba(14, 24, 28, 0.72);
+  --bg-subtle: rgba(52, 211, 153, 0.06);
+  --status-error: #f87171;
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-modified: #fbbf24;
+  --status-renamed: #60a5fa;
+  --on-accent: #064e3b;
+  --overlay-backdrop: rgba(6, 20, 22, 0.5);
+  --omp-o: #34d399;
+  --omp-m: #38bdf8;
+  --omp-p: #a78bfa;
+}
+
+/* 2.2 晨曦微光 (Dawn Twilight Flow) */
+html[data-theme="dawn-flow"], html.theme-dawn-flow {
+  --bg: #16101a;
+  --bg-panel: rgba(32, 22, 38, 0.78);
+  --bg-hover: rgba(48, 32, 56, 0.82);
+  --bg-selected: rgba(64, 42, 74, 0.88);
+  --border: rgba(244, 114, 182, 0.18);
+  --text: #fdf4ff;
+  --text-muted: #f0abfc;
+  --text-dim: #d946ef;
+  --accent: #f472b6;
+  --accent-strong: #db2777;
+  --accent-hover: #fbcfe8;
+  --user-bg: rgba(40, 26, 48, 0.72);
+  --tool-bg: rgba(24, 16, 30, 0.72);
+  --bg-subtle: rgba(244, 114, 182, 0.06);
+  --status-error: #f43f5e;
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-modified: #fbbf24;
+  --status-renamed: #c084fc;
+  --on-accent: #4a044e;
+  --overlay-backdrop: rgba(22, 10, 26, 0.5);
+  --omp-o: #f472b6;
+  --omp-m: #fb923c;
+  --omp-p: #c084fc;
+}
+
+/* 2.3 深空星云 (Cosmic Horizon Flow) */
+html[data-theme="cosmic-flow"], html.theme-cosmic-flow {
+  --bg: #090b16;
+  --bg-panel: rgba(16, 20, 38, 0.78);
+  --bg-hover: rgba(26, 32, 60, 0.82);
+  --bg-selected: rgba(38, 46, 84, 0.88);
+  --border: rgba(129, 140, 248, 0.18);
+  --text: #eef2ff;
+  --text-muted: #a5b4fc;
+  --text-dim: #818cf8;
+  --accent: #818cf8;
+  --accent-strong: #6366f1;
+  --accent-hover: #c7d2fe;
+  --user-bg: rgba(22, 26, 52, 0.72);
+  --tool-bg: rgba(12, 15, 30, 0.72);
+  --bg-subtle: rgba(129, 140, 248, 0.06);
+  --status-error: #f87171;
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-modified: #fbbf24;
+  --status-renamed: #38bdf8;
+  --on-accent: #1e1b4b;
+  --overlay-backdrop: rgba(8, 10, 20, 0.5);
+  --omp-o: #818cf8;
+  --omp-m: #c084fc;
+  --omp-p: #38bdf8;
+}
+
+/* 2.4 深海幽光 (Abyss Ocean Flow) */
+html[data-theme="ocean-flow"], html.theme-ocean-flow {
+  --bg: #071318;
+  --bg-panel: rgba(12, 28, 36, 0.78);
+  --bg-hover: rgba(20, 44, 56, 0.82);
+  --bg-selected: rgba(28, 60, 76, 0.88);
+  --border: rgba(56, 189, 248, 0.18);
+  --text: #f0f9ff;
+  --text-muted: #7dd3fc;
+  --text-dim: #38bdf8;
+  --accent: #38bdf8;
+  --accent-strong: #0284c7;
+  --accent-hover: #bae6fd;
+  --user-bg: rgba(16, 36, 48, 0.72);
+  --tool-bg: rgba(10, 22, 30, 0.72);
+  --bg-subtle: rgba(56, 189, 248, 0.06);
+  --status-error: #f87171;
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-modified: #fbbf24;
+  --status-renamed: #38bdf8;
+  --on-accent: #082f49;
+  --overlay-backdrop: rgba(6, 16, 22, 0.5);
+  --omp-o: #38bdf8;
+  --omp-m: #2dd4bf;
+  --omp-p: #818cf8;
+}
+
+/* 2.5 樱落暮雪 (Sakura Twilight Flow) */
+html[data-theme="sakura-flow"], html.theme-sakura-flow {
+  --bg: #171114;
+  --bg-panel: rgba(34, 22, 28, 0.78);
+  --bg-hover: rgba(52, 32, 42, 0.82);
+  --bg-selected: rgba(70, 42, 56, 0.88);
+  --border: rgba(251, 113, 133, 0.18);
+  --text: #fff1f2;
+  --text-muted: #fda4af;
+  --text-dim: #fb7185;
+  --accent: #fb7185;
+  --accent-strong: #e11d48;
+  --accent-hover: #fecdd3;
+  --user-bg: rgba(42, 26, 34, 0.72);
+  --tool-bg: rgba(24, 16, 20, 0.72);
+  --bg-subtle: rgba(251, 113, 133, 0.06);
+  --status-error: #f43f5e;
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-modified: #fbbf24;
+  --status-renamed: #c084fc;
+  --on-accent: #4c0519;
+  --overlay-backdrop: rgba(24, 10, 16, 0.5);
+  --omp-o: #fb7185;
+  --omp-m: #f43f5e;
+  --omp-p: #fda4af;
+}
+
+/* 2.6 竹林雨霁 (Bamboo Mist Flow) */
+html[data-theme="bamboo-flow"], html.theme-bamboo-flow {
+  --bg: #0c1612;
+  --bg-panel: rgba(18, 32, 26, 0.78);
+  --bg-hover: rgba(28, 48, 38, 0.82);
+  --bg-selected: rgba(38, 64, 52, 0.88);
+  --border: rgba(52, 211, 153, 0.18);
+  --text: #ecfdf5;
+  --text-muted: #a7f3d0;
+  --text-dim: #6ee7b7;
+  --accent: #10b981;
+  --accent-strong: #059669;
+  --accent-hover: #6ee7b7;
+  --user-bg: rgba(22, 40, 32, 0.72);
+  --tool-bg: rgba(14, 26, 20, 0.72);
+  --bg-subtle: rgba(16, 185, 129, 0.06);
+  --status-error: #f87171;
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-modified: #fbbf24;
+  --status-renamed: #38bdf8;
+  --on-accent: #022c22;
+  --overlay-backdrop: rgba(8, 20, 16, 0.5);
+  --omp-o: #10b981;
+  --omp-m: #34d399;
+  --omp-p: #6ee7b7;
+}
+
+/* Frosted glass on sidebars/topbars/panels during flowing themes */
+html[data-theme$="-flow"] .shell-topbar,
+html[data-theme$="-flow"] .sidebar-container,
+html[data-theme$="-flow"] .right-panel-container,
+html[data-theme$="-flow"] .chat-input-wrapper,
+html[data-theme="custom"][data-custom-mode="flow"] .shell-topbar,
+html[data-theme="custom"][data-custom-mode="flow"] .sidebar-container,
+html[data-theme="custom"][data-custom-mode="flow"] .right-panel-container,
+html[data-theme="custom"][data-custom-mode="flow"] .chat-input-wrapper {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* Multi-color luminous Aurora Mesh strictly inside chat area */
+html[data-theme$="-flow"] .aurora-flow-bg::before,
+html[data-theme="custom"][data-custom-mode="flow"] .aurora-flow-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 30%, rgba(0, 255, 136, 0.32) 0%, transparent 65%),
+    radial-gradient(ellipse 65% 65% at 80% 25%, rgba(0, 230, 255, 0.30) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 70% at 50% 80%, rgba(168, 85, 247, 0.30) 0%, transparent 65%),
+    radial-gradient(ellipse 55% 55% at 85% 75%, rgba(255, 42, 133, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 45% at 15% 85%, rgba(251, 191, 36, 0.25) 0%, transparent 60%);
+  background-size: 200% 200%;
+  animation: omp-aurora-glow 15s ease-in-out infinite alternate;
+  filter: blur(48px);
+  opacity: 0.9;
+}
+
+@keyframes omp-aurora-glow {
+  0% {
+    transform: scale(1) translate(0%, 0%);
+    filter: blur(40px) hue-rotate(0deg);
+  }
+  50% {
+    transform: scale(1.08) translate(-4%, 3%);
+    filter: blur(52px) hue-rotate(45deg);
+  }
+  100% {
+    transform: scale(0.96) translate(4%, -3%);
+    filter: blur(38px) hue-rotate(90deg);
+  }
 }
 
 /* Shape / elevation / motion tokens (warm-humanistic system). */
@@ -145,7 +626,7 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--app-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   font-size: 14px;
   overscroll-behavior: none;
 }
@@ -210,13 +691,11 @@ pre, code {
 
 /* react-markdown output styles */
 .markdown-body {
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: var(--chat-font-size, 14px);
+  line-height: var(--chat-line-height, 1.7);
   color: var(--text);
   word-break: break-word;
 }
-.markdown-body p { margin: 0 0 10px; }
-.markdown-body p:last-child { margin-bottom: 0; }
 .markdown-body h1, .markdown-body h2, .markdown-body h3,
 .markdown-body h4, .markdown-body h5, .markdown-body h6 {
   font-family: var(--font-serif);
@@ -1902,6 +2381,116 @@ html.dark .dropdown-surface :is(select, option) {
 @media (prefers-reduced-motion: reduce) {
   .activity-row-spinner { animation: none; }
 }
+
+/* OMP Pure Three-Letter Separate Sequential Jumps (No Pill Box) */
+.omp-letters-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  user-select: none;
+  flex-shrink: 0;
+  line-height: 1;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 13.5px;
+}
+
+.omp-solo-o {
+  display: inline-block;
+  transform-origin: bottom center;
+  color: var(--omp-o, var(--accent));
+  animation: omp-solo-jump-o 1.5s cubic-bezier(0.34, 1.35, 0.64, 1) infinite !important;
+}
+
+.omp-solo-m {
+  display: inline-block;
+  transform-origin: bottom center;
+  color: var(--omp-m, #F59E0B);
+  animation: omp-solo-jump-m 1.5s cubic-bezier(0.34, 1.35, 0.64, 1) infinite !important;
+}
+
+.omp-solo-p {
+  display: inline-block;
+  transform-origin: bottom center;
+  color: var(--omp-p, #38BDF8);
+  animation: omp-solo-jump-p 1.5s cubic-bezier(0.34, 1.35, 0.64, 1) infinite !important;
+}
+
+@keyframes omp-solo-jump-o {
+  0% { transform: translateY(0) scale(1, 1); }
+  5% { transform: translateY(1.5px) scale(1.18, 0.82); }
+  15% { transform: translateY(-7px) scale(0.88, 1.2); }
+  25% { transform: translateY(0.8px) scale(1.08, 0.92); }
+  30%, 100% { transform: translateY(0) scale(1, 1); }
+}
+
+@keyframes omp-solo-jump-m {
+  0%, 33.3% { transform: translateY(0) scale(1, 1); }
+  38.3% { transform: translateY(1.5px) scale(1.18, 0.82); }
+  48.3% { transform: translateY(-7px) scale(0.88, 1.2); }
+  58.3% { transform: translateY(0.8px) scale(1.08, 0.92); }
+  63.3%, 100% { transform: translateY(0) scale(1, 1); }
+}
+
+@keyframes omp-solo-jump-p {
+  0%, 66.6% { transform: translateY(0) scale(1, 1); }
+  71.6% { transform: translateY(1.5px) scale(1.18, 0.82); }
+  81.6% { transform: translateY(-7px) scale(0.88, 1.2); }
+  91.6% { transform: translateY(0.8px) scale(1.08, 0.92); }
+  96.6%, 100% { transform: translateY(0) scale(1, 1); }
+}
+
+/* Dynamic Thinking Brain Icon */
+.thinking-icon-active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  animation: thinking-brain-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes thinking-brain-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0px transparent);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.22);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 65%, transparent));
+    opacity: 1;
+    color: var(--accent);
+  }
+}
+
+/* Smooth Collapsible Animated Wrapper for Activity Rows & Thinking */
+.activity-collapsible-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
+}
+
+.activity-collapsible-wrapper[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.activity-collapsible-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .omp-bouncing-letter,
+  .thinking-icon-active {
+    animation: none;
+  }
+  .activity-collapsible-wrapper {
+    transition: none;
+  }
+}
+
 .tool-call-details {
   width: min(calc(100% - 21px), 760px);
   max-width: 760px;
@@ -2140,3 +2729,71 @@ html.dark .dropdown-surface :is(select, option) {
     padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
   }
 }
+
+/* Clockwise Flowing Border Beam for Chat Input */
+:root {
+  --omp-beam-speed: 5.5s;
+}
+
+.chat-input-shell {
+  position: relative;
+}
+
+.chat-input-shell-streaming {
+  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-card) !important;
+}
+
+.chat-input-beam-svg {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  pointer-events: none;
+  border-radius: var(--radius-card);
+  overflow: visible;
+  z-index: 5;
+}
+
+.chat-input-beam-rect {
+  animation: omp-beam-clockwise var(--omp-beam-speed, 5.5s) linear infinite;
+  filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--accent) 70%, transparent));
+  opacity: 0.85;
+}
+
+@keyframes omp-beam-clockwise {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Master Animation Disable */
+html[data-animations="false"] *,
+html[data-animations="false"] *::before,
+html[data-animations="false"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* Granular Animation Disables */
+html[data-animation-beam="false"] .chat-input-beam-svg {
+  display: none !important;
+}
+
+html[data-animation-omp="false"] .omp-solo-o,
+html[data-animation-omp="false"] .omp-solo-m,
+html[data-animation-omp="false"] .omp-solo-p {
+  animation: none !important;
+  transform: none !important;
+}
+
+html[data-animation-thinking="false"] .thinking-icon-active {
+  animation: none !important;
+  transform: none !important;
+}
+
+
+

@@ -11,7 +11,9 @@ import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { Check, CircleCheck, History, Menu, Moon, PanelLeft, Sun, Terminal, Wand2 } from "lucide-react";
+import { Check, CircleCheck, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2 } from "lucide-react";
+import { ThemePicker } from "./ThemePicker";
+import { TerminalPanel } from "./TerminalPanel";
 import { useTheme } from "@/hooks/useTheme";
 import { formatCompactNumber, formatPercent, getCacheHitRate } from "@/lib/format";
 import { translate, useI18n } from "@/lib/i18n";
@@ -40,6 +42,8 @@ const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer
 // --sidebar-width CSS variable (globals.css) and persisted between sessions.
 const SIDEBAR_WIDTH_STORAGE_KEY = "omp-web:sidebar-width";
 const TOOL_CALLS_COLLAPSED_STORAGE_KEY = "omp-web:tool-calls-collapsed";
+const THINKING_DISPLAY_MODE_STORAGE_KEY = "omp-web:thinking-display-mode";
+export type ThinkingDisplayMode = "auto" | "collapsed" | "expanded";
 const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 520;
 const SIDEBAR_DEFAULT_WIDTH = 260;
@@ -104,7 +108,47 @@ export function AppShell() {
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
   const [toolCallsDefaultCollapsed, setToolCallsDefaultCollapsed] = useState(true);
+  const [thinkingDisplayMode, setThinkingDisplayMode] = useState<ThinkingDisplayMode>("auto");
   const [sidebarResizing, setSidebarResizing] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 480;
+    try {
+      const raw = localStorage.getItem("omp-right-panel-width");
+      return raw ? Number(raw) : 480;
+    } catch {
+      return 480;
+    }
+  });
+
+  const handleRightResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = rightPanelWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const delta = startX - ev.clientX;
+      const newW = startW + delta;
+      if (newW < 180) {
+        setRightPanelOpen(false);
+      } else {
+        setRightPanelOpen(true);
+        const clamped = Math.min(window.innerWidth * 0.75, Math.max(260, newW));
+        setRightPanelWidth(clamped);
+        try {
+          localStorage.setItem("omp-right-panel-width", String(clamped));
+        } catch {}
+      }
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [rightPanelWidth]);
   // Active drag handlers so an unmount mid-drag can detach them.
   const sidebarResizeHandlersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
   // DOM element + live width during a drag (see handleSidebarResizeStart).
@@ -117,6 +161,14 @@ export function AppShell() {
     } catch {
       // Keep the compact default when storage is unavailable.
     }
+    try {
+      const savedThinkingMode = window.localStorage.getItem(THINKING_DISPLAY_MODE_STORAGE_KEY);
+      if (savedThinkingMode === "collapsed" || savedThinkingMode === "expanded" || savedThinkingMode === "auto") {
+        setThinkingDisplayMode(savedThinkingMode);
+      }
+    } catch {
+      // Keep the auto default when storage is unavailable.
+    }
   }, []);
   const handleToolCallsDefaultCollapsedChange = useCallback((collapsed: boolean) => {
     setToolCallsDefaultCollapsed(collapsed);
@@ -125,6 +177,12 @@ export function AppShell() {
     } catch {
       // The preference still applies for this page load.
     }
+  }, []);
+  const handleThinkingDisplayModeChange = useCallback((mode: ThinkingDisplayMode) => {
+    setThinkingDisplayMode(mode);
+    try {
+      window.localStorage.setItem(THINKING_DISPLAY_MODE_STORAGE_KEY, mode);
+    } catch {}
   }, []);
   // Persist the committed width (after each change; skipped mid-drag, then
   // written once the drag ends). The first run is skipped so the mount-time
@@ -251,6 +309,25 @@ export function AppShell() {
     setBranchActiveLeafId(activeLeafId);
     branchLeafChangeFnRef.current = onLeafChange;
   }, []);
+  const handleOpenTerminal = useCallback(async () => {
+    const cwd = selectedSession?.cwd ?? newSessionCwd ?? initialNavigation.requestedCwd;
+    try {
+      const res = await fetch("/api/terminal/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.info(t("appShell.terminalOpened") || `已在 ${data.terminal ?? "终端"} 打开工作区`);
+      } else {
+        toast.error(data.error || "打开终端失败");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "打开终端请求失败";
+      toast.error(msg);
+    }
+  }, [selectedSession?.cwd, newSessionCwd, initialNavigation.requestedCwd, t]);
 
   const handleBranchLeafChange = useCallback((leafId: string | null) => {
     branchLeafChangeFnRef.current?.(leafId);
@@ -974,17 +1051,20 @@ export function AppShell() {
           >
             {sidebarOpen ? <PanelLeft size={16} strokeWidth={1.8} aria-hidden="true" /> : <Menu size={16} strokeWidth={1.8} aria-hidden="true" />}
           </button>
+          <ThemePicker />
           <button
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              toggleTheme({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-            }}
-            title={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
-            aria-label={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
-            aria-pressed={isDark}
+            type="button"
+            onClick={() => setTerminalOpen((v) => !v)}
+            title={terminalOpen ? (t("appShell.hideTerminal") || "隐藏页面内嵌终端") : (t("appShell.toggleTerminal") || "切换页面内嵌终端 (Terminal)")}
+            aria-label={t("appShell.toggleTerminal") || "切换页面内嵌终端"}
+            aria-pressed={terminalOpen}
             className="shell-toolbar-btn ui-focus-ring"
+            style={{
+              color: terminalOpen ? "var(--accent)" : undefined,
+              background: terminalOpen ? "var(--bg-selected)" : undefined,
+            }}
           >
-            {isDark ? <Sun size={16} strokeWidth={1.8} aria-hidden="true" /> : <Moon size={16} strokeWidth={1.8} aria-hidden="true" />}
+            <TerminalSquare size={16} strokeWidth={1.8} aria-hidden="true" />
           </button>
           <LanguageSwitcher />
         </div>
@@ -1450,6 +1530,9 @@ export function AppShell() {
               onModelCapacityChange={handleModelCapacityChange}
               onGenerationSpeedChange={handleGenerationSpeedChange}
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
+              thinkingDisplayMode={thinkingDisplayMode}
+              terminalOpen={terminalOpen}
+              onCloseTerminal={() => setTerminalOpen(false)}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -1507,6 +1590,12 @@ export function AppShell() {
             )
           )}
         </div>
+        {/* Bottom Terminal Drawer */}
+        <TerminalPanel
+          open={terminalOpen}
+          onClose={() => setTerminalOpen(false)}
+          cwd={activeCwd ?? undefined}
+        />
       </main>
 
       {/* Right panel: file viewer — always mounted, width animated via CSS */}
@@ -1515,10 +1604,28 @@ export function AppShell() {
         style={{
           display: "flex",
           flexDirection: "column",
-          borderLeft: "1px solid var(--border)",
+          borderLeft: rightPanelOpen ? "1px solid var(--border)" : "none",
           background: "var(--bg)",
+          width: rightPanelOpen ? `${rightPanelWidth}px` : 0,
+          minWidth: rightPanelOpen ? 260 : 0,
+          position: "relative",
         }}
       >
+        {rightPanelOpen && !isMobile && (
+          <div
+            onMouseDown={handleRightResizeStart}
+            title="拖拽调节右侧栏宽度，向右拖拽收缩"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: -4,
+              bottom: 0,
+              width: 8,
+              cursor: "col-resize",
+              zIndex: 40,
+            }}
+          />
+        )}
         {/* Right panel tab bar */}
         <div style={{ display: "flex", alignItems: "center", flexShrink: 0, background: "var(--bg-panel)", borderBottom: "1px solid var(--border)", height: 36 }}>
           <div style={{ flex: 1, overflow: "hidden" }}>
@@ -1577,7 +1684,7 @@ export function AppShell() {
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
-    {settingsTab && <SettingsConfig activeTab={settingsTab} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onToolCallsDefaultCollapsedChange={handleToolCallsDefaultCollapsedChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onOmpUpdateAvailabilityChange={setOmpUpdateAvailable} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
+    {settingsTab && <SettingsConfig activeTab={settingsTab} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onToolCallsDefaultCollapsedChange={handleToolCallsDefaultCollapsedChange} thinkingDisplayMode={thinkingDisplayMode} onThinkingDisplayModeChange={handleThinkingDisplayModeChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onOmpUpdateAvailabilityChange={setOmpUpdateAvailable} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
     {archiveBrowserOpen && (
       <ArchiveBrowser
         open={archiveBrowserOpen}

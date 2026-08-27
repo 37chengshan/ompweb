@@ -120,6 +120,19 @@ test("coexists with composer layout and keeps todo progress summary accessible",
   assert.match(html, /Tasks/);
   assert.match(html, /1\/2 complete/);
 });
+test("plan mode hides the duplicate todo list but keeps subagents", () => {
+  const html = renderToStaticMarkup(React.createElement(ComposerPanels, {
+    todoPhases: [{ name: "Implementation", tasks: [{ content: "Wire panels", status: "in_progress" }] }],
+    subagents: [{ id: "s1", agent: "scout", status: "started", task: "Map the surface", index: 0 }],
+    onSelectSubagent: noop,
+    defaultExpanded: true,
+    planModeActive: true,
+  }));
+  assert.doesNotMatch(html, /Tasks/);
+  assert.doesNotMatch(html, /Wire panels/);
+  assert.match(html, /Map the surface/);
+  assert.match(html, /Subagents/);
+});
 
 test("history chips render terminal telemetry without pulsing state", () => {
   const html = renderToStaticMarkup(React.createElement(ComposerPanels, {

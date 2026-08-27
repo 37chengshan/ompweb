@@ -115,6 +115,7 @@ interface Props {
   prevTimestamp?: number;
   sessionId?: string;
   toolCallsDefaultCollapsed?: boolean;
+  thinkingDisplayMode?: "auto" | "collapsed" | "expanded";
   /** omp-reported output throughput (get_state.tokensPerSecond), live while streaming. */
   liveTokensPerSecond?: number | null;
 }
@@ -146,12 +147,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, toolCallsDefaultCollapsed = true, liveTokensPerSecond }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", liveTokensPerSecond }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} liveTokensPerSecond={liveTokensPerSecond} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} thinkingDisplayMode={thinkingDisplayMode} liveTokensPerSecond={liveTokensPerSecond} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -191,6 +192,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.prevTimestamp === next.prevTimestamp
     && prev.sessionId === next.sessionId
     && prev.toolCallsDefaultCollapsed === next.toolCallsDefaultCollapsed
+    && prev.thinkingDisplayMode === next.thinkingDisplayMode
     && prev.liveTokensPerSecond === next.liveTokensPerSecond;
 });
 
@@ -399,6 +401,7 @@ function AssistantMessageView({
   sessionId,
   entryId,
   toolCallsDefaultCollapsed,
+  thinkingDisplayMode = "auto",
   liveTokensPerSecond,
 }: {
   message: AssistantMessage;
@@ -412,6 +415,7 @@ function AssistantMessageView({
   sessionId?: string;
   entryId?: string;
   toolCallsDefaultCollapsed: boolean;
+  thinkingDisplayMode?: "auto" | "collapsed" | "expanded";
   liveTokensPerSecond?: number | null;
 }) {
   const { t, locale } = useI18n();
@@ -555,7 +559,7 @@ function AssistantMessageView({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} />
+          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} thinkingDisplayMode={thinkingDisplayMode} />
         ))}
       </div>
 
@@ -568,12 +572,12 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex, toolCallsDefaultCollapsed }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number; toolCallsDefaultCollapsed: boolean }) {
+function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex, toolCallsDefaultCollapsed, thinkingDisplayMode }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number; toolCallsDefaultCollapsed: boolean; thinkingDisplayMode?: "auto" | "collapsed" | "expanded" }) {
   if (block.type === "text") {
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
+    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} isStreaming={isStreaming} thinkingDisplayMode={thinkingDisplayMode} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
@@ -598,21 +602,32 @@ const TextBlock = memo(function TextBlock({ block, isStreaming, cwd, onOpenFile 
   && prev.onOpenFile === next.onOpenFile
 ));
 
-const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
+const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex, isStreaming, thinkingDisplayMode = "auto" }: {
   block: ThinkingContent;
   duration?: number;
   sessionId?: string;
   entryId?: string;
   blockIndex: number;
+  isStreaming?: boolean;
+  thinkingDisplayMode?: "auto" | "collapsed" | "expanded";
 }) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Compute auto/default expansion based on thinkingDisplayMode
+  const isAutoExpanded = useMemo(() => {
+    if (thinkingDisplayMode === "expanded") return true;
+    if (thinkingDisplayMode === "collapsed") return false;
+    return Boolean(isStreaming && !block.deferred);
+  }, [thinkingDisplayMode, isStreaming, block.deferred]);
+
+  const expanded = userToggled !== null ? userToggled : isAutoExpanded;
+
   const handleOpenChange = (nextOpen: boolean) => {
-    setExpanded(nextOpen);
+    setUserToggled(nextOpen);
     if (!nextOpen || !block.deferred || content !== null) return;
     if (!sessionId || !entryId) {
       setError(t("messageView.thinkingUnavailable"));
@@ -632,7 +647,7 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
       <Collapsible open={expanded} onOpenChange={handleOpenChange}>
         <CollapsibleTrigger className="activity-row-trigger">
           <span className="activity-row-indicator" aria-hidden>
-            <Brain size={12} strokeWidth={1.8} />
+            <Brain size={12} strokeWidth={1.8} className={isStreaming ? "thinking-icon-active" : undefined} />
           </span>
           <span className="activity-row-tool">{t("messageView.thinking")}</span>
           <span className="activity-row-preview" />
@@ -650,24 +665,26 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
             }}
           />
         </CollapsibleTrigger>
-        {expanded && (
-          <div className="tool-call-details">
-            <div
-              className={`tool-call-output${error ? " tool-call-output-error" : ""}`}
-              style={{
-                whiteSpace: "pre-wrap",
-                fontFamily: "var(--font-mono)",
-                fontSize: 10.5,
-                lineHeight: 1.45,
-                color: error ? "var(--status-error)" : "var(--text-muted)",
-              }}
-            >
-              <pre className="tool-call-output-text">
-                {loading ? t("messageView.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
-              </pre>
+        <div className="activity-collapsible-wrapper" data-open={expanded ? "true" : "false"}>
+          <div className="activity-collapsible-inner">
+            <div className="tool-call-details">
+              <div
+                className={`tool-call-output${error ? " tool-call-output-error" : ""}`}
+                style={{
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10.5,
+                  lineHeight: 1.45,
+                  color: error ? "var(--status-error)" : "var(--text-muted)",
+                }}
+              >
+                <pre className="tool-call-output-text">
+                  {loading ? t("messageView.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
+                </pre>
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </Collapsible>
     </div>
   );
@@ -678,6 +695,8 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
   && prev.sessionId === next.sessionId
   && prev.entryId === next.entryId
   && prev.blockIndex === next.blockIndex
+  && prev.isStreaming === next.isStreaming
+  && prev.thinkingDisplayMode === next.thinkingDisplayMode
 ));
 
 
@@ -722,22 +741,24 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
           />
         </CollapsibleTrigger>
         {resultMeta && <div className="activity-row-secondary">{resultMeta}</div>}
-        {expanded && (
-          <div className={`tool-call-details${isError ? " tool-call-details-error" : ""}`}>
-            <div className="tool-call-command">
-              <span className="tool-call-command-prompt" aria-hidden>$</span>
-              <code>{command}</code>
+        <div className="activity-collapsible-wrapper" data-open={expanded ? "true" : "false"}>
+          <div className="activity-collapsible-inner">
+            <div className={`tool-call-details${isError ? " tool-call-details-error" : ""}`}>
+              <div className="tool-call-command">
+                <span className="tool-call-command-prompt" aria-hidden>$</span>
+                <code>{command}</code>
+              </div>
+              <TaskResultPanel details={result?.details} />
+              {result ? (
+                resultDiff ? (
+                  <PairedDiffResult diff={resultDiff} />
+                ) : (
+                  <PairedResult text={formatToolOutput(resultText ?? "", block.toolName)} isEmpty={resultIsEmpty} isError={isError} />
+                )
+              ) : null}
             </div>
-            <TaskResultPanel details={result?.details} />
-            {result ? (
-              resultDiff ? (
-                <PairedDiffResult diff={resultDiff} />
-              ) : (
-                <PairedResult text={formatToolOutput(resultText ?? "", block.toolName)} isEmpty={resultIsEmpty} isError={isError} />
-              )
-            ) : null}
           </div>
-        )}
+        </div>
       </Collapsible>
     </div>
   );

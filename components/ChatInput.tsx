@@ -9,7 +9,7 @@ import { formatGoalElapsed } from "@/lib/web-mode-state";
 import { toast } from "@/components/ui/toast";
 import { formatCompactNumber } from "@/lib/format";
 import { clearDraft, getDraft, setDraft, type ChatDraftFile, type ChatDraftImage } from "@/lib/draft-store";
-import { WEB_SLASH_COMMANDS, expandWebSlashCommand } from "@/lib/web-slash-commands";
+import { WEB_SLASH_COMMANDS, expandWebSlashCommand, extractSlashQuery, type SlashQueryMatch } from "@/lib/web-slash-commands";
 import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
 import {
   composeMessageWithTextAttachments,
@@ -466,6 +466,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       if (current.trim()) return;
       setValue(text);
       setAtQuery(null);
+      setSlashMatch(null);
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
@@ -482,6 +483,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       const combined = [text, current].filter((t) => t.trim()).join("\n\n");
       setValue(combined);
       setAtQuery(null);
+      setSlashMatch(null);
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
@@ -504,6 +506,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       const newVal = before + sep + text + after;
       setValue(newVal);
       setAtQuery(null);
+      setSlashMatch(null);
       requestAnimationFrame(() => {
         if (!ta) return;
         const pos = start + sep.length + text.length;
@@ -674,6 +677,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const clearInput = useCallback(() => {
     setValue("");
     setAtQuery(null);
+    setSlashMatch(null);
     setHistoryMenuOpen(false);
     if (draftKey) clearDraft(draftKey);
     if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
@@ -711,6 +715,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     draftKeyRef.current = draftKey;
     setValue(draft?.value ?? "");
     setAtQuery(null);
+    setSlashMatch(null);
     setHistoryMenuOpen(false);
     setAttachedImages((prev) => {
       prev.forEach(revokeImagePreview);
@@ -749,9 +754,10 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     clearInput();
   }, [value, attachedImages, attachedTextFiles, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
-  const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
-    ? value.slice(1).toLowerCase()
-    : null;
+  // Slash token follows the caret, not the input start: typing a slash after
+  // real text must still open the palette (see extractSlashQuery).
+  const [slashMatch, setSlashMatch] = useState<SlashQueryMatch | null>(null);
+  const slashQuery = slashMatch === null ? null : slashMatch.query.toLowerCase();
   const [dormantSkillNames, setDormantSkillNames] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
@@ -844,6 +850,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     const pos = cursor ?? text.length;
     setAtQuery(extractAtQuery(text.slice(0, pos)));
   }, [cwd]);
+
+  // Slash token state follows the caret (same shape as updateAtQuery); the
+  // palette opens/closes via the effect keyed on the derived slashQuery.
+  const updateSlashQuery = useCallback((text: string, cursor: number | null) => {
+    const pos = cursor ?? text.length;
+    setSlashMatch(extractSlashQuery(text.slice(0, pos)));
+  }, []);
 
   const atQueryText = atQuery?.query ?? null;
   const atLocalMatches: FileIndexEntry[] = React.useMemo(() => (
@@ -990,6 +1003,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     setHistoryMenuOpen(false);
     setHistoryActiveIndex(0);
     setAtQuery(null);
+    setSlashMatch(null);
     requestAnimationFrame(() => {
       const ta = textareaRef.current;
       if (!ta) return;
@@ -1001,19 +1015,27 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   }, []);
 
   const applySlashCommand = useCallback((command: SlashCommandPaletteItem) => {
-    const nextValue = `/${command.name} `;
+    // Replace only the slash token at the caret; text typed before it stays.
+    const ta = textareaRef.current;
+    const cursor = ta?.selectionStart ?? value.length;
+    const start = slashMatch?.start ?? 0;
+    const before = value.slice(0, start);
+    const after = value.slice(cursor);
+    const nextValue = before + `/${command.name} ` + after;
+    const caret = before.length + command.name.length + 2;
     setValue(nextValue);
     setSlashMenuOpen(false);
     setSlashActiveIndex(0);
+    setSlashMatch(null);
     requestAnimationFrame(() => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-      ta.focus();
-      ta.setSelectionRange(nextValue.length, nextValue.length);
-      ta.style.height = "auto";
-      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(caret, caret);
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
     });
-  }, []);
+  }, [slashMatch, value]);
 
   const sendQueued = useCallback((mode: "steer" | "followup") => {
     const msg = value.trim();
@@ -1083,6 +1105,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     onRemoveQueuedMessage?.(text);
     setValue(text);
     setAtQuery(null);
+    setSlashMatch(null);
     setHistoryMenuOpen(false);
     requestAnimationFrame(() => {
       const ta = textareaRef.current;
@@ -2147,18 +2170,44 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
           </div>
         )}
           <div
-            className="chat-input-shell"
+            className={`chat-input-shell ${isStreaming ? "chat-input-shell-streaming" : ""}`}
             style={{
               display: "flex",
               flexDirection: "column",
               background: "var(--bg)",
-              border: `1px solid ${bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+              border: `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming ? "color-mix(in srgb, var(--accent) 25%, transparent)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
               borderRadius: "var(--radius-card)",
               padding: "12px 12px 10px 14px",
-              boxShadow: "var(--shadow-card)",
-              transition: "border-color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm)",
+              boxShadow: isStreaming ? "0 0 14px -2px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-card)" : "var(--shadow-card)",
+              transition: "border-color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-med) var(--ease-out-warm)",
+              position: "relative",
             } as React.CSSProperties}
           >
+            {isStreaming && (
+              <svg className="chat-input-beam-svg" aria-hidden="true">
+                <rect
+                  x="0.75"
+                  y="0.75"
+                  width="calc(100% - 1.5px)"
+                  height="calc(100% - 1.5px)"
+                  rx="12"
+                  fill="none"
+                  stroke="url(#chatInputBeamGrad)"
+                  strokeWidth="1.6"
+                  pathLength="100"
+                  strokeDasharray="9 91"
+                  className="chat-input-beam-rect"
+                />
+                <defs>
+                  <linearGradient id="chatInputBeamGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity="0" />
+                    <stop offset="55%" stopColor="var(--accent)" stopOpacity="0.6" />
+                    <stop offset="88%" stopColor="color-mix(in srgb, #ffffff 35%, var(--accent))" stopOpacity="0.85" />
+                    <stop offset="100%" stopColor="color-mix(in srgb, #ffffff 55%, var(--accent))" stopOpacity="0.9" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            )}
           <textarea
             ref={textareaRef}
             value={value}
@@ -2166,10 +2215,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               setValue(e.target.value);
               setHistoryMenuOpen(false);
               updateAtQuery(e.target.value, e.target.selectionStart);
+              updateSlashQuery(e.target.value, e.target.selectionStart);
             }}
             onSelect={(e) => {
               const el = e.currentTarget;
               updateAtQuery(el.value, el.selectionStart);
+              updateSlashQuery(el.value, el.selectionStart);
             }}
             onKeyDown={handleKeyDown}
             onCompositionStart={() => {

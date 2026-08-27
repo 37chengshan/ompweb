@@ -12,6 +12,8 @@ import { SubagentTranscriptDialog } from "./SubagentTranscriptDialog";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ComposerPanels } from "./ComposerPanels";
 import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
+import { EmptyChatHero } from "./EmptyChatHero";
+import { PlanPanel } from "./PlanPanel";
 import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentInfo } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -20,6 +22,7 @@ import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { resolveAvailableThinkingLevels } from "@/lib/thinking-levels";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
+import { OmpBouncingLetter } from "./OmpBouncingLetter";
 import {
   captureScrollDistance,
   getNextVisibleCount,
@@ -31,6 +34,7 @@ interface Props {
   session: SessionInfo | null;
   newSessionCwd: string | null;
   toolCallsDefaultCollapsed?: boolean;
+  thinkingDisplayMode?: "auto" | "collapsed" | "expanded";
   onAgentEnd?: () => void;
   onSessionCreated?: (session: SessionInfo) => void;
   onSessionForked?: (newSessionId: string) => void;
@@ -45,6 +49,8 @@ interface Props {
   onModelCapacityChange?: (capacity: { contextWindow?: number; maxTokens?: number } | null) => void;
   onOpenFile?: (filePath: string) => void;
   onGenerationSpeedChange?: (speed: GenerationSpeedInfo | null) => void;
+  terminalOpen?: boolean;
+  onCloseTerminal?: () => void;
 }
 
 function phaseLabel(phase: AgentPhase): string {
@@ -216,6 +222,7 @@ interface CommittedTranscriptProps {
   onOpenFile?: (filePath: string) => void;
   sessionId: string | undefined;
   toolCallsDefaultCollapsed: boolean;
+  thinkingDisplayMode?: "auto" | "collapsed" | "expanded";
   visibleCount: number;
   /** True while the viewport is near the bottom of the conversation. When
    *  false (user is reading history), the render window anchors its top so
@@ -235,7 +242,7 @@ interface CommittedTranscriptProps {
 const CommittedTranscript = memo(function CommittedTranscript({
   messages, entryIds, conversationMeta, messageRefs, isStreaming, sessionBusy, isNew, forkingEntryId,
   handleFork, handleNavigate, handleEditContent, modelNames, messageCwd, onOpenFile, sessionId,
-  toolCallsDefaultCollapsed, visibleCount, nearBottom, sentinelRef, handleLoadMoreClick,
+  toolCallsDefaultCollapsed, thinkingDisplayMode, visibleCount, nearBottom, sentinelRef, handleLoadMoreClick,
 }: CommittedTranscriptProps) {
   const { t } = useI18n();
   const { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
@@ -285,6 +292,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
         prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
         sessionId={sessionId}
         toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
+        thinkingDisplayMode={thinkingDisplayMode}
       />
     );
     if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
@@ -411,10 +419,10 @@ const CommittedTranscript = memo(function CommittedTranscript({
   );
 });
 
-export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile, terminalOpen = false, onCloseTerminal }: Props) {
   const { t, tn } = useI18n();
-  const { playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
+  const { playDoneSound, unlockAudio } = useAudio();
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
   // wrapping handleAgentEventRef because useAgentSession overwrites that ref
@@ -900,7 +908,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
 
   return (
     <div
-      className="relative flex h-full flex-col overflow-hidden"
+      className="relative flex h-full flex-col overflow-hidden aurora-flow-bg"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -956,34 +964,12 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
       {isEmptyNew ? (
         <div className="relative flex flex-1 flex-col overflow-hidden">
           <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8" style={{ minHeight: 0 }}>
-          <div className="w-full" style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH }}>
-            <div
-               className="mb-3 empty-chat-brand"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                marginLeft: 8,
-                marginRight: 8,
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: "0.04em", color: "var(--accent)", flexShrink: 0, whiteSpace: "nowrap" }}>⌥</span>
-                <span style={{ fontSize: 18, color: "var(--text)", fontWeight: 600, letterSpacing: "0.02em", flexShrink: 0, whiteSpace: "nowrap" }}>omp web</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
-                </span>
-                <OmpRuntimeVersion />
-              </div>
+            <div className="w-full" style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH }}>
+              <EmptyChatHero onSelectPrompt={handleEditContent} cwd={session?.cwd ?? newSessionCwd} />
+              <NoticeShelf notices={notices} align="right" />
+              {chatInputElement}
             </div>
-            <NoticeShelf notices={notices} align="right" />
-            {chatInputElement}
           </div>
-        </div>
         </div>
       ) : (
       <>
@@ -1052,6 +1038,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               onOpenFile={onOpenFile}
               sessionId={session?.id ?? sessionIdRef.current ?? undefined}
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
+              thinkingDisplayMode={thinkingDisplayMode}
               visibleCount={visibleCount}
               nearBottom={nearBottom}
               sentinelRef={sentinelRef}
@@ -1065,6 +1052,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
                 cwd={messageCwd}
                 onOpenFile={onOpenFile}
                 toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
+                thinkingDisplayMode={thinkingDisplayMode}
                 liveTokensPerSecond={tokensPerSecond}
               />
             )}
@@ -1089,11 +1077,8 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
             ))}
 
             {(isCompacting || (agentRunning && !streamState.streamingMessage && pendingToolHeaders.length === 0)) && (
-              <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">
-                <span
-                  aria-hidden
-                  className="live-status-dot live-pulse inline-block h-2 w-2 shrink-0 rounded-full bg-accent"
-                />
+              <div role="status" aria-live="polite" className="pt-2 pb-4 mb-3 text-[13px] text-text-muted flex items-center gap-2.5">
+                <OmpBouncingLetter />
                 <span>
                   {[
                     phaseLabel(agentPhase),
@@ -1164,10 +1149,18 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
                 />
               </div>
             )}
+            <PlanPanel
+              plan={activePlan}
+              todoPhases={todoPhases}
+              onExecutePlan={(prompt) => handleSend(prompt)}
+              onRejectPlan={(critique) => handleSend(critique)}
+              planModeActive={Boolean(activePlan)}
+            />
             <ComposerPanels
               todoPhases={todoPhases}
               subagents={subagents}
               onSelectSubagent={setSelectedSubagent}
+              planModeActive={Boolean(activePlan)}
             />
             <ExtensionWidgets widgets={belowEditorWidgets} />
           </div>

@@ -143,6 +143,21 @@ test("queued slash commands gate /advisor behind the per-chat toggle", async () 
   assert.ok(guard > 0, "advisor guard missing from sendQueued");
   assert.ok(expansion > guard, "advisor guard must run before command expansion");
 });
+test("slash palette follows the caret so commands trigger after typed text", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+
+  // The palette must key off the caret token (extractSlashQuery), never the
+  // whole-input prefix check that broke "/" after real text.
+  assert.match(source, /extractSlashQuery/);
+  assert.doesNotMatch(source, /value\.startsWith\("\/"\) && !\\\/\\s\\\/\.test/);
+  assert.match(source, /updateSlashQuery\(e\.target\.value, e\.target\.selectionStart\)/);
+
+  // Selecting a command replaces only the slash token and keeps the prefix.
+  const apply = source.slice(source.indexOf("const applySlashCommand"), source.indexOf("const sendQueued"));
+  assert.match(apply, /value\.slice\(0, start\)/);
+  assert.match(apply, /before \+ `\/\$\{command\.name\} ` \+ after/);
+});
 
 test("renders single queued prompt in compact bar", () => {
   const html = renderToStaticMarkup(

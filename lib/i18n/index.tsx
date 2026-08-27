@@ -58,9 +58,7 @@ function detectLocale(): Locale {
   return "en";
 }
 
-function getLocale(): Locale {
-  // During SSR or the initial hydration pass, return "en" to guarantee server/client HTML match
-  if (typeof document === "undefined" || !state.hydrated) return "en";
+function getClientSnapshot(): Locale {
   if (state.locale === null) state.locale = detectLocale();
   return state.locale;
 }
@@ -83,7 +81,7 @@ export function setLocale(locale: Locale): void {
 
 /** Translate outside React (toasts, error helpers). Falls back key → en → key. */
 export function translate(key: string, vars?: Record<string, string | number>): string {
-  const locale = getLocale();
+  const locale = state.locale ?? (typeof window !== "undefined" ? detectLocale() : "en");
   const template = dictionaries[locale]?.[key] ?? dictionaries.en[key] ?? key;
   if (!vars) return template;
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>
@@ -116,7 +114,7 @@ function getServerSnapshot(): Locale {
 /** Locale state + translator. Components re-render on language switch because
  * the locale is the subscribed snapshot. */
 export function useI18n() {
-  const locale = useSyncExternalStore(subscribe, getLocale, getServerSnapshot);
+  const locale = useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
 
   useEffect(() => {
     if (!state.hydrated) {

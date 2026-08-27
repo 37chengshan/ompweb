@@ -150,3 +150,30 @@ export function expandWebSlashCommand(text: string): WebSlashCommandExpansion {
   }
   return { kind: "expand", prompt: def.buildPrompt(args) };
 }
+export interface SlashQueryMatch {
+  /** Index of the "/" character in the text */
+  start: number;
+  /** Text typed after the "/" (may be empty) */
+  query: string;
+}
+
+/**
+ * Detect a slash command token immediately before the cursor. Unlike the TUI
+ * (which only triggers at line start), the web composer lets the user open the
+ * palette anywhere in a draft: the token is the last "/" before the caret with
+ * no whitespace after it. The "/" must not be glued to an ASCII letter, digit,
+ * or another slash, so paths (a/b, http://x) and version strings (v1.2/3)
+ * never trigger — while CJK text and punctuation before the slash are fine
+ * ("帮我看看 /pl" and "帮我看看/pl" both open the palette). Whitespace after
+ * the token (command args) closes the menu, matching the composer's previous
+ * behavior.
+ */
+export function extractSlashQuery(textBeforeCursor: string): SlashQueryMatch | null {
+  const match = /\/([^\s/]*)$/.exec(textBeforeCursor);
+  if (!match) return null;
+  const slashIndex = match.index;
+  if (slashIndex === 0) return { start: 0, query: match[1] };
+  const prev = textBeforeCursor[slashIndex - 1];
+  if (/[A-Za-z0-9/]/.test(prev)) return null;
+  return { start: slashIndex, query: match[1] };
+}

@@ -237,17 +237,20 @@ function SubagentsPanel({ subagents, onSelectSubagent, defaultExpanded = false }
  * subagent roster. Each is independently collapsible via its header row
  * (`chevron`) and starts collapsed; the headers always show live progress /
  * running-summary. Rendered pinned above the chat input. */
-export function ComposerPanels({ todoPhases, subagents, onSelectSubagent, defaultExpanded = false }: {
+export function ComposerPanels({ todoPhases, subagents, onSelectSubagent, defaultExpanded = false, planModeActive = false }: {
   todoPhases: TodoPhase[];
   subagents: SubagentInfo[];
   onSelectSubagent: (subagent: SubagentInfo) => void;
   /** Initial expansion of both panels (default: collapsed). */
   defaultExpanded?: boolean;
+  /** True while a plan surface (PlanPanel) owns the task grid: hide the
+   *  duplicate TodoList so tasks render exactly once. */
+  planModeActive?: boolean;
 }) {
   if (todoPhases.length === 0 && subagents.length === 0) return null;
   return (
     <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
-      <TodoList phases={todoPhases} collapsible defaultExpanded={defaultExpanded} />
+      {!planModeActive && <TodoList phases={todoPhases} collapsible defaultExpanded={defaultExpanded} />}
       <SubagentsPanel subagents={subagents} onSelectSubagent={onSelectSubagent} defaultExpanded={defaultExpanded} />
     </div>
   );

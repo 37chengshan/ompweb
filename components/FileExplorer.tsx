@@ -471,18 +471,19 @@ function TreeNode({
             </button>
           </Tooltip>
         )}
-        {hovered && (
-          <Tooltip content={revealLabel}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                void revealInFileManager(node.fullPath);
-              }}
-              aria-label={revealLabel}
-              title={revealLabel}
-              style={{
-                position: "absolute",
-                right: node.isDir ? 4 : 52,
+        {/* Always-visible "show in file manager" action — not gated on hover
+            so the entry point is discoverable at a glance. */}
+        <Tooltip content={revealLabel}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void revealInFileManager(node.fullPath);
+            }}
+            aria-label={revealLabel}
+            title={revealLabel}
+            style={{
+              position: "absolute",
+              right: node.isDir ? 4 : 52,
                 top: "50%",
                 transform: "translateY(-50%)",
                 display: "flex",
@@ -498,10 +499,9 @@ function TreeNode({
                 transition: `background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)`,
               }}
             >
-              <FolderSearch size={11} strokeWidth={2} aria-hidden="true" />
-            </button>
-          </Tooltip>
-        )}
+            <FolderSearch size={11} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </Tooltip>
         {hovered && !node.isDir && (
           <Tooltip content={downloadLabel}>
             <a

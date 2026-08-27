@@ -1238,5 +1238,5 @@
   "theme.bambooFlow": "Bamboo Mist",
   "plan.truncatedNote": "Plan file too large; showing first 256KB.",
   "fileExplorer.revealInFileManager": "Show in File Manager",
-  "fileExplorer.revealFailed": "Could not open file manager"
+  "fileExplorer.revealFailed": "Could not open in file manager"
 }

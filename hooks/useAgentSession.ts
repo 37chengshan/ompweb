@@ -1113,7 +1113,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       if (showLoading && !messagesLoaded) setLoading(false);
     }
-  }, [refreshSubagentHistory, applyAuthoritativeModel, beginAuthoritativeModelSync]);
+  }, [refreshSubagentHistory, refreshPlanInfo, applyAuthoritativeModel, beginAuthoritativeModelSync]);
 
   const loadContext = useCallback(async (sid: string, leafId: string | null, includePreCompaction = false) => {
     const seq = ++contextRequestSeqRef.current;

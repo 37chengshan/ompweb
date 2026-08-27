@@ -52,7 +52,7 @@ function TaskStatusIcon({ status }: { status: TodoItem["status"] }) {
   }
 }
 
-export function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, planModeActive, planContent = null, planFile = null, planTruncated = false }: Props) {
+export function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, planModeActive, planContent = null, planTruncated = false }: Props) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(true);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);

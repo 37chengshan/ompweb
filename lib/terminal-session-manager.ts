@@ -35,14 +35,33 @@ export function createTerminalSession(targetCwd?: string): { id: string; cwd: st
 
   const id = `term-${crypto.randomBytes(8).toString("hex")}`;
   const isWindows = process.platform === "win32";
+  const isMac = process.platform === "darwin";
+  const isLinux = process.platform === "linux";
 
-  const shell = isWindows
-    ? (process.env.COMSPEC || "cmd.exe")
-    : (process.env.SHELL || "/bin/zsh");
+  // The shell must run inside a PTY: without a TTY, zsh disables its line
+  // editor and never echoes typed characters (keystrokes only execute after
+  // Enter). macOS uses python3's pty.spawn to allocate a real PTY (the system
+  // `script` utility refuses socket stdin with "tcgetattr: Operation not
+  // supported on socket"); Linux uses util-linux `script` which accepts any
+  // stdin. Windows cmd.exe echoes input itself over pipes, so it keeps the
+  // plain spawn path.
+  let command: string;
+  let args: string[];
+  if (isWindows) {
+    command = process.env.COMSPEC || "cmd.exe";
+    args = [];
+  } else if (isMac) {
+    command = "python3";
+    args = ["-c", "import pty,sys; pty.spawn(sys.argv[1:])", process.env.SHELL || "/bin/zsh", "-i"];
+  } else if (isLinux) {
+    command = "script";
+    args = ["-qfc", `${process.env.SHELL || "/bin/bash"} -i`, "/dev/null"];
+  } else {
+    command = process.env.SHELL || "/bin/sh";
+    args = ["-i"];
+  }
 
-  const args = isWindows ? [] : ["-i"];
-
-  const proc = spawn(shell, args, {
+  const proc = spawn(command, args, {
     cwd,
     env: {
       ...process.env,

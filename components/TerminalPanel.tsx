@@ -37,7 +37,24 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
   const isDraggingRef = useRef<boolean>(false);
   const startYRef = useRef<number>(0);
   const startHeightRef = useRef<number>(280);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  // Input POSTs are serialized: each keystroke is its own request, and
+  // concurrent fetches can arrive out of order and scramble the shell input.
+  const inputChainRef = useRef<Promise<void>>(Promise.resolve());
+
+  const sendTerminalInput = useCallback((sid: string, data: string) => {
+    inputChainRef.current = inputChainRef.current.then(async () => {
+      try {
+        await fetch("/api/terminal/input", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: sid, data }),
+        });
+      } catch {
+        // Best effort; the next keystroke is still sent.
+      }
+    });
+  }, []);
+
   // Output arriving before xterm finishes its async init is buffered here and
   // replayed once the terminal is ready. Without this the SSE stream (which
   // replays session history immediately on connect) races the dynamic xterm
@@ -137,11 +154,7 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
 
       term.onData((data: string) => {
         if (!sessionId) return;
-        void fetch("/api/terminal/input", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: sessionId, data }),
-        });
+        void sendTerminalInput(sessionId, data);
       });
     }
 

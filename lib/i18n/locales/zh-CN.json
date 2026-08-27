@@ -1238,5 +1238,5 @@
   "theme.bambooFlow": "竹林雨霁 (Bamboo)",
   "plan.truncatedNote": "计划文件过大，仅显示前 256KB。",
   "fileExplorer.revealInFileManager": "在文件管理器中显示",
-  "fileExplorer.revealFailed": "无法打开文件管理器"
+  "fileExplorer.revealFailed": "无法在文件管理器中打开"
 }

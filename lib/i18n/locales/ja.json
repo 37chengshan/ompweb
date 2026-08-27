@@ -1238,5 +1238,5 @@
   "theme.bambooFlow": "竹林雨霁",
   "plan.truncatedNote": "プランファイルが大きすぎるため、先頭256KBのみ表示しています。",
   "fileExplorer.revealInFileManager": "ファイルマネージャーで表示",
-  "fileExplorer.revealFailed": "ファイルマネージャーを開けませんでした"
+  "fileExplorer.revealFailed": "ファイルマネージャーで開けませんでした"
 }

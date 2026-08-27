@@ -40,7 +40,7 @@ export interface OmpModel {
 export interface TodoItem {
   id?: string;
   content: string;
-  status: "pending" | "in_progress" | "completed" | "blocked" | "abandoned";
+  status: "pending" | "in_progress" | "completed" | "blocked" | "abandoned" | "cancelled";
   blocker?: string;
 }
 

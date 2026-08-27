@@ -250,7 +250,7 @@ export function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, 
               <MarkdownBody>{planContent}</MarkdownBody>
               {planTruncated && (
                 <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-dim)" }}>
-                  计划文件过大,仅显示前 256KB。
+                  {t("plan.truncatedNote")}
                 </div>
               )}
             </div>

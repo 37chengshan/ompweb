@@ -10,6 +10,7 @@ import {
   Download,
   Folder,
   FolderOpen,
+  FolderSearch,
   Loader2,
   TriangleAlert,
   Upload,
@@ -18,6 +19,7 @@ import {
 import { getFileIcon } from "./FileIcons";
 import { Tooltip } from "./ui/primitives";
 import { translate, useI18n } from "@/lib/i18n";
+import { toast } from "@/components/ui/toast";
 import {
   encodeFilePathForApi,
   getFileDirectory,
@@ -311,6 +313,23 @@ function TreeNode({
 
   const mentionLabel = t("fileExplorer.insertPathIntoChat");
   const downloadLabel = t("fileExplorer.downloadFile");
+  const revealLabel = t("fileExplorer.revealInFileManager");
+
+  const revealInFileManager = useCallback(async (filePath: string) => {
+    try {
+      const res = await fetch("/api/reveal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: filePath }),
+      });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? t("fileExplorer.revealFailed"));
+      }
+    } catch {
+      toast.error(t("fileExplorer.revealFailed"));
+    }
+  }, [t]);
 
   return (
     <div>
@@ -449,6 +468,37 @@ function TreeNode({
             >
               <AtSign size={11} strokeWidth={2.2} aria-hidden="true" />
               {t("fileExplorer.mention")}
+            </button>
+          </Tooltip>
+        )}
+        {hovered && (
+          <Tooltip content={revealLabel}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                void revealInFileManager(node.fullPath);
+              }}
+              aria-label={revealLabel}
+              title={revealLabel}
+              style={{
+                position: "absolute",
+                right: node.isDir ? 4 : 52,
+                top: "50%",
+                transform: "translateY(-50%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 22,
+                height: 20,
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-control)",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                transition: `background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)`,
+              }}
+            >
+              <FolderSearch size={11} strokeWidth={2} aria-hidden="true" />
             </button>
           </Tooltip>
         )}

@@ -1235,5 +1235,8 @@
   "theme.dawnFlow": "晨曦微光 (Dawn)",
   "theme.oceanFlow": "深海幽光 (Ocean)",
   "theme.sakuraFlow": "樱落暮雪 (Sakura)",
-  "theme.bambooFlow": "竹林雨霁 (Bamboo)"
+  "theme.bambooFlow": "竹林雨霁 (Bamboo)",
+  "plan.truncatedNote": "计划文件过大，仅显示前 256KB。",
+  "fileExplorer.revealInFileManager": "在文件管理器中显示",
+  "fileExplorer.revealFailed": "无法打开文件管理器"
 }

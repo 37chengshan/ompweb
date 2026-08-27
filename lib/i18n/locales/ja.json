@@ -1235,5 +1235,8 @@
   "theme.dawnFlow": "朝焼け微光",
   "theme.oceanFlow": "深海幽光",
   "theme.sakuraFlow": "桜落夕雪",
-  "theme.bambooFlow": "竹林雨霁"
+  "theme.bambooFlow": "竹林雨霁",
+  "plan.truncatedNote": "プランファイルが大きすぎるため、先頭256KBのみ表示しています。",
+  "fileExplorer.revealInFileManager": "ファイルマネージャーで表示",
+  "fileExplorer.revealFailed": "ファイルマネージャーを開けませんでした"
 }

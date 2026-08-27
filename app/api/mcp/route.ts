@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { deleteMcpServer, getBuiltinMcpPresets, parseMcpListOutput, readDiscoveredMcpServers, readMcpConfig, readUserMcpConfig, type McpLiveServer, validateMcpServer, writeMcpServer } from "@/lib/omp/mcp-config";
+import { deleteMcpServer, getBuiltinMcpPresets, parseMcpListOutput, readDiscoveredMcpServers, readMcpConfig, readUserMcpConfig, type McpLiveServer, validateMcpServer, writeMcpServer, writeUserMcpServer } from "@/lib/omp/mcp-config";
 import { readSessionHeader, resolveSessionPath } from "@/lib/session-reader";
 import { getRpcSession, resolveSpawnCwdResult, startRpcSession } from "@/lib/rpc-manager";
 import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
@@ -107,10 +107,13 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await parseJsonWithinLimit<{ cwd?: unknown; name?: unknown; previousName?: unknown; server?: unknown }>(request, MAX_MCP_REQUEST_BYTES);
-    const cwd = await allowedCwd(body.cwd);
+    const body = await parseJsonWithinLimit<{ cwd?: unknown; scope?: unknown; name?: unknown; previousName?: unknown; server?: unknown }>(request, MAX_MCP_REQUEST_BYTES);
     validateMcpServer(body.name, body.server);
     if (body.previousName !== undefined && typeof body.previousName !== "string") throw new Error("previousName must be a string");
+    if (body.scope === "user" || !body.cwd) {
+      return NextResponse.json({ success: true, ...writeUserMcpServer(body.name as string, body.server, body.previousName) });
+    }
+    const cwd = await allowedCwd(body.cwd);
     return NextResponse.json({ success: true, ...writeMcpServer(cwd, body.name as string, body.server, body.previousName) });
   } catch (error) {
     return mcpErrorResponse(error);

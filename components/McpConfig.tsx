@@ -183,16 +183,15 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
   };
 
   const enablePreset = async (preset: BuiltinMcpPreset) => {
-    if (!cwd) {
-      toast.error("Please select a project workspace first");
-      return;
-    }
     setSaving(true);
     try {
+      const payload = cwd
+        ? { cwd, name: preset.name, server: preset.config }
+        : { scope: "user", name: preset.name, server: preset.config };
       const response = await fetch("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, name: preset.name, server: preset.config }),
+        body: JSON.stringify(payload),
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
@@ -222,7 +221,10 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
         </div>
         <div style={{ padding: 12, display: "grid", gap: 10 }}>
           {builtinPresets.map((preset) => {
-            const isConfigured = servers.some((s) => s.name === preset.name);
+            const isConfigured =
+              servers.some((s) => s.name === preset.name) ||
+              (userConfig?.servers ?? []).some((s) => s.name === preset.name) ||
+              (displayedServers ?? []).some((s) => s.name === preset.name && s.status !== "disabled");
             return (
               <div key={preset.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -406,5 +408,10 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
       </div>
     </div>
     </div>}
+    {!cwd && (
+      <div style={{ marginTop: 12, padding: "16px 12px", border: "1px dashed var(--border)", borderRadius: "var(--radius-card)", color: "var(--text-muted)", fontSize: 11, textAlign: "center", background: "var(--bg-panel)" }}>
+        {t("settingsConfig.selectWorkspaceForMcp")}
+      </div>
+    )}
   </>;
 }

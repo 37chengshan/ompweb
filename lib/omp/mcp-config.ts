@@ -53,6 +53,7 @@ export function getBuiltinAgentMcpPath(cwd?: string): string | null {
 
 export function getBuiltinMcpPresets(cwd?: string): BuiltinMcpPreset[] {
   const agentMcpPath = getBuiltinAgentMcpPath(cwd);
+  const resolvedTarget = agentMcpPath || resolve(process.cwd(), "vendor", "agent-mcp", "mcp_server.py");
   return [
     {
       id: "agentmcp",
@@ -77,7 +78,7 @@ export function getBuiltinMcpPresets(cwd?: string): BuiltinMcpPreset[] {
       config: {
         type: "stdio",
         command: "python3",
-        args: [agentMcpPath ? (cwd ? relative(cwd, agentMcpPath) : agentMcpPath) : "vendor/agent-mcp/mcp_server.py"],
+        args: [resolvedTarget],
         description: "Agent MCP — 任意 Agent CLI 统一调度与多 Agent 编排控制平面",
       },
       isAvailable: Boolean(agentMcpPath),
@@ -403,5 +404,34 @@ export function deleteMcpServer(cwd: string, name: string): { path: string } {
     writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
     renameSync(temp, locked.path);
     return { path: locked.path };
+  });
+}
+
+export function writeUserMcpServer(name: string, server: McpServer, previousName?: string): { path: string } {
+  validateMcpServer(name, server);
+  if (previousName !== undefined && !SERVER_NAME.test(previousName)) throw new Error("Invalid previous server name");
+  const userPath = join(getAgentDir(), "mcp.json");
+  return withMcpConfigLock(userPath, () => {
+    let currentConfig: McpFile = {};
+    if (existsSync(userPath)) {
+      try {
+        const parsed = JSON.parse(readFileSync(userPath, "utf8"));
+        if (isRecord(parsed)) currentConfig = parsed as McpFile;
+      } catch {}
+    }
+    const servers = { ...(currentConfig.mcpServers ?? {}) };
+    const previous = servers[previousName ?? name];
+    if (previousName && previousName !== name) delete servers[previousName];
+    servers[name] = {
+      ...server,
+      ...(previous?.env !== undefined && server.env === undefined ? { env: previous.env } : {}),
+      ...(previous?.headers !== undefined && server.headers === undefined ? { headers: previous.headers } : {}),
+    };
+    const config: McpFile = { ...currentConfig, mcpServers: servers };
+    mkdirSync(dirname(userPath), { recursive: true });
+    const temp = `${userPath}.tmp-${process.pid}-${Date.now()}`;
+    writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    renameSync(temp, userPath);
+    return { path: userPath };
   });
 }

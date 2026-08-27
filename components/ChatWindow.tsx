@@ -450,7 +450,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     slashCommands, slashCommandsLoading, queuedMessages, advisorActive, advisorEnabled, handleAdvisorChange,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
-    agentPhase, activeGoal, activePlan,
+    agentPhase, activeGoal, activePlan, planInfo,
     subagents, subagentEvents, subagentTranscriptVersions, activeSubagentCount, currentTodoPhase, todoPhases,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,

@@ -21,7 +21,17 @@ interface PendingChangeLine {
   text: string;
 }
 
+const patchCache = new Map<string, SplitDiffFile[] | null>();
+const MAX_PATCH_CACHE = 20;
+
 export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
+  if (patchCache.has(text)) {
+    const cached = patchCache.get(text);
+    patchCache.delete(text);
+    patchCache.set(text, cached as SplitDiffFile[] | null);
+    return cached as SplitDiffFile[] | null;
+  }
+
   const files: SplitDiffFile[] = [];
   let current: SplitDiffFile | null = null;
   let pendingOldPath: string | undefined;
@@ -109,7 +119,13 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
   flushChanges();
 
   const parsed = files.filter((file) => file.rows.some((row) => row.type === "line"));
-  return parsed.length > 0 ? parsed : null;
+  const result = parsed.length > 0 ? parsed : null;
+  patchCache.set(text, result);
+  if (patchCache.size > MAX_PATCH_CACHE) {
+    const oldestKey = patchCache.keys().next().value;
+    if (oldestKey !== undefined) patchCache.delete(oldestKey);
+  }
+  return result;
 }
 
 function cleanPatchPath(path: string): string {

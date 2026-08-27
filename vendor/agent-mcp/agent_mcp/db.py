@@ -12,6 +12,7 @@ from typing import Any
 SCHEMA = """
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
+PRAGMA temp_store=MEMORY;
 CREATE TABLE IF NOT EXISTS agents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   parent_id INTEGER, session_id TEXT NOT NULL, task_name TEXT NOT NULL,
@@ -136,11 +137,12 @@ class DB:
     # ---- F2: 每线程独立连接池与并发安全 ----
 
     def _new_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout=10000")
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA temp_store=MEMORY")
         return conn
 
     def _conn(self) -> sqlite3.Connection:

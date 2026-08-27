@@ -679,7 +679,17 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
                 }}
               >
                 <pre className="tool-call-output-text">
-                  {loading ? t("messageView.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
+                  {(() => {
+                    if (loading) return t("messageView.loadingThinking");
+                    if (error) return error;
+                    const text = block.deferred ? content : block.thinking;
+                    if (!text) return "";
+                    const MAX_THINKING_LENGTH = 100_000;
+                    if (text.length > MAX_THINKING_LENGTH) {
+                      return text.slice(0, MAX_THINKING_LENGTH) + `\n\n... (Thinking truncated, ${text.length - MAX_THINKING_LENGTH} characters hidden) ...`;
+                    }
+                    return text;
+                  })()}
                 </pre>
               </div>
             </div>
@@ -911,8 +921,28 @@ function PairedDiffResult({ diff }: { diff: ResultDiff }) {
 
 function SplitPatchView({ text }: { text: string }) {
   const { t } = useI18n();
-  const files = useMemo(() => parseUnifiedPatch(text), [text]);
-  if (!files) return <PatchTextView text={text} />;
+  const allFiles = useMemo(() => parseUnifiedPatch(text), [text]);
+  if (!allFiles) return <PatchTextView text={text} />;
+
+  let rowCount = 0;
+  const MAX_ROWS = 800;
+  let truncatedRows = 0;
+
+  const files = allFiles.map((file) => {
+    if (rowCount >= MAX_ROWS) {
+      truncatedRows += file.rows.length;
+      return null;
+    }
+    if (rowCount + file.rows.length > MAX_ROWS) {
+      const allowed = MAX_ROWS - rowCount;
+      truncatedRows += file.rows.length - allowed;
+      rowCount += allowed;
+      return { ...file, rows: file.rows.slice(0, allowed) };
+    }
+    rowCount += file.rows.length;
+    return file;
+  }).filter((f): f is NonNullable<typeof f> => f !== null);
+
   const showFileHeaders = files.length > 1;
 
   return (
@@ -961,6 +991,11 @@ function SplitPatchView({ text }: { text: string }) {
           </div>
         </div>
       ))}
+      {truncatedRows > 0 && (
+        <div style={{ padding: "8px 10px", color: "var(--text-dim)", textAlign: "center", background: "var(--bg-subtle)" }}>
+          ... {truncatedRows} more lines truncated ...
+        </div>
+      )}
     </div>
   );
 }
@@ -1049,7 +1084,10 @@ function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" |
 }
 
 function PatchTextView({ text }: { text: string }) {
-  const lines = text.split(/\r?\n/);
+  const allLines = text.split(/\r?\n/);
+  const MAX_LINES = 800;
+  const lines = allLines.slice(0, MAX_LINES);
+  const truncatedCount = allLines.length - lines.length;
 
   return (
     <div style={{ maxHeight: 520, overflowY: "auto", overflowX: "hidden", fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.55, minWidth: 0 }}>
@@ -1105,6 +1143,11 @@ function PatchTextView({ text }: { text: string }) {
           </div>
         );
       })}
+      {truncatedCount > 0 && (
+        <div style={{ padding: "8px 10px", color: "var(--text-dim)", textAlign: "center", background: "var(--bg-subtle)" }}>
+          ... {truncatedCount} more lines truncated ...
+        </div>
+      )}
     </div>
   );
 }
@@ -1115,10 +1158,15 @@ function PairedResult({ text, isEmpty, isError }: {
   isError: boolean;
 }) {
   const { t } = useI18n();
+  const MAX_TEXT_LENGTH = 100_000;
+  const isTruncated = text.length > MAX_TEXT_LENGTH;
+  const displayText = isTruncated ? text.slice(0, MAX_TEXT_LENGTH) : text;
+
   return (
     <div className={`tool-call-output${isError ? " tool-call-output-error" : ""}`}>
       <pre className="tool-call-output-text" data-tool-output="true">
-        {isEmpty ? t("messageView.noOutput") : text}
+        {isEmpty ? t("messageView.noOutput") : displayText}
+        {isTruncated && `\n\n... (Output truncated, ${text.length - MAX_TEXT_LENGTH} characters hidden) ...`}
       </pre>
     </div>
   );

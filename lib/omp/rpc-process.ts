@@ -123,7 +123,7 @@ export class RpcProcess {
     this.readyPromise.catch(() => {});
 
     const decoder = new RpcFrameDecoder();
-    const rl = createInterface({ input: this.child.stdout });
+    const rl = createInterface({ input: this.child.stdout, crlfDelay: Infinity });
     rl.on("line", (line) => {
       const trimmed = line.trim();
       if (!trimmed) return;
@@ -369,7 +369,14 @@ export class RpcProcess {
     }, gracePeriodMs * 2);
     timer.unref?.();
     killTimer.unref?.();
-    await exited;
+
+    // Prevent hanging if the OS somehow fails to reap the process after SIGKILL
+    const failsafe = new Promise<void>((resolve) => {
+      const t = setTimeout(resolve, gracePeriodMs * 3);
+      t.unref?.();
+    });
+
+    await Promise.race([exited, failsafe]);
     clearTimeout(timer);
     clearTimeout(killTimer);
   }

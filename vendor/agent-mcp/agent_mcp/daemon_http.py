@@ -177,6 +177,7 @@ class EventBroadcaster:
     def close(self, client: dict[str, Any]) -> None:
         with self._lock:
             client["closed"] = True
+            client["buffer"].clear()
             self._clients.pop(client["id"], None)
 
     def publish(self, event: dict[str, Any], *, seq: int | None) -> None:
@@ -199,9 +200,9 @@ class EventBroadcaster:
         with self._lock:
             if not client["buffer"]:
                 return None
-            chunk = "".join(client["buffer"])
-            del client["buffer"][:]
-            return chunk
+            buf = client["buffer"]
+            client["buffer"] = []
+        return "".join(buf)
 
     def heartbeat_all(self) -> None:
         with self._lock:
@@ -485,7 +486,7 @@ class Handler(BaseHTTPRequestHandler):
                         try:
                             self.wfile.write(payload.encode("utf-8"))
                             self.wfile.flush()
-                        except (BrokenPipeError, OSError):
+                        except (BrokenPipeError, ConnectionResetError, OSError):
                             return
                         client["replayed"].add(seq)
                         cursor = seq
@@ -502,7 +503,7 @@ class Handler(BaseHTTPRequestHandler):
                         try:
                             self.wfile.write(chunk.encode("utf-8"))
                             self.wfile.flush()
-                        except (BrokenPipeError, OSError):
+                        except (BrokenPipeError, ConnectionResetError, OSError):
                             break
                 else:
                     time.sleep(0.1)

@@ -93,7 +93,13 @@ export async function GET(
 
       encode({ type: "connected", sessionId: id });
       if (closed) return;
-      unsubscribe = session.onEvent((event) => encode(event));
+      unsubscribe = session.onEvent((event) => {
+        if (event.type === "session_destroyed") {
+          cleanup();
+          return;
+        }
+        encode(event);
+      });
     },
     cancel() {
       streamCleanup?.();

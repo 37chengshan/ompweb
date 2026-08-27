@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import {
   Compass,
   Play,
@@ -52,11 +52,12 @@ function TaskStatusIcon({ status }: { status: TodoItem["status"] }) {
   }
 }
 
-export function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, planModeActive, planContent = null, planTruncated = false }: Props) {
+export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, planModeActive, planContent = null, planTruncated = false }: Props) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(true);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [critiqueText, setCritiqueText] = useState("");
+
 
   const hasTasks = todoPhases.length > 0;
   // Plan panel is a plan-mode surface: plain task runs must never render it.
@@ -460,4 +461,4 @@ export function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, 
       )}
     </div>
   );
-}
+});

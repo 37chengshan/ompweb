@@ -713,11 +713,13 @@ export function entryToUiMessage(
       if (!Array.isArray(message.content)) return message;
       return {
         ...message,
-        content: message.content.map((block) => (
-          block.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim() !== ""
-            ? { ...block, thinking: "", deferred: true }
-            : block
-        )),
+        content: message.content.map((block) => {
+          if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim() !== "") {
+            const { thinking, ...rest } = block;
+            return { ...rest, deferred: true };
+          }
+          return block;
+        }),
       };
     }
     case "branch_summary":

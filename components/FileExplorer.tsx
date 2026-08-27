@@ -484,20 +484,20 @@ function TreeNode({
             style={{
               position: "absolute",
               right: node.isDir ? 4 : 52,
-                top: "50%",
-                transform: "translateY(-50%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 22,
-                height: 20,
-                background: "var(--bg-panel)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-control)",
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                transition: `background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)`,
-              }}
+              top: "50%",
+              transform: "translateY(-50%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 22,
+              height: 20,
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-control)",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              transition: `background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)`,
+            }}
             >
             <FolderSearch size={11} strokeWidth={2} aria-hidden="true" />
           </button>

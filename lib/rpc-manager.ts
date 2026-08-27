@@ -1132,6 +1132,7 @@ export class AgentSessionWrapper {
     this.hostToolNames.clear();
     this.pendingHostUris.clear();
     this.hostUriSchemes.clear();
+    this.emit({ type: "session_destroyed" });
     this.onDestroyCallback?.();
     notifyRunningChange();
     await disposed;

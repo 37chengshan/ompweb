@@ -385,8 +385,12 @@ export function writeMcpServer(cwd: string, name: string, server: McpServer, pre
     const config: McpFile = { ...locked.config, mcpServers: servers };
     mkdirSync(dirname(locked.path), { recursive: true });
     const temp = `${locked.path}.tmp-${process.pid}-${Date.now()}`;
-    writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-    renameSync(temp, locked.path);
+    try {
+      writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+      renameSync(temp, locked.path);
+    } finally {
+      try { unlinkSync(temp); } catch {}
+    }
     return { path: locked.path };
   });
 }
@@ -401,8 +405,12 @@ export function deleteMcpServer(cwd: string, name: string): { path: string } {
     delete servers[name];
     const config: McpFile = { ...locked.config, mcpServers: servers };
     const temp = `${locked.path}.tmp-${process.pid}-${Date.now()}`;
-    writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-    renameSync(temp, locked.path);
+    try {
+      writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+      renameSync(temp, locked.path);
+    } finally {
+      try { unlinkSync(temp); } catch {}
+    }
     return { path: locked.path };
   });
 }
@@ -430,8 +438,12 @@ export function writeUserMcpServer(name: string, server: McpServer, previousName
     const config: McpFile = { ...currentConfig, mcpServers: servers };
     mkdirSync(dirname(userPath), { recursive: true });
     const temp = `${userPath}.tmp-${process.pid}-${Date.now()}`;
-    writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-    renameSync(temp, userPath);
+    try {
+      writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+      renameSync(temp, userPath);
+    } finally {
+      try { unlinkSync(temp); } catch {}
+    }
     return { path: userPath };
   });
 }

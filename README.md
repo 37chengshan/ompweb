@@ -17,6 +17,32 @@ Local web UI for the [oh-my-pi (omp) coding agent](https://github.com/can1357/oh
 
 </details>
 
+## 🌟 Enhancements & Optimizations over Upstream (相比上游仓库的优化与增强)
+
+This fork ([37chengshan/ompweb](https://github.com/37chengshan/ompweb)) includes major architectural upgrades, native integrations, and performance optimizations over the upstream repository ([kahme247/ompweb](https://github.com/kahme247/ompweb)):
+
+- **🤖 Native Built-in Agent MCP Engine**:
+  - Vendored `agent-mcp` (v3.0.0 by 37chengshan) with zero external runtime dependencies.
+  - Native multi-agent orchestration infrastructure: unified scheduling across 11+ Agent CLIs, subtask dispatching, DAG dependency graph execution, complexity gating, live steering, and persistent memory bank.
+  - Out-of-the-box `.omp/mcp.json` preset and `.omp/skills/agent-mcp/` skill integration.
+- **⚙️ Redesigned MCP Manager & Visual Form Editor**:
+  - Dual-mode editor: intuitive **Visual Form** (Transport, Command/URL, Arguments, Enabled toggle) + **JSON Code mode** with one-click templates (`Python stdio`, `NPX stdio`, `Remote HTTP`).
+  - Seamless switching between **Project-level** and **User-level** (`~/.omp/agent/mcp.json`) configurations.
+  - **Categorized Collapsible Accordion & Search Filter**: multi-client discovered MCP servers (Claude Code, Codex, Cursor, Cline, etc.) are neatly grouped by source with real-time search, preventing card overflow and UI obstruction.
+- **⚡ Multi-Dimensional Frontend & UI Rendering Optimizations**:
+  - **Streaming Markdown AST Bypass**: skips full-text math normalization and heavy AST rebuilding during token streaming; performs a single clean pass on final message commit, drastically improving 60fps streaming smoothness.
+  - **LRU Memory Caches**: 20-entry LRU for `parseUnifiedPatch` and 200-entry LRU for `normalizeDisplayMath` to eliminate redundant regex and AST re-computations on scroll/theme changes.
+  - **View-port Safety Caps**: 800-row limit on unified diffs and 100KB safety truncation on raw thinking/tool outputs to prevent DOM node explosions and browser tab freezes.
+  - **Component Memoization**: `PlanPanel`, `MessageView`, and key subtrees wrapped with `React.memo` to eliminate cascading re-renders during active streaming.
+- **🛡️ Backend RPC & Process Memory Leak Prevention**:
+  - **Git ProjectRoot Dedup & 5-minute Cache**: in-flight promise coalescence (`__piProjectPendingCache`) and extended TTL prevents spawning duplicate `git rev-parse` processes on parallel session loads.
+  - **SSE Socket & Descriptor Cleanup**: active sessions emit `session_destroyed` upon termination, immediately closing `ReadableStream` and unregistering listeners to prevent zombie EventSource leaks.
+  - **Child Process Dispose Failsafe**: `RpcProcess.dispose()` includes a `Promise.race` timeout fallback to prevent hanging promises from un-reaped processes.
+  - **Payload Optimization**: `deferThinking: true` completely omits thinking keys from JSON payloads rather than sending empty strings, shrinking context transfer sizes.
+- **🚀 Agent MCP High-Concurrency SQLite & Broadcaster Upgrades**:
+  - Enabled `PRAGMA temp_store=MEMORY;` and true autocommit (`isolation_level=None`) for SQLite, eliminating implicit transaction lock friction for `BEGIN IMMEDIATE` batch inserts.
+  - Lock-free string concatenation in SSE `EventBroadcaster.drain()`, with eager buffer reclamation upon client disconnect.
+
 ## Requirements
 
 - [omp](https://github.com/can1357/oh-my-pi) installed and on your `PATH` (or point `OMP_WEB_OMP_BIN` at the binary)

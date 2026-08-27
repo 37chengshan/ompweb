@@ -17,6 +17,32 @@
 
 </details>
 
+## 🌟 相比上游仓库的优化与增强 (Enhancements over Upstream)
+
+本仓库（[37chengshan/ompweb](https://github.com/37chengshan/ompweb)）在原版（[kahme247/ompweb](https://github.com/kahme247/ompweb)）基础上进行了原生能力集成、架构升级与全方位的多维度性能调优：
+
+- **🤖 原生集成内置 Agent MCP 编排引擎**：
+  - 完整内嵌 `agent-mcp`（v3.0.0 by 37chengshan），纯标准库零外部运行时依赖分发；
+  - 提供多智能体统一编排基础设施：支持 11+ 款 Agent CLI 统一调度、子任务派发、DAG 依赖图编排、复杂度分级门、实时插话与持久记忆银行；
+  - 自带预设 [.omp/mcp.json](file:///Users/cc/code/ompweb/.omp/mcp.json) 与 [.omp/skills/agent-mcp/](file:///Users/cc/code/ompweb/.omp/skills/agent-mcp/)，用户安装开箱即用。
+- **⚙️ 全新重构的 MCP 管理器与可视化表单**：
+  - **可视化表单 + 快捷模板 + JSON 双模式**：支持直接填写传输协议、命令/URL、参数、启用开关，并提供 `Python stdio`、`NPX stdio`、`Remote HTTP` 一键模板；
+  - **支持全局与项目级配置自由切换**：无缝写入 `~/.omp/agent/mcp.json` 或项目工作区；
+  - **多源自动发现手风琴与实时搜索**：将跨客户端（Claude Code、Codex、Cursor、Cline 等）发现的 50+ 个服务端按来源折叠归拢，彻底解决卡片溢出和遮挡管理界面的问题。
+- **⚡ 多维度前端 UI 与渲染性能极致优化**：
+  - **流式 Markdown 增量绕过**：Token 流式吐词阶段跳过全文 Math 正则扫描与 AST 频繁重构，仅在最终消息提交时执行一次，实现丝滑的 60fps 流式体验；
+  - **LRU 内存缓存加速**：为 Unified Diff 解析（`parseUnifiedPatch`，20条）与公式标准化（`normalizeDisplayMath`，200条）添加 LRU 缓存，回看与滚动重渲染零计算；
+  - **视口与大文本安全截断**：补丁分栏对比设置 800 行上限保护，超长思考与 ToolResult 设置 100KB 防雪崩，防止极端大日志拖死浏览器；
+  - **组件细粒度 Memo 包装**：`PlanPanel`、`MessageView` 等核心看板组件全面 memo 化，消除不必要的级联重渲染。
+- **🛡️ 后端 Node.js / RPC 进程与内存安全防御**：
+  - **Git 根目录内存持久缓存 + 并发去重**：5 分钟 TTL + In-flight Promise 合并，避免多会话并行解析时的重复 `git rev-parse` 进程风暴；
+  - **SSE 僵尸连接彻底清理**：会话终结或空闲销毁时主动广播 `session_destroyed` 事件并安全关闭 `ReadableStream`，杜绝文件描述符与内存泄漏；
+  - **子进程 Dispose 熔断保护**：`RpcProcess.dispose()` 加入 Promise.race 熔断锁，杜绝僵死进程导致的 Promise 永久挂起；
+  - **`deferThinking` 载荷瘦身**：彻底解构移除延迟加载的 thinking 字段，大幅减少历史会话加载时的网络与内存开销。
+- **🚀 Agent MCP 存储高并发与无锁流式优化**：
+  - SQLite 启用 `PRAGMA temp_store=MEMORY;` 与真正 autocommit 模式 (`isolation_level=None`)，消除隐式事务锁冲突，确保批量写入零延迟；
+  - SSE 广播队列采用无锁原子引用置换，并在客户端断开时立即清空内存 buffer。
+
 ## 环境要求
 
 - 已安装 [omp](https://github.com/can1357/oh-my-pi) 且在 `PATH` 中（或通过 `OMP_WEB_OMP_BIN` 指向其二进制文件）

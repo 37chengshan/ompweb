@@ -1155,6 +1155,9 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               onExecutePlan={(prompt) => handleSend(prompt)}
               onRejectPlan={(critique) => handleSend(critique)}
               planModeActive={Boolean(activePlan)}
+              planContent={planInfo?.plan ?? null}
+              planFile={planInfo?.planFile ?? null}
+              planTruncated={Boolean(planInfo?.truncated)}
             />
             <ComposerPanels
               todoPhases={todoPhases}

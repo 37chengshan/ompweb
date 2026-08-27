@@ -1046,6 +1046,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setEntryIds(d.context.entryIds ?? []);
       setShowPreCompactionHistory(false);
       setTodoPhases(d.context.todoPhases ?? []);
+      // Reset per-session state before loading the next one so a failed plan
+      // fetch can never leak the previous session's plan into this view.
+      setPlanInfo(null);
       // Recover on-disk subagent history (task toolResults) for this session —
       // populates the composer roster for finished/past runs.
       void refreshSubagentHistory(sid);

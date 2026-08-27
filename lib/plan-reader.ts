@@ -43,7 +43,15 @@ export function resolvePlanArtifact(sessionFilePath: string): PlanArtifact {
     if (existsSync(localDir)) {
       const plans = readdirSync(localDir)
         .filter((name) => name.endsWith("-plan.md"))
-        .map((name) => ({ name, mtime: statSync(join(localDir, name)).mtimeMs }))
+        .map((name) => {
+          try {
+            return { name, mtime: statSync(join(localDir, name)).mtimeMs };
+          } catch {
+            // File vanished mid-scan — skip it rather than losing all plans.
+            return null;
+          }
+        })
+        .filter((entry): entry is { name: string; mtime: number } => entry !== null)
         .sort((a, b) => b.mtime - a.mtime);
       if (plans.length > 0) planPath = join(localDir, plans[0].name);
     }

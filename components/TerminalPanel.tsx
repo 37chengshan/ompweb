@@ -37,6 +37,11 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
   const isDraggingRef = useRef<boolean>(false);
   const startYRef = useRef<number>(0);
   const startHeightRef = useRef<number>(280);
+  // Stable ref for values read inside effects/stream loops.
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
   // Input POSTs are serialized: each keystroke is its own request, and
   // concurrent fetches can arrive out of order and scramble the shell input.
   const inputChainRef = useRef<Promise<void>>(Promise.resolve());
@@ -48,6 +53,8 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: sid, data }),
+          // A hung input must not freeze the whole keystroke queue.
+          signal: AbortSignal.timeout(5000),
         });
       } catch {
         // Best effort; the next keystroke is still sent.
@@ -179,6 +186,8 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
 
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryDelay = 1000;
+    let streamDead = false;
     const controller = new AbortController();
 
     // New session (or reconnect): drop output buffered for the previous one.
@@ -188,8 +197,15 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
       if (cancelled) return;
       try {
         const res = await fetch(`/api/terminal/stream?id=${encodeURIComponent(sessionId)}`, { signal: controller.signal });
+        if (res.status === 404) {
+          // The session was reaped server-side — no point reconnecting.
+          streamDead = true;
+          setStatus("disconnected");
+          return;
+        }
         if (!res.ok || !res.body) throw new Error(`terminal stream failed: ${res.status}`);
         setStatus("connected");
+        retryDelay = 1000;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -216,6 +232,11 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
               // Not JSON — treat the raw line as the chunk.
             }
             if (chunk) {
+              if (chunk.includes("[Terminal closed")) {
+                // The server reaped the session; stop reconnecting.
+                streamDead = true;
+                setStatus("disconnected");
+              }
               if (xtermInstanceRef.current) {
                 xtermInstanceRef.current.write(chunk);
               } else {
@@ -229,9 +250,13 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
           setStatus("disconnected");
         }
       } finally {
-        if (!cancelled) {
-          // Auto-reconnect (the server replays history on every new stream).
-          retryTimer = setTimeout(connect, 1000);
+        if (!cancelled && !streamDead) {
+          // Exponential backoff; only reconnect while the panel is open so a
+          // hidden panel doesn't spam the server.
+          if (openRef.current) {
+            retryTimer = setTimeout(connect, retryDelay);
+            retryDelay = Math.min(retryDelay * 2, 8000);
+          }
         }
       }
     };
@@ -242,6 +267,11 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
       cancelled = true;
       controller.abort();
       if (retryTimer) clearTimeout(retryTimer);
+      // Reap the server-side session when the component unmounts.
+      void fetch(`/api/terminal/session?id=${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+        keepalive: true,
+      }).catch(() => {});
     };
   }, [sessionId]);
 
@@ -297,6 +327,9 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
     if (sessionId) {
       await fetch(`/api/terminal/session?id=${encodeURIComponent(sessionId)}`, { method: "DELETE" }).catch(() => {});
     }
+    // Old-session keystrokes queued behind a hung request must not stall the
+    // new session's input.
+    inputChainRef.current = Promise.resolve();
     setSessionId(null);
     xtermInstanceRef.current?.clear();
     await initSession();

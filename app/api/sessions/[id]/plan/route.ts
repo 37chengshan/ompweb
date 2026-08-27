@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { readFileSync, statSync } from "fs";
+import { openSync, readSync, statSync, closeSync } from "fs";
+import { StringDecoder } from "string_decoder";
 import { resolveSessionPathOr404, apiErrorResponse } from "@/lib/api-utils";
 import { resolvePlanArtifact } from "@/lib/plan-reader";
 
@@ -10,7 +11,8 @@ const MAX_PLAN_BYTES = 256 * 1024;
 /**
  * GET /api/sessions/[id]/plan
  * Returns the session's omp plan artifact: whether it ran in plan mode and the
- * canonical plan markdown (bounded) if one exists.
+ * canonical plan markdown (bounded) if one exists. Only the first
+ * MAX_PLAN_BYTES of the file are read, cut on a UTF-8 character boundary.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -23,11 +25,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     let truncated = false;
     if (artifact.planPath) {
       try {
-        if (statSync(artifact.planPath).size > MAX_PLAN_BYTES) {
-          plan = readFileSync(artifact.planPath, "utf8").slice(0, MAX_PLAN_BYTES);
-          truncated = true;
-        } else {
-          plan = readFileSync(artifact.planPath, "utf8");
+        const size = statSync(artifact.planPath).size;
+        const fd = openSync(artifact.planPath, "r");
+        try {
+          const readLen = Math.min(size, MAX_PLAN_BYTES + 4);
+          const buf = Buffer.alloc(readLen);
+          const bytes = readSync(fd, buf, 0, readLen, 0);
+          const decoder = new StringDecoder("utf8");
+          plan = decoder.write(buf.subarray(0, bytes)) + decoder.end();
+          truncated = size > MAX_PLAN_BYTES;
+        } finally {
+          closeSync(fd);
         }
       } catch {
         // Plan file vanished between discovery and read — return without it.

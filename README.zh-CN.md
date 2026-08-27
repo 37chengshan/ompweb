@@ -17,31 +17,31 @@
 
 </details>
 
-## 🌟 相比上游仓库的优化与增强 (Enhancements over Upstream)
+## 🌟 相比上游仓库的优化与增强 (Optimizations & Enhancements)
 
-本仓库（[37chengshan/ompweb](https://github.com/37chengshan/ompweb)）在原版（[kahme247/ompweb](https://github.com/kahme247/ompweb)）基础上进行了原生能力集成、架构升级与全方位的多维度性能调优：
+本仓库（[37chengshan/ompweb](https://github.com/37chengshan/ompweb)）是基于 [kahme247/ompweb](https://github.com/kahme247/ompweb) 的深度性能调优与安全加固版本。根据对代码库的全量审计，在前端渲染、后端 RPC/IO 内存安全与 MCP 管理上落地了以下代码级优化：
 
-- **🤖 原生集成内置 Agent MCP 编排引擎**：
-  - 完整内嵌 `agent-mcp`（v3.0.0 by 37chengshan），纯标准库零外部运行时依赖分发；
-  - 提供多智能体统一编排基础设施：支持 11+ 款 Agent CLI 统一调度、子任务派发、DAG 依赖图编排、复杂度分级门、实时插话与持久记忆银行；
-  - 自带预设 [.omp/mcp.json](file:///Users/cc/code/ompweb/.omp/mcp.json) 与 [.omp/skills/agent-mcp/](file:///Users/cc/code/ompweb/.omp/skills/agent-mcp/)，用户安装开箱即用。
-- **⚙️ 全新重构的 MCP 管理器与可视化表单**：
-  - **可视化表单 + 快捷模板 + JSON 双模式**：支持直接填写传输协议、命令/URL、参数、启用开关，并提供 `Python stdio`、`NPX stdio`、`Remote HTTP` 一键模板；
-  - **支持全局与项目级配置自由切换**：无缝写入 `~/.omp/agent/mcp.json` 或项目工作区；
-  - **多源自动发现手风琴与实时搜索**：将跨客户端（Claude Code、Codex、Cursor、Cline 等）发现的 50+ 个服务端按来源折叠归拢，彻底解决卡片溢出和遮挡管理界面的问题。
-- **⚡ 多维度前端 UI 与渲染性能极致优化**：
-  - **流式 Markdown 增量绕过**：Token 流式吐词阶段跳过全文 Math 正则扫描与 AST 频繁重构，仅在最终消息提交时执行一次，实现丝滑的 60fps 流式体验；
-  - **LRU 内存缓存加速**：为 Unified Diff 解析（`parseUnifiedPatch`，20条）与公式标准化（`normalizeDisplayMath`，200条）添加 LRU 缓存，回看与滚动重渲染零计算；
-  - **视口与大文本安全截断**：补丁分栏对比设置 800 行上限保护，超长思考与 ToolResult 设置 100KB 防雪崩，防止极端大日志拖死浏览器；
-  - **组件细粒度 Memo 包装**：`PlanPanel`、`MessageView` 等核心看板组件全面 memo 化，消除不必要的级联重渲染。
-- **🛡️ 后端 Node.js / RPC 进程与内存安全防御**：
-  - **Git 根目录内存持久缓存 + 并发去重**：5 分钟 TTL + In-flight Promise 合并，避免多会话并行解析时的重复 `git rev-parse` 进程风暴；
-  - **SSE 僵尸连接彻底清理**：会话终结或空闲销毁时主动广播 `session_destroyed` 事件并安全关闭 `ReadableStream`，杜绝文件描述符与内存泄漏；
-  - **子进程 Dispose 熔断保护**：`RpcProcess.dispose()` 加入 Promise.race 熔断锁，杜绝僵死进程导致的 Promise 永久挂起；
-  - **`deferThinking` 载荷瘦身**：彻底解构移除延迟加载的 thinking 字段，大幅减少历史会话加载时的网络与内存开销。
-- **🚀 Agent MCP 存储高并发与无锁流式优化**：
-  - SQLite 启用 `PRAGMA temp_store=MEMORY;` 与真正 autocommit 模式 (`isolation_level=None`)，消除隐式事务锁冲突，确保批量写入零延迟；
-  - SSE 广播队列采用无锁原子引用置换，并在客户端断开时立即清空内存 buffer。
+### 1. ⚡ 前端渲染与视口安全防御
+- **流式 Markdown 增量绕过 (`components/MarkdownBody.tsx`)**：在 Token 流式输出期间（`isStreaming: true`），跳过开销巨大的全文 Math 正则扫描（`normalizeDisplayMath`）与 KaTeX 插件动态加载；仅在消息提交（Commit）时执行一次完整 AST 解析，彻底消除逐 Token 垃圾回收卡顿，保持 60fps 丝滑渲染。
+- **内存级 LRU 缓存加速 (`lib/markdown.ts`, `lib/patch.ts`)**：
+  - `normalizeDisplayMath`：引入 200 条容量的 LRU 内存缓存（`cachedNormalizeDisplayMath`），历史消息在滚动、组件重渲染或切换主题时直接命中缓存，零二次计算。
+  - `parseUnifiedPatch`：引入 20 条容量的 LRU 缓存（`patchCache`），避免频繁展开/收起对比视图时重复正则解析 Git Patch。
+- **DOM 节点防雪崩与内存截断 (`components/MessageView.tsx`)**：
+  - `SplitPatchView` & `PatchTextView`：对 Git Diff 视图设置 800 行硬上限（`MAX_ROWS = 800`）并附带截断提示，防止数千行巨型补丁撑爆浏览器 DOM 树。
+  - `ThinkingBlock` & `PairedResult`：对超长思考链与工具输出设置 100,000 字符安全截断，防止极端日志导致页面假死。
+- **组件细粒度 Memo 优化 (`components/PlanPanel.tsx`, `components/MessageView.tsx`)**：使用 `React.memo` 阻断非必要级联重渲染。
+
+### 2. 🛡️ 后端 Node.js、RPC 进程与文件 I/O 加固
+- **Git 根目录内存持久缓存 + 并发去重 (`lib/worktree.ts`)**：将 `PROJECT_CACHE_TTL_MS` 延长至 300,000ms（5 分钟），并加入 `__piProjectPendingCache` 全局 Map，合并并行解析同一工作区时的 Promise，彻底消除重复的 `git rev-parse` 子进程风暴。
+- **SSE 僵尸连接彻底清理 (`app/api/agent/[id]/events/route.ts`, `lib/rpc-manager.ts`)**：会话终结或销毁时主动派发 `session_destroyed` 事件，SSE 流监听到后立即关闭 `ReadableStream` 并注销监听器，杜绝文件描述符与内存泄漏。
+- **子进程 Dispose 熔断保护 (`lib/omp/rpc-process.ts`)**：在 `RpcProcess.dispose()` 中加入 `Promise.race` 熔断定时器，即使操作系统偶发未能回收僵死进程，也能安全 resolve，防止 Promise 永久挂起；以 `crlfDelay: Infinity` 标准化流式行解析。
+- **原子文件操作异常清理 (`lib/omp/mcp-config.ts`)**：在原子写入中使用 `try ... finally { try { unlinkSync(temp); } catch {} }`，防止异常时残留 `.tmp-*` 孤儿文件。
+- **`deferThinking` 载荷瘦身 (`lib/session-reader.ts`, `lib/types.ts`)**：将 `ThinkingContent.thinking` 改为可选字段，在延迟加载模式下直接从 JSON 结构中解构移除该 key 而非返回空字符串，显著降低会话上下文网络传输开销。
+
+### 3. ⚙️ MCP 管理器重构与内置 Agent MCP
+- **双模式可视化表单编辑器 (`components/McpConfig.tsx`)**：提供「可视化表单（协议、命令/URL、参数、启用开关）」与「JSON 代码」双模式，内置 `Python stdio`、`NPX stdio`、`Remote HTTP` 一键模板，并支持在项目与全局配置（`~/.omp/agent/mcp.json`）之间无缝切换。
+- **多源分类折叠手风琴 (`components/McpConfig.tsx`)**：对跨客户端自动发现的 50+ 个服务端按来源折叠并支持实时搜索，彻底解决卡片溢出和遮挡问题。
+- **内置 Agent MCP 编排引擎**：内嵌 `agent-mcp` (v3.0.0) 预设与工具，配合 SQLite 高并发优化（`PRAGMA temp_store=MEMORY`、`isolation_level=None` autocommit 事务无锁化）、SSE 广播队列无锁化原子引用置换与指数退避等待算法。
 
 ## 环境要求
 

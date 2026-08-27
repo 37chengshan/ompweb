@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-mcp"
+description = "把任意 Agent CLI 统一为可派发/监控/续接/终止子工作池的 MCP 基础设施（模型×底座匹配的中性控制平面）"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "37chengshan" }]
+keywords = ["mcp", "agent", "orchestration", "claude", "codex", "multi-agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+# 版本单一来源：agent_mcp/__init__.py __version__（v3.0 起，禁止多处硬编码）
+dynamic = ["version"]
+# psutil 是 daemon 主进程硬依赖（dispatch.py / daemon_main.py 顶层 import）。
+# mcp_server.py 薄层刻意保持纯 stdlib，不在此列。
+dependencies = [
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+]
+
+[tool.setuptools]
+py-modules = ["mcp_server", "dispatch_worker"]
+
+[tool.setuptools.packages.find]
+include = ["agent_mcp*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "agent_mcp.__version__" }
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: 需要真实 CLI 二进制与网络的端到端冒烟（默认跳过）",
+]
+
+[tool.ruff]
+target-version = "py39"
+extend-exclude = ["web", "docs", "skill"]
+
+[tool.ruff.lint]
+# CI 首批只开 runtime-error 规则族：抓真实断裂（未定义名/重复定义等），
+# 风格类规则留待后续里程碑扩展（见 docs/plans/2026-08-24-v3-roadmap.md A3）。
+select = ["E9", "F63", "F7", "F82"]

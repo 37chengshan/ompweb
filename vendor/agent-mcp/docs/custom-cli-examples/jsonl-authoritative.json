@@ -1,0 +1,27 @@
+{
+  "cli_name": "mycli",
+  "bins": ["mycli", "~/.local/bin/mycli"],
+  "first_start_seconds": 15,
+  "usage_semantics": "authoritative",
+  "command": {
+    "prefix": ["-p", "--output-format", "stream-json", "--cwd", "{cwd}"],
+    "permission_flags": {
+      "plan": ["--permission-mode", "plan"],
+      "acceptEdits": ["--permission-mode", "acceptEdits"],
+      "fullAccess": ["--dangerously-skip-permissions"]
+    },
+    "model_flag": ["--model", "{value}"],
+    "resume_flag": ["--resume", "{value}"]
+  },
+  "parse": {
+    "mode": "jsonl",
+    "event_field": "type",
+    "message_types": ["assistant"],
+    "message_text_path": "message.content",
+    "result_types": ["result"],
+    "usage_path": "usage",
+    "cost_path": "total_cost_usd",
+    "session_id_path": "session_id",
+    "stop_reason_path": "stop_reason"
+  }
+}

@@ -1,11 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Check, Plus, RefreshCw, Sparkles, Trash2, Zap } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { useI18n } from "@/lib/i18n";
 
 type McpServer = { name: string; config: Record<string, unknown> };
+type BuiltinMcpPreset = {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  author: string;
+  version: string;
+  tools: string[];
+  config: Record<string, unknown>;
+  isAvailable: boolean;
+  installedPath?: string;
+};
 // User-level servers arrive as a sanitized DTO (no raw config — env/headers
 // can hold credentials and are never serialized); summary fields are computed
 // server-side from the config.
@@ -35,6 +47,7 @@ function serverSummary(config: Record<string, unknown>): { type: string; target:
 export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: string | null }) {
   const { t } = useI18n();
   const [servers, setServers] = useState<McpServer[]>([]);
+  const [builtinPresets, setBuiltinPresets] = useState<BuiltinMcpPreset[]>([]);
   const [userConfig, setUserConfig] = useState<McpUserConfig | null>(null);
   const [liveServers, setLiveServers] = useState<McpLiveServer[] | null>(null);
   const [inventory, setInventory] = useState<McpLiveServer[] | null>(null);
@@ -54,9 +67,19 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
       if (cwd) params.set("cwd", cwd);
       if (sessionId) params.set("sessionId", sessionId);
       const response = await fetch(`/api/mcp?${params}`);
-      const data = await response.json() as { servers?: McpServer[]; user?: McpUserConfig; inventory?: McpLiveServer[]; liveServers?: McpLiveServer[]; liveError?: string; path?: string; error?: string };
+      const data = await response.json() as {
+        servers?: McpServer[];
+        builtinPresets?: BuiltinMcpPreset[];
+        user?: McpUserConfig;
+        inventory?: McpLiveServer[];
+        liveServers?: McpLiveServer[];
+        liveError?: string;
+        path?: string;
+        error?: string;
+      };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       setServers(data.servers ?? []);
+      setBuiltinPresets(data.builtinPresets ?? []);
       setUserConfig(data.user ?? null);
       setLiveServers(Array.isArray(data.liveServers) ? data.liveServers : null);
       setInventory(Array.isArray(data.inventory) ? data.inventory : null);
@@ -159,9 +182,121 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
     }
   };
 
+  const enablePreset = async (preset: BuiltinMcpPreset) => {
+    if (!cwd) {
+      toast.error("Please select a project workspace first");
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch("/api/mcp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, name: preset.name, server: preset.config }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+      setSelected(preset.name);
+      setName(preset.name);
+      setSource(JSON.stringify(preset.config, null, 2));
+      toast.success(t("mcpConfig.serverSaved", { name: preset.displayName }));
+      await load();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      toast.error(t("mcpConfig.saveError"), detail);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const displayedServers = liveServers ?? inventory;
 
   return <>
+    {/* Built-in Native MCP Showcase */}
+    {builtinPresets.length > 0 && (
+      <section style={{ border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--border))", borderRadius: "var(--radius-card)", overflow: "hidden", background: "color-mix(in srgb, var(--accent) 3%, var(--bg-panel))", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: "1px solid color-mix(in srgb, var(--accent) 20%, var(--border))", background: "color-mix(in srgb, var(--accent) 7%, transparent)" }}>
+          <Sparkles size={14} style={{ color: "var(--accent)" }} />
+          <strong style={{ fontSize: 12, color: "var(--text)" }}>{t("mcpConfig.builtinServers") || "原生内置 MCP 扩展"}</strong>
+          <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--accent)", color: "var(--on-accent)", fontWeight: 700 }}>{t("mcpConfig.builtinTag") || "原生自带"}</span>
+        </div>
+        <div style={{ padding: 12, display: "grid", gap: 10 }}>
+          {builtinPresets.map((preset) => {
+            const isConfigured = servers.some((s) => s.name === preset.name);
+            return (
+              <div key={preset.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{preset.displayName}</span>
+                    <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>{preset.version}</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>by {preset.author}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {isConfigured ? (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--accent)", fontWeight: 600 }}>
+                        <Check size={13} />
+                        <span>{t("mcpConfig.alreadyConfigured") || "已就绪"}</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void enablePreset(preset)}
+                        disabled={saving}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: "4px 10px",
+                          borderRadius: 6,
+                          background: "var(--accent)",
+                          color: "var(--on-accent)",
+                          border: "none",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: saving ? "wait" : "pointer",
+                        }}
+                      >
+                        <Zap size={12} />
+                        <span>{t("mcpConfig.enablePreset") || "一键启用"}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelected(preset.name);
+                        setName(preset.name);
+                        setSource(JSON.stringify(preset.config, null, 2));
+                      }}
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        background: "transparent",
+                        color: "var(--text-muted)",
+                        border: "1px solid var(--border)",
+                        fontSize: 11,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t("mcpConfig.editPreset") || "载入编辑"}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45 }}>{preset.description}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+                  {preset.tools.map((tool) => (
+                    <span key={tool} style={{ fontSize: 10, fontFamily: "var(--font-mono)", padding: "1px 5px", borderRadius: 4, background: "var(--bg-panel)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+                      {tool}
+                    </span>
+                  ))}
+                  <span style={{ fontSize: 10, color: "var(--text-dim)", alignSelf: "center", marginLeft: 2 }}>+ 8 更多高级工具</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    )}
+
     <section style={{ marginTop: 12, border: "1px solid var(--border)", borderRadius: "var(--radius-card)", overflow: "hidden", background: "var(--bg-panel)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
         <strong style={{ fontSize: 12, color: "var(--text)" }}>{t("mcpConfig.configuredServers")}</strong>

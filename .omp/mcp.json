@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "mcpServers": {
+    "agentmcp": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["vendor/agent-mcp/mcp_server.py"],
+      "description": "Agent MCP — 任意 Agent CLI 统一调度与多 Agent 编排控制平面（支持 19 款工具：spawn_agent, wait_agent, estimate_complexity, orchestrate_task...）"
+    }
+  }
+}

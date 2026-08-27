@@ -20,6 +20,7 @@ import {
 import type { TodoItem, TodoPhase } from "@/lib/pi-types";
 import type { ActivePlan } from "@/lib/web-mode-state";
 import { useI18n } from "@/lib/i18n";
+import { MarkdownBody } from "./MarkdownBody";
 
 interface Props {
   plan?: ActivePlan | null;
@@ -27,18 +28,31 @@ interface Props {
   onExecutePlan: (prompt: string) => void;
   onRejectPlan: (feedback: string) => void;
   planModeActive?: boolean;
+  /** The session's omp plan markdown (from <session>/local/*-plan.md). */
+  planContent?: string | null;
+  planFile?: string | null;
+  /** True when the plan file exceeded the API size cap. */
+  planTruncated?: boolean;
 }
+
 
 function TaskStatusIcon({ status }: { status: TodoItem["status"] }) {
-  const props = { size: 14, strokeWidth: 1.8, "aria-hidden": true as const };
-  if (status === "completed") return <CheckCircle2 {...props} color="var(--status-success)" />;
-  if (status === "in_progress") return <CircleDotDashed {...props} color="var(--accent)" />;
-  if (status === "blocked") return <CircleAlert {...props} color="var(--status-warning)" />;
-  if (status === "abandoned") return <Ban {...props} color="var(--text-dim)" />;
-  return <Circle {...props} color="var(--text-dim)" />;
+  switch (status) {
+    case "completed":
+      return <CheckCircle2 size={15} style={{ color: "var(--status-success)" }} />;
+    case "in_progress":
+      return <CircleDotDashed size={15} style={{ color: "var(--accent)" }} />;
+    case "blocked":
+      return <CircleAlert size={15} style={{ color: "var(--status-warning)" }} />;
+    case "cancelled":
+      return <Ban size={15} style={{ color: "var(--text-dim)" }} />;
+    case "pending":
+    default:
+      return <Circle size={15} style={{ color: "var(--text-dim)" }} />;
+  }
 }
 
-export function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, planModeActive }: Props) {
+export function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, planModeActive, planContent = null, planFile = null, planTruncated = false }: Props) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(true);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -214,9 +228,33 @@ export function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, 
         </div>
       </div>
 
-      {/* Plan Phases / Task Checklist Content */}
+      {/* Plan document (omp plan-mode markdown) — shown above the task grid
+          when the session produced a local plan file. */}
       {expanded && (
         <div style={{ padding: "12px 14px" }}>
+          {planContent && (
+            <div
+              style={{
+                maxHeight: "50vh",
+                overflowY: "auto",
+                marginBottom: hasTasks ? 12 : 0,
+                padding: "10px 12px",
+                borderRadius: "var(--radius-control)",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                fontSize: 13,
+                lineHeight: 1.55,
+                color: "var(--text)",
+              }}
+            >
+              <MarkdownBody>{planContent}</MarkdownBody>
+              {planTruncated && (
+                <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-dim)" }}>
+                  计划文件过大,仅显示前 256KB。
+                </div>
+              )}
+            </div>
+          )}
           {hasTasks ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {todoPhases.map((phase, pIdx) => (

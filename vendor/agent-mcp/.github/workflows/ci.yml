@@ -1,0 +1,62 @@
+# agent-mcp CI 门（v3.0 路线图 A3）
+#
+# 三道关：
+# 1. lint —— ruff 仅开 runtime-error 规则族（E9/F63/F7/F82），抓真实断裂不抓风格；
+# 2. test —— 全量非集成测试（integration marker 需要真实 CLI 二进制，CI 不跑）；
+# 3. install-smoke —— 干净 venv 里 pip install . 后必须能 import mcp_server 与
+#    daemon_main。这道关直接拦住"硬依赖未声明"类事故（如 psutil 曾零声明）。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install with dependencies declared
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run unit & route-level tests (no real CLI needed)
+        run: pytest -m "not integration" -q
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Clean-venv install must yield importable server & daemon
+        run: |
+          python -m venv .smoke-venv
+          ./.smoke-venv/bin/pip install --upgrade pip
+          # 只装运行依赖（不带 dev extras）：模拟最终用户安装路径
+          ./.smoke-venv/bin/pip install .
+          ./.smoke-venv/bin/python -c "import mcp_server; print('mcp_server OK', mcp_server.SERVER_VERSION)"
+          ./.smoke-venv/bin/python -c "import agent_mcp.daemon_main; print('daemon_main OK')"
+          ./.smoke-venv/bin/python install.py --help > /dev/null

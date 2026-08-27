@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { deleteMcpServer, parseMcpListOutput, readDiscoveredMcpServers, readMcpConfig, readUserMcpConfig, type McpLiveServer, validateMcpServer, writeMcpServer } from "@/lib/omp/mcp-config";
+import { deleteMcpServer, getBuiltinMcpPresets, parseMcpListOutput, readDiscoveredMcpServers, readMcpConfig, readUserMcpConfig, type McpLiveServer, validateMcpServer, writeMcpServer } from "@/lib/omp/mcp-config";
 import { readSessionHeader, resolveSessionPath } from "@/lib/session-reader";
 import { getRpcSession, resolveSpawnCwdResult, startRpcSession } from "@/lib/rpc-manager";
 import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
@@ -38,6 +38,7 @@ export async function GET(request: Request) {
     const cwd = requestedCwd ? await allowedCwd(requestedCwd) : null;
     const file = cwd ? readMcpConfig(cwd) : null;
     const user = readUserMcpConfig();
+    const builtinPresets = getBuiltinMcpPresets(cwd ?? undefined);
     const inventory: McpLiveServer[] = [
       ...user.servers.map(({ name, config }) => ({ name, source: "User level", status: config.enabled === false ? "disabled" as const : "configured" as const, type: typeof config.type === "string" ? config.type : typeof config.url === "string" ? "http" : "stdio" })),
       ...user.disabledServers.map((name) => ({ name, source: "Disabled", status: "disabled" as const })),
@@ -88,7 +89,17 @@ export async function GET(request: Request) {
         liveError = error instanceof Error ? error.message : String(error);
       }
     }
-    return NextResponse.json({ root: file?.root ?? null, path: file?.path ?? null, exists: file?.exists ?? false, servers: Object.entries(file?.config.mcpServers ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, config]) => ({ name, config: redactMcpServer(config) })), user: safeUser, inventory, liveServers, liveError });
+    return NextResponse.json({
+      root: file?.root ?? null,
+      path: file?.path ?? null,
+      exists: file?.exists ?? false,
+      servers: Object.entries(file?.config.mcpServers ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, config]) => ({ name, config: redactMcpServer(config) })),
+      user: safeUser,
+      inventory,
+      builtinPresets,
+      liveServers,
+      liveError,
+    });
   } catch (error) {
     return mcpErrorResponse(error);
   }

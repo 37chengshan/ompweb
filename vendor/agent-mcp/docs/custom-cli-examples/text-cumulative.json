@@ -1,0 +1,17 @@
+{
+  "cli_name": "mytextcli",
+  "bins": ["mytextcli"],
+  "usage_semantics": "cumulative",
+  "command": {
+    "prefix": ["--print", "--json"],
+    "permission_flags": {
+      "fullAccess": ["--yolo"]
+    },
+    "model_flag": ["--model", "{value}"]
+  },
+  "parse": {
+    "mode": "text",
+    "skip_prefixes": ["[tokens]", "[done]"],
+    "usage_regex": "\\[tokens\\] in=(?P<input_tokens>\\d+) out=(?P<output_tokens>\\d+) cost=\\$(?P<cost_usd>[0-9.]+)"
+  }
+}

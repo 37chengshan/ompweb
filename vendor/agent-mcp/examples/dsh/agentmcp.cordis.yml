@@ -1,0 +1,19 @@
+# DSH（DeepSeek Harness）接入 agent-mcp —— 临时试用 patch（默认关闭）
+#
+# 用法：dsh web --patch /绝对路径/examples/dsh/agentmcp.cordis.yml
+# 持久启用：把下面的 insert 块合并进 $DSH_HOME/profiles/<name>/cordis.patch.yml
+#          或 $DSH_HOME/cordis.patch.yml（先读后追加，勿覆盖已有文件）。
+# 详见 docs/dsh-integration.md。
+- insert:
+    - id: mcp-agentmcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: agentmcp
+        transport: stdio
+        command: python3
+        args: ['/绝对路径/agent-mcp/mcp_server.py']
+        # 可选自定义项（缺省即可）：
+        # env:
+        #   AGENT_MCP_HOME: /绝对路径/状态目录   # 缺省 ~/.codex/agent-mcp
+        #   AGENT_MCP_PORT: '8765'               # 缺省 8765
+        # toolCallTimeoutMs: 120000              # 缺省 60000（wait_agent 默认 25s 循环足够）

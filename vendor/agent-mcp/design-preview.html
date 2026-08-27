@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent MCP 重构设计 v0.2（审查修正版）</title>
+<style>
+  :root {
+    --bg: #FAF9F5;
+    --card: #FFFFFF;
+    --ink: #3D3929;
+    --ink-soft: #6B665A;
+    --accent: #C15F3C;
+    --accent-soft: #F3E4DC;
+    --line: #E8E4DC;
+    --green: #4A7A5A;
+    --red: #B3483A;
+    --amber: #B08A3E;
+    --radius: 14px;
+    --shadow: 0 1px 3px rgba(61,57,41,.06), 0 4px 16px rgba(61,57,41,.05);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.65;
+    padding: 48px 24px 96px;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+  header { margin-bottom: 40px; }
+  .kicker {
+    font-size: 13px; letter-spacing: .08em; color: var(--accent);
+    text-transform: uppercase; font-weight: 600; margin-bottom: 12px;
+  }
+  h1 {
+    font-family: Georgia, "Songti SC", "STSong", serif;
+    font-size: 40px; font-weight: 600; letter-spacing: -.01em;
+    margin-bottom: 10px;
+  }
+  .subtitle { color: var(--ink-soft); font-size: 16px; max-width: 760px; }
+  .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+  .chip {
+    background: var(--accent-soft); color: var(--accent);
+    padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  }
+  .chip.green { background: #E4EFE6; color: var(--green); }
+  .chip.amber { background: #F6EEDC; color: var(--amber); }
+  .chip.red { background: #F6E3E0; color: var(--red); }
+
+  section {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 32px 36px; margin-bottom: 24px;
+  }
+  h2 {
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 22px; font-weight: 600; margin-bottom: 6px;
+  }
+  .sec-no {
+    font-size: 12.5px; color: var(--accent); font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; display: block; margin-bottom: 4px;
+  }
+  .sec-desc { color: var(--ink-soft); font-size: 14px; margin-bottom: 20px; }
+  h3 { font-size: 15px; font-weight: 600; margin: 22px 0 10px; }
+  h3:first-of-type { margin-top: 4px; }
+  p { font-size: 14px; margin-bottom: 10px; }
+  ul, ol { margin: 0 0 12px 22px; font-size: 14px; }
+  li { margin-bottom: 6px; }
+  code {
+    background: #F4F1EA; border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 6px; font-size: 12.5px; font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: #8A4B2E;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 12px 0 6px; }
+  th {
+    text-align: left; font-weight: 600; font-size: 12.5px; color: var(--ink-soft);
+    border-bottom: 1.5px solid var(--line); padding: 8px 10px; white-space: nowrap;
+  }
+  td { border-bottom: 1px solid var(--line); padding: 8px 10px; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .tag {
+    display: inline-block; padding: 1px 8px; border-radius: 4px;
+    font-size: 11.5px; font-weight: 600; margin-right: 4px;
+  }
+  .tag.t1 { background: var(--accent-soft); color: var(--accent); }
+  .tag.t2 { background: #E4EFE6; color: var(--green); }
+  .tag.t3 { background: #E8E6F0; color: #5A54A3; }
+
+  .arch {
+    background: #FBFAF7; border: 1px solid var(--line); border-radius: 12px;
+    padding: 24px; margin: 16px 0;
+  }
+  .arch-box {
+    border: 1.5px solid var(--line); border-radius: 10px; padding: 12px 16px;
+    background: #fff; font-size: 13px; position: relative;
+  }
+  .arch-box .title { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+  .arch-box .sub { color: var(--ink-soft); font-size: 12px; }
+  .arch-box.accent { border-color: var(--accent); }
+  .arch-box.accent .title { color: var(--accent); }
+  .arch-flow { display: flex; align-items: center; justify-content: center; color: var(--ink-soft); font-size: 11px; padding: 4px 0; }
+  .vstack { display: flex; flex-direction: column; gap: 4px; }
+
+  .states { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+  .state {
+    border: 1.5px solid var(--line); border-radius: 999px; padding: 5px 16px;
+    font-size: 13px; font-weight: 500; background: #fff;
+  }
+  .state.q { border-color: var(--amber); color: var(--amber); }
+  .state.r { border-color: var(--accent); color: var(--accent); }
+  .state.f { border-color: var(--green); color: var(--green); }
+  .state.e { border-color: var(--red); color: var(--red); }
+  .state-arrow { color: var(--ink-soft); font-size: 15px; }
+
+  .mindmap { background: #FBFAF7; border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 14px 0; overflow-x: auto; }
+  .mm-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+  .mm-node {
+    border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 500;
+    border: 1.5px solid var(--line); background: #fff; white-space: nowrap;
+  }
+  .mm-node.root { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .mm-node.claude { border-color: #8A4B2E; color: #8A4B2E; }
+  .mm-node.grok { border-color: #B08A3E; color: #B08A3E; }
+  .mm-node.opencode { border-color: #4A7A5A; color: #4A7A5A; }
+  .mm-node.done { background: #E4EFE6; border-color: var(--green); color: var(--green); }
+  .mm-node.run { background: #FFF4F0; border-color: var(--accent); color: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+  .mm-line { color: var(--ink-soft); font-size: 12px; }
+  .mm-branch { margin-left: 34px; border-left: 1.5px dashed var(--line); padding-left: 14px; }
+  @keyframes pulse { 50% { opacity: .55; } }
+
+  .callout {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    border-radius: 0 10px 10px 0; padding: 12px 16px; font-size: 13.5px; margin: 14px 0;
+  }
+  .callout.green { background: #E4EFE6; border-left-color: var(--green); }
+  .callout.red { background: #F6E3E0; border-left-color: var(--red); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+  footer { text-align: center; color: var(--ink-soft); font-size: 12.5px; margin-top: 32px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Design Preview · v0.3（三主载体适配）</div>
+  <h1>Agent MCP 重构设计</h1>
+  <p class="subtitle">三种主载体（<b>omp（底层 pi）</b> / codex / claude code）通过 MCP 编排 claude / grok / opencode / omp(pi) 四个 agent CLI 作为任务模型（<b>互为载体</b>），
+  配 Claude UI 风格的低内存实时监控网页（知识导图 + token 统计）+ 配套 skill 工作流。
+  v0.3：三主载体适配（clientInfo 识别 host · 三套注册配置 · skill 三端分发）· 任务池四 CLI。</p>
+  <div class="meta">
+    <span class="chip">三主载体：omp(pi) / codex / claude</span>
+    <span class="chip">任务池四 CLI：claude / grok / opencode / omp(pi)</span>
+    <span class="chip">V2 六原语（本地化降级）</span>
+    <span class="chip">Python + 标准库 daemon</span>
+    <span class="chip green">MCP 薄层 + 常驻 daemon</span>
+    <span class="chip amber">Windows / macOS</span>
+  </div>
+</header>
+
+<!-- ═══════════ 1 架构总览 ═══════════ -->
+<section>
+  <span class="sec-no">Section 1</span>
+  <h2>架构总览</h2>
+  <p class="sec-desc">三进程拓扑：薄 MCP 层随 codex 会话起停，常驻 daemon 独立于 codex 生命周期，CLI 子进程由 daemon 管理。</p>
+
+  <div class="arch">
+    <div class="vstack">
+      <div class="arch-box accent">
+        <div class="title">主载体 · omp（底层 pi）/ codex / claude code（规划 / 审查 / 编排）</div>
+        <div class="sub">spawn_agent · send_message · followup_task · wait_agent · interrupt_agent · list_agents · get_agent_activity · get_token_usage</div>
+      </div>
+      <div class="arch-flow">▼ MCP stdio（JSON-RPC，随 codex 会话起停）</div>
+      <div class="arch-box">
+        <div class="title">MCP 薄层 · mcp_server.py（零依赖）</div>
+        <div class="sub">工具面 · 参数校验 · 透传（不碰认证密钥）· 原子拉起 daemon · 无状态可热重启</div>
+      </div>
+      <div class="arch-flow">▼ HTTP / SSE（127.0.0.1:8765 · Host 校验 + 写操作 X-Auth-Token）</div>
+      <div class="arch-box">
+        <div class="title">daemon · agent_daemon.py（常驻单例，原子拉起协议）</div>
+        <div class="sub">
+          派发执行器（三 CLI 各自适配器 → 统一规范化事件）→ SQLite WAL 单写者 →
+          SSE 统一广播（15s 心跳 · 连接上限 32）· HTTP 控制端点 · 静态文件托管
+        </div>
+      </div>
+      <div class="arch-flow">▼ SSE 实时推送 · HTTP 控制</div>
+      <div class="arch-box">
+        <div class="title">网页 · 单文件 HTML（Claude UI 风格）</div>
+        <div class="sub">知识导图（任务节点 → agent 分支 → 汇合）· 实时活动 · 任务数 · 单任务与总 token · 节点详情面板（只读）</div>
+      </div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>进程</th><th>生命周期</th><th>职责</th><th>技术</th></tr>
+    <tr><td><code>mcp_server.py</code></td><td>codex 会话</td><td>工具面、参数校验、转发、拉起 daemon</td><td>Python stdlib，零依赖</td></tr>
+    <tr><td><code>agent_daemon.py</code></td><td>常驻单例</td><td>CLI 派发、事件解析、SQLite、SSE、网页托管、认证检测</td><td>Python stdlib + psutil</td></tr>
+    <tr><td>CLI 子进程</td><td>单任务</td><td>实际执行 agent 循环（自管认证）</td><td>claude / grok / opencode 二进制</td></tr>
+  </table>
+
+  <h3>原子拉起协议（审查修正 H3）</h3>
+  <ol>
+    <li>MCP 探测端口 8765 → 已有连接则尝试 <code>GET /health</code></li>
+    <li>无 daemon → spawn 分离进程（macOS <code>start_new_session</code> / Windows <code>DETACHED_PROCESS</code>）→ 轮询 <code>GET /health</code>（1s × 10 重试）</li>
+    <li>锁文件（<code>~/.codex/agent-mcp/daemon.lock</code>）含 pid + 时间戳：启动时先校验 pid 存活，残留锁直接覆盖</li>
+    <li>端口被占用：先打 /health 区分"本 daemon 存活"（直接复用）vs"他人占用"（结构化报错 + 建议换 <code>AGENT_MCP_PORT</code>）</li>
+  </ol>
+  <div class="callout green"><b>关键决策：</b>codex 退出后任务继续跑、网页继续可看、历史不丢；codex 重启后 MCP 薄层重新连回同一 daemon。daemon 是唯一有状态组件，MCP 无状态可热重启。</div>
+</section>
+
+<!-- ═══════════ 2 工具面 ═══════════ -->
+<section>
+  <span class="sec-no">Section 2</span>
+  <h2>工具面：V2 六原语（本地化降级）+ 监控</h2>
+  <p class="sec-desc">移植 Codex Multi-agent V2 协作工具语义，按本地单次进程能力降级；统一 <code>target_cli</code> 参数选择载体。</p>
+
+  <table>
+    <tr><th>工具</th><th>语义（本地化）</th><th>关键参数</th></tr>
+    <tr>
+      <td><code>spawn_agent</code></td>
+      <td>创建 agent 任务并启动 CLI 子进程（返回 agent_id）</td>
+      <td><code>target_cli</code> (claude/grok/opencode/omp) · <code>task_name</code>（分层路径 /root/task1）· <code>prompt</code> · <code>cwd</code> · <code>permission_mode</code> · <code>model</code> · <code>context</code>（父摘要文本注入，替代 fork_turns）· <code>resume</code>（session_id 透传）· <code>max_turns</code> · <code>timeout_seconds</code> · <code>parent_agent_id</code> · <code>session_id</code>（会话隔离）</td>
+    </tr>
+    <tr>
+      <td><code>send_message</code></td>
+      <td>投递消息到 <b>daemon 消息队列</b>：运行中挂起、终止后标 undelivered 回报；<b>永不触发执行</b></td>
+      <td><code>agent_id</code> · <code>message</code></td>
+    </tr>
+    <tr>
+      <td><code>followup_task</code></td>
+      <td><b>唯一触发新 turn 的入口</b>：合并挂起消息进 prompt，CLI 支持时 resume 续接，否则重派</td>
+      <td><code>agent_id</code> · <code>prompt</code> · <code>interrupt</code>（运行中=true 时先中断再重派）</td>
+    </tr>
+    <tr>
+      <td><code>wait_agent</code></td>
+      <td><b>短阻塞 30s</b> + 轮询指引：返回 completed / 增量摘要 / timeout 建议再 wait（不吞全文）</td>
+      <td><code>agent_id</code> · <code>timeout</code>（≤30s）</td>
+    </tr>
+    <tr>
+      <td><code>interrupt_agent</code></td>
+      <td>打断 → SIGTERM 进程树（psutil，跨平台）→ cancelled；中断前尝试读最后 usage，缺失标"usage 不完整"</td>
+      <td><code>agent_id</code></td>
+    </tr>
+    <tr>
+      <td><code>list_agents</code></td>
+      <td>返回 agent 树（分层命名）、状态、last_message —— 自省 / 可视化 / 监控轮询用</td>
+      <td><code>session_id</code>（默认本会话）· <code>parent_agent_id</code> 可选</td>
+    </tr>
+    <tr>
+      <td><code>get_agent_activity</code></td>
+      <td>实时活动流（当前动作 / 最近消息 / 事件，按 seq 分页）</td>
+      <td><code>agent_id</code> · <code>since_seq</code></td>
+    </tr>
+    <tr>
+      <td><code>get_token_usage</code></td>
+      <td>单任务 / 子树 / 全局 token 统计（按模型拆分 + 成本估算，标注"派发侧估算"）</td>
+      <td><code>agent_id</code> 可选 · <code>scope</code> · <code>session_id</code></td>
+    </tr>
+  </table>
+
+  <h3>审查修正：fork_turns → context + resume（CRITICAL 1）</h3>
+  <p>Codex V2 的 <code>fork_turns</code>（服务端复制会话历史）在本地单次进程上<b>无实现路径</b>。降级为两机制：</p>
+  <ul>
+    <li><code>context</code>：父 agent 提供摘要/关键上下文文本，MCP 注入 prompt 顶部 —— 文本级继承</li>
+    <li><code>resume</code>：daemon 从 CLI 启动输出提取 session_id 落库；claude/grok 支持 <code>--resume</code> 时透传复用上下文</li>
+    <li>文档声明：文本继承会产生重复计费（主 agent 上下文已含），usage 口径为"派发侧估算"</li>
+  </ul>
+
+  <h3>审查修正：send_message = 消息队列（CRITICAL 2）</h3>
+  <p>本地 <code>-p</code> 进程 stdin 已关、运行中无法注入。send_message 语义收敛为：daemon 层消息队列（挂起 → followup_task 合并进 prompt），终止后消息标 <code>undelivered</code> 回报。skill 六步循环中"发消息"一律改用 <code>followup_task</code>。</p>
+
+  <h3>四 CLI 能力矩阵（实现第一步实测填表）</h3>
+  <table>
+    <tr><th>能力</th><th>claude</th><th>grok</th><th>opencode</th><th>omp(pi)</th></tr>
+    <tr><td>事件流格式</td><td><code>stream-json --verbose</code></td><td><code>streaming-messages-json</code></td><td><code>run --format json</code></td><td>待实测（headless 模式）</td></tr>
+    <tr><td>流式输入（运行中注入）</td><td><code>--input-format stream-json</code> ✓</td><td>待实测</td><td>SDK SSE ✓ / CLI 待实测</td><td>待实测</td></tr>
+    <tr><td>resume / 会话续接</td><td><code>--resume session_id</code> ✓</td><td><code>--resume</code> ✓</td><td>待实测</td><td>待实测</td></tr>
+    <tr><td>usage 字段</td><td>result.usage + total_cost_usd</td><td>usage（Messages 格式）</td><td>事件 usage</td><td>待实测</td></tr>
+    <tr><td>权限模式</td><td>plan / acceptEdits / bypass</td><td>plan / acceptEdits / bypassPermissions</td><td>plan / edit / -y</td><td>待实测</td></tr>
+    <tr><td>Windows 二进制</td><td>npm shim</td><td>待实测</td><td>npm shim</td><td>待实测</td></tr>
+  </table>
+  <p class="sec-desc">工具按能力降级：不支持流式输入的 CLI，send_message 排队到 followup_task 合并；不支持 resume 的 CLI 回退"重派 + 附前次摘要"。</p>
+
+  <h3>汇合约定</h3>
+  <p>子 agent final 输出即回传父节点（FINAL_ANSWER = 汇合点）。<code>wait_agent</code> 只返回摘要 + 结构化结果字段，主 agent 只收摘要不吞噪音（context rot 对策）。</p>
+</section>
+
+<!-- ═══════════ 3 事件流 / 状态机 / 数据模型 ═══════════ -->
+<section>
+  <span class="sec-no">Section 3</span>
+  <h2>事件流 · 状态机 · 数据模型</h2>
+  <p class="sec-desc">事件协议照搬 Managed Agents 设计；<b>events 表是唯一写入源</b>，usage/messages 是事件循环单写的投影（审查修正）。</p>
+
+  <h3>agent 状态机</h3>
+  <div class="states">
+    <span class="state q">queued</span><span class="state-arrow">→</span>
+    <span class="state r">running</span><span class="state-arrow">→</span>
+    <span class="state f">terminated · end_turn</span>
+  </div>
+  <div class="states">
+    <span class="state r">running</span><span class="state-arrow">→</span>
+    <span class="state e">error（认证失败/CLI 崩溃/权限拒绝）</span>
+    <span class="state-arrow">/</span>
+    <span class="state e">cancelled</span>
+    <span class="state-arrow">/</span>
+    <span class="state e">incomplete（超时）</span>
+  </div>
+  <ul>
+    <li>并发槽位：<code>max_concurrent_agents</code>（默认 4）FIFO 队列，queued → running 由调度器触发</li>
+    <li>headless 下权限拒绝不进入 requires_action：直接映射 <code>error</code> + next_actions（改 permission_mode 重派）</li>
+    <li>终止态必带 <code>stop_reason</code>：<code>end_turn</code> / <code>retries_exhausted</code> / <code>daemon_restart</code> / <code>interrupted</code>；cancelled/incomplete 永不上报为 success（延续现有契约）</li>
+  </ul>
+
+  <h3>事件类型（规范化 schema）</h3>
+  <table>
+    <tr><th>事件</th><th>含义</th><th>来源</th><th>落库</th></tr>
+    <tr><td><code>agent.spawned</code></td><td>任务节点创建（含父节点 = 导图分支点）</td><td>daemon</td><td>✓</td></tr>
+    <tr><td><code>agent.running</code></td><td>CLI 进程启动</td><td>daemon</td><td>✓</td></tr>
+    <tr><td><code>agent.message</code></td><td>文本输出（buffered 权威事件）</td><td>三 CLI 适配器</td><td>✓</td></tr>
+    <tr><td><code>agent.message_delta</code></td><td>增量预览（打字机）—— <b>只广播不落库</b>（审查修正 H7）</td><td>三 CLI 适配器</td><td>✗</td></tr>
+    <tr><td><code>agent.tool_use</code> / <code>agent.tool_result</code></td><td>工具调用（详情面板"agent 在干什么"）</td><td>三 CLI 适配器</td><td>✓</td></tr>
+    <tr><td><code>agent.usage</code></td><td>token 消耗（model_usage 四字段，按 id 去重）</td><td>三 CLI 适配器</td><td>✓</td></tr>
+    <tr><td><code>agent.thread_message_sent/received</code></td><td>跨 agent 通信（父链路 parent_agent_id）</td><td>daemon</td><td>✓</td></tr>
+    <tr><td><code>agent.idle</code> / <code>agent.terminated</code></td><td>状态迁移（带 stop_reason）</td><td>daemon 状态机</td><td>✓</td></tr>
+    <tr><td><code>agent.error</code> / <code>agent.cancelled</code></td><td>失败 / 中断（结构化错误 + next_actions）</td><td>daemon</td><td>✓</td></tr>
+  </table>
+
+  <h3>token 统计（数据准确性要点）</h3>
+  <ul>
+    <li><code>model_usage</code> 四字段：input / output / cache_creation / cache_read ＋ 按模型拆分 ＋ 成本估算</li>
+    <li><b>dedupe 陷阱</b>：并行 tool call 多条消息共享同一 message.id，必须按 id 去重否则双计</li>
+    <li>口径标注：<b>派发侧估算</b>（非权威计费）；对账方法：claude modelUsage 口径、grok trace 导出、opencode 事件；中断任务 usage 缺失 → 标"usage 不完整"</li>
+  </ul>
+
+  <h3>SQLite schema（WAL · 单写者 · 0600 权限）</h3>
+  <table>
+    <tr><th>表</th><th>字段</th><th>保留策略（审查修正 H9）</th></tr>
+    <tr><td><code>agents</code></td><td>id · parent_id · <b>session_id</b>（会话隔离）· task_name · cli · model · cwd · permission_mode · status · stop_reason · created_at · updated_at · finished_at · pid · cli_session_id（resume 用）· command_summary</td><td>保留 terminated/usage 汇总</td></tr>
+    <tr><td><code>events</code></td><td>id（自增 seq）· session_id · agent_id · type · payload(JSON) · created_at —— 唯一写入源，SSE 重连 Last-Event-ID + dedupe 回放</td><td>超 N 万条按 seq 滚动清理（默认 7 天）</td></tr>
+    <tr><td><code>usage</code></td><td>agent_id · model · input_tokens · output_tokens · cache_creation · cache_read · cost_usd · ts</td><td>随 agents 保留</td></tr>
+    <tr><td><code>messages</code></td><td>agent_id · role · content · ts（详情面板，分页读取）</td><td>每任务保留最近 M 条</td></tr>
+  </table>
+  <p class="sec-desc">写入策略：100ms / 50 条批量 commit（审查修正 H7）。</p>
+
+  <h3>CLI 退出码 → stop_reason 判定表（审查修正）</h3>
+  <table>
+    <tr><th>场景</th><th>映射</th></tr>
+    <tr><td>退出码 0 + 有 result 事件</td><td>terminated · end_turn</td></tr>
+    <tr><td>退出码非 0 + 有 error 事件</td><td>error（透传诊断）</td></tr>
+    <tr><td>超时（timeout_seconds）</td><td>incomplete → resume 或重派</td></tr>
+    <tr><td>被信号/中断杀死</td><td>cancelled</td></tr>
+    <tr><td>daemon 重启时发现孤儿存活</td><td>terminated · error（stop_reason=daemon_restart），进程树终止，可 resend 不可 resume</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════ 4 可视化前端 ═══════════ -->
+<section>
+  <span class="sec-no">Section 4</span>
+  <h2>可视化前端（Claude UI 风格 · 单文件 · 低内存）</h2>
+  <p class="sec-desc">纯静态单 HTML + 原生 JS + 手写 SVG 树布局（无框架、无构建链、无图库依赖），由 daemon 托管；SSE 实时推送。</p>
+
+  <h3>知识导图形态</h3>
+  <div class="mindmap">
+    <div class="mm-row"><span class="mm-node root">主任务 /root（gpt 规划 · 审查 · 汇合）</span></div>
+    <div class="mm-branch">
+      <div class="mm-row"><span class="mm-node claude run">/root/planner · claude</span><span class="mm-line">→ running · 正在规划架构</span></div>
+      <div class="mm-row"><span class="mm-node grok done">/root/researcher · grok</span><span class="mm-line">→ terminated · end_turn · 12.3k tok</span></div>
+      <div class="mm-row"><span class="mm-node opencode run">/root/tester · opencode</span><span class="mm-line">→ running · 正在跑测试</span></div>
+      <div class="mm-row"><span class="mm-node claude">/root/reviewer · claude</span><span class="mm-line">→ queued · 等待槽位</span></div>
+    </div>
+    <div class="mm-row" style="margin-top:12px"><span class="mm-node root">汇合 → 最终交付</span></div>
+  </div>
+  <p class="sec-desc">节点点击展开<b>详情面板</b>：当前活动（最近 tool_use）、消息流（按 seq 分页，审查修正）、token 曲线、子代理内部活动摘要（黑盒 + 累计 token）。</p>
+
+  <h3>顶栏统计</h3>
+  <ul>
+    <li>进行中 / 排队 / 已完成 / 失败 任务数（当前会话，可切全部会话）</li>
+    <li>总 token（input / output / cache）＋ 估算成本（标注"派发侧估算"）</li>
+    <li>按模型维度拆分 + 每 agent 实时 token 与进度</li>
+  </ul>
+
+  <h3>实时机制（审查修正 H6）</h3>
+  <ul>
+    <li>SSE <code>/events?last_seq=N</code>：先建连再补发（stream-first）；断线 Last-Event-ID + SQLite 回放 + dedupe</li>
+    <li>daemon 事件循环<b>统一广播</b>：15s 心跳注释行 <code>: ping</code>；非阻塞写，写失败即断开清理；连接上限 32</li>
+    <li>增量预览双轨：<code>agent.message_delta</code> 打字机（只广播）+ buffered 权威事件校正</li>
+    <li>前端 DOM 更新用 rAF 合并（防逐事件 reflow）；消息流分页加载</li>
+    <li>页面只读：仅 SSE/GET，无控制端点（取消/跟进只能经 MCP 工具）</li>
+  </ul>
+
+  <div class="callout green"><b>性能目标（统一口径）：</b>daemon 常驻内存 &lt;100MB（实测目标 30-60MB）；页面无框架无轮询；导图按 agent 节点全量渲染（量小），事件按需加载。</div>
+</section>
+
+<!-- ═══════════ 5 skill 设计 ═══════════ -->
+<section>
+  <span class="sec-no">Section 5</span>
+  <h2>配套 Skill：多 agent 工作流</h2>
+  <p class="sec-desc">教主 agent（omp / codex / claude 各自主模型）如何调用 MCP、任务如何拆解派发汇合审查。<b>内置 agent 预设只含提示词，不指定 CLI 载体、不指定模型</b>——派发参数由主 agent 按匹配指南现场决策（Codex V2 配置优先级链：显式 spawn 值 &gt; 默认 &gt; 父值）。skill 内容三端通用，按各主载体安装路径分发（codex：<code>.agents/skills</code>；claude：<code>~/.claude/skills</code>；omp：<code>~/.omp/agent/skills</code>）。</p>
+
+  <h3>工作流（六步循环）</h3>
+  <ol>
+    <li><b>拆解</b>：主 agent（omp / codex / claude 各自主模型）分析任务，输出任务分解（planner 提示词辅助）—— 写密集谨慎串行，读密集并行</li>
+    <li><b>规划审查</b>：主 agent 自己审查任务分解（规划审查模型职责）</li>
+    <li><b>并行派发</b>：<code>spawn_agent</code> 多分支；按任务类型选载体 + 模型（探索/审查类派快模型，深推理派主 CLI）；只收摘要不吞噪音</li>
+    <li><b>监控</b>：<code>wait_agent</code>（短阻塞）+ <code>list_agents</code> / <code>get_agent_activity</code> 轮询循环；网页实时可视</li>
+    <li><b>汇合</b>：FINAL_ANSWER 回传父节点，gpt 综合各分支产出</li>
+    <li><b>审查迭代</b>：<code>code-reviewer / security-reviewer</code> 提示词审查产出，<code>followup_task</code>（唯一触发执行入口）派修正任务</li>
+  </ol>
+
+  <h3>内置 agent 预设（只提示词 · 去模型化）</h3>
+  <table>
+    <tr><th>角色</th><th>提示词来源（本机模板）</th><th>用途</th></tr>
+    <tr><td><span class="tag t1">planner</span></td><td><code>planner.md</code> 提示词</td><td>任务拆解 / 实施计划</td></tr>
+    <tr><td><span class="tag t1">architect</span></td><td><code>architect.md</code> 提示词</td><td>架构设计决策</td></tr>
+    <tr><td><span class="tag t2">code-reviewer</span></td><td><code>code-reviewer.md</code> 提示词</td><td>产出审查（CRITICAL/HIGH 优先）</td></tr>
+    <tr><td><span class="tag t2">security-reviewer</span></td><td><code>security-reviewer.md</code> 提示词</td><td>安全审查（提交前强制）</td></tr>
+    <tr><td><span class="tag t2">tdd-guide</span></td><td><code>tdd-guide.md</code> 提示词</td><td>测试驱动开发（RED-GREEN-REFACTOR）</td></tr>
+    <tr><td><span class="tag t3">build-error-resolver</span></td><td><code>build-error-resolver.md</code> 提示词</td><td>构建/类型错误修复</td></tr>
+    <tr><td><span class="tag t3">e2e-runner</span></td><td><code>e2e-runner.md</code> 提示词</td><td>端到端测试</td></tr>
+    <tr><td><span class="tag t3">refactor-cleaner</span></td><td><code>refactor-cleaner.md</code> 提示词</td><td>死代码清理</td></tr>
+    <tr><td><span class="tag t3">doc-updater</span></td><td><code>doc-updater.md</code> 提示词</td><td>文档更新</td></tr>
+    <tr><td><span class="tag t3">code-explorer</span></td><td><code>code-explorer.md</code> 提示词</td><td>代码库探索</td></tr>
+    <tr><td><span class="tag t1">lang-reviewers</span></td><td>各语言 reviewer 模板提示词</td><td>语言专项审查（按项目栈选）</td></tr>
+  </table>
+  <p class="sec-desc">预设 = name + description（驱动主 agent 自动委派）+ developer_instructions（提示词模板）。<b>派发时</b>主 agent 按 skill 匹配指南决定 target_cli / model / permission_mode——模型绑定留给各主载体侧配置（codex 的 <code>[agents] default_subagent_model</code>、claude 的 agent 配置、omp 的 modelRoles）或显式 spawn 参数，skill 不硬编码。</p>
+
+  <h3>预设展开示例（契约衔接，审查修正）</h3>
+  <p>调用 <code>spawn_agent</code> 时，<code>prompt</code> = 角色提示词（角色定义 + 任务描述 + 输出要求 + 约束），<code>context</code> = 父摘要，<code>cwd</code> = 任务目录，<code>target_cli</code> / <code>model</code> / <code>permission_mode</code> = 主 agent 按指南决策。skill 文档含：工具调用示例、参数速查、错误恢复路径（超时→resume/重派、认证→检查 CLI 登录与 opencodex 代理）。</p>
+</section>
+
+<!-- ═══════════ 6 跨平台 · 安全 · 稳定性 ═══════════ -->
+<section>
+  <span class="sec-no">Section 6</span>
+  <h2>跨平台 · 安全 · 稳定性 · 部署迁移</h2>
+  <p class="sec-desc">验收补充约束：Windows / macOS 双平台可用，MCP 稳定，性能好内存低。</p>
+
+  <h3>安全（审查修正 H4 / H12）</h3>
+  <ul>
+    <li><b>Host 头校验</b>：仅接受 <code>127.0.0.1:8765</code> / <code>localhost</code>，拒绝未知 Host（防 DNS rebinding）</li>
+    <li><b>写操作鉴权</b>：daemon 启动生成随机 token 写入 <code>0600</code> 文件 <code>~/.codex/agent-mcp/daemon.json</code>（不经命令行，防 ps 可见）；MCP 请求带 <code>X-Auth-Token</code>；网页只读端点免 token</li>
+    <li><b>认证职责</b>：全部在 daemon 侧且<b> CLI 自管</b>——claude/grok/opencode 自带 auth，daemon 不碰密钥，只做缺失/失败检测与结构化报错；确需注入时用环境变量（禁命令行参数）</li>
+    <li>SQLite / 锁文件 / token 文件权限 0600；daemon 不额外注入子进程环境变量</li>
+  </ul>
+
+  <h3>跨平台（审查修正）</h3>
+  <table>
+    <tr><th>问题</th><th>macOS</th><th>Windows</th></tr>
+    <tr><td>认证</td><td>Keychain + opencodex-loopback（CLI 自管）</td><td>CLI 自带（grok/claude/opencode 的 OAuth/token 机制）；若需注入用环境变量，Credential Manager 经 ctypes+wincred（标注例外）</td></tr>
+    <tr><td>进程树终止</td><td><code>psutil</code> 进程树</td><td><code>psutil</code> + <code>TerminateProcess</code>（无 SIGTERM，中断语义以实测为准）</td></tr>
+    <tr><td>daemon 分离启动</td><td><code>start_new_session=True</code></td><td><code>DETACHED_PROCESS</code> + <code>CREATE_NEW_PROCESS_GROUP</code>（pythonw 避免控制台窗口）</td></tr>
+    <tr><td>CLI 二进制</td><td>PATH / ~/.grok/bin</td><td><code>shutil.which</code> + PATHEXT（.exe / npm .cmd shim）</td></tr>
+    <tr><td>路径</td><td><code>~/.grok</code>、<code>~/.codex</code></td><td><code>Path.home()</code> + GROK_HOME / CODEX_HOME 覆盖</td></tr>
+  </table>
+  <p class="sec-desc">四 CLI 的 Windows 安装情况需尽早实测（omp 尤其未知）；若某 CLI 无 Windows 版，验收口径调整为"Windows 支持可用载体子集 + 缺失载体报结构化错误"。</p>
+
+  <h3>稳定性（审查修正 H8 / H10）</h3>
+  <ul>
+    <li><b>多会话隔离</b>：agents/events 带 session_id；spawn 缺省 parent 限定本会话根（/root 按会话命名空间）；list_agents / get_token_usage 默认按会话过滤；SSE 事件带 session_id 供前端过滤</li>
+    <li><b>daemon 崩溃恢复</b>：重启时终止仍在跑的孤儿进程树 → 对应 agent 标 <code>terminated·error (daemon_restart)</code>，事件从 SQLite 回放补齐；任务可 resend 不可 resume（stdout 管道已丢）</li>
+    <li><b>并发操作幂等</b>：同一 agent 的并发 interrupt/cancel 幂等处理</li>
+    <li><b>错误处理</b>：CLI 缺失/认证失败/模型别名未知 → 结构化错误（root_cause_hint + next_actions）；超时 → incomplete 可 resume；SSE 断线重连 + dedupe</li>
+  </ul>
+
+  <h3>部署与迁移（审查修正 H11 · 三主载体注册）</h3>
+  <ol>
+    <li>代码落位 <code>~/.codex/agent-mcp/</code>（或项目目录 + 安装脚本拷贝）；入口 <code>mcp_server.py</code>（stdio）+ <code>agent_daemon.py</code>（常驻）</li>
+    <li><b>三主载体注册同一 MCP server</b>：
+      <ul>
+        <li>codex：config.toml <code>[mcp_servers.agent-mcp]</code>（command=python + args=[mcp_server.py]），旧 <code>[mcp_servers.grok-cli]</code> 删除</li>
+        <li>claude：<code>~/.claude.json</code> 或项目 <code>.mcp.json</code> 的 <code>mcpServers.agent-mcp</code></li>
+        <li>omp：<code>~/.omp/agent/</code> 的 MCP client 配置（实现时按 omp 实际配置格式实测，其日志已确认支持 MCP 加载）</li>
+      </ul>
+    </li>
+    <li><b>主载体识别</b>：MCP initialize 握手的 <code>clientInfo.name</code> 记录 host（omp/codex/claude）→ session_id 与 host 绑定，网页区分显示</li>
+    <li>工具改名 <b>breaking change</b>：旧 9 工具（ask_grok/delegate_to_grok/…）→ 新 8 工具（六原语 + 2 监控）；旧 skill/提示词按工具名映射表迁移</li>
+    <li>升级步骤：备份旧 grok_cli_mcp.py → 更新注册 → 重启各主载体会话；回滚：恢复旧文件 + 旧注册</li>
+    <li>网页访问：<code>http://127.0.0.1:8765/</code>（仅本地回环）</li>
+  </ol>
+
+  <h3>测试策略</h3>
+  <table>
+    <tr><th>层</th><th>内容</th></tr>
+    <tr><td>单元</td><td>三 CLI 事件适配器（fixture）、状态机迁移、参数校验、权限映射、退出码判定表</td></tr>
+    <tr><td>集成</td><td>真实 CLI 冒烟（可选开关）：spawn → wait → 结果断言；认证检测路径；daemon 拉起/重连/崩溃恢复</td></tr>
+    <tr><td>前端</td><td>无头浏览器加载单文件 HTML 断言渲染 + SSE 事件驱动节点更新（可选）</td></tr>
+    <tr><td>跨平台 CI</td><td>Win + Mac 冒烟：进程树终止、daemon 拉起、token 对账</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════ 7 验收对照 ═══════════ -->
+<section>
+  <span class="sec-no">Section 7</span>
+  <h2>验收标准对照</h2>
+  <table>
+    <tr><th>标准</th><th>对应设计</th><th>验证方式</th></tr>
+    <tr><td>任务池四 CLI 派发全通</td><td>Sec 2 工具面 + 能力矩阵</td><td>主载体（omp/codex/claude）依次 spawn claude/grok/opencode/omp 真实任务</td></tr>
+    <tr><td>三主载体可用</td><td>Sec 6 三套注册 + host 识别</td><td>omp / codex / claude 三端各自 MCP 注册生效、skill 三端分发可加载</td></tr>
+    <tr><td>监控网页达标</td><td>Sec 4 前端</td><td>实时活动 / 任务数 / token 曲线 / 导图展开（只读）</td></tr>
+    <tr><td>skill 开箱即用</td><td>Sec 5 skill（去模型化预设）</td><td>新会话主 agent 按六步工作流自动编排</td></tr>
+    <tr><td>数据准确性</td><td>Sec 3 usage + dedupe + 口径标注</td><td>与各 CLI 自带 usage 对账（标注派发侧估算）</td></tr>
+    <tr><td>性能好内存低</td><td>标准库 daemon + SSE + 无框架前端</td><td>常驻 &lt;100MB、页面响应 &lt;1s</td></tr>
+    <tr><td>MCP 稳定</td><td>Sec 6 稳定性 + 保留策略 + 迁移</td><td>中断、超时、daemon 重启、多会话并发回归</td></tr>
+    <tr><td>Win / Mac 可用</td><td>Sec 6 跨平台抽象</td><td>双平台 CI 冒烟（进程树、拉起、对账）</td></tr>
+  </table>
+</section>
+
+<footer>Agent MCP 重构设计 v0.2 · 2026-08-02 · 待用户确认后定稿</footer>
+</div>
+</body>
+</html>

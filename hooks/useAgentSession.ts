@@ -656,6 +656,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [todoPhases, setTodoPhases] = useState<TodoPhase[]>([]);
   const [activeGoal, setActiveGoal] = useState<ActiveGoal | null>(null);
   const [activePlan, setActivePlan] = useState<ActivePlan | null>(null);
+  const [planInfo, setPlanInfo] = useState<{ planModeActive: boolean; plan: string | null; planFile: string | null; truncated: boolean } | null>(null);
   const [advisorActiveAt, setAdvisorActiveAt] = useState(0);
   // Advisor is a per-chat toggle (composer Sparkles + /advisor command), not a
   // global setting: each session remembers its own choice in localStorage.
@@ -865,6 +866,27 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   // Recover the ON-DISK roster from the parent session's task toolResults.
   // Survives page reloads and shows finished runs from previous sessions.
+  // Load the session's omp plan artifact (plan-mode flag + plan markdown)
+  // alongside the transcript; best effort — a failed fetch just leaves the
+  // plan panel without content.
+  const refreshPlanInfo = useCallback(async (sid: string) => {
+    const generation = subagentRosterGenerationRef.current;
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/plan`);
+      if (!res.ok) return;
+      const data = await res.json() as { planModeActive?: boolean; plan?: string | null; planFile?: string | null; truncated?: boolean };
+      if (sessionIdRef.current !== sid || subagentRosterGenerationRef.current !== generation) return;
+      setPlanInfo({
+        planModeActive: Boolean(data.planModeActive),
+        plan: typeof data.plan === "string" ? data.plan : null,
+        planFile: typeof data.planFile === "string" ? data.planFile : null,
+        truncated: Boolean(data.truncated),
+      });
+    } catch {
+      // Best effort.
+    }
+  }, []);
+
   const refreshSubagentHistory = useCallback(async (sid: string) => {
     const generation = subagentRosterGenerationRef.current;
     try {
@@ -1027,6 +1049,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Recover on-disk subagent history (task toolResults) for this session —
       // populates the composer roster for finished/past runs.
       void refreshSubagentHistory(sid);
+      // Load the session's omp plan artifact (plan-mode flag + plan markdown).
+      void refreshPlanInfo(sid);
       setCurrentModelOverride(null);
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
@@ -3238,7 +3262,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     advisorActive: advisorActiveAt > 0, advisorEnabled, handleAdvisorChange,
     subagents, subagentEvents, subagentTranscriptVersions, activeSubagentCount, currentTodoPhase, todoPhases,
-    activeGoal, activePlan,
+    activeGoal, activePlan, planInfo,
     isNew,
     // Refs
     sessionIdRef, messagesEndRef, scrollContainerRef,

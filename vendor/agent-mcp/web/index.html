@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Agent MCP · 对话图</title>
+<style>
+/* U1 落地 design-preview v0.3 + U10 明暗主题 + R1 视觉基调重构 */
+:root{
+  --bg:#F7F5F0; --bg-deep:#EFECE4; --card:#FFFFFF; --ink:#2E2A22; --ink-soft:#6E675A;
+  --accent:#C0503A; --accent-soft:#F6E3DB; --accent-deep:#9C3D2C;
+  --line:#E7E2D8; --line-soft:#F0ECE3;
+  --green:#3E7A56; --green-soft:#E4F0E8; --red:#B13E33; --red-soft:#F7E4E1;
+  --amber:#9A7B2F; --amber-soft:#F5EDD8; --gray:#8B867A; --gray-soft:#F1EFE9;
+  --claude:#8A4B2E; --grok:#9A7B2F; --opencode:#3E7A56; --omp:#5A54A3; --atomcode:#286ca6;
+  --radius:18px; --radius-sm:12px;
+  --sp1:6px; --sp2:12px; --sp3:20px; --sp4:32px; --sp5:48px;
+  --shadow:0 1px 2px rgba(46,42,34,.05),0 4px 14px rgba(46,42,34,.05),0 12px 36px rgba(46,42,34,.04);
+  --shadow-pop:0 2px 6px rgba(46,42,34,.08),0 14px 40px rgba(46,42,34,.12);
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --serif:Georgia,"Songti SC",serif;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#171614; --bg-deep:#12110F; --card:#21201D; --ink:#EAE6DC; --ink-soft:#9B958A;
+    --accent:#D96B4F; --accent-soft:#3A241E; --accent-deep:#E88A6B;
+    --line:#33322E; --line-soft:#2A2925;
+    --green:#6FA587; --green-soft:#22332A; --red:#D96B5C; --red-soft:#3A2320;
+    --amber:#C9A34F; --amber-soft:#37301C; --gray:#7E7970; --gray-soft:#2A2925;
+    --claude:#C87A5A; --grok:#C9A34F; --opencode:#6FA587; --omp:#9A8EDA; --atomcode:#5A9CD6;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 6px 20px rgba(0,0,0,.3),0 16px 48px rgba(0,0,0,.25);
+    --shadow-pop:0 2px 8px rgba(0,0,0,.45),0 18px 52px rgba(0,0,0,.4);
+  }
+}
+/* 手动主题覆盖（仪表盘 theme 切换按钮设置 data-theme，优先于 media query） */
+:root[data-theme="dark"]{
+  --bg:#171614; --bg-deep:#12110F; --card:#21201D; --ink:#EAE6DC; --ink-soft:#9B958A;
+  --accent:#D96B4F; --accent-soft:#3A241E; --accent-deep:#E88A6B;
+  --line:#33322E; --line-soft:#2A2925;
+  --green:#6FA587; --green-soft:#22332A; --red:#D96B5C; --red-soft:#3A2320;
+  --amber:#C9A34F; --amber-soft:#37301C; --gray:#7E7970; --gray-soft:#2A2925;
+  --claude:#C87A5A; --grok:#C9A34F; --opencode:#6FA587; --omp:#9A8EDA; --atomcode:#5A9CD6;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 6px 20px rgba(0,0,0,.3),0 16px 48px rgba(0,0,0,.25);
+  --shadow-pop:0 2px 8px rgba(0,0,0,.45),0 18px 52px rgba(0,0,0,.4);
+}
+:root[data-theme="light"]{
+  --bg:#F7F5F0; --bg-deep:#EFECE4; --card:#FFFFFF; --ink:#2E2A22; --ink-soft:#6E675A;
+  --accent:#C0503A; --accent-soft:#F6E3DB; --accent-deep:#9C3D2C;
+  --line:#E7E2D8; --line-soft:#F0ECE3;
+  --green:#3E7A56; --green-soft:#E4F0E8; --red:#B13E33; --red-soft:#F7E4E1;
+  --amber:#9A7B2F; --amber-soft:#F5EDD8; --gray:#8B867A; --gray-soft:#F1EFE9;
+  --claude:#8A4B2E; --grok:#9A7B2F; --opencode:#3E7A56; --omp:#5A54A3; --atomcode:#286ca6;
+  --shadow:0 1px 2px rgba(46,42,34,.05),0 4px 14px rgba(46,42,34,.05),0 12px 36px rgba(46,42,34,.04);
+  --shadow-pop:0 2px 6px rgba(46,42,34,.08),0 14px 40px rgba(46,42,34,.12);
+}
+*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden}
+body{display:grid;grid-template-rows:72px auto minmax(0,1fr) 34px;grid-template-areas:"hd" "gt" "mn" "ft";background:var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+header{grid-area:hd;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:18px;padding:0 26px;background:var(--card);border-bottom:1px solid var(--line);z-index:5}
+.brand{display:flex;align-items:center;gap:12px;user-select:none}
+.brand-mark{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent-deep));color:#fff;font:700 15px/1 var(--mono);box-shadow:0 2px 8px rgba(192,80,58,.35)}
+.kicker{font:700 9px/1 var(--mono);letter-spacing:.18em;color:var(--accent);text-transform:uppercase}
+h1{margin:2px 0 0;font-family:var(--serif);font-size:22px;font-weight:700;letter-spacing:-.02em}
+.stats{display:flex;justify-content:center;min-width:0;overflow:hidden;cursor:pointer}
+.stat{display:flex;align-items:center;gap:7px;padding:8px 16px;margin:0 3px;border-radius:var(--radius-sm);white-space:nowrap;transition:background .18s var(--ease),transform .15s var(--ease)}
+.stat:hover{background:var(--gray-soft);transform:translateY(-1px)}
+.stat .lbl{font:700 9px/1 var(--mono);color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em}.stat b{font:700 17px/1 var(--serif);font-variant-numeric:tabular-nums}
+.stat.run b{color:var(--accent)}.stat.queued b{color:var(--amber)}.stat.done b{color:var(--green)}.stat.fail b{color:var(--red)}
+.stat.run .lbl{color:var(--accent)}.stat.done .lbl{color:var(--green)}.stat.fail .lbl{color:var(--red)}
+#usage-panel{position:absolute;top:58px;right:60px;z-index:30;width:380px;max-height:70vh;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px}
+#usage-panel[hidden]{display:none}
+#usage-panel .upa{margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+#usage-panel .upa .nm{font-weight:600;font-size:12px}.upa .bars{display:flex;height:14px;border-radius:3px;overflow:hidden;margin-top:4px}
+.upa .bars span{display:inline-block}.bi{background:var(--green)}.bo{background:var(--accent)}.bc{background:var(--amber)}
+.upa .lg{display:flex;gap:10px;font:9px/1 var(--mono);color:var(--ink-soft);margin-top:3px}
+.upa .cost{float:right;font:10px var(--mono);color:var(--ink-soft)}.upa.et-red{color:var(--red)}
+select.sess{width:190px;height:36px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card);color:var(--ink);padding:0 12px;font:12px inherit;cursor:pointer;transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
+select.sess:hover{border-color:var(--accent)}
+select.sess:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+/* U5 Gantt */
+#gantt{grid-area:gt;background:var(--card);border-bottom:1px solid var(--line);overflow:hidden;transition:max-height .2s ease}
+#gantt[hidden]{display:none}#gantt.show{display:block}
+#gantt .ghead{display:flex;align-items:center;gap:10px;padding:10px 26px;font:9px/1 var(--mono);color:var(--ink-soft);text-transform:uppercase;letter-spacing:.1em}
+#gantt .ghead button{margin-left:auto;padding:2px 8px;border:1px solid var(--line);border-radius:5px;background:var(--card);font:9px var(--mono);cursor:pointer}
+#gantt canvas{display:block;width:100%;height:76px}
+main{grid-area:mn;display:flex;flex-direction:row;min-height:0;overflow:hidden}
+#map-pane{flex:3 1 0;min-width:0;min-height:0;overflow:hidden;background:var(--bg);position:relative}
+#map-hint{position:absolute;left:0;top:0;z-index:2;width:100%;height:40px;display:flex;align-items:center;padding:0 18px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 88%,transparent);color:var(--ink-soft);font-size:11px;letter-spacing:.01em;backdrop-filter:blur(8px);pointer-events:none}
+#graph-scroll{position:absolute;inset:40px 0 0 0;overflow:hidden;cursor:grab}
+#graph-scroll.grabbing{cursor:grabbing}
+#graph-viewport{position:absolute;left:0;top:0;transform-origin:0 0}
+#graph-edges,#graph-nodes{position:absolute;left:0;top:0}
+#graph-edges{overflow:visible}
+#graph-edges path{fill:none;stroke:var(--line);stroke-width:1.5;stroke-linecap:round}
+#graph-edges path.on{stroke:var(--accent);stroke-width:2}
+#graph-nodes{pointer-events:none}
+#graph-nodes .node{pointer-events:auto}
+.graph-empty[hidden]{display:none}
+/* 思维导图节点 */
+.node{position:absolute;left:0;top:0;display:flex;align-items:center;gap:10px;border-radius:14px;transition:transform .45s var(--ease),opacity .3s ease,box-shadow .2s ease;cursor:pointer;user-select:none}
+.node:hover{box-shadow:var(--shadow-pop)}
+.node.fresh{animation:nodeIn .35s var(--ease) backwards}
+.node.session{width:190px;height:56px;padding:0 14px;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;background:linear-gradient(135deg,var(--ink),#4a463d);color:rgba(255,255,255,.9);cursor:default}
+.node.session .nsub{color:rgba(255,255,255,.55)}
+.node.turn{width:168px;height:36px;padding:0 14px;border-radius:999px;background:var(--accent-soft);color:var(--accent-deep)}
+.node.agent{width:210px;height:58px;padding:0 12px;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
+.node.agent.sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.node.agent.st-running::after{content:"";position:absolute;inset:-3px;border-radius:16px;border:1.5px solid var(--accent);animation:nodePulse 1.8s ease-in-out infinite;pointer-events:none}
+.node.agent.st-terminated:not(.sel){opacity:.82}
+.ndot{width:10px;height:10px;border-radius:50%;flex:0 0 10px}
+.nmain{min-width:0;flex:1}
+.ntitle{font-weight:650;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nsub{font:600 9px var(--mono);color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node.agent.st-running .nsub{color:var(--accent)}
+.node.agent.st-queued .nsub{color:var(--amber)}
+.node.agent.st-error .nsub,.node.agent.st-cancelled .nsub{color:var(--red)}
+.node.agent.st-needs_advisor .nsub{color:var(--amber)}
+.node.agent.st-terminated .nsub{color:var(--green)}
+.nbadges{position:absolute;top:-7px;right:8px;display:flex;gap:4px}
+.nbadges .badge{font:700 8px/1 var(--mono);padding:2px 7px}
+#detail-pane{flex:1 1 0;min-width:300px;max-width:44%;overflow-y:auto;border-left:1px solid var(--line);background:var(--card);padding:26px 26px 40px}
+footer{grid-area:ft;display:flex;align-items:center;gap:14px;padding:0 26px;border-top:1px solid var(--line);background:var(--card);color:var(--ink-soft);font:10px/1 var(--mono);white-space:nowrap;overflow:hidden}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--gray);box-shadow:0 0 0 3px var(--gray-soft)}.dot.ok{background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}.dot.bad{background:var(--amber);box-shadow:0 0 0 3px var(--amber-soft)}.dot.conn{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.live-b{font:700 9px/1 var(--mono);padding:3px 8px;border:1px solid var(--line);border-radius:999px;letter-spacing:.05em}.live-b.live{color:var(--green);border-color:var(--green);background:var(--green-soft)}.live-b.buf{color:var(--amber);border-color:var(--amber);background:var(--amber-soft)}.live-b.disc{color:var(--red);border-color:var(--red);background:var(--red-soft)}
+.foot-tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;background:var(--gray-soft);font:700 9px/1 var(--mono)}
+.dk{display:flex;align-items:center;gap:8px;margin:32px 0 12px;color:var(--ink-soft);font:700 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.dk::after{content:"";height:1px;flex:1;background:var(--line)}
+h2.aname{margin:0;font-family:var(--serif);font-size:19px;font-weight:700;line-height:1.25;letter-spacing:-.02em;word-break:break-all}
+.cli-badge{display:inline-block;margin-left:8px;padding:3px 9px;border-radius:999px;color:#fff;font:700 9px/1 var(--mono);vertical-align:3px;text-transform:uppercase;box-shadow:0 1px 3px rgba(46,42,34,.15)}
+.subtitle{margin-top:6px;color:var(--ink-soft);font-size:11px;word-break:break-all}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.badge{padding:2px 9px;border-radius:999px;font:700 9px/1 var(--mono);border:1px solid;background:var(--card)}
+.badge.stuck{border-color:var(--red);color:var(--red)}.badge.fail{border-color:var(--amber);color:var(--amber)}
+.badge.silent{border-color:var(--gray);color:var(--gray)}.badge.timeout{border-color:var(--red);color:var(--red)}
+table.sum{width:100%;border-collapse:collapse;font-size:11.5px}table.sum td{padding:6px 0;border-bottom:1px solid var(--line);word-break:break-all}table.sum td:first-child{width:74px;color:var(--ink-soft);font-weight:600}
+.cur-act{padding:12px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);font-size:11px;border-radius:0 var(--radius-sm) var(--radius-sm) 0}.cur-act .tn{font-weight:700;color:var(--ink)}.cur-act .in{color:var(--ink-soft);font:10px/1.5 var(--mono);white-space:pre-wrap}.cur-act .ico{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:7px;animation:breathe 1.6s ease-in-out infinite}
+.msgs{display:flex;flex-direction:column;gap:10px}.msg{padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg);font-size:11px;white-space:pre-wrap;word-break:break-word}
+.msg.delta{border-style:dashed;color:var(--ink-soft)}.msg .seq{margin-right:6px;color:var(--ink-soft);font:9px/1 var(--mono)}
+.events{font-size:9.5px}.ev{display:grid;grid-template-columns:34px 120px minmax(0,1fr);gap:6px;padding:7px 0;border-bottom:1px solid var(--line)}
+.ev .seq{color:var(--ink-soft);font-family:var(--mono)}.ev .tp{font-weight:650;white-space:nowrap;color:var(--ink)}.ev .py{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-soft)}
+.ev .tp.tool{color:var(--accent)}.ev .tp.msg{color:var(--green)}.ev .tp.term{color:var(--gray)}.ev .tp.err{color:var(--red)}.ev .tp.use{color:var(--amber)}
+.empty{padding:26px 0;text-align:center;color:var(--ink-soft);font-size:11px}
+#search-box{width:100%;margin-bottom:10px;padding:7px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg);color:var(--ink);font:12px inherit;transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
+#search-box:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.operator{margin:16px -26px 0;padding:13px 26px;border-block:1px solid var(--line);background:var(--bg)}
+.operator label{display:block;margin-bottom:7px;color:var(--ink-soft);font:700 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.operator textarea{width:100%;min-height:76px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);resize:vertical;background:var(--card);color:var(--ink);font:12px/1.5 inherit;transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
+.operator textarea:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.mode-tabs{display:grid;grid-template-columns:1fr 1fr;margin-bottom:10px;border-bottom:1px solid var(--line)}
+.mode-tabs button{padding:6px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ink-soft);font:650 10px inherit;cursor:pointer;transition:color .18s var(--ease),border-color .18s var(--ease)}
+.mode-tabs button:hover{color:var(--ink)}
+.mode-tabs button.active{border-bottom-color:var(--accent);color:var(--accent)}
+.op-actions{display:grid;grid-template-columns:auto auto;gap:8px;margin-top:10px}
+.op-btn{height:34px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card);color:var(--ink);font:650 10.5px inherit;cursor:pointer;transition:background .18s var(--ease),border-color .18s var(--ease),transform .12s var(--ease)}
+.op-btn:hover:not(:disabled){border-color:var(--accent);transform:translateY(-1px)}
+.op-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.op-btn.primary:hover:not(:disabled){background:var(--accent-deep)}
+.op-btn.danger{color:var(--red);border-color:var(--red)}.op-btn.danger:hover:not(:disabled){background:var(--red-soft)}
+.op-btn:disabled{opacity:.42;cursor:not-allowed}.op-note{grid-column:1/-1;color:var(--ink-soft);font-size:9.5px}
+.op-feedback{min-height:16px;margin-top:6px;color:var(--green);font-size:10px}.op-feedback.error{color:var(--red)}
+/* U7 replay scrubber——主区下方、footer 上方的静态底部条（不悬浮、不遮挡） */
+#replay{display:flex;align-items:center;gap:8px;padding:6px 14px;
+  background:var(--card);border-top:1px solid var(--line);font:10px/1 var(--mono)}
+#replay[hidden]{display:none}
+#replay .rp-label{color:var(--ink-soft);letter-spacing:.1em;text-transform:uppercase;font-size:8.5px}
+#replay button{padding:3px 8px;border:1px solid var(--line);border-radius:5px;background:var(--card);cursor:pointer}
+#replay input[type=range]{flex:1}#replay .rp-time{color:var(--ink-soft)}
+#detail-head{display:none}#drawer-toggle,#detail-close{min-width:42px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
+/* 仪表盘入口按钮（右上角，与会话切换并排） */
+#dashboard-btn{margin-left:2px;height:34px;padding:0 12px;border:1px solid var(--accent);border-radius:8px;
+  background:var(--accent-soft);color:var(--accent-deep);font:700 11px/1 var(--mono);cursor:pointer;
+  transition:border-color .15s,background .15s,transform .15s}
+#dashboard-btn:hover{border-color:var(--accent);background:var(--accent);color:#fff;transform:translateY(-1px)}
+.btn:focus-visible,.op-btn:focus-visible,.mode-tabs button:focus-visible,select.sess:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:860px){
+  body{grid-template-rows:56px auto minmax(0,1fr) 28px}
+  header{grid-template-columns:auto 1fr auto;padding:0 11px;gap:7px}
+  .kicker,.stat:nth-of-type(n+5){display:none}.stats{justify-content:flex-end}.stat{padding-inline:6px}.brand{gap:6px}.brand-mark{width:28px;height:28px;border-radius:8px;font-size:13px}select.sess{width:112px}
+  main{display:block}#map-pane{height:100%}
+  #drag-divider{display:none}
+  #detail-pane{position:fixed;inset:auto 0 0;z-index:20;width:100%;max-height:76vh;border:0;border-top:1px solid var(--line);padding:9px 13px max(18px,env(safe-area-inset-bottom));box-shadow:0 -12px 34px rgba(29,29,27,.18);transform:translateY(calc(100% - 43px));transition:transform .2s ease-out;border-radius:16px 16px 0 0}
+  #detail-pane.drawer-open{transform:translateY(0)}
+  #detail-head{position:sticky;top:-9px;z-index:3;display:flex;align-items:center;gap:8px;padding-bottom:8px;background:var(--card)}
+  .dh-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+  .operator{margin-inline:-13px;padding-inline:13px}footer span:last-child{display:none}
+  /* U10 窄屏导图竖排流式（不硬 canvas 矩阵） */
+  #map-hint{font-size:10px}
+}
+@media (max-width:639px){select.sess,.operator textarea,.mode-tabs button,.op-btn{font-size:16px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ============ 布局重构：可拖动分面板 + 呼吸感动画 ============ */
+/* 三块可拖动：map-pane 与 detail-pane 之间拖拽分隔条；Gantt 可折；usage 面板可拖 */
+#map-pane.resizing{user-select:none;cursor:col-resize}
+#map-pane.resizing #graph-scroll{cursor:col-resize}
+main.resizing{user-select:none;cursor:col-resize}
+#drag-divider{position:relative;z-index:10;width:6px;flex:0 0 6px;cursor:col-resize;background:transparent;transition:background .18s ease}
+#drag-divider:hover,#drag-divider.active{background:var(--accent-soft)}
+#drag-divider::after{content:"";position:absolute;left:50%;top:50%;width:2px;height:44px;transform:translate(-50%,-50%);border-radius:2px;background:var(--line);transition:background .18s ease}
+#drag-divider:hover::after,#drag-divider.active::after{background:var(--accent)}
+#detail-pane{transition:flex-basis .22s cubic-bezier(.22,.61,.36,1),padding .22s ease}
+#map-pane,#detail-pane{will-change:flex-basis}
+/* 面板 hover 微动：详情卡片、Gantt、usage 面板浮现 */
+#detail-pane .msg,#detail-pane .cur-act,#detail-pane .ev{transition:transform .16s ease,box-shadow .16s ease,background .16s ease}
+#detail-pane .msg:hover{transform:translateX(2px);box-shadow:var(--shadow)}
+#detail-pane .ev:hover{background:var(--accent-soft);transform:translateX(2px)}
+#gantt,#usage-panel{transition:opacity .22s ease,transform .22s ease,box-shadow .22s ease}
+#gantt:hover,#usage-panel:hover{box-shadow:0 2px 6px rgba(61,57,41,.08),0 10px 28px rgba(61,57,41,.09)}
+/* 节点呼吸：运行中脉冲 / 新节点出现 / 终态淡入 */
+@keyframes nodePulse{0%,100%{box-shadow:0 0 0 0 rgba(193,95,60,.35)}50%{box-shadow:0 0 0 7px rgba(193,95,60,0)}}
+@keyframes nodeIn{from{opacity:0;scale:.82}to{opacity:1;scale:1}}
+@keyframes nodeSettled{0%{transform:scale(1)}45%{transform:scale(1.07)}100%{transform:scale(1)}}
+@keyframes breathe{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes statBump{0%{transform:scale(1)}40%{transform:scale(1.24)}100%{transform:scale(1)}}
+@keyframes softGlow{0%,100%{box-shadow:0 0 0 rgba(193,95,60,0)}50%{box-shadow:0 0 14px rgba(193,95,60,.28)}}
+/* 统计数字跳动 + 连接点呼吸 + 加载脉动 */
+.stat b.bump{animation:statBump .34s ease}
+#sse-dot.conn{animation:breathe 1.8s ease-in-out infinite}
+#st-tok,#st-cost{transition:color .25s ease}
+#map-hint{transition:opacity .25s ease}
+.loading-pulse{animation:softGlow 2.2s ease-in-out infinite}
+/* 拖拽手柄微交互 */
+.drag-handle{cursor:grab;opacity:.55;transition:opacity .15s ease,transform .15s ease}
+.drag-handle:hover{opacity:1;transform:scale(1.08)}
+
+/* ============ 第 3 轮：过渡动效 + 对齐 + 呼吸感 ============ */
+/* detail 内容 stagger 进入：消息/事件逐条浮现 */
+#detail-pane .msg,#detail-pane .ev,#detail-pane .cur-act{animation:itemIn .34s var(--ease) backwards}
+@keyframes itemIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+/* usage-panel 从 stats 下方弹出：scale + 淡入 */
+#usage-panel{animation:popIn .26s var(--ease) backwards;transform-origin:top right}
+@keyframes popIn{from{opacity:0;transform:scale(.96) translateY(-4px)}to{opacity:1;transform:scale(1) translateY(0)}}
+/* replay 从下方浮现 */
+#replay{animation:slideDown .28s var(--ease) backwards}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+/* header 品牌区：进入浮现 */
+header{animation:fadeIn .4s var(--ease) backwards}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+/* Gantt 展开：高度过渡（0fr→1fr 用 max-height 近似） */
+#gantt{transition:max-height .3s var(--ease),opacity .25s ease}
+#gantt.show{max-height:140px}
+/* 对齐精修：品牌区/stat 基线、detail 内 .dk 与内容间距 */
+.stat b{line-height:1.2}
+#detail-pane .dk:first-of-type{margin-top:6px}
+h2.aname{letter-spacing:-.015em}
+/* 空态：图标 + 文案居中，留白呼吸 */
+.empty{padding:36px 14px;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--ink-soft);font-size:11.5px}
+.empty::before{content:"◌";font-size:22px;line-height:1;opacity:.5}
+/* 色彩对比精修：ink-soft 加深一档保对比，状态色加饱和 */
+:root{--ink-soft:#5d574b}
+@media (prefers-color-scheme:dark){:root{--ink-soft:#a49e92}}
+/* detail 内容行 hover 微动（对齐第 2 轮 msg/ev hover） */
+#detail-pane .cur-act:hover{box-shadow:var(--shadow)}
+/* 节点文字对比：活动摘要用 ink-soft 保持可读，CLI 行保持 mono 清晰 */
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-mark">A</span><span><span class="kicker">Conversation graph</span><h1>Agent MCP</h1></span></div>
+  <div class="stats" id="stats-bar">
+    <span class="stat run"><span class="lbl">运行</span><b id="st-run">0</b></span>
+    <span class="stat queued"><span class="lbl">排队</span><b id="st-queued">0</b></span>
+    <span class="stat done"><span class="lbl">完成</span><b id="st-done">0</b></span>
+    <span class="stat fail"><span class="lbl">异常</span><b id="st-fail">0</b></span>
+    <span class="stat"><span class="lbl">Token</span><b id="st-tok">0</b></span>
+    <span class="stat"><span class="lbl">Cost</span><b id="st-cost">$0</b></span>
+  </div>
+  <select id="sess" class="sess" title="会话切换"><option value="all">全部会话</option></select>
+  <span id="st-models" hidden></span>
+  <button id="dashboard-btn" type="button" title="打开仪表盘（协作泳道 / 策略可视化 / 工作区视图）">仪表盘</button>
+</header>
+<section id="gantt" hidden><div class="ghead"><span>Gantt 时间线</span><span id="gantt-range"></span><button id="gantt-toggle" type="button">折叠</button></div><canvas id="gantt-canvas"></canvas></section>
+<div id="usage-panel" hidden></div>
+<main id="main-pane">
+  <section id="map-pane">
+    <div id="map-hint">思维导图：会话在左，回合与 agent 分支向右展开 · 拖拽平移 · 滚轮缩放 · 点击节点查看详情</div>
+    <div id="graph-scroll">
+      <div id="graph-viewport">
+        <svg id="graph-edges"></svg>
+        <div id="graph-nodes"></div>
+      </div>
+      <div class="graph-empty" hidden></div>
+    </div>
+  </section>
+  <div id="drag-divider" role="separator" aria-orientation="vertical" title="拖动调整详情面板宽度" tabindex="0"></div>
+  <aside id="detail-pane"><div class="empty">选择 agent 节点查看详情</div></aside>
+</main>
+<div id="replay" hidden>
+  <span class="rp-label">回放</span>
+  <button id="rp-play" type="button" title="播放">▶</button>
+  <button id="rp-pause" type="button" title="暂停">❚❚</button>
+  <input id="rp-scrub" type="range" min="1" max="8" step="0.1" value="1" title="回放速度"><span class="rp-time" id="rp-time">0×</span>
+</div>
+<footer>
+  <span class="dot" id="sse-dot"></span><span id="sse-txt">连接中…</span>
+  <span class="live-b buf" id="live-tag">BUFFERED</span>
+  <span class="foot-tag">seq <b id="sseq" style="font-weight:700">0</b></span><span id="snap-state"></span>
+  <span style="margin-left:auto">本机回环 · 用量由 CLI 解析</span>
+</footer>
+
+<!-- U8 详情模板化 -->
+<template id="tpl-detail">
+  <div id="detail-head">
+    <button id="drawer-toggle" type="button" aria-expanded="false">详情</button>
+    <span class="dh-name"></span>
+    <button id="detail-close" type="button" aria-label="关闭详情">×</button>
+  </div>
+  <div class="dk">搜索</div>
+  <input id="search-box" type="search" placeholder="搜 agent 名 / 事件 / payload">
+  <div class="dk">agent</div>
+  <h2 class="aname"></h2>
+  <div class="badges" data-role="anomalies"></div>
+  <div class="subtitle" data-role="subtitle"></div>
+  <div class="dk">当前活动</div>
+  <div class="cur-act" data-role="cur-act"></div>
+  <div class="dk">消息</div>
+  <div class="msgs" data-role="msgs"></div>
+  <div class="dk">最近事件</div>
+  <div class="events" data-role="events"></div>
+  <div class="dk">操作</div>
+  <div class="operator" data-role="operator"></div>
+</template>
+
+<script>
+"use strict";
+/* ============================================================
+ * Agent MCP 网页 UI v0.3 重构（U1-U10）
+ * 单文件零依赖。canvas pan/zoom + 增量渲染 + SSE 退避重连
+ * + Gantt + token 面板 + replay scrubber + template 详情 + 异常 badges + 明暗主题
+ * ============================================================ */
+const EVENT_TYPES=["agent.spawned","agent.user_turn","agent.running","agent.message","agent.message_delta","agent.tool_use","agent.tool_result","agent.usage","agent.thread_message_sent","agent.thread_message_received","agent.idle","agent.terminated","agent.error","agent.cancelled","agent.orphaned","agent.needs_advisor","agent.verify_failed","agent.verify_passed","agent.budget_downgrade","agent.ingest_failed","agent.audit_failed"];
+const SEQ_KEY="amcp_last_seq",SEL_KEY="amcp_sel",MSG_PAGE=40;
+
+/* 全局状态 */
+const S={
+  session:"all",agents:new Map(),children:new Map(),eventLog:new Map(),
+  usage:new Map(),deltas:new Map(),curTool:new Map(),selected:null,lastSeq:0,
+  seen:new Set(),sessions:new Set(["all"]),sse:"connecting",sseEs:null,sseRetry:0,
+  msgsShown:MSG_PAGE,snapTimer:null,snapErr:"",token:"",opMode:"steer",opBusy:false,opFeedback:"",
+  /* U3 增量渲染 */
+  fullRedrawTimer:null,lastGraph:null,nodeEls:new Map(),_fitted:false,
+  /* U2 canvas pan/zoom */
+  pan:{x:0,y:0},zoom:1,drag:null,
+  /* U7 replay */
+  replay:{on:false,playing:false,speed:1,t:0,timer:null},
+  /* 打磨第 1 轮：Gantt 默认收起 */
+  ganttOpen:false,
+  /* U6 usage panel */
+  usageOpen:false,
+};
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num=v=>Number.isFinite(Number(v))?Number(v):0;
+function fmtTok(n){n=num(n);return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"k":String(Math.round(n));}
+function fmtTime(v){if(!v)return"—";const d=new Date(v);return isNaN(d)?v:d.toLocaleTimeString();}
+function shortLabel(v,n=24){const s=String(v||"").replace(/\s+/g," ").trim();return s.length>n?s.slice(0,n-1)+"…":s;}
+function shortName(v){const p=String(v||"").split("/").filter(Boolean),s=p.length?p[p.length-1]:String(v||"");return shortLabel(s,22);}
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()||"#888";}
+function cliColor(cli,isRoot){if(isRoot)return"var(--accent)";return cli==="grok"?"var(--grok)":cli==="opencode"?"var(--opencode)":cli==="omp"?"var(--omp)":cli==="atomcode"?"var(--atomcode)":"var(--claude)";}
+function statusColor(s){return s==="running"?"var(--accent)":s==="terminated"?"var(--green)":s==="error"?"var(--red)":s==="needs_advisor"?"var(--amber)":"var(--gray)";}
+function statusLabel(s){return s==="running"?"运行中":s==="terminated"?"完成":s==="queued"?"排队":s==="error"?"失败":s==="cancelled"?"已取消":s==="incomplete"?"超时/失联":s==="needs_advisor"?"需决策":s||"—";}
+function anomalyLabel(k){return{"stuck_loop":"卡循环","high_fail":"高失败","silent":"静默","timeout":"超时"}[k]||k;}
+
+/* U4 SSE 退避重连 */
+function loadConfig(){
+  const params=new URLSearchParams(location.hash.slice(1));
+  S.token=params.get("token")||"";
+  if(S.token){history.replaceState(null,"",location.pathname+location.search);S.opFeedback="控制授权已就绪。";}
+  else S.opFeedback="控制授权不可用，页面保持只读。";
+}
+async function apiPost(path,body){
+  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Auth-Token":S.token},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({error:"响应不是 JSON"}));
+  if(!r.ok)throw new Error(d.error||("HTTP "+r.status));
+  return d;
+}
+function clearState(){
+  S.agents=new Map();S.children=new Map();S.eventLog=new Map();S.usage=new Map();
+  S.deltas=new Map();S.curTool=new Map();S.seen=new Set();S.lastSeq=0;S.msgsShown=MSG_PAGE;
+  S.nodeEls?.forEach(el=>el.remove());S.nodeEls?.clear();S._fitted=false;
+  scheduleRender();
+}
+async function loadSnapshot(reset){
+  if(reset)clearState();
+  const q=S.session!=="all"?"?session_id="+encodeURIComponent(S.session):"";
+  try{
+    const r=await fetch("/api/snapshot"+q,{headers:{"X-Auth-Token":S.token}});
+    if(!r.ok){S.snapErr="快照不可用 ("+r.status+")";scheduleRender();return;}
+    applySnapshot(await r.json(),reset);S.snapErr="";
+  }catch(e){S.snapErr="无法连接 daemon";scheduleRender();}
+}
+function applySnapshot(s,focusLatest=false){
+  const kept=[...S.eventLog.entries()].filter(([seq])=>seq>(s.last_seq||0));
+  S.eventLog.clear();
+  for(const e of s.events||[])if(typeof e.seq==="number")S.eventLog.set(e.seq,e);
+  for(const [seq,e]of kept)S.eventLog.set(seq,e);
+  S.seen=new Set(S.eventLog.keys());
+  S.lastSeq=s.last_seq||0;
+  S.agents=new Map((s.agents||[]).map(a=>[a.id,a]));
+  rebuildChildren();
+  for(const u of((s.usage||{}).per_agent)||[])S.usage.set(u.agent_id,u);
+  S.sessions=new Set(["all"]);
+  for(const a of S.agents.values())S.sessions.add(a.session_id||"unknown");
+  if(focusLatest||!S.agents.has(S.selected))S.selected=latestAgent();
+  localStorage.setItem(SEQ_KEY,String(S.lastSeq));
+  scheduleRender();
+}
+function rebuildChildren(){
+  S.children=new Map();
+  for(const a of S.agents.values())if(a.parent_id!=null){
+    if(!S.children.has(a.parent_id))S.children.set(a.parent_id,[]);
+    S.children.get(a.parent_id).push(a.id);
+  }
+}
+function latestAgent(){
+  const a=[...S.agents.values()].sort((x,y)=>{
+    const xt=Date.parse(x.created_at||"")||0,yt=Date.parse(y.created_at||"")||0;
+    return yt-xt||(Number(y.id)||0)-(Number(x.id)||0);
+  });
+  return a.length?a[0].id:null;
+}
+function scheduleSnapshot(){
+  if(S.snapTimer)return;
+  S.snapTimer=setTimeout(()=>{S.snapTimer=null;loadSnapshot(false);},400);
+}
+
+/* U4: 1s/2s/5s 退避重连，断线期间标 BUFFERED */
+function connect(){
+  const last=localStorage.getItem(SEQ_KEY);
+  /* A6：SSE 需鉴权，EventSource 无法带 header → 走 ?token= 查询通道 */
+  const qs=new URLSearchParams();
+  if(last)qs.set("last_seq",last);
+  if(S.token)qs.set("token",S.token);
+  const es=new EventSource("/events"+(qs.toString()?"?"+qs.toString():""));
+  S.sseEs=es;S.sse="connecting";S.sseRetry=0;
+  es.onopen=()=>{S.sse="connected";S.sseRetry=0;scheduleRender();};
+  es.onerror=()=>{
+    S.sse="reconnecting";
+    scheduleRender();
+    try{es.close();}catch(e){}
+    S.sseEs=null;
+    const delays=[1000,2000,5000];
+    const delay=delays[Math.min(S.sseRetry,delays.length-1)];
+    S.sseRetry++;
+    setTimeout(()=>{
+      if(S.sse==="reconnecting")connect();  // 重连带 last_seq（localStorage 已更新）
+    },delay);
+  };
+  for(const t of EVENT_TYPES)es.addEventListener(t,e=>onEvent(t,e));
+}
+function onEvent(type,ev){
+  let data;try{data=JSON.parse(ev.data);}catch(e){return;}
+  const seq=ev.lastEventId?parseInt(ev.lastEventId,10):null,payload=data.payload||{},aid=data.agent_id==null?null:Number(data.agent_id);
+  if(seq!=null&&!isNaN(seq)){
+    if(S.seen.has(seq))return;
+    S.seen.add(seq);S.eventLog.set(seq,data);
+    if(seq>S.lastSeq){S.lastSeq=seq;localStorage.setItem(SEQ_KEY,String(seq));}
+  }
+  if(type==="agent.spawned"&&!S.agents.has(aid)){scheduleSnapshot();return;}
+  else if(["agent.running","agent.error","agent.cancelled"].includes(type)&&S.agents.has(aid)){
+    const a=S.agents.get(aid);a.status=type.slice(6);
+    if(payload.stop_reason)a.stop_reason=payload.stop_reason;
+    markDirty(aid);
+  }else if(type==="agent.terminated"&&S.agents.has(aid)){
+    const a=S.agents.get(aid);
+    a.status=payload.stop_reason==="timeout"?"incomplete":"terminated";
+    a.stop_reason=payload.stop_reason;
+    markDirty(aid);
+  }else if(type==="agent.needs_advisor"&&S.agents.has(aid)){
+    const a=S.agents.get(aid);a.status="needs_advisor";
+    if(payload.question)a.stop_reason=String(payload.question).slice(0,120);
+    markDirty(aid);
+  }else if(type==="agent.orphaned"&&S.agents.has(aid)){
+    const a=S.agents.get(aid);a.status="incomplete";a.stop_reason="orphaned";
+    markDirty(aid);
+  }else if(type==="agent.verify_failed"&&S.agents.has(aid)){
+    const a=S.agents.get(aid);a.stop_reason="verify_failed(attempt "+String(payload.attempt||1)+")";markDirty(aid);
+  }else if(type==="agent.verify_passed"&&S.agents.has(aid)){
+    const a=S.agents.get(aid);a.stop_reason="verify_passed";markDirty(aid);
+  }else if(type==="agent.message"&&aid!=null){S.deltas.delete(aid);markDirty(aid);}
+  else if(type==="agent.message_delta"&&aid!=null){S.deltas.set(aid,(S.deltas.get(aid)||"")+String(payload.delta||""));markDirty(aid);}
+  else if(type==="agent.tool_use"&&aid!=null){S.curTool.set(aid,payload);markDirty(aid);}
+  else if(type==="agent.usage"&&aid!=null){S.usage.set(aid,payload);}
+  scheduleRender();
+}
+
+/* U3 dirty flag 增量渲染 */
+function markDirty(){scheduleRender();}
+
+let raf=null;
+let detailFingerprint=""; // renderDetail 增量指纹：数据未变不重建（防拖动/定时重绘闪烁）
+function scheduleRender(){
+  if(raf)return;
+  raf=requestAnimationFrame(()=>{raf=null;renderAll();});
+}
+function renderAll(){
+  /* 图区拖动（pan/zoom）中：只重绘 graph，跳过 renderDetail——
+     每帧重建 detail 会重播 .msg/.ev 的 itemIn 动画，右侧文案高频闪烁 */
+  if(S.drag){renderGraph();return;}
+  renderHeader();renderGraph();renderDetail();renderFooter();renderGantt();
+}
+
+function renderHeader(){
+  const sel=$("sess"),current=sel.value;
+  sel.innerHTML="";
+  for(const s of[...S.sessions].sort()){
+    const o=document.createElement("option");o.value=s;o.textContent=s==="all"?"全部会话":s;sel.appendChild(o);
+  }
+  sel.value=S.sessions.has(current)?current:"all";
+  let run=0,q=0,done=0,fail=0,tok=0,cost=0;
+  for(const a of S.agents.values()){
+    if(a.status==="running")run++;else if(a.status==="queued")q++;else if(a.status==="terminated")done++;else fail++;
+    const u=S.usage.get(a.id);
+    if(u){tok+=num(u.input_tokens)+num(u.output_tokens)+num(u.cache_creation)+num(u.cache_read);cost+=num(u.cost_usd);}
+  }
+  /* U3 header stats 只更新数字不重建 DOM */
+  const upd=(id,v)=>{const el=$(id);if(el.textContent!=String(v))el.textContent=v;};
+  upd("st-run",run);upd("st-queued",q);upd("st-done",done);upd("st-fail",fail);upd("st-tok",fmtTok(tok));upd("st-cost","$"+cost.toFixed(4));
+}
+
+/* 思维导图：固定纵向槽位，超出后按叶子顺序横向换页 */
+const NW={session:190,turn:168,agent:210}, NH={session:56,turn:36,agent:58};
+const COL_W=300, GAP_Y=24, GAP_ROOT=72;
+const ROW_H=Math.max(...Object.values(NH))+GAP_Y;
+function layoutTree(g){
+  const children=new Map(),indeg=new Set();
+  for(const [f,t]of g.edges){if(!g.nodes.has(f)||!g.nodes.has(t))continue;
+    if(!children.has(f))children.set(f,[]);children.get(f).push(t);indeg.add(t);
+  }
+  const roots=[...g.nodes.keys()].filter(k=>!indeg.has(k)).sort();
+  const spans=new Map(),depths=new Map();let leafCount=0,maxDepth=0;
+  function measure(k,depth){
+    depths.set(k,depth);maxDepth=Math.max(maxDepth,depth);
+    const kids=(children.get(k)||[]).slice().sort();
+    if(!kids.length){const span={first:leafCount,last:leafCount};leafCount++;spans.set(k,span);return span;}
+    const first=measure(kids[0],depth+1);let last=first;
+    for(let i=1;i<kids.length;i++)last=measure(kids[i],depth+1);
+    const span={first:first.first,last:last.last};spans.set(k,span);return span;
+  }
+  for(const r of roots)measure(r,0);
+  const viewportH=Math.max($("graph-scroll").clientHeight||620,ROW_H);
+  const MAX_ROWS=Math.max(1,Math.floor(Math.max(viewportH-GAP_Y,ROW_H)/ROW_H));
+  const WRAP_W=(maxDepth+1)*COL_W+GAP_ROOT;
+  const pos=new Map();let maxX=0;
+  for(const [k,n]of g.nodes){
+    const span=spans.get(k),depth=depths.get(k)||0;
+    // 页/行按第一个叶子定位：父节点与至少第一个子节点同页，跨 MAX_ROWS 的
+    // 大子树不再出现"父在上一页、子被甩到下一页"的视觉断开
+    const page=Math.floor(span.first/MAX_ROWS);
+    const row=Math.min(MAX_ROWS-1,span.first%MAX_ROWS);
+    const x=depth*COL_W+page*WRAP_W,y=row*ROW_H+(ROW_H-NH[n.type])/2;
+    pos.set(k,{x,y});maxX=Math.max(maxX,x+NW[n.type]);
+  }
+  const maxPage=Math.max(0,Math.floor(Math.max(leafCount-1,0)/MAX_ROWS));
+  return{pos,width:Math.max(maxX,(maxPage+1)*WRAP_W),height:MAX_ROWS*ROW_H,maxRows:MAX_ROWS,rowH:ROW_H};
+}
+function clampPan(l,scroll){
+  const cw=scroll.clientWidth,ch=scroll.clientHeight,w=l.width*S.zoom,h=l.height*S.zoom;
+  S.pan.x=w<=cw-64?(cw-w)/2:Math.max(cw-w-32,Math.min(32,S.pan.x));
+  S.pan.y=h<=ch-64?(ch-h)/2:Math.max(ch-h-32,Math.min(32,S.pan.y));
+}
+function userTurns(aid){return [...S.eventLog.values()].filter(e=>e.agent_id===aid&&e.type==="agent.user_turn").sort((a,b)=>(a.seq||0)-(b.seq||0));}
+function buildGraph(){
+  const nodes=new Map(),edges=[],lastRun=new Map();
+  for(const a of [...S.agents.values()].sort((x,y)=>x.id-y.id)){
+    const sid=a.session_id||"unknown",skey="s:"+sid;
+    if(!nodes.has(skey))nodes.set(skey,{key:skey,type:"session",label:"会话 "+shortLabel(sid,17)});
+    const turns=userTurns(a.id),list=turns.length?turns:[{seq:"legacy",payload:{text:a.task_name||"派发任务",kind:"spawn"}}];
+    let previous=null;
+    for(let i=0;i<list.length;i++){
+      const turn=list[i],suffix=String(turn.seq||i),tkey=`t:${a.id}:${suffix}`,rkey=`r:${a.id}:${suffix}`;
+      nodes.set(tkey,{key:tkey,type:"turn",agentId:a.id,label:String(turn.payload?.text||"用户输入"),kind:turn.payload?.kind||"spawn"});
+      nodes.set(rkey,{key:rkey,type:"agent",agent:a});
+      let from=previous;if(!from&&a.parent_id!=null)from=lastRun.get(a.parent_id);if(!from)from=skey;
+      edges.push([from,tkey],[tkey,rkey]);previous=rkey;
+    }
+    lastRun.set(a.id,previous);
+  }
+  return{nodes,edges};
+}
+/* 思维导图渲染：keyed DOM reconcile + SVG 贝塞尔边 */
+function renderGraph(){
+  const g=buildGraph(); S.lastGraph=g;
+  const scroll=$("graph-scroll"), vp=$("graph-viewport");
+  const emptyEl=scroll.querySelector(".graph-empty");
+  if(!g.nodes.size){
+    $("graph-nodes").innerHTML=""; $("graph-edges").innerHTML="";
+    S.nodeEls.forEach(el=>el.remove()); S.nodeEls.clear();
+    emptyEl.hidden=false;
+    emptyEl.textContent = S.sse==="connected" ? "暂无对话节点 · 用户输入后将在这里向右展开" : "正在连接 daemon…";
+    return;
+  }
+  emptyEl.hidden=true;
+  const l=layoutTree(g);
+  /* 首次有数据时固定纵向尺度并把视角对准最新 agent */
+  if(!S._fitted){
+    S._fitted=true;
+    const cw=scroll.clientWidth,ch=scroll.clientHeight;
+    const focusNode=[...g.nodes.values()].reverse().find(n=>n.type==="agent"&&n.agent.id===S.selected);
+    const focusPos=focusNode?l.pos.get(focusNode.key):null;
+    const z=Math.max(0.3,Math.min(1,(ch-64)/l.height));
+    S.zoom=z;
+    const fx=focusPos?focusPos.x+NW.agent/2:l.width/2,fy=focusPos?focusPos.y+NH.agent/2:l.height/2;
+    const graphW=l.width*z,graphH=l.height*z;
+    if(graphW<=cw-64)S.pan.x=(cw-graphW)/2;
+    else S.pan.x=Math.max(Math.min(32,cw-graphW-32),Math.min(32,cw*.62-fx*z));
+    if(graphH<=ch-64)S.pan.y=(ch-graphH)/2;
+    else S.pan.y=Math.max(Math.min(32,ch-graphH-32),Math.min(32,ch*.5-fy*z));
+  }
+  clampPan(l,scroll);vp.style.transform=`translate(${S.pan.x}px,${S.pan.y}px) scale(${S.zoom})`;
+  const edges=$("graph-edges"), layer=$("graph-nodes");
+  edges.setAttribute("width",l.width); edges.setAttribute("height",l.height);
+  layer.style.width=l.width+"px"; layer.style.height=l.height+"px";
+  /* 选中链高亮：从选中 agent 的节点沿入边走祖先 */
+  const chain=ancestorChain(g);
+  edges.innerHTML=g.edges.map(([f,t])=>{
+    const p=l.pos.get(f),c=l.pos.get(t); if(!p||!c)return"";
+    const nf=g.nodes.get(f),nt=g.nodes.get(t);
+    const x1=p.x+NW[nf.type],y1=p.y+NH[nf.type]/2,x2=c.x,y2=c.y+NH[nt.type]/2;
+    const dx=Math.max(40,(x2-x1)*0.5);
+    const on=chain.has(t)?' class="on"':'';
+    return `<path d="M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}"${on}/>`;
+  }).join("");
+  /* keyed reconcile */
+  const seen=new Set();
+  for(const n of g.nodes.values()){
+    seen.add(n.key);
+    let el=S.nodeEls.get(n.key);
+    if(!el){ el=createNodeEl(n); S.nodeEls.set(n.key,el); layer.appendChild(el); }
+    updateNodeEl(el,n,l.pos.get(n.key));
+  }
+  for(const [k,el] of [...S.nodeEls]) if(!seen.has(k)){ el.remove(); S.nodeEls.delete(k); }
+}
+function ancestorChain(g){
+  const inc=new Map(); for(const [f,t] of g.edges) inc.set(t,f);
+  const out=new Set(); let cur=null;
+  for(const k of g.nodes.keys()){ const n=g.nodes.get(k);
+    if((n.type==="agent"&&n.agent.id===S.selected)||(n.type==="turn"&&n.agentId===S.selected)) cur=k; }
+  while(cur){ out.add(cur); cur=inc.get(cur); }
+  return out;
+}
+function createNodeEl(n){
+  const el=document.createElement("div");
+  el.className="node "+n.type+" fresh";
+  el.dataset.agent=n.agentId||n.agent?.id||"";
+  if(n.type==="session"){
+    el.innerHTML='<div class="ntitle"></div><div class="nsub">CONVERSATION</div>';
+  }else if(n.type==="turn"){
+    el.innerHTML='<div class="ntitle"></div>';
+  }else{
+    const a=n.agent;
+    el.innerHTML=`<span class="ndot" style="background:${cliColor(a.cli,false)}"></span><div class="nmain"><div class="ntitle"></div><div class="nsub"></div></div><span class="nbadges"></span>`;
+  }
+  return el;
+}
+function updateNodeEl(el,n,p){
+  el.style.transform=`translate(${p.x}px,${p.y}px)`;
+  if(n.type==="session"){
+    el.querySelector(".ntitle").textContent=n.label;
+  }else if(n.type==="turn"){
+    el.querySelector(".ntitle").textContent=(n.kind&&n.kind!=="spawn"?n.kind+" · ":"用户输入 · ")+shortLabel(n.label,20);
+  }else{
+    const a=n.agent;
+    for(const c of["running","queued","terminated","error","cancelled","incomplete"])el.classList.remove("st-"+c);
+    if(a.status)el.classList.add("st-"+a.status);
+    el.classList.toggle("sel",a.id===S.selected);
+    el.querySelector(".ntitle").textContent=shortLabel(a.task_name||String(a.id),22);
+    const sub=el.querySelector(".nsub");
+    sub.textContent=a.status==="running"?(currentActivity(a)||"▸ 运行中"):(String(a.cli||"").toUpperCase()+" · "+statusLabel(a.status));
+    const anoms=a.anomalies||[];
+    const nb=el.querySelector(".nbadges");
+    nb.innerHTML=anoms.length?anoms.map(an=>`<span class="badge ${an.kind==="stuck_loop"||an.kind==="timeout"?"stuck":an.kind==="silent"?"silent":"fail"}">${esc(anomalyLabel(an.kind))}</span>`).join(""):"";
+  }
+}
+function currentActivity(a){const t=S.curTool.get(a.id);if(t)return"▸ "+String(t.name||"tool");const d=S.deltas.get(a.id);return d&&d.trim()?"▸ "+shortLabel(d.trim(),27):null;}
+
+/* 图区交互：拖拽平移 + 滚轮缩放 + 点击选中（事件委托） */
+function setupGraphNav(){
+  const scroll=$("graph-scroll"),layer=$("graph-nodes");
+  scroll.addEventListener("mousedown",e=>{
+    S.drag={x:e.clientX,y:e.clientY,px:S.pan.x,py:S.pan.y,moved:false};
+    scroll.classList.add("grabbing");
+  });
+  window.addEventListener("mousemove",e=>{
+    if(!S.drag)return;
+    const dx=e.clientX-S.drag.x,dy=e.clientY-S.drag.y;
+    if(Math.abs(dx)+Math.abs(dy)>3)S.drag.moved=true;
+    S.pan.x=S.drag.px+dx;S.pan.y=S.drag.py+dy;scheduleRender();
+  });
+  window.addEventListener("mouseup",()=>{
+    if(!S.drag)return;
+    S.dragMoved=S.drag.moved;S.drag=null;scroll.classList.remove("grabbing");
+  });
+  scroll.addEventListener("wheel",e=>{e.preventDefault();const r=scroll.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;const factor=e.deltaY<0?1.1:1/1.1;const nz=Math.max(0.3,Math.min(3,S.zoom*factor));S.pan.x=mx-(mx-S.pan.x)*(nz/S.zoom);S.pan.y=my-(my-S.pan.y)*(nz/S.zoom);S.zoom=nz;scheduleRender();},{passive:false});
+  layer.addEventListener("click",e=>{
+    if(S.dragMoved){S.dragMoved=false;return;}
+    const el=e.target.closest(".node");if(!el||el.classList.contains("session"))return;
+    selectAgent(Number(el.dataset.agent));
+  });
+  window.addEventListener("resize",()=>scheduleRender());
+}
+
+/* U8 详情模板化 */
+function messagesOf(id){return [...S.eventLog.values()].filter(e=>e.agent_id===id&&e.type==="agent.message").sort((a,b)=>a.seq-b.seq);}
+function usageSeries(id){return [...S.eventLog.values()].filter(e=>e.agent_id===id&&e.type==="agent.usage").sort((a,b)=>a.seq-b.seq).map(e=>e.payload||{});}
+function payloadSummary(e){const p=e.payload||{};return e.type==="agent.message"||e.type==="agent.user_turn"?String(p.text||"").slice(0,55):JSON.stringify(p).slice(0,70);}
+function renderDetail(){
+  const pane=$("detail-pane"),a=S.agents.get(S.selected);
+  /* 增量指纹：选中 agent + 消息/事件最新 seq + 消息页数 未变化 → 不重建。
+     重建会重播 itemIn 动画（视觉闪烁）且浪费布局 */
+  const latestSeq=S.eventLog.size?[...S.eventLog.values()].pop().seq:0;
+  const fp=`${S.selected}|${latestSeq}|${S.msgsShown}`;
+  if(fp===detailFingerprint)return;
+  detailFingerprint=fp;
+  const tpl=$("tpl-detail"),root=tpl.content.cloneNode(true);
+  /* head */
+  root.querySelector("#drawer-toggle").setAttribute("aria-expanded",pane.classList.contains("drawer-open")?"true":"false");
+  root.querySelector(".dh-name").textContent=a?a.task_name:"";
+  if(!a){
+    const empty=root.querySelector('[data-role="cur-act"]');
+    empty.replaceWith(emptyNode("选择 agent 节点查看详情"));
+    pane.innerHTML="";pane.appendChild(root);
+    return;
+  }
+  root.querySelector(".aname").textContent=a.task_name||String(a.id);
+  /* search box */
+  root.querySelector("#search-box").addEventListener("input",e=>filterDetail(e.target.value));
+  /* anomalies badges U9 */
+  const badgeBox=root.querySelector('[data-role="anomalies"]');
+  for(const an of a.anomalies||[]){
+    const b=document.createElement("span");b.className="badge "+(an.kind==="stuck_loop"?"stuck":an.kind==="silent"?"silent":an.kind==="timeout"?"timeout":"fail");
+    b.textContent=anomalyLabel(an.kind)+" · "+esc(shortLabel(an.detail||"",20));badgeBox.appendChild(b);
+  }
+  /* subtitle：CLI 徽标 + 状态 + stop_reason */
+  const sub=root.querySelector('[data-role="subtitle"]');
+  sub.innerHTML='';
+  const cbadge=document.createElement("span");
+  cbadge.className="cli-badge";
+  cbadge.style.background=cliColor(a.cli,false);
+  cbadge.textContent=String(a.cli||"?").toUpperCase();
+  sub.appendChild(cbadge);
+  const stxt=document.createElement("span");
+  stxt.textContent="  "+a.status+(a.stop_reason?" · "+a.stop_reason:"");
+  sub.appendChild(stxt);
+  /* cur act */
+  const act=currentActivity(a);
+  const actBox=root.querySelector('[data-role="cur-act"]');
+  if(act){
+    actBox.innerHTML='<span class="ico"></span><span class="tn">'+esc(act.slice(2))+'</span>';
+  }else{
+    actBox.innerHTML='<span class="in">等待事件…</span>';
+  }
+  /* msgs */
+  const msgs=messagesOf(a.id),shown=msgs.slice(-S.msgsShown),delta=S.deltas.get(a.id);
+  const msgsBox=root.querySelector('[data-role="msgs"]');
+  for(const m of shown){const d=document.createElement("div");d.className="msg";d.innerHTML='<span class="seq">#'+m.seq+'</span>'+esc((m.payload?.text||"").slice(0,3000));msgsBox.appendChild(d);}
+  if(delta){const d=document.createElement("div");d.className="msg delta";d.textContent=delta.slice(-1000);msgsBox.appendChild(d);}
+  if(!msgsBox.children.length)msgsBox.appendChild(emptyNode("暂无消息"));
+  /* events */
+  const evs=[...S.eventLog.values()].filter(e=>e.agent_id===a.id).sort((x,y)=>(y.seq||0)-(x.seq||0)).slice(0,14);
+  const evBox=root.querySelector('[data-role="events"]');
+  for(const e of evs){
+    const d=document.createElement("div");d.className="ev";
+    /* 事件类型着色 class：tool_use/tool_result→use、message→msg、terminated→term、error→err */
+    const tpCls=e.type==="agent.tool_use"||e.type==="agent.tool_result"?"use":e.type==="agent.message"||e.type==="agent.message_delta"?"msg":e.type==="agent.error"?"err":e.type==="agent.terminated"?"term":"";
+    d.innerHTML='<span class="seq">#'+(e.seq||"—")+'</span><span class="tp '+(tpCls?' '+tpCls:'')+'">'+esc(e.type)+'</span><span class="py">'+esc(payloadSummary(e))+'</span>';evBox.appendChild(d);
+  }
+  if(!evs.length)evBox.appendChild(emptyNode("暂无事件"));
+  /* operator */
+  root.querySelector('[data-role="operator"]').appendChild(buildOperator(a));
+  pane.innerHTML="";pane.appendChild(root);
+  /* restore search value */
+  const sb=$("search-box");if(sb&&S._searchVal)sb.value=S._searchVal;
+}
+function emptyNode(txt){const d=document.createElement("div");d.className="empty";d.textContent=txt;return d;}
+function buildOperator(a){
+  const wrap=document.createElement("div");
+  const running=a.status==="running",label=S.opMode==="steer"?"中途插话":"继续会话";
+  const hint=S.opMode==="steer"?"终止当前 run 后在同一节点续接":"稳定 session id 的 CLI 自动恢复";
+  wrap.innerHTML='<div class="mode-tabs"><button type="button" data-mode="steer" class="'+(S.opMode==="steer"?"active":"")+'">中途插话</button><button type="button" data-mode="followup" class="'+(S.opMode==="followup"?"active":"")+'">继续会话</button></div><label for="op-message">'+label+'</label><textarea id="op-message" maxlength="20000" placeholder="输入新的方向或下一步任务"></textarea><div class="op-actions"><button id="op-send" class="op-btn primary" type="button" '+(S.opBusy||(!running&&S.opMode==="steer")?"disabled":"")+'>'+label+'</button><button id="op-stop" class="op-btn danger" type="button" '+(S.opBusy||!running?"disabled":"")+'>停止</button><span class="op-note">'+esc(hint)+'</span></div><div class="op-feedback'+(S.opFeedback.startsWith("失败")?" error":"")+'">'+esc(S.opFeedback)+'</div>';
+  return wrap;
+}
+function filterDetail(q){
+  q=(q||"").toLowerCase();S._searchVal=q;
+  if(!q)return;
+  /* 简单实现：高亮匹配的 event 行（免重画全 DOM） */
+  const evs=document.querySelectorAll('#detail-pane .ev');
+  evs.forEach(el=>{el.style.opacity=el.textContent.toLowerCase().includes(q)?"1":"0.3";});
+}
+
+/* U6 token usage 可视化面板 */
+function renderUsagePanel(){
+  const panel=$("usage-panel");
+  if(!S.usageOpen){panel.hidden=true;return;}
+  panel.hidden=false;
+  let html='<div class="dk" style="margin:0 0 8px">Per-Agent Token 用量</div>';
+  const ags=[...S.agents.values()].sort((a,b)=>a.id-b.id);
+  if(!ags.length){html+='<div class="empty">暂无 agent</div>';panel.innerHTML=html;return;}
+  let totIn=0,totOut=0,totCost=0;
+  for(const a of ags){
+    const u=S.usage.get(a.id);if(!u)continue;
+    const ti=num(u.input_tokens),to=num(u.output_tokens),tcr=num(u.cache_read),tcc=num(u.cache_creation),cost=num(u.cost_usd);
+    totIn+=ti;totOut+=to;totCost+=cost;
+    const total=ti+to+tcr+tcc||1;
+    const et=num(u.et)||0;const etRed=et>50000?" et-red":"";
+    html+='<div class="upa'+etRed+'"><span class="nm">'+esc(shortLabel(a.task_name,30))+'</span><span class="cost">$'+cost.toFixed(4)+'</span>';
+    html+='<div class="bars"><span class="bi" style="width:'+(ti/total*100)+'%"></span><span class="bo" style="width:'+(to/total*100)+'%"></span><span class="bc" style="width:'+((tcr+tcc)/total*100)+'%"></span></div>';
+    html+='<div class="lg"><span class="bi">■</span>in '+fmtTok(ti)+' <span class="bo">■</span>out '+fmtTok(to)+' <span class="bc">■</span>cache '+fmtTok(tcr+tcc)+' · ET '+fmtTok(et)+'</div></div>';
+  }
+  html+='<div class="dk" style="margin:10px 0 0">合计</div><div class="upa"><b>in '+fmtTok(totIn)+' · out '+fmtTok(totOut)+' · cost $'+totCost.toFixed(4)+'</b></div>';
+  html+='<div class="lg">■ input ■ output ■ cache</div>';
+  panel.innerHTML=html;
+}
+
+function renderFooter(){
+  const dot=$("sse-dot"),txt=$("sse-txt"),tag=$("live-tag");
+  if(S.sse==="connected"){dot.className="dot ok";txt.textContent="SSE 已连接 实时数据";tag.className="live-b live";tag.textContent="LIVE";}
+  else if(S.sse==="reconnecting"){dot.className="dot bad";txt.textContent="SSE 断线退避重连中（"+S.sseRetry+"）当前展示快照缓存";tag.className="live-b buf";tag.textContent="BUFFERED";}
+  else{dot.className="dot conn";txt.textContent="连接中… 当前展示快照数据";tag.className="live-b buf";tag.textContent="BUFFERED";}
+  $("sseq").textContent=S.lastSeq;$("snap-state").textContent=S.snapErr;
+}
+
+/* U5 Gantt 时间线 */
+function renderGantt(){
+  const sec=$("gantt"),canvas=$("gantt-canvas");
+  const ags=[...S.agents.values()].filter(a=>a.created_at).sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
+  // 打磨第 1 轮：Gantt 默认收起，仅用户点 gantt-toggle 才展开；无数据也隐藏
+  if(!ags.length||!S.ganttOpen){sec.hidden=true;return;}
+  sec.hidden=false;sec.classList.add("show");
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.parentElement.clientWidth||800,h=76;
+  if(canvas.width!==w*dpr||canvas.height!==h*dpr){canvas.width=w*dpr;canvas.height=h*dpr;canvas.style.width=w+"px";canvas.style.height=h+"px";}
+  const ctx=canvas.getContext("2d");ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+  const ts=ags.map(a=>({a,s:new Date(a.created_at).getTime()||0,e:a.finished_at?new Date(a.finished_at).getTime():(a.updated_at?new Date(a.updated_at).getTime():Date.now())}));
+  if(!ts.length)return;
+  const minT=Math.min(...ts.map(t=>t.s)),maxT=Math.max(...ts.map(t=>t.e));
+  const span=Math.max(1,maxT-minT);
+  const padL=120,padR=20,usable=w-padL-padR;
+  const rowH=Math.max(10,Math.min(16,Math.floor((h-8)/ts.length)));
+  ctx.font="9px "+cssVar("--mono");ctx.textBaseline="middle";
+  for(let i=0;i<ts.length;i++){
+    const t=ts[i],y=i*rowH+4;
+    /* label */
+    ctx.fillStyle=cssVar("--ink-soft");ctx.textAlign="right";ctx.fillText(shortLabel(t.a.task_name||t.a.id,16),padL-6,y+rowH/2);
+    /* bar */
+    const x0=padL+((t.s-minT)/span)*usable,x1=padL+((t.e-minT)/span)*usable;
+    const running=t.a.status==="running";
+    ctx.fillStyle=running?cssVar("--accent"):t.a.status==="error"||t.a.status==="cancelled"?cssVar("--red"):t.a.status==="terminated"?cssVar("--green"):cssVar("--gray");
+    if(running&&!matchMedia("(prefers-reduced-motion:reduce)").matches){ctx.globalAlpha=0.5+0.4*Math.sin(Date.now()/500);}
+    ctx.fillRect(x0,y+2,Math.max(2,x1-x0),rowH-4);ctx.globalAlpha=1;
+    /* barrier（parent_id null = 根 = 汇合点） */
+    if(t.a.parent_id==null){ctx.strokeStyle=cssVar("--accent");ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x1,0);ctx.lineTo(x1,h);ctx.stroke();}
+  }
+  $("gantt-range").textContent=ts.length+" agent";
+}
+
+/* U7 replay scrubber——会话终态后出现 */
+function maybeShowReplay(){
+  const ags=[...S.agents.values()];
+  const allDone=ags.length>0&&ags.every(a=>["terminated","error","cancelled","incomplete"].includes(a.status));
+  if(allDone&&!S.replay.on){showReplay();}
+  else if(!allDone&&S.replay.on){hideReplay();}
+}
+function showReplay(){
+  S.replay.on=true;$("replay").hidden=false;
+  $("rp-play").onclick=()=>{S.replay.playing=true;replayTick();};
+  $("rp-pause").onclick=()=>{S.replay.playing=false;};
+  $("rp-scrub").oninput=e=>{S.replay.speed=Number(e.target.value);$("rp-time").textContent=S.replay.speed.toFixed(1)+"×";};
+}
+function hideReplay(){S.replay.on=false;$("replay").hidden=true;S.replay.playing=false;}
+function replayTick(){
+  if(!S.replay.playing)return;
+  S.replay.t+=S.replay.speed*0.1;
+  /* 按 created_at 顺序点亮节点（highligt 实现：选最近的活 agent） */
+  const ags=[...S.agents.values()].filter(a=>a.created_at).sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
+  const idx=Math.floor(S.replay.t)%ags.length;
+  if(ags[idx])selectAgent(ags[idx].id);
+  if(S.replay.t>ags.length)S.replay.playing=false;
+  S.replay.timer=setTimeout(replayTick,500/S.replay.speed);
+}
+
+function isNarrow(){return matchMedia("(max-width: 860px)").matches;}
+function selectAgent(id){S.selected=id;S.msgsShown=MSG_PAGE;localStorage.setItem(SEL_KEY,String(id));if(isNarrow())$("detail-pane").classList.add("drawer-open");markDirty(id);scheduleRender();}
+
+/* 布局重构：拖拽分隔条（map-pane / detail-pane 可拖动分面板） */
+function setupDragDivider(){
+  const div=$("drag-divider"),main=$("main-pane");
+  let dragging=false,startX=0,startBasis=0;
+  const mapPane=$("map-pane"),detail=$("detail-pane");
+  // 初始 flex-basis 存于 CSS：map 1fr / detail 360px；拖拽时转像素
+  function apply(x){
+    const rect=main.getBoundingClientRect();
+    const mapW=x-rect.left;
+    if(mapW<260||mapW>rect.width-240)return; // 边界保护：两侧最小宽度
+    mapPane.style.flex=`0 0 ${mapW}px`;
+    detail.style.flex=`1 1 auto`;
+  }
+  function onMove(e){
+    if(!dragging)return;
+    apply(e.clientX);
+    div.classList.add("active");
+    main.classList.add("resizing");
+  }
+  function onUp(){
+    if(!dragging)return;
+    dragging=false;
+    div.classList.remove("active");
+    main.classList.remove("resizing");
+    document.removeEventListener("mousemove",onMove);
+    document.removeEventListener("mouseup",onUp);
+    scheduleRender();
+  }
+  div.addEventListener("mousedown",e=>{
+    if(isNarrow())return; // 窄屏 drawer 模式不拖
+    dragging=true;startX=e.clientX;
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+  });
+  div.addEventListener("keydown",e=>{
+    if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight")return;
+    e.preventDefault();
+    const rect=main.getBoundingClientRect();
+    const cur=parseFloat(mapPane.style.flexBasis)||Math.max(rect.width-360,0);
+    const delta=e.key==="ArrowLeft"?-20:20;
+    apply(rect.left+cur+delta);
+    scheduleRender();
+  });
+}
+
+/* 呼吸感 JS 触发：统计数字跳动（值变化时 bump） */
+let _lastStats={};
+function bumpStat(id,val){
+  const el=$(id);
+  if(el.textContent!==String(val)){
+    el.textContent=val;
+    el.classList.remove("bump");
+    void el.offsetWidth; // 重触发动画
+    el.classList.add("bump");
+  }
+}
+function renderHeader(){
+  const sel=$("sess"),current=sel.value;
+  sel.innerHTML="";
+  for(const s of[...S.sessions].sort()){
+    const o=document.createElement("option");o.value=s;o.textContent=s==="all"?"全部会话":s;sel.appendChild(o);
+  }
+  sel.value=S.sessions.has(current)?current:"all";
+  let run=0,q=0,done=0,fail=0,tok=0,cost=0;
+  for(const a of S.agents.values()){
+    if(a.status==="running")run++;else if(a.status==="queued")q++;else if(a.status==="terminated")done++;else fail++;
+    const u=S.usage.get(a.id);
+    if(u){tok+=num(u.input_tokens)+num(u.output_tokens)+num(u.cache_creation)+num(u.cache_read);cost+=num(u.cost_usd);}
+  }
+  /* U3 header stats 只更新数字不重建 DOM；值变化时 bump 呼吸 */
+  bumpStat("st-run",run);bumpStat("st-queued",q);bumpStat("st-done",done);bumpStat("st-fail",fail);
+  bumpStat("st-tok",fmtTok(tok));bumpStat("st-cost","$"+cost.toFixed(4));
+}
+
+/* 启动 */
+document.addEventListener("DOMContentLoaded",()=>{
+  const saved=parseInt(localStorage.getItem(SEL_KEY),10);
+  if(Number.isFinite(saved)&&saved>0)S.selected=saved;
+  setupGraphNav();
+  setupDragDivider();  // 布局重构：拖拽分隔条
+  $("stats-bar").addEventListener("click",()=>{S.usageOpen=!S.usageOpen;renderUsagePanel();});
+  $("gantt-toggle").addEventListener("click",()=>{S.ganttOpen=!S.ganttOpen;const g=$("gantt");if(!S.ganttOpen)g.hidden=true;renderGantt();});
+  $("detail-pane").addEventListener("click",async e=>{
+    if(e.target.id==="detail-close"){$("detail-pane").classList.remove("drawer-open");scheduleRender();return;}
+    if(e.target.id==="drawer-toggle"){$("detail-pane").classList.toggle("drawer-open");scheduleRender();return;}
+    if(e.target.dataset?.mode){S.opMode=e.target.dataset.mode;S.opFeedback="";scheduleRender();return;}
+    const a=S.agents.get(S.selected);if(!a)return;
+    if(e.target.id==="op-stop"){S.opBusy=true;scheduleRender();try{await apiPost("/api/agents/interrupt",{agent_id:a.id,session_id:a.session_id});S.opFeedback="已发送停止请求";}catch(err){S.opFeedback="失败："+err.message;}finally{S.opBusy=false;loadSnapshot(false);}return;}
+    if(e.target.id==="op-send"){const message=($("op-message")?.value||"").trim();if(!message){S.opFeedback="失败：请输入新的方向或下一步任务";scheduleRender();return;}S.opBusy=true;scheduleRender();const path=S.opMode==="steer"?"/api/agents/steer":"/api/agents/followup",body=S.opMode==="steer"?{agent_id:a.id,message,session_id:a.session_id}:{agent_id:a.id,prompt:message,session_id:a.session_id};try{const r=await apiPost(path,body);S.opFeedback=(r.resumed_session_id?"已恢复原会话":"已创建下一 turn")+(r.status?" · "+r.status:"");}catch(err){S.opFeedback="失败："+err.message;}finally{S.opBusy=false;loadSnapshot(false);}}
+  });
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"){$("detail-pane").classList.remove("drawer-open");$("usage-panel").hidden=true;S.usageOpen=false;scheduleRender();}});
+  $("sess").addEventListener("change",e=>{S.session=e.target.value;loadSnapshot(true);});
+  $("map-pane").addEventListener("keydown",e=>{if(e.key!=="Enter"&&e.key!=" ")return;});
+  renderAll();loadConfig();loadSnapshot(true);connect();setInterval(scheduleRender,10000);
+  /* running pulse 已由 CSS 完成（.node.agent.st-running::after + nodePulse）——
+     移除 500ms 全量 renderAll 重绘：running 节点存在时每 0.5s 重建整个
+     对话图 DOM 导致页面闪烁，且 renderAll 开销大；CSS 动画同效果零重绘。 */
+  maybeShowReplay();setInterval(maybeShowReplay,2000);
+});
+</script>
+</body></html>

@@ -23,6 +23,69 @@ export type McpUserConfig = {
 export type McpLiveStatus = "connected" | "connecting" | "not_connected" | "inactive" | "disabled" | "configured";
 export type McpLiveServer = { name: string; source: string; status: McpLiveStatus; type?: string };
 
+export type BuiltinMcpPreset = {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  author: string;
+  version: string;
+  tools: string[];
+  config: McpServer;
+  isAvailable: boolean;
+  installedPath?: string;
+};
+
+/** Locate the native bundled vendor/agent-mcp server entrypoint */
+export function getBuiltinAgentMcpPath(cwd?: string): string | null {
+  const roots = [
+    ...(cwd ? [resolve(cwd, "vendor", "agent-mcp", "mcp_server.py")] : []),
+    resolve(process.cwd(), "vendor", "agent-mcp", "mcp_server.py"),
+    resolve(__dirname, "..", "..", "vendor", "agent-mcp", "mcp_server.py"),
+    join(homedir(), "code", "agent-mcp", "mcp_server.py"),
+    join(getAgentDir(), "agent-mcp", "mcp_server.py"),
+  ];
+  for (const candidate of roots) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+export function getBuiltinMcpPresets(cwd?: string): BuiltinMcpPreset[] {
+  const agentMcpPath = getBuiltinAgentMcpPath(cwd);
+  return [
+    {
+      id: "agentmcp",
+      name: "agentmcp",
+      displayName: "Agent MCP",
+      description: "原生多 Agent 编排基础设施：统一调度 11+ 款 Agent CLI，支持子任务派发、复杂度分级门、DAG 编排、实时插话与持久记忆银行。",
+      author: "37chengshan",
+      version: "v3.0.0",
+      tools: [
+        "spawn_agent",
+        "wait_agent",
+        "estimate_complexity",
+        "orchestrate_task",
+        "steer_agent",
+        "followup_task",
+        "memory_store",
+        "memory_recall",
+        "policy_list",
+        "policy_add",
+        "policy_state",
+      ],
+      config: {
+        type: "stdio",
+        command: "python3",
+        args: [agentMcpPath ? (cwd ? relative(cwd, agentMcpPath) : agentMcpPath) : "vendor/agent-mcp/mcp_server.py"],
+        description: "Agent MCP — 任意 Agent CLI 统一调度与多 Agent 编排控制平面",
+      },
+      isAvailable: Boolean(agentMcpPath),
+      installedPath: agentMcpPath ?? undefined,
+    },
+  ];
+}
+
 /** Browser-facing project config must never expose environment variables or HTTP headers. */
 export function redactMcpServer(server: McpServer): McpServer {
   const safe = { ...server };

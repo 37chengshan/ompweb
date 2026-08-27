@@ -52,3 +52,19 @@ test("renders plan tasks under an active plan without the plain-run trigger", ()
   assert.match(html, /Wire panels/);
   assert.match(html, /Migrate the store/);
 });
+test("renders the plan markdown document above the task grid", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(PlanPanel, {
+      plan: null,
+      todoPhases: [],
+      onExecutePlan: noop,
+      onRejectPlan: noop,
+      planModeActive: true,
+      planContent: "# Ship the export\n\n1. Audit the store\n2. Migrate data",
+      planTruncated: true,
+    }),
+  );
+  assert.match(html, /Ship the export/);
+  assert.match(html, /Audit the store/);
+  assert.match(html, /(Plan file too large|plan\.truncatedNote)/);
+});

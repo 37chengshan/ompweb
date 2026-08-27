@@ -37,8 +37,10 @@ export async function POST(req: Request) {
 
     let command: string;
     if (isMac) {
-      // `open -R` reveals the item in Finder (works for files and directories).
-      command = `open -R ${shellQuote(target)}`;
+      // Directories: open the folder itself. Files: `open -R` reveals the item.
+      command = stat.isDirectory()
+        ? `open ${shellQuote(target)}`
+        : `open -R ${shellQuote(target)}`;
     } else if (isWindows) {
       // Explorer has no clean select flag for directories; selecting the item
       // itself works for files, opening the folder for directories.
@@ -56,7 +58,8 @@ export async function POST(req: Request) {
     }
 
     await new Promise<void>((resolve, reject) => {
-      exec(command, (error) => {
+      // Cap the command so a hanging file manager never wedges the request.
+      exec(command, { timeout: 8000 }, (error) => {
         // explorer.exe returns a nonzero exit code even on success in some
         // Windows versions; treat exit as best-effort there.
         if (error && !isWindows) reject(error);

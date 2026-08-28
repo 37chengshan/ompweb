@@ -17,7 +17,10 @@ export function buildRevealCommand(platform: string, target: string, isDirectory
   }
   if (platform === "linux") {
     if (isDirectory) return `xdg-open ${shellQuote(target)}`;
-    const parent = target.slice(0, target.lastIndexOf("/")) || "/";
+    // A slash-less relative file resolves against the server cwd; opening its
+    // parent means the current directory, never the filesystem root.
+    const idx = target.lastIndexOf("/");
+    const parent = idx === -1 ? "." : (idx === 0 ? "/" : target.slice(0, idx));
     return `xdg-open ${shellQuote(parent)}`;
   }
   throw new Error(`unsupported platform: ${platform}`);

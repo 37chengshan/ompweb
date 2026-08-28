@@ -1,4 +1,4 @@
-import { realpathSync } from "fs";
+import { realpathSync, statSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { isWindowsAbsolutePath } from "./paths";
@@ -88,6 +88,9 @@ export function isOmpGeneratedImagePath(filePath: string): boolean {
   // realpath both sides so string prefixes cannot miss the temp dir.
   try {
     const real = realpathSync(filePath);
+    // A same-named DIRECTORY in the temp dir is not a generated artifact;
+    // only a regular file is exempt.
+    if (!statSync(real).isFile()) return false;
     const realTmp = realpathSync(tmpdir());
     const prefix = normalizeSlashes(realTmp).replace(/\/+$/, "") + "/";
     return normalizeSlashes(real).startsWith(prefix);

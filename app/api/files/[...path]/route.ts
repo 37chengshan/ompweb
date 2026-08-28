@@ -436,7 +436,10 @@ export async function GET(
 
     const allowedRoots = await getAllowedFileRoots();
     const allowedByRoot = isFilePathAllowed(filePath, allowedRoots);
-    const allowedByOmpImage = isOmpGeneratedImagePath(filePath);
+    // The omp-generated temp image exemption is a narrow READ-only escape
+    // hatch: download/meta/watch/list for such paths still go through the
+    // normal root checks and 403.
+    const allowedByOmpImage = type === "read" && isOmpGeneratedImagePath(filePath);
     const allowedBySessionReference =
       !allowedByRoot &&
       !allowedByOmpImage &&

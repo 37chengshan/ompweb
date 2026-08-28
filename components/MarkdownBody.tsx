@@ -110,12 +110,12 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
           event.preventDefault();
           openFile(filePath);
         };
-        const anchor = <a href={href} {...props} onClick={handleClick}>{textParts}</a>;
+        const anchor = <a {...props} href={href} onClick={handleClick}>{textParts}</a>;
         return imageParts.length > 0 ? <>{anchor}{imageParts}</> : anchor;
       }
 
       const anchor = (
-        <a href={href} {...props} target="_blank" rel="noopener noreferrer">
+        <a {...props} href={href} target="_blank" rel="noopener noreferrer">
           {textParts}
         </a>
       );

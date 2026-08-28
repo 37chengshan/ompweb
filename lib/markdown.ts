@@ -3,6 +3,7 @@ import type { Options as ReactMarkdownOptions } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import { remarkPathLinks } from "./markdown-path-links";
 
 const markdownSanitizeSchema = {
   ...defaultSchema,
@@ -27,7 +28,7 @@ export interface MarkdownPlugins {
 // built from these same arrays, so the sanitize schema cannot drift between
 // the two.
 const baseMarkdownPlugins: MarkdownPlugins = {
-  remarkPlugins: [[remarkGfm, remarkGfmOptions]],
+  remarkPlugins: [[remarkGfm, remarkGfmOptions], remarkPathLinks],
   rehypePlugins: [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]],
 };
 

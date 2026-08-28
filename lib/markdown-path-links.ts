@@ -21,7 +21,7 @@ const PATH_CHAR = "[^\\s\"'`<>()\\[\\]{}|,;]";
 const ROOTED_PATH_RE = new RegExp(
   // "/" starts a path only at a word boundary (start/whitespace/punctuation),
   // so "and/or" never matches while /Users/... and /tmp/... always do.
-  String.raw`(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\|~\/|\.\.?\/|(?<=^|[\s(,;])/(?=[^\s/]))${PATH_CHAR}*`,
+  String.raw`(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\{1,2}|~\/|\.\.?\/|(?<=^|[\s(,;])/(?=[^\s/]))${PATH_CHAR}*`,
   "g",
 );
 // Relative multi-segment path ending in an extension: docs/plans/2026-08-13-x.md
@@ -45,14 +45,7 @@ export function splitPathTokens(text: string): PathToken[] {
   // already markdown links or should stay plain text).
   if (SKIPPED_SCHEMES.test(text.trim())) return [{ text, isPath: false }];
 
-  const tokens: PathToken[] = [];
-  let cursor = 0;
-
-  const pushText = (from: number, to: number) => {
-    if (to <= from) return;
-    const part = text.slice(from, to);
-    tokens.push({ text: part, isPath: false });
-  };
+  const matches: { start: number; end: number; text: string }[] = [];
 
   const addMatches = (re: RegExp, source: string) => {
     re.lastIndex = 0;
@@ -63,20 +56,31 @@ export function splitPathTokens(text: string): PathToken[] {
       // Skip matches that are part of a URL that slipped past the guard.
       const prefix = source.slice(Math.max(0, start - 8), start).toLowerCase();
       if (/https?:$/.test(prefix) || /^https?:\/\//.test(m[0])) continue;
-      if (end <= cursor) continue;
-      pushText(cursor, start);
-      tokens.push({ text: m[0], isPath: true });
-      cursor = end;
       if (m[0].length === 0) re.lastIndex += 1; // never loop forever
+      matches.push({ start, end, text: m[0] });
     }
   };
 
-  // Rooted first (they may contain dots/extension without multi-segment), then
-  // relative multi-segment paths. Both regexes are anchored to non-overlap via
-  // the cursor.
+  // Collect from both regexes, then merge in document order so an earlier
+  // relative match is never shadowed by a later rooted one (and vice versa).
   addMatches(ROOTED_PATH_RE, text);
   addMatches(RELATIVE_PATH_RE, text);
-  pushText(cursor, text.length);
+  matches.sort((a, b) => a.start - b.start || a.end - b.end);
+
+  const tokens: PathToken[] = [];
+  let cursor = 0;
+  for (const match of matches) {
+    if (match.end <= cursor) continue; // fully consumed
+    if (match.start < cursor) continue; // partial overlap — keep the earlier one
+    if (cursor < match.start) {
+      tokens.push({ text: text.slice(cursor, match.start), isPath: false });
+    }
+    tokens.push({ text: match.text, isPath: true });
+    cursor = match.end;
+  }
+  if (cursor < text.length) {
+    tokens.push({ text: text.slice(cursor), isPath: false });
+  }
 
   return tokens;
 }

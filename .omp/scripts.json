@@ -1,0 +1,12 @@
+{
+  "scripts": [
+    {
+      "name": "build",
+      "command": "npm run build"
+    },
+    {
+      "name": "test",
+      "command": "npm test"
+    }
+  ]
+}

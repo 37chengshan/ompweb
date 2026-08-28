@@ -21,7 +21,9 @@ const nextConfig = (phase: string): NextConfig => {
     // undici is loaded from a runtime dependency (lib/http-dispatcher.ts) to
     // honor HTTP(S)_PROXY for server-side fetch; keep it external so the
     // bundler does not inline a second copy next to the global dispatcher.
-    serverExternalPackages: ["undici"],
+    // node-pty is a native addon (prebuilds per platform) and must never be
+    // bundled by the server compiler.
+    serverExternalPackages: ["undici", "node-pty"],
     webpack(config: Parameters<NonNullable<NextConfig["webpack"]>>[0]) {
       // Next's entrypoint tracer does not automatically reject dynamic paths
       // outside the project root. Add parent/profile patterns to its ignore list

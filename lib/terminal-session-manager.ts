@@ -1,10 +1,11 @@
 import crypto from "crypto";
 import fs from "fs";
-import { spawn, type ChildProcess } from "child_process";
+import * as pty from "node-pty";
+import type { IPty } from "node-pty";
 
 export interface TerminalSession {
   id: string;
-  process: ChildProcess;
+  process: IPty;
   cwd: string;
   createdAt: number;
   lastActivityAt: number;
@@ -30,41 +31,37 @@ const MAX_SESSIONS = 8;
 // A session with no subscribers for this long is reaped (shell killed).
 const IDLE_TTL_MS = 30 * 60 * 1000;
 
-/**
- * Spawn the shell inside a real PTY. Without a TTY, zsh disables its line
- * editor and never echoes typed characters (keystrokes only execute after
- * Enter). macOS uses python3's pty.spawn to allocate a real PTY (the system
- * `script` utility refuses socket stdin with "tcgetattr: Operation not
- * supported on socket"); Linux uses util-linux `script` which accepts any
- * stdin. Windows cmd.exe echoes input itself over pipes, so it keeps the
- * plain spawn path. (node-pty was evaluated but its prebuilt binaries do not
- * work on Node 24 / macOS 25 — posix_spawnp fails even after a rebuild.)
- */
-function spawnShellPty(cwd: string, env: NodeJS.ProcessEnv): ChildProcess {
-  const isWindows = process.platform === "win32";
-  const isMac = process.platform === "darwin";
-  const isLinux = process.platform === "linux";
+const DEFAULT_COLS = 80;
+const DEFAULT_ROWS = 24;
 
-  let command: string;
-  let args: string[];
-  if (isWindows) {
-    command = process.env.COMSPEC || "cmd.exe";
-    args = [];
-  } else if (isMac) {
-    command = "python3";
-    args = ["-c", "import pty,sys; pty.spawn(sys.argv[1:])", process.env.SHELL || "/bin/zsh", "-i"];
-  } else if (isLinux) {
-    command = "script";
-    args = ["-qfc", `${process.env.SHELL || "/bin/bash"} -i`, "/dev/null"];
-  } else {
-    command = process.env.SHELL || "/bin/sh";
-    args = ["-i"];
+function toPtyEnv(env: NodeJS.ProcessEnv): { [key: string]: string } {
+  const out: { [key: string]: string } = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === "string") out[key] = value;
   }
+  return out;
+}
 
-  return spawn(command, args, {
+/**
+ * Spawn the shell inside a real PTY via node-pty. This is the cross-platform
+ * path: macOS and Linux get a real Unix PTY (full line editing, echo, ANSI),
+ * and Windows gets ConPTY — the same interactive behavior as a native
+ * terminal. node-pty >= 1.2.0-beta.15 ships prebuilds that work on Node 24 /
+ * macOS 25 (earlier 1.x releases failed with posix_spawnp errors there).
+ */
+function spawnShellPty(cwd: string, env: NodeJS.ProcessEnv): IPty {
+  const isWindows = process.platform === "win32";
+  const shell = isWindows
+    ? (process.env.COMSPEC || "cmd.exe")
+    : (process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash"));
+  const args = isWindows ? [] : ["-i"];
+
+  return pty.spawn(shell, args, {
+    name: "xterm-256color",
+    cols: DEFAULT_COLS,
+    rows: DEFAULT_ROWS,
     cwd,
-    env,
-    stdio: ["pipe", "pipe", "pipe"],
+    env: toPtyEnv(env),
   });
 }
 
@@ -112,13 +109,21 @@ export function createTerminalSession(targetCwd?: string): { id: string; cwd: st
 
   const id = `term-${crypto.randomBytes(8).toString("hex")}`;
 
-  const proc = spawnShellPty(cwd, {
-    ...process.env,
-    TERM: "xterm-256color",
-    COLORTERM: "truecolor",
-    LANG: process.env.LANG || "en_US.UTF-8",
-    LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
-  });
+  let proc: IPty;
+  try {
+    proc = spawnShellPty(cwd, {
+      ...process.env,
+      TERM: "xterm-256color",
+      COLORTERM: "truecolor",
+      LANG: process.env.LANG || "en_US.UTF-8",
+      LC_ALL: process.env.LC_ALL || "en_US.UTF-8",
+    });
+  } catch (err) {
+    // node-pty throws synchronously when the shell cannot be spawned (e.g.
+    // missing prebuild for the platform). Surface it as a failed session so
+    // the UI can show an error instead of a silently dead panel.
+    throw new Error(`Failed to spawn terminal shell: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   const session: TerminalSession = {
     id,
@@ -151,23 +156,13 @@ export function createTerminalSession(targetCwd?: string): { id: string; cwd: st
   // Initial banner
   broadcast(`\r\n\x1b[38;2;176;62;34m⌥ omp web\x1b[0m \x1b[90m· Terminal Ready ·\x1b[0m \x1b[36m${cwd}\x1b[0m\r\n\r\n`);
 
-  proc.stdout?.on("data", (data: Buffer | string) => {
-    const text = typeof data === "string" ? data : data.toString("utf-8");
-    // PTY data already uses \r\n; pass through as-is (keeps cursor/ANSI sane).
-    broadcast(text);
+  // PTY data already carries \r\n and ANSI; pass through as-is.
+  proc.onData((data) => {
+    broadcast(data);
   });
 
-  proc.stderr?.on("data", (data: Buffer | string) => {
-    const text = typeof data === "string" ? data : data.toString("utf-8");
-    broadcast(text);
-  });
-
-  proc.on("error", (err) => {
-    broadcast(`\r\n\x1b[31m[Terminal Process Error: ${err.message}]\x1b[0m\r\n`);
-  });
-
-  proc.on("close", (code) => {
-    broadcast(`\r\n\x1b[33m[Terminal closed with code ${code ?? 0}]\x1b[0m\r\n`);
+  proc.onExit(({ exitCode }) => {
+    broadcast(`\r\n\x1b[33m[Terminal closed with code ${exitCode ?? 0}]\x1b[0m\r\n`);
     sessions.delete(id);
   });
 
@@ -196,16 +191,27 @@ export function subscribeToTerminal(id: string, onData: (data: string) => void):
 
 export function writeToTerminal(id: string, data: string): boolean {
   const session = sessions.get(id);
-  if (!session || !session.process.stdin?.writable) {
-    return false;
-  }
+  if (!session) return false;
   try {
     session.lastActivityAt = Date.now();
-    const normalized = data === "\r" ? "\n" : data.replace(/\r/g, "\n");
-    session.process.stdin.write(normalized);
+    // In a real PTY the terminal protocol is authoritative: "\r" is Enter,
+    // and passthrough bytes (arrows, ctrl sequences) must not be rewritten.
+    session.process.write(data);
     return true;
   } catch (err) {
     console.error("[TerminalManager] write error:", err);
+    return false;
+  }
+}
+
+export function resizeTerminal(id: string, cols: number, rows: number): boolean {
+  const session = sessions.get(id);
+  if (!session) return false;
+  try {
+    session.process.resize(cols, rows);
+    return true;
+  } catch (err) {
+    console.error("[TerminalManager] resize error:", err);
     return false;
   }
 }

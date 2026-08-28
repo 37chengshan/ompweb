@@ -46,6 +46,16 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
   // concurrent fetches can arrive out of order and scramble the shell input.
   const inputChainRef = useRef<Promise<void>>(Promise.resolve());
 
+  const sendTerminalResize = useCallback((sid: string, cols: number, rows: number) => {
+    void fetch("/api/terminal/resize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: sid, cols, rows }),
+    }).catch(() => {
+      // Best effort; the PTY keeps its previous size.
+    });
+  }, []);
+
   const sendTerminalInput = useCallback((sid: string, data: string) => {
     inputChainRef.current = inputChainRef.current.then(async () => {
       try {
@@ -151,6 +161,7 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
       terminalRef.current.innerHTML = "";
       term.open(terminalRef.current);
       fitAddon.fit();
+      if (sessionId) sendTerminalResize(sessionId, term.cols, term.rows);
 
       xtermInstanceRef.current = term;
       fitAddonRef.current = fitAddon;
@@ -280,11 +291,15 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
     if (open) {
       const timer = setTimeout(() => {
         fitAddonRef.current?.fit();
+        // Keep the server-side PTY size in sync with the visible grid so
+        // full-screen apps (vim, htop) wrap correctly.
+        const term = xtermInstanceRef.current;
+        if (term && sessionId) sendTerminalResize(sessionId, term.cols, term.rows);
         xtermInstanceRef.current?.focus();
       }, 120);
       return () => clearTimeout(timer);
     }
-  }, [open, height, maximized]);
+  }, [open, height, maximized, sessionId, sendTerminalResize]);
 
   // Resize drag handler with drag-to-collapse
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

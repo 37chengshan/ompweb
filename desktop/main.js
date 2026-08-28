@@ -66,6 +66,11 @@ function startServer() {
     process.stderr.write(text);
     appLog("server: " + text.slice(0, 500));
   });
+  serverProcess.on("error", (error) => {
+    appLog("spawn error: " + (error instanceof Error ? error.message : String(error)));
+    serverProcess = null;
+    if (!quitting) app.quit();
+  });
   serverProcess.on("exit", () => {
     serverProcess = null;
     if (!quitting) app.quit();
@@ -169,6 +174,13 @@ function createAppMenu() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+
+process.on("uncaughtException", (error) => {
+  appLog("uncaught: " + (error instanceof Error ? error.stack || error.message : String(error)));
+});
+process.on("unhandledRejection", (reason) => {
+  appLog("unhandledRejection: " + String(reason));
+});
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

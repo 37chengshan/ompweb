@@ -7,9 +7,24 @@ import { remarkPathLinks } from "./markdown-path-links";
 
 const markdownSanitizeSchema = {
   ...defaultSchema,
+  // The default href protocol whitelist rejects drive-letter paths (C:).
+  // The attributes regex below still blocks javascript:/data:/vbscript:.
+  protocols: {
+    ...defaultSchema.protocols,
+    href: null,
+  },
   attributes: {
     ...defaultSchema.attributes,
     code: [["className", /^language-./, "math-inline", "math-display"]],
+    // Allow local paths (drive letters, UNC, absolute, relative) in links —
+    // the default protocol whitelist strips them. The bare "href" string
+    // entry would allow anything, so it is replaced by a regex that still
+    // rejects javascript:/data:/vbscript:.
+    a: (defaultSchema.attributes?.a ?? [])
+      .filter((entry) => entry !== "href")
+      // URL-encoded forms (%5C = backslash) arrive after react-markdown
+      // encodes the href, so the drive-letter/UNC branches accept both.
+      .concat([["href", /^(?:https?:|mailto:|file:|[a-zA-Z]:(?:[\\/]|%5[cC])|\\\\|%5[cC]%5[cC]|\/|\.{1,2}\/|#|\?|[\w\u4e00-\u9fff.-]+\/)/]]),
   },
   strip: [...(defaultSchema.strip || []), "iframe", "object", "style", "form"],
 };

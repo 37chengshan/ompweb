@@ -21,7 +21,7 @@ const PATH_CHAR = "[^\\s\"'`<>()\\[\\]{}|,;]";
 const ROOTED_PATH_RE = new RegExp(
   // "/" starts a path only at a word boundary (start/whitespace/punctuation),
   // so "and/or" never matches while /Users/... and /tmp/... always do.
-  String.raw`(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\{1,2}|~\/|\.\.?\/|(?<=^|[\s(,;])/(?=[^\s/]))${PATH_CHAR}*`,
+  String.raw`(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\|~\/|\.\.?\/|(?<=^|[\s(,;])/(?=[^\s/]))${PATH_CHAR}*`,
   "g",
 );
 // Relative multi-segment path ending in an extension: docs/plans/2026-08-13-x.md
@@ -56,6 +56,14 @@ export function splitPathTokens(text: string): PathToken[] {
       // Skip matches that are part of a URL that slipped past the guard.
       const prefix = source.slice(Math.max(0, start - 8), start).toLowerCase();
       if (/https?:$/.test(prefix) || /^https?:\/\//.test(m[0])) continue;
+      // A lone "/" (e.g. inside `("/`) is punctuation, not a path.
+      if (m[0].length < 2) continue;
+      // Regex literals in tool output (/https?:$/.test) look like rooted
+      // paths; real paths almost never contain regex metacharacters.
+      if (/[?$^*()[\]{}|]/.test(m[0])) continue;
+      // Escaped sequences ("\\n", "\\/") are string/regex literals, not paths.
+      // UNC paths legitimately start with "\\\\" — only flag interior ones.
+      if (m[0].includes("\\\\") && !m[0].startsWith("\\\\")) continue;
       if (m[0].length === 0) re.lastIndex += 1; // never loop forever
       matches.push({ start, end, text: m[0] });
     }

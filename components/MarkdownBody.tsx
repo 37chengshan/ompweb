@@ -33,6 +33,8 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
     const imgComponent = ({ src, alt, ...imgProps }: ComponentProps<"img"> & { node?: unknown }) => {
       // `node` is react-markdown metadata, not a DOM attribute.
       delete (imgProps as { node?: unknown }).node;
+      // react-markdown URL-encodes drive-letter srcs; resolveLocalFileHref
+      // decodes them back before resolving.
       const filePath = typeof src === "string" ? resolveLocalFileHref(src, cwd) : null;
       const imageSrc = filePath
         ? `/api/files/${encodeFilePathForApi(filePath)}?type=read`
@@ -91,6 +93,8 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
     a({ href, children, ...props }) {
       // `node` is react-markdown metadata, not a DOM attribute.
       delete props.node;
+      // react-markdown URL-encodes drive-letter hrefs (C:%5CUsers...);
+      // resolveLocalFileHref decodes them back before resolving.
       const { textParts, imageParts } = partitionLinkContent(children);
       // A <button> cannot nest inside an <a>. Pure image links (direct or
       // wrapped in formatting, possibly with surrounding whitespace) render
@@ -138,6 +142,11 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
         components={components}
+        // Keep drive-letter/UNC paths intact: react-markdown's default
+        // urlTransform strips "C:"-style schemes to "", which would break
+        // local path resolution. rehype-sanitize still blocks dangerous
+        // protocols (javascript:, data:) via its attribute schema.
+        urlTransform={(url) => url}
       >
         {normalizedMarkdown}
       </ReactMarkdown>

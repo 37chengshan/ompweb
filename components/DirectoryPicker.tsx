@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useModalDialog } from "@/hooks/useModalDialog";
 import { useI18n } from "@/lib/i18n";
@@ -61,6 +61,23 @@ interface Props {
 
 export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Props) {
   const { t } = useI18n();
+  const [nativePref, setNativePref] = useState(() => {
+    try { return localStorage.getItem("omp-web:native-folder-picker") !== "false"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("omp-web:native-folder-picker", nativePref ? "true" : "false"); } catch { /* ignore */ }
+  }, [nativePref]);
+  const nativeStartedRef = useRef(false);
+  useEffect(() => {
+    const picker = (window as Window & { piDesktop?: { selectDirectory: () => Promise<string | null> } }).piDesktop;
+    if (nativePref && picker?.selectDirectory && !nativeStartedRef.current) {
+      nativeStartedRef.current = true;
+      void picker.selectDirectory().then((path) => {
+        if (path) onSelect(path);
+        else onCancel();
+      });
+    }
+  }, [nativePref, onSelect, onCancel]);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [currentPath, setCurrentPath] = useState("");
   const [parentDirectory, setParentDirectory] = useState<string | null>(null);
@@ -121,6 +138,12 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ color: "var(--text)", fontWeight: 700, fontSize: 15 }}>{t("directoryPicker.selectDirectory")}</div>
           </div>
+          {typeof window !== "undefined" && (window as Window & { piDesktop?: { isDesktop?: boolean } }).piDesktop?.isDesktop && (
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", cursor: "pointer", marginRight: 8 }}>
+              <input type="checkbox" checked={nativePref} onChange={(e) => setNativePref(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
+              {t("directoryPicker.useNative")}
+            </label>
+          )}
           <button
             type="button"
             onClick={onCancel}

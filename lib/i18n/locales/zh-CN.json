@@ -1348,5 +1348,6 @@
   "diagnostics.server": "服务器",
   "projects.removeScript": "删除命令 {name}",
   "projects.cancel": "取消",
-  "projects.save": "保存"
+  "projects.save": "保存",
+  "directoryPicker.useNative": "使用系统文件夹选择"
 }

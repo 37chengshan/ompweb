@@ -10,7 +10,7 @@
  * server launcher) are untouched.
  */
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain } = require("electron");
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, dialog } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -291,6 +291,12 @@ if (!gotLock) {
     }
   });
 }
+
+// Native folder picker (macOS / Windows / Linux all use Electron's dialog).
+ipcMain.handle("select-directory", async () => {
+  const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+});
 
 // Renderer -> main helpers (window controls, open external).
 ipcMain.on("window-control", (_event, action) => {

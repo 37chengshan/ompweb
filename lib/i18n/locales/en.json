@@ -1348,5 +1348,6 @@
   "diagnostics.server": "Server",
   "projects.removeScript": "Remove {name}",
   "projects.cancel": "Cancel",
-  "projects.save": "Save"
+  "projects.save": "Save",
+  "directoryPicker.useNative": "Use system folder picker"
 }

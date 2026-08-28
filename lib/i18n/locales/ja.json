@@ -1348,5 +1348,6 @@
   "diagnostics.server": "サーバー",
   "projects.removeScript": "{name} を削除",
   "projects.cancel": "キャンセル",
-  "projects.save": "保存"
+  "projects.save": "保存",
+  "directoryPicker.useNative": "システムフォルダ選択を使用"
 }

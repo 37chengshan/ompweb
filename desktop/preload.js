@@ -14,3 +14,10 @@ contextBridge.exposeInMainWorld("ompWebDesktop", {
   maximize: () => ipcRenderer.send("window-control", "maximize"),
   close: () => ipcRenderer.send("window-control", "close"),
 });
+
+// Native folder picker bridge (SessionSidebar's DirectoryPicker prefers it
+// when available; the web browser keeps its own in-page picker).
+contextBridge.exposeInMainWorld("piDesktop", {
+  isDesktop: true,
+  selectDirectory: () => ipcRenderer.invoke("select-directory"),
+});

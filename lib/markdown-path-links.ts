@@ -108,6 +108,30 @@ export function splitPathTokens(text: string): PathToken[] {
  */
 export function remarkPathLinks() {
   return (tree: Root) => {
+    // GFM autolinks bare URLs but only trims ASCII trailing punctuation
+    // (.,;:!?) — full-width ，。： are swallowed into the href. An autolink
+    // is recognizable by text === url; explicit [text](url) links keep their
+    // URL untouched. Split the trailing punctuation back out as text.
+    visit(tree, "link", (node, index, parent) => {
+      if (!parent || typeof index !== "number") return;
+      if (node.children.length !== 1 || node.children[0].type !== "text") return;
+      const text = node.children[0].value;
+      if (text !== node.url) return;
+      // GFM's autolink tokenizer is WHATWG-loose: it swallows every
+      // non-whitespace character after the URL, including CJK text and
+      // full-width punctuation. Trim the trailing run that is not a URL
+      // character, then any ASCII punctuation (e.g. "," kept by the
+      // URL-char set when followed by CJK).
+      const trimmed = text
+        .replace(/[^A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+$/u, "")
+        .replace(/[.,;:!?]+$/u, "");
+      if (trimmed === text) return;
+      node.url = trimmed;
+      node.children[0].value = trimmed;
+      const trailing = text.slice(trimmed.length);
+      parent.children.splice(index + 1, 0, { type: "text" as const, value: trailing });
+    });
+
     visit(tree, "text", (node, index, parent) => {
       if (!parent || typeof index !== "number") return;
       // Never rewrite text that is already the child of a link we just

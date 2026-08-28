@@ -42,11 +42,31 @@
     setTimeout(fadeIntoApp, (d / video.playbackRate) * 1000 + 150);
   });
   video.addEventListener("error", () => console.log("splash video error: " + (video.error ? video.error.code : "?")));
+  // Warm the app UI while the video plays: the standalone server's first
+  // request does one-time initialization, and the JS/CSS bundles need to be
+  // in the HTTP cache — otherwise navigation lands on a blank page for ~1s.
+  // Retried until the server is actually up (it can take a second to start).
+  async function warmUp() {
+    if (!appUrl) return;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      try {
+        const res = await fetch(appUrl, { cache: "force-cache" });
+        if (res.ok) {
+          const html = await res.text();
+          const assets = [...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]);
+          for (const a of assets.slice(0, 40)) {
+            fetch(new URL(a, appUrl).toString(), { cache: "force-cache" }).catch(() => {});
+          }
+          console.log("splash warm: " + assets.length + " assets");
+          return;
+        }
+      } catch { /* server not up yet */ }
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  }
   video.addEventListener("playing", () => {
     console.log("splash playing");
-    // Warm the app UI (HTML + static assets) while the video plays so the
-    // post-fade navigation lands on a rendered page instead of a blank one.
-    if (appUrl) fetch(appUrl, { cache: "force-cache" }).catch(() => {});
+    void warmUp();
   });
   video.addEventListener("ended", fadeIntoApp);
   video.play().catch((e) => console.log("splash play rejected: " + e));

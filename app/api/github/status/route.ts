@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveProject } from "@/lib/worktree";
 import { resolveGitHubRepo } from "@/lib/git-remote";
 import { getRepoStatus } from "@/lib/github";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,12 @@ export async function GET(req: Request) {
 
   try {
     const project = await resolveProject(cwd);
+    // Only checkouts under the file allowlist may be probed (a bare path would
+    // otherwise leak repo identity + PR/CI state for arbitrary local dirs).
+    const allowedRoots = await getAllowedFileRoots();
+    if (!isExistingFilePathAllowed(project.projectRoot, allowedRoots)) {
+      return NextResponse.json({ repo: null, pulls: [] });
+    }
     const ref = await resolveGitHubRepo(project.projectRoot);
     if (!ref) {
       const data = { repo: null, pulls: [] };

@@ -123,16 +123,16 @@
     },
     "extraResources": [
       {
-        "from": ".next",
-        "to": ".next"
+        "from": ".next/standalone",
+        "to": "standalone"
+      },
+      {
+        "from": ".next/static",
+        "to": "standalone/.next/static"
       },
       {
         "from": "public",
-        "to": "public"
-      },
-      {
-        "from": "next.config.ts",
-        "to": "next.config.ts"
+        "to": "standalone/public"
       }
     ]
   }

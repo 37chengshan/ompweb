@@ -37,38 +37,36 @@ let tray = null;
 let httpServer = null;
 let quitting = false;
 
-/** Start the Next production server inside this process. */
-async function startServer() {
-  if (!fs.existsSync(nextDir) || !fs.existsSync(path.join(nextDir, "BUILD_ID"))) {
-    console.error("Build artifacts not found. Run `npm run build` first (or `npm run dev` and use the browser).");
+/** Start the Next standalone server (self-contained: server.js + node_modules). */
+function startServer() {
+  const standaloneDir = app.isPackaged
+    ? path.join(process.resourcesPath, "standalone")
+    : path.join(pkgDir, ".next", "standalone");
+  const serverJs = path.join(standaloneDir, "server.js");
+  if (!fs.existsSync(serverJs)) {
+    appLog("standalone server.js missing at " + serverJs);
+    console.error("Standalone build missing at", serverJs);
     return;
   }
-  try {
-    // Programmatic Next server inside the Electron main process: spawning
-    // next as a child cannot work from a packaged app (asar paths are not
-    // executable), while require() understands asar transparently.
-    const next = require("next");
-    const nextApp = next({ dir: appRootDir, dev: false, hostname: HOST, port: APP_PORT });
-    await nextApp.prepare();
-    const handler = nextApp.getRequestHandler();
-    httpServer = createServer((req, res) => {
-      Promise.resolve(handler(req, res)).catch((error) => {
-        const message = error instanceof Error ? error.stack || error.message : String(error);
-        appLog("request failed " + req.url + ": " + message);
-        if (!res.headersSent) res.writeHead(500).end("Internal Server Error");
-      });
-    });
-    httpServer.listen(APP_PORT, HOST);
-  } catch (error) {
-    const message = error instanceof Error ? error.stack || error.message : String(error);
-    console.error("Failed to start the hosted server:", message);
-    appLog("startServer failed: " + message);
+  serverProcess = spawn(process.execPath, [serverJs], {
+    cwd: standaloneDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      PORT: String(APP_PORT),
+      HOSTNAME: HOST,
+      OMP_WEB_PACKAGE_DIR: pkgDir,
+    },
+  });
+  serverProcess.stderr?.on("data", (chunk) => {
+    const text = chunk.toString();
+    process.stderr.write(text);
+    appLog("server: " + text.slice(0, 500));
+  });
+  serverProcess.on("exit", () => {
+    serverProcess = null;
     if (!quitting) app.quit();
-  }
-}
-
-function appLog(message) {
-  try { fs.appendFileSync(path.join(app.getPath("userData"), "omp-app.log"), `${new Date().toISOString()} ${message}\n`); } catch { /* best effort */ }
+  });
 }
 
 function waitForServer(attempt = 0) {

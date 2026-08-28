@@ -3,15 +3,15 @@
 /**
  * OmpWeb native desktop app (Electron).
  *
- * Hosts the omp-web Next server (production build) inside the Electron main
- * process on an internal port, in a real native window: Dock icon,
- * application menu, tray icon, external links open in the system browser.
- * Quitting the app stops the server. The `ompweb` CLI (browser launch) and
- * `ompweb-desktop` (hidden server launcher) are untouched.
+ * Hosts the omp-web Next standalone server on an internal port and presents
+ * it in a real native window: Dock icon, application menu, tray icon,
+ * external links open in the system browser. Quitting the app stops the
+ * server. The `ompweb` CLI (browser launch) and `ompweb-desktop` (hidden
+ * server launcher) are untouched.
  */
 
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain } = require("electron");
-const { createServer } = require("http");
+const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
@@ -21,23 +21,26 @@ const HOST = "127.0.0.1";
 const APP_URL = `http://${HOST}:${APP_PORT}`;
 
 const pkgDir = path.join(__dirname, "..");
-// Packaged: the project root lives at Resources (with .next and public as
-// extra resources); dev: the repo itself.
-const appRootDir = app.isPackaged
-  ? process.resourcesPath
-  : pkgDir;
-// Packaged: .next ships as an extra resource (writable) at Resources/.next;
-// dev: the repo's own .next.
-const nextDir = app.isPackaged
-  ? path.join(process.resourcesPath, ".next")
-  : path.join(pkgDir, ".next");
+
+function appLog(message) {
+  try {
+    fs.appendFileSync(path.join(app.getPath("userData"), "omp-app.log"), `${new Date().toISOString()} ${message}\n`);
+  } catch { /* best effort */ }
+}
+
+process.on("uncaughtException", (error) => {
+  appLog("uncaught: " + (error instanceof Error ? error.stack || error.message : String(error)));
+});
+process.on("unhandledRejection", (reason) => {
+  appLog("unhandledRejection: " + String(reason));
+});
 
 let mainWindow = null;
 let tray = null;
-let httpServer = null;
+let serverProcess = null;
 let quitting = false;
 
-/** Start the Next standalone server (self-contained: server.js + node_modules). */
+/** Start the Next standalone server (self-contained server.js + node_modules). */
 function startServer() {
   const standaloneDir = app.isPackaged
     ? path.join(process.resourcesPath, "standalone")
@@ -75,10 +78,6 @@ function startServer() {
     serverProcess = null;
     if (!quitting) app.quit();
   });
-}
-
-function appLog(message) {
-  try { fs.appendFileSync(path.join(app.getPath("userData"), "omp-app.log"), `${new Date().toISOString()} ${message}\n`); } catch { /* best effort */ }
 }
 
 function waitForServer(attempt = 0) {
@@ -179,13 +178,6 @@ function createAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-process.on("uncaughtException", (error) => {
-  appLog("uncaught: " + (error instanceof Error ? error.stack || error.message : String(error)));
-});
-process.on("unhandledRejection", (reason) => {
-  appLog("unhandledRejection: " + String(reason));
-});
-
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -196,7 +188,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     createAppMenu();
-    void startServer();
+    startServer();
     createWindow();
     createTray();
     waitForServer();
@@ -220,9 +212,9 @@ if (!gotLock) {
   });
 
   app.on("will-quit", () => {
-    if (httpServer) {
-      try { httpServer.close(); } catch { /* already closed */ }
-      httpServer = null;
+    if (serverProcess) {
+      try { serverProcess.kill("SIGTERM"); } catch { /* already dead */ }
+      serverProcess = null;
     }
   });
 }

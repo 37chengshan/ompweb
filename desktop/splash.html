@@ -3,20 +3,37 @@
 <head>
 <meta charset="utf-8">
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; cursor: pointer; }
-  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* Fade-out transition into the app UI */
+  body.fade { opacity: 0; transition: opacity 0.55s ease-in-out; }
 </style>
 </head>
 <body>
 <video id="splash" autoplay muted playsinline></video>
 <script>
   const video = document.getElementById("splash");
-  const src = new URLSearchParams(location.search).get("video");
-  if (src) video.src = src;
-  video.addEventListener("ended", () => window.close());
-  // Fallback: never leave the splash hanging if the video stalls.
-  setTimeout(() => { if (!video.ended) window.close(); }, 14000);
-  document.body.addEventListener("click", () => window.close());
+  const params = new URLSearchParams(location.search);
+  const appUrl = params.get("app");
+  const videoSrc = params.get("video");
+  if (videoSrc) video.src = videoSrc;
+
+  let faded = false;
+  function fadeIntoApp() {
+    if (faded) return;
+    faded = true;
+    document.body.classList.add("fade");
+    setTimeout(() => {
+      if (appUrl) location.href = appUrl;
+      else window.close();
+    }, 560);
+  }
+
+  video.addEventListener("ended", fadeIntoApp);
+  // Fallback: never leave the launch animation hanging.
+  setTimeout(fadeIntoApp, 14000);
+  document.body.addEventListener("click", fadeIntoApp);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" || e.key === "Enter" || e.key === " ") fadeIntoApp(); });
 </script>
 </body>
 </html>

@@ -43,7 +43,6 @@ process.on("unhandledRejection", (reason) => {
 });
 
 let mainWindow = null;
-let splashWindow = null;
 let tray = null;
 let serverProcess = null;
 let quitting = false;
@@ -108,63 +107,45 @@ function startServer() {
   });
 }
 
-function waitForServer(attempt = 0) {
+function waitForServer(attempt = 0, loadWhenReady = true) {
   if (quitting) return;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 1500);
   fetch(APP_URL, { signal: controller.signal })
     .then(() => {
       clearTimeout(timer);
-      if (mainWindow && !mainWindow.isDestroyed()) {
+      if (loadWhenReady && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.loadURL(APP_URL);
       }
     })
     .catch(() => {
       clearTimeout(timer);
-      if (attempt < 60) setTimeout(() => waitForServer(attempt + 1), 700);
+      if (attempt < 60) setTimeout(() => waitForServer(attempt + 1, 700), loadWhenReady);
     });
 }
 
-/** First-launch splash: plays the logo video in a frameless window, then
- *  hands over to the main window. Marked via userData/splash-shown so it
- *  only runs once per machine. */
-function showSplashOnce() {
+/** First-launch: the MAIN window plays the logo video full-screen, then
+ *  fades into the app UI. Returns true when the launch animation runs. */
+function isFirstLaunchSplash() {
   const markPath = path.join(app.getPath("userData"), "splash-shown");
   if (fs.existsSync(markPath)) return false;
-  // splash.html ships inside the asar (desktop/**); loadFile handles asar paths.
   const splashFile = path.join(pkgDir, "desktop", "splash.html");
   const splashVideo = app.isPackaged
     ? path.join(process.resourcesPath, "splash.mp4")
     : path.join(pkgDir, "templates", "desktop", "splash.mp4");
-  if (!fs.existsSync(splashFile)) {
+  if (!fs.existsSync(splashFile) || !fs.existsSync(splashVideo)) {
     try { fs.writeFileSync(markPath, "1"); } catch { /* best effort */ }
     return false;
   }
-  splashWindow = new BrowserWindow({
-    width: 960,
-    height: 540,
-    frame: false,
-    resizable: false,
-    movable: true,
-    show: true,
-    backgroundColor: "#000000",
-    webPreferences: { contextIsolation: true, sandbox: true },
-  });
-  splashWindow.webContents.on("did-finish-load", () => appLog("splash loaded"));
-  splashWindow.webContents.on("console-message", (_e, level, message) => appLog("splash console: " + message));
-  splashWindow.webContents.on("did-fail-load", (_e, code, desc) => appLog("splash fail: " + code + " " + desc));
-  void splashWindow.loadFile(splashFile, { query: { video: splashVideo } });
-  splashWindow.on("closed", () => {
-    splashWindow = null;
-    // First launch is done: subsequent starts skip the splash.
-    try { fs.writeFileSync(markPath, "1"); } catch { /* best effort */ }
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
+  try { fs.writeFileSync(markPath, "1"); } catch { /* best effort */ }
+  // Mark immediately so a crash mid-animation still skips it next time.
+  splashFile_ = splashFile;
+  splashVideo_ = splashVideo;
   return true;
 }
+
+let splashFile_ = null;
+let splashVideo_ = null;
 
 function createWindow() {
   const icon = nativeImage.createFromPath(path.join(__dirname, "..", "public", "icon.png"));
@@ -259,13 +240,16 @@ if (!gotLock) {
   app.whenReady().then(() => {
     createAppMenu();
     startServer();
-    const showedSplash = showSplashOnce();
+    const splashFirst = isFirstLaunchSplash();
     createWindow();
     createTray();
-    waitForServer();
-    if (showedSplash) {
-      // Keep the main window hidden behind the splash; reveal on close.
-      mainWindow?.hide();
+    if (splashFirst) {
+      // Full-window launch animation: splash page plays the video, fades,
+      // then navigates to APP_URL by itself.
+      waitForServer(0, false);
+      void mainWindow?.loadFile(splashFile_, { query: { video: splashVideo_, app: APP_URL } });
+    } else {
+      waitForServer();
     }
   });
 
@@ -279,8 +263,6 @@ if (!gotLock) {
   // A true desktop app: closing the window quits (tray stays for convenience,
   // but the hosted server must never outlive the app).
   app.on("window-all-closed", () => {
-    // Closing the splash alone must not quit while the main window waits.
-    if (splashWindow) return;
     app.quit();
   });
 

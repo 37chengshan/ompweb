@@ -3,15 +3,15 @@
 /**
  * OmpWeb native desktop app (Electron).
  *
- * Spawns the omp-web Next server (production build) on an internal port and
- * hosts it in a real native window: Dock icon, application menu, tray icon,
- * external links open in the system browser. Quitting the app stops the
- * server. The `ompweb` CLI (browser launch) and `ompweb-desktop` (hidden
- * server launcher) are untouched.
+ * Hosts the omp-web Next server (production build) inside the Electron main
+ * process on an internal port, in a real native window: Dock icon,
+ * application menu, tray icon, external links open in the system browser.
+ * Quitting the app stops the server. The `ompweb` CLI (browser launch) and
+ * `ompweb-desktop` (hidden server launcher) are untouched.
  */
 
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain } = require("electron");
-const { spawn } = require("child_process");
+const { createServer } = require("http");
 const path = require("path");
 const fs = require("fs");
 
@@ -29,46 +29,29 @@ const nextDir = app.isPackaged
 
 let mainWindow = null;
 let tray = null;
-let serverProcess = null;
+let httpServer = null;
 let quitting = false;
 
-function nextBin() {
-  try {
-    return require.resolve("next/dist/bin/next", { paths: [pkgDir] });
-  } catch {
-    return null;
-  }
-}
-
-/** Start the Next production server; resolves when it accepts connections. */
-function startServer() {
+/** Start the Next production server inside this process. */
+async function startServer() {
   if (!fs.existsSync(nextDir) || !fs.existsSync(path.join(nextDir, "BUILD_ID"))) {
     console.error("Build artifacts not found. Run `npm run build` first (or `npm run dev` and use the browser).");
     return;
   }
-  const bin = nextBin();
-  if (!bin) {
-    console.error("Could not resolve next.");
-    return;
-  }
-  serverProcess = spawn(process.execPath, [bin, "start", "-p", String(APP_PORT), "-H", HOST], {
-    // Packaged: app.asar is a file — child_process cannot chdir into it, so
-    // use the real, writable userData dir as the server's working directory.
-    cwd: app.isPackaged ? app.getPath("userData") : pkgDir,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      OMP_WEB_PACKAGE_DIR: pkgDir,
-      OMP_WEB_LAUNCHER_PID: String(process.pid),
-      OMP_WEB_PORT: String(APP_PORT),
-      OMP_WEB_HOSTNAME: HOST,
-    },
-  });
-  serverProcess.stderr?.on("data", (chunk) => process.stderr.write(chunk));
-  serverProcess.on("exit", () => {
-    serverProcess = null;
+  try {
+    // Programmatic Next server inside the Electron main process: spawning
+    // next as a child cannot work from a packaged app (asar paths are not
+    // executable), while require() understands asar transparently.
+    const next = require("next");
+    const nextApp = next({ dir: nextDir, dev: false, hostname: HOST, port: APP_PORT });
+    await nextApp.prepare();
+    const handler = nextApp.getRequestHandler();
+    httpServer = createServer((req, res) => handler(req, res));
+    httpServer.listen(APP_PORT, HOST);
+  } catch (error) {
+    console.error("Failed to start the hosted server:", error);
     if (!quitting) app.quit();
-  });
+  }
 }
 
 function waitForServer(attempt = 0) {
@@ -179,7 +162,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     createAppMenu();
-    startServer();
+    void startServer();
     createWindow();
     createTray();
     waitForServer();
@@ -203,9 +186,9 @@ if (!gotLock) {
   });
 
   app.on("will-quit", () => {
-    if (serverProcess) {
-      try { serverProcess.kill("SIGTERM"); } catch { /* already dead */ }
-      serverProcess = null;
+    if (httpServer) {
+      try { httpServer.close(); } catch { /* already closed */ }
+      httpServer = null;
     }
   });
 }

@@ -682,6 +682,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const queueMutatedAtRef = useRef(0);
   const agentRunningRef = useRef(false);
   const bashRunningRef = useRef(false);
+  // True while this session is being written by a terminal `omp` / harness:
+  // sends are rejected with a notice (attaching an RPC process would fight
+  // the external writer) and the transcript updates come from the watcher.
+  const externalRunningRef = useRef(false);
+  const externalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bashRecoveryIdRef = useRef(0);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
   const initialScrollDoneRef = useRef(false);
@@ -1022,6 +1027,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     let messagesLoaded = false;
     try {
       if (showLoading) setLoading(true);
+      if (sessionIdRef.current !== sid) {
+        // Switching sessions: drop any external-running state and its poller.
+        if (externalPollRef.current) {
+          clearInterval(externalPollRef.current);
+          externalPollRef.current = null;
+        }
+        externalRunningRef.current = false;
+      }
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
       const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
       if (res.status === 404) {
@@ -1073,7 +1086,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const token = beginAuthoritativeModelSync();
         const stateRes = await fetch(`/api/sessions/${encodeURIComponent(sid)}/state`);
         if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
-        const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse };
+        const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse; external?: boolean };
         if (sessionIdRef.current !== sid) {
           if (showLoading) setLoading(false);
           return null;
@@ -2338,7 +2351,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage && !images?.length) return false;
-    if (agentRunningRef.current || bashRunningRef.current) return false;
+    if (agentRunningRef.current || bashRunningRef.current) {
+      if (externalRunningRef.current) {
+        addNotice({ type: "info", message: translate("agentSession.externallyRunning") });
+      }
+      return false;
+    }
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
 
     const isBashCommand = !images?.length && trimmedMessage.startsWith("!");
@@ -3072,6 +3090,41 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             // open_url/notify/open_file and resolve pi-web://clipboard.
             void registerHostTools(session.id);
             void registerHostUriSchemes(session.id);
+          } else if (agentState.external) {
+            // The session is being written by a terminal `omp` / another
+            // harness: no RPC stream to attach (it would silently miss the
+            // external writes). Show it as running and let the session-file
+            // watcher reload the transcript as the file grows.
+            externalRunningRef.current = true;
+            agentRunningRef.current = true;
+            setAgentRunning(true);
+            setAgentPhase({ kind: "running_command" });
+            dispatch({ type: "start" });
+            addNotice({ type: "info", message: translate("agentSession.externallyRunning") });
+            // When the external CLI finishes, the file stops changing and the
+            // state route reports external:false again — reclaim the session
+            // for web sending and clear the running state.
+            if (externalPollRef.current) clearInterval(externalPollRef.current);
+            externalPollRef.current = setInterval(() => {
+              void fetch(`/api/sessions/${encodeURIComponent(session.id)}/state`)
+                .then((res) => (res.ok ? res.json() as Promise<{ external?: boolean }> : null))
+                .then((st) => {
+                  if (!st || st.external !== false) return;
+                  if (externalPollRef.current) {
+                    clearInterval(externalPollRef.current);
+                    externalPollRef.current = null;
+                  }
+                  if (sessionIdRef.current !== session.id) return;
+                  externalRunningRef.current = false;
+                  agentRunningRef.current = false;
+                  setAgentRunning(false);
+                  dispatch({ type: "end" });
+                  addNotice({ type: "info", message: translate("agentSession.externalFinished") });
+                })
+                .catch(() => {
+                  // transient failure — keep polling
+                });
+            }, 10_000);
             // Rehydrate the live roster (missed lifecycle/progress frames).
             // Tracked + session-guarded: a session switch during the delay must
             // not issue a stale get_subagents against the old session.
@@ -3085,7 +3138,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               if (sessionIdRef.current !== rosterTimerSid) return;
               void refreshSubagentRoster(rosterTimerSid);
             }, 600);
-            if (!agentState.state.isStreaming && agentState.state.isPromptRunning) {
+            if (agentState.state && !agentState.state.isStreaming && agentState.state.isPromptRunning) {
               void waitForPromptSettlement(session.id);
             }
           }

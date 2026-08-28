@@ -1,5 +1,5 @@
 import { getRunningRpcSessionIds, subscribeRunningSessions } from "@/lib/rpc-manager";
-import { subscribeSessionFileChanges } from "@/lib/session-watcher";
+import { subscribeSessionFileChanges, getExternallyActiveIds } from "@/lib/session-watcher";
 
 export const dynamic = "force-dynamic";
 
@@ -36,12 +36,35 @@ export async function GET(req: Request) {
       const holder: { fn: (() => void) | null } = { fn: null };
       holder.fn = subscribeSessionFileChanges((sessionIds) => {
         try {
-          encode({ type: "sessions-changed", sessionIds, refreshSessionList: true });
+          // Sessions the web UI spawned itself produce their own RPC events;
+          // everything else that changed on disk is being written by an
+          // external omp/harness and should render as externally running.
+          const rpcIds = new Set(getRunningRpcSessionIds());
+          const externallyRunning = sessionIds.filter((id) => !rpcIds.has(id));
+          encode({
+            type: "sessions-changed",
+            sessionIds,
+            refreshSessionList: true,
+            ...(externallyRunning.length > 0 ? { externallyRunning } : {}),
+          });
         } catch {
           try { holder.fn?.(); } catch { /* already cleaned up */ }
         }
       });
       const unsubscribeFiles = holder.fn;
+
+      // Periodically re-broadcast the externally-running set so badges expire
+      // client-side once a CLI session stops writing (no event fires then).
+      const externalHeartbeat = setInterval(() => {
+        try {
+          const active = getExternallyActiveIds(5000);
+          if (active.length > 0) {
+            encode({ type: "externally-running", externallyRunning: active });
+          }
+        } catch {
+          // controller already closed
+        }
+      }, 5_000);
 
       // Initial snapshot so the client renders the correct state immediately.
       // (A duplicate frame here is harmless: the client just sets the same set.)
@@ -60,6 +83,7 @@ export async function GET(req: Request) {
         clearInterval(heartbeat);
         unsubscribe();
         unsubscribeFiles();
+        clearInterval(externalHeartbeat);
         try { controller.close(); } catch { /* already closed */ }
       };
       streamCleanup = cleanup;

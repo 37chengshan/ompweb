@@ -1238,5 +1238,7 @@
   "theme.bambooFlow": "Bamboo Mist",
   "plan.truncatedNote": "Plan file too large; showing first 256KB.",
   "fileExplorer.revealInFileManager": "Show in File Manager",
-  "fileExplorer.revealFailed": "Could not open in file manager"
+  "fileExplorer.revealFailed": "Could not open in file manager",
+  "agentSession.externallyRunning": "This session is running in an external omp terminal. Updates stream from the session file.",
+  "agentSession.externalFinished": "The external omp session finished; you can send messages again."
 }

@@ -1,10 +1,11 @@
-import { watch, type FSWatcher } from "fs";
+import { statSync, watch, type FSWatcher } from "fs";
 import { join } from "path";
 import {
   getAgentDir,
   invalidateSessionListCache,
   listAllSessions,
   resolveSessionIdByPath,
+  resolveSessionPath,
 } from "./session-reader";
 
 // omp owns the writes to a session's JSONL. ompweb streams RPC events only for
@@ -44,6 +45,7 @@ function flush(): void {
       .then((sessions) => {
         const sessionIds = sessions.map((s) => s.id);
         if (sessionIds.length === 0) return;
+        recordExternalActivity(sessionIds);
         for (const listener of listeners) {
           try {
             listener(sessionIds);
@@ -62,6 +64,7 @@ function flush(): void {
     .then((ids) => {
       const sessionIds = [...new Set(ids.filter((id): id is string => Boolean(id)))];
       if (sessionIds.length === 0) return;
+      recordExternalActivity(sessionIds);
       for (const listener of listeners) {
         try {
           listener(sessionIds);
@@ -130,4 +133,52 @@ export function subscribeSessionFileChanges(listener: Listener): () => void {
     watcher?.close();
     watcher = null;
   };
+}
+
+// ── External-activity tracking ──────────────────────────────────────────────
+// A session file that changes while its owning RPC process is idle means
+// something else — a terminal `omp`, a harness — is writing it. The web UI
+// must then treat the session as externally running: read-only file mode,
+// no RPC attach, and a "running" badge driven by file activity.
+
+const externalActivity = new Map<string, number>();
+
+/** Record that these sessions' files were observed to change. */
+export function recordExternalActivity(sessionIds: string[]): void {
+  const now = Date.now();
+  for (const id of sessionIds) {
+    externalActivity.set(id, now);
+  }
+}
+
+/**
+ * True when the session file changed within `withinMs`. Unlike the activity
+ * table (fed by the watcher, which only runs while a browser is connected),
+ * this stats the file directly so it works even with no SSE subscribers —
+ * the state route needs it to decide whether to attach an RPC process.
+ */
+export async function isExternallyActive(sessionId: string, withinMs = 5000): Promise<boolean> {
+  const filePath = await resolveSessionPath(sessionId);
+  if (!filePath) return false;
+  try {
+    const st = statSync(filePath);
+    return Date.now() - st.mtimeMs <= withinMs;
+  } catch {
+    return false;
+  }
+}
+
+/** Stop treating a session as externally active (e.g. after a user action). */
+export function clearExternalActivity(sessionId: string): void {
+  externalActivity.delete(sessionId);
+}
+
+/** Snapshot of externally-active session ids (for badges and cleanup). */
+export function getExternallyActiveIds(withinMs = 5000): string[] {
+  const now = Date.now();
+  const ids: string[] = [];
+  for (const [id, last] of externalActivity) {
+    if (now - last <= withinMs) ids.push(id);
+  }
+  return ids;
 }

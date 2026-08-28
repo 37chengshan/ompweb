@@ -1238,5 +1238,7 @@
   "theme.bambooFlow": "竹林雨霁 (Bamboo)",
   "plan.truncatedNote": "计划文件过大，仅显示前 256KB。",
   "fileExplorer.revealInFileManager": "在文件管理器中显示",
-  "fileExplorer.revealFailed": "无法在文件管理器中打开"
+  "fileExplorer.revealFailed": "无法在文件管理器中打开",
+  "agentSession.externallyRunning": "该会话正在外部 omp 终端中运行，内容将随会话文件实时更新。",
+  "agentSession.externalFinished": "外部 omp 会话已结束，可重新发送消息。"
 }

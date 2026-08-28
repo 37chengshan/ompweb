@@ -700,6 +700,30 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     }, 300);
   }, [loadSessions]);
 
+  // Externally-running sessions (terminal `omp` / harness writing the file)
+  // get a running badge that expires once their file stops changing.
+  const externalExpiryRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const markExternallyRunning = useCallback((ids: string[]) => {
+    setRunningSessionIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    for (const id of ids) {
+      const existing = externalExpiryRef.current.get(id);
+      if (existing) clearTimeout(existing);
+      externalExpiryRef.current.set(id, setTimeout(() => {
+        externalExpiryRef.current.delete(id);
+        setRunningSessionIds((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 15_000));
+    }
+  }, []);
+
   useEffect(() => {
     // Live running status and session-list invalidations arrive via SSE; the
     // sidebar never has to poll while an agent is working.
@@ -712,6 +736,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
           runningSessionIds?: string[];
           refreshSessionList?: boolean;
           sessionIds?: string[];
+          externallyRunning?: string[];
         };
         if (data.type === "running") {
           sseAuthoritativeRef.current = true;
@@ -720,6 +745,9 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         } else if (data.type === "sessions-changed") {
           if (data.refreshSessionList) scheduleRefresh();
           publishSessionsChanged(data.sessionIds ?? []);
+          if (data.externallyRunning?.length) markExternallyRunning(data.externallyRunning);
+        } else if (data.type === "externally-running") {
+          if (data.externallyRunning?.length) markExternallyRunning(data.externallyRunning);
         }
       } catch {
         // ignore malformed frames

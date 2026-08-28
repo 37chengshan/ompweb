@@ -1238,5 +1238,7 @@
   "theme.bambooFlow": "竹林雨霁",
   "plan.truncatedNote": "プランファイルが大きすぎるため、先頭256KBのみ表示しています。",
   "fileExplorer.revealInFileManager": "ファイルマネージャーで表示",
-  "fileExplorer.revealFailed": "ファイルマネージャーで開けませんでした"
+  "fileExplorer.revealFailed": "ファイルマネージャーで開けませんでした",
+  "agentSession.externallyRunning": "このセッションは外部の omp ターミナルで実行中です。セッションファイルから更新を反映します。",
+  "agentSession.externalFinished": "外部の omp セッションが終了しました。メッセージを送信できます。"
 }

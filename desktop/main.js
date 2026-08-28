@@ -22,9 +22,16 @@ const APP_URL = `http://${HOST}:${APP_PORT}`;
 
 const pkgDir = path.join(__dirname, "..");
 
+const APP_LOG_MAX_BYTES = 256 * 1024;
+
 function appLog(message) {
   try {
-    fs.appendFileSync(path.join(app.getPath("userData"), "omp-app.log"), `${new Date().toISOString()} ${message}\n`);
+    const logPath = path.join(app.getPath("userData"), "omp-app.log");
+    // Rotate: a runaway server loop must never grow the log without bound.
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > APP_LOG_MAX_BYTES) {
+      fs.writeFileSync(logPath, "");
+    }
+    fs.appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`);
   } catch { /* best effort */ }
 }
 

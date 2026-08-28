@@ -29,8 +29,8 @@
     }, 560);
   }
 
-  // Play the FULL logo video sped up (2.5x -> ~4s) so nothing is cut.
-  video.playbackRate = 2.5;
+  // Trimmed to 8s (first/last second cut), played at 2x -> ~4s launch.
+  video.playbackRate = 2;
   // Timed transition is the source of truth — ended can fire early on some
   // codecs/containers, which made the launch "flash past".
   let playStarted = false;

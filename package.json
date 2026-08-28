@@ -5,7 +5,7 @@
   "homepage": "https://github.com/kahme247/ompweb#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kahme247/ompweb.git"
+    "url": "git+https://github.com/37chengshan/ompweb.git"
   },
   "bugs": {
     "url": "https://github.com/kahme247/ompweb/issues"
@@ -147,6 +147,14 @@
         "from": "templates/desktop/splash.mp4",
         "to": "splash.mp4"
       }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "37chengshan",
+        "repo": "ompweb"
+      }
     ]
-  }
+  },
+  "author": "37chengshan"
 }

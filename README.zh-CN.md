@@ -1,218 +1,230 @@
 # ompweb
 
-[English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja.md)
+<p align="center">
+  <img src="public/icon.png" width="96" height="96" alt="ompweb logo" />
+</p>
 
-社区：[加入 OMPWEB Discord](https://discord.gg/evqgGzRfM5)
+<p align="center">
+  <strong>专为 <a href="https://github.com/can1357/oh-my-pi">oh-my-pi (omp)</a> 打造的现代化、高性能、本地优先的 Web 工作区与原生桌面应用</strong>
+</p>
 
-[oh-my-pi (omp) 编程智能体](https://github.com/can1357/oh-my-pi)的本地 Web UI。ompweb 读取本机的 omp 会话文件，在浏览器中提供一个工作区，支持会话浏览、实时对话、模型配置、技能管理和项目文件预览。
+<p align="center">
+  <a href="./README.md">English</a> | <a href="./README.zh-CN.md">简体中文</a> | <a href="./README.ja.md">日本語</a> | <a href="https://discord.gg/evqgGzRfM5">Discord 社区</a>
+</p>
 
-![ompweb — 演示](docs/demo.gif)
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19.0-brightgreen.svg" alt="Node.js version" />
+  <img src="https://img.shields.io/badge/Next.js-16.3-black.svg" alt="Next.js version" />
+  <img src="https://img.shields.io/badge/Electron-44.0-blue.svg" alt="Electron version" />
+  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License" />
+</p>
+
+---
+
+## 📖 项目简介
+
+**ompweb** 是 [oh-my-pi (omp)](https://github.com/can1357/oh-my-pi) AI 编程智能体的全功能图形化工作台与原生桌面客户端。
+
+它以**本地优先（Local-first）**为核心设计理念，无缝接入你本地现有的 omp 运行时（直接读取 `~/.omp/agent/sessions/` 会话历史）。通过提供直观现代的图形界面，ompweb 将 AI 编程体验从单一的命令行终端拓展为一个支持**多会话分支管理**、**实时多智能体协同**、**全功能交互式 Web PTY 终端**、**可视化 MCP 与技能生态管理**、**代码与富媒体协同浏览**、**Git 多工作树切换**的强大集成开发环境。
+
+![ompweb 演示动图](docs/demo.gif)
 
 <details>
-<summary>界面截图 (浅色 / 深色)</summary>
+<summary>📸 查看界面截图（浅色 / 深色双主题）</summary>
 
-![ompweb — 浅色主题](docs/screenshot-light.png)
-
-![ompweb — 深色主题](docs/screenshot-dark.png)
+| 浅色模式 (Light Theme) | 深色模式 (Dark Theme) |
+| :---: | :---: |
+| ![ompweb 浅色模式](docs/screenshot-light.png) | ![ompweb 深色模式](docs/screenshot-dark.png) |
 
 </details>
 
-## 🌟 相比上游仓库的优化与增强 (Optimizations & Enhancements)
+---
 
-本仓库（[37chengshan/ompweb](https://github.com/37chengshan/ompweb)）是基于 [kahme247/ompweb](https://github.com/kahme247/ompweb) 的功能增强与深度调优版本。基于代码库的真实实现，包含了以下关键特性新增、架构升级与性能优化：
+## ⚡ 快速开始
 
-### 1. 🖥️ 内置交互式 Web PTY 终端 (Interactive Web PTY Terminal)
-- **真 PTY 伪终端分配 (`lib/terminal-session-manager.ts`, `components/TerminalPanel.tsx`, `app/api/terminal/*`)**：在 macOS 上采用 `python3 -c "import pty,sys; pty.spawn(...)" /bin/zsh -i`，在 Linux 上采用 `script -qfc` 分配原生 PTY 伪设备，支持完整的 ANSI 256/TrueColor 高亮解析、交互式行编辑、光标移动及实时 zsh/bash 回显。
-- **生命周期自动回收与实例上限**：无活动 30 分钟（30min TTL）自动回收销毁后台 shell 进程，全局限制最多 8 个并发终端会话，防止孤儿进程累积。
-- **内存安全与按键防乱序**：历史输出缓冲区采用字节容量硬上限（`MAX_HISTORY_BYTES = 1MB`）而非单纯限制行数；前端按键输入引入串行化队列与 5 秒超时中止信号（AbortSignal），彻底解决高速连击下的按键乱序问题。
+ompweb 提供灵活多样的启动方式，无论是浏览器 Web 模式、独立的桌面原生应用，还是源码本地运行，均可开箱即用。
 
-### 2. 📂 系统原生文件管理器一键定位 (System File Manager Reveal)
-- **常驻「在文件管理器中显示」快捷键 (`app/api/reveal/route.ts`, `components/FileExplorer.tsx`, `components/SessionSidebar.tsx`)**：工作区卡片与文件树节点提供常驻快捷按钮（无需 hover 悬停），跨平台调用系统原生文件管理器（macOS 区分目录 `open <dir>` 与文件 `open -R <file>`，Windows `explorer /select,`，Linux `xdg-open`）。
-- **安全白名单与防挂起熔断**：路径受 `getAllowedFileRoots()` 严格校验防止越权逃逸，执行调用附加 8 秒超时熔断（`timeout: 8000`），避免桌面管理器卡死导致请求阻塞。
+### 方式一：Web 模式启动
 
-### 3. 🎨 视觉主题工作室与排版动效定制 (Theme Studio & Motion Controls)
-- **多达 18+ 预设主题 (`components/ThemePicker.tsx`, `hooks/useTheme.ts`)**：提供经典纸墨、余烬暗黑、Nord、Oatmeal、Matcha、OLED 纯黑、Sepia、Dracula、Pine、Navy 以及 6 种流体动态流动渐变主题（`aurora-flow`、`dawn-flow`、`cosmic-flow`、`ocean-flow`、`sakura-flow`、`bamboo-flow`），并支持完全自定义色彩取色。
-- **排版定制与动效无障碍 (`hooks/useTypography.ts`, `hooks/useMotionPrefs.ts`)**：支持自定义字体族、字号缩放比例和行高；自动联动操作系统 `prefers-reduced-motion` 偏好，即时禁用耗性能的 SVG SMIL 动效并将平滑滚动转为瞬时跳转。
+#### 1. 免安装即开即用（最快体验）
 
-### 4. 🧭 计划模式看板与历史追溯 (Plan Mode Kanban & History)
-- **交互式计划看板 (`components/PlanPanel.tsx`, `lib/plan-reader.ts`, `app/api/sessions/[id]/plan/route.ts`)**：实时同步并渲染 `<session>/local/*-plan.md` 计划成果，采用 `StringDecoder` 对前 256KB 实行字符安全边界切片读取，避免在 Node 内存中加载巨型文件。
-- **会话切换状态隔离**：切换会话时自动重置 `planInfo`，杜绝跨会话计划数据残留。
-
-### 5. ⚡ 前端渲染性能极致调优 (UI & Rendering Performance)
-- **流式 Markdown 增量旁路 (`components/MarkdownBody.tsx`)**：Token 流式输出期间跳过全文公式正则扫描（`normalizeDisplayMath`）与 KaTeX 插件动态加载，待消息提交后一次性解析，保持 60fps 丝滑输出。
-- **数学公式正规化 LRU 缓存 (`lib/markdown.ts`)**：为 `normalizeDisplayMath` 引入 200 容量 LRU 缓存，已提交历史消息在切换主题或滚动时 $O(1)$ 命中，消除重复正则扫描。
-- **细粒度 `MessageView` Memo 比对 (`components/MessageView.tsx`)**：通过 `haveSameRelevantToolResults` 仅在消息内部包含的 `toolCallId` 发生变动时触发单条消息重渲染，避免 Agent 执行工具时触发全局重渲染。
-- **超大消息渲染熔断保护 (`components/MessageView.tsx`)**：超过 100,000 字符的巨型输出自动折叠为轻量虚拟化纯文本视图（`SafeMarkdownBody`），杜绝 React AST 解析导致的主线程崩溃。
-- **Unified Diff LRU 缓存 (`lib/patch.ts`)**：Diff 解析内置 20 容量 LRU 缓存，避免重复行计算。
-- **自适应 TPS 采样退避算法 (`hooks/useAgentSession.ts`)**：在模型处于深度思考或耗时工具调用时，自动将 `tokensPerSecond` 轮询间隔从 2 秒退避至 4 秒，Token 恢复输出时即刻回弹至 2 秒，显著减轻服务端压力。
-
-### 6. 🛡️ 后端并发与 RPC 内存安全加固 (Backend & RPC Hardening)
-- **Git Worktree 飞行中 Promise 聚合去重 (`lib/worktree.ts`)**：通过 `__piProjectPendingCache` 将并发发生的同一目录 `resolveProject` 请求合并为一个真实 Git 进程，并享有 5 分钟 TTL 缓存。
-- **会话列表加载并发限制与 LRU 缓存 (`lib/session-reader.ts`)**：`loadAllSessions` 使用 `CONCURRENCY = 6` 批处理并发限制；`loadSessionEntriesCached` 提供 32 容量的 `(size, mtimeMs)` 校验缓存。
-- **Task 工具遥测数据裁剪 (`lib/session-reader.ts`)**：`keepTaskToolResultDetails` 将日志文本截断至 240 字符并最多保留 50 行，彻底解决历史会话 JSON 传输膨胀导致的 Node 堆内存溢出。
-- **RPC 子进程销毁防假死超时熔断 (`lib/omp/rpc-process.ts`)**：在 `RpcProcess.dispose()` 中新增 `failsafe` 超时竞争，防止操作系统僵死进程挂起销毁流程。
-- **原子 MCP 配置文件操作 (`lib/omp/mcp-config.ts`)**：临时文件写入流程附带 `try...finally` 垃圾清理，支持全局用户配置（`~/.omp/agent/mcp.json`）。
-
-### 7. ⚙️ MCP 管理器重构与内置 Agent MCP
-- **双模式可视化表单编辑器 (`components/McpConfig.ts- **减少对终端配置的依赖**：在 Web UI 中管理模型、登录/API 密钥、模型测试、任务智能体、原生 OMP 控制（顾问、审批、Bash 策略、思考、压缩、记忆、自动学习、重试/回退）、技能（搜索、安装、更新检查）、插件以及项目/全局 MCP 服务器。
-- **在设置中管理 MCP**：专用 MCP 标签页显示项目与全局服务器状态（已启用 / 已禁用 / 无效），支持添加、编辑、重命名、校验和删除，并通过角落提示显示配置失败。
-- **丰富的斜杠命令**：`/goal`, `/plan`, `/terminal`, `/theme`, `/mcp`, `/review`, `/fix`, `/test`, `/explain`, `/simplify`, `/commit`, `/advisor` 扩展为结构化 Prompt；omp 自身的命令（技能、`/compact` 等）通过 `available_commands_update` 自动同步。
-- **保持 OMP 为最新版本**：可在设置中检查已安装运行时、更新它，并按需重启活动会话。
-- **及时获知完成状态**：可选择在智能体完成时接收浏览器通知，播放完成音效，并检查已安装技能的更新。
-- **⌘K 随处跳转**：命令面板（⌘K / Ctrl+K）支持切换会话、新建会话和切换主题。
-- **温暖的纸感设计**：18+ 款浅色/深色主题，衬线展示字体，对比度经 WCAG AA 验证，基于 Base UI 基元、cmdk 与 lucide 图标构建。
-
-## 配置
-
-| 变量 | 含义 |
-| --- | --- |
-| `PORT` | 服务器端口（默认 `30177`；`-p/--port` 优先） |
-| `OMP_WEB_HOSTNAME` | 绑定主机名（默认 `127.0.0.1`；`-H/--hostname` 优先） |
-| `OMP_WEB_PASSWORD` / `--password` | 登录页面使用的密码；`--password` 适用于所有终端环境 |
-| `OMP_WEB_NO_OPEN` | 设为 `1`/`true` 可跳过自动打开浏览器 |
-| `OMP_WEB_OMP_BIN` | `omp` 不在 `PATH` 中时，指向其二进制文件的绝对路径 |
-| `PI_CODING_AGENT_DIR` | 指向其他 omp agent 目录（默认 `~/.omp/agent`） |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | 服务器端请求使用的标准代理变量 |
-
-## 架构
-
-ompweb 是一个由 Node 托管的 Next.js 应用，驱动你已安装的 `omp` 二进制文件——它并不内嵌智能体：
-
-- **实时会话**：启动 `omp --mode rpc-ui`（基于 stdio 的 NDJSON），每个活动会话对应一个子进程，因此智能体版本始终与你安装的完全一致。
-- **会话浏览**：直接读取 omp 的会话文件（`~/.omp/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`）；标题、归档和删除是受保护的原生文件维护操作，不会与 OMP 的实时写入竞争。
-- **模型与认证**：通过 RPC 命令与 omp 子进程交互；模型面板编辑 omp agent 目录中的 `models.yml`。
-- **技能与插件**：扫描 omp 的技能目录（`~/.omp/agent/skills`、项目内 `.omp/skills` 及兼容目录），并调用 `omp plugin` 进行插件管理。
-- **MCP 服务器**：通过 OMP 原生位置（`.omp/mcp.json`、`~/.omp/agent/mcp.json`）管理项目与全局服务器，严格校验协议并原子写入。
-- **文件访问**：文件浏览与预览仅限于所选项目目录以及会话中出现过的工作目录。
-- **分叉与会话内分支**：分叉会创建新的 `.jsonl` 文件；“从此处编辑”则在同一会话文件内创建另一个分支。
-
-## 开发
+只要你的电脑安装了 Node.js (>= 22.19.0) 与 [omp](https://github.com/can1357/oh-my-pi)：
 
 ```bash
+npx @37chengshan/ompweb@latest
+```
+
+服务启动后将监听 `http://127.0.0.1:30177` 并自动在系统默认浏览器中打开页面。
+
+#### 2. 全局安装为系统 CLI 工具
+
+```bash
+# 全局安装
+npm install -g @37chengshan/ompweb
+
+# 随时在终端启动
+ompweb
+```
+
+> 💡 **镜像源提示**：若使用 npmmirror 等国内镜像遇到新版本 `E404` 延迟，可指定官方 registry：
+> ```bash
+> npm install -g @37chengshan/ompweb --registry=https://registry.npmjs.org
+> ```
+
+#### 3. 常用启动参数与环境变量
+
+```bash
+ompweb --port 8080                        # 自定义监听端口
+ompweb --hostname 0.0.0.0                 # 允许局域网受信任设备访问
+ompweb --password "your-strong-password"  # 开启网页访问密码保护
+ompweb --no-open                          # 启动后不自动唤起浏览器（适合远程服务器或后台服务）
+
+# 亦支持通过环境变量传递参数：
+PORT=8080 OMP_WEB_PASSWORD="your-strong-password" ompweb
+```
+
+---
+
+### 方式二：下载桌面原生应用 (Desktop App)
+
+ompweb 提供了由 Electron 封装的独立桌面客户端，具备系统托盘常驻、Dock 状态展示、独立的窗口生命周期管理以及启动动画。
+
+#### 1. 直接下载安装包
+
+前往 [GitHub Releases](https://github.com/37chengshan/ompweb/releases) 页面，下载对应系统的安装文件：
+- **macOS**：`.dmg` 安装包（原生支持 Apple Silicon 及 Intel 架构）
+- **Windows**：`.exe` 安装程序 (NSIS)
+- **Linux**：`.AppImage` 单文件可执行包
+
+#### 2. 本地构建桌面端安装包
+
+```bash
+# 1. 克隆代码仓库并安装依赖
+git clone https://github.com/37chengshan/ompweb.git
+cd ompweb
+npm install
+
+# 2. 启动桌面客户端开发预览
+npm run desktop:start
+
+# 3. 打包生成各平台独立安装包
+npm run desktop:build      # 打包 macOS (.dmg)
+npm run desktop:build:win  # 打包 Windows (.exe)
+npm run desktop:build:all  # 同时打包所有平台 (macOS, Windows, Linux)
+```
+
+---
+
+### 方式三：源码本地开发启动
+
+```bash
+git clone https://github.com/37chengshan/ompweb.git
+cd ompweb
 npm install
 npm run dev
+# 浏览器访问 http://127.0.0.1:30178
 ```
 
-本地开发服务器运行在 [http://127.0.0.1:30178](http://127.0.0.1:30178)。
+---
 
-常用检查：
+## 🌟 核心功能特性
+
+### 1. 💬 智能会话管理与版本分支导航 (Session Hub & Branching)
+- **多项目智能分类**：自动识别工作区项目根目录，按项目智能归集和展示会话历史。
+- **会话内分支导航器 (Branch Navigator)**：支持在会话内部任意历史节点上自由切换与“从此处继续”，低成本探索不同的编码方案。
+- **安全会话分叉 (Fork Session)**：可从任意用户提问节点将对话克隆为全新独立会话文件，不影响主干上下文。
+- **原生 Gzip 归档与导出**：与 OMP 原生 `archive/sessions/<cwd>/<file>.jsonl.gz` 格式完全兼容，支持会话搜索、重命名、自动标题生成与单文件 HTML 导出。
+- **全维度实时遥测**：实时统计当前会话的 Token 消耗、费用账单、运行耗时、上下文利用率（Context Gauge）及 omp 实时 TPS 输出速率。
+
+### 2. 🖥️ 内置全功能交互式 Web PTY 终端 (Integrated PTY Terminal)
+- **真实系统伪终端分配**：基于 `node-pty` 分配底层系统终端（macOS/Linux 下为交互式 `zsh`/`bash`，Windows 下为 `cmd.exe`），完整支持 ANSI 256/TrueColor 色彩渲染、光标定位、Tab 自动补全与实时回显。
+- **安全队列与资源保护**：严格保证按键顺序的 FIFO 序列与 5 秒抢占超时防护；全局限制最大 8 个终端会话，闲置 30 分钟自动回收清理。
+
+### 3. 🤖 多智能体协作与计划执行看板 (Multi-Agent & Plan Kanban)
+- **输入附着式计划看板 (Todo Plan Panel)**：常驻于输入框上方，实时展示当前任务计划、子步骤清单与执行状态。
+- **Subagent 实时监控**：子智能体卡片配备脉冲呼吸灯，动态展示子任务的工具调用、Token 用量、耗时与重试状态。
+- **执行摘要与完整日志**：一键调出专属子智能体详情弹窗，查看最终产出摘要或逐字节分页审阅完整 Transcript。
+- **内置 Agent-MCP 多智能体调度器**：原生集成 Python 多智能体调度守护进程，内置 `designer`、`librarian`、`reviewer`、`scout`、`security-reviewer`、`sonic`、`task` 等多领域角色智能体预设。
+
+### 4. 📂 工作区协同与富媒体深度预览 (Workspace & Rich Media)
+- **Git Worktrees 多分支切换**：侧边栏无缝切换 Git 工作树分支，文件树与会话上下文即时随之联动。
+- **一键系统文件管理器定位**：支持在工作区或文件节点点击 “Reveal in Finder / Explorer / File Manager”，内置 8 秒超时保护与路径防逃逸校验。
+- **多格式富媒体预览器**：左侧浏览代码文件树，右侧多标签页快速预览源代码（代码高亮与行号）、Markdown（KaTeX 数学公式、Mermaid 拓扑图）、PDF、DOCX、图片（支持灯箱放大缩放）及音视频资源。
+
+### 5. ⚙️ 可视化 MCP 与技能生态 (Visual MCP & Skills Hub)
+- **双模 MCP 管理器**：支持可视化表单与原始 JSON 双向切换，内置 Python stdio、NPX stdio、Remote HTTP、Brave Search、PostgreSQL、GitHub、Fetch 等常用模板。
+- **技能市场与全网检索**：自动扫描项目及全局技能（`.omp/skills` 等），支持通过 `skills.sh` 检索全网技能并一键安装/更新。
+- **插件管理**：直观查看、开启、禁用或升级已安装的 `omp plugin` 插件。
+
+### 6. 🔑 模型矩阵与原生 OMP 配置 (Models & Native Settings)
+- **可视化模型配置与连通性测试**：直接编辑 `~/.omp/agent/models.yml`，支持多 Provider 切换与模型一键连通性测试。
+- **原生参数微调**：在界面设置中直接调整 Advisor 顾问策略、审批模式、Bash 执行策略、Thinking 思考深度、上下文压缩算法、记忆库与自动学习等。
+- **快捷斜杠指令 (Slash Commands)**：内置 `/goal`、`/plan`、`/terminal`、`/theme`、`/mcp`、`/review`、`/fix`、`/test`、`/explain` 等丰富指令模板。
+
+### 7. 🎨 主题工作室与无障碍美学 (Theme Studio & UX)
+- **18+ 预设主题与调色板**：经典纸感（Warm Paper）、Ember Dark、Nord、OLED 纯黑、抹茶、Sepia、Dracula，以及 6 款带有流体背景动效的动态主题（Aurora、Dawn、Cosmic、Ocean、Sakura、Bamboo）。
+- **字体与动效定制**：支持自定义字体族与字号缩放倍率，深度适配操作系统的 `prefers-reduced-motion` 减弱动效偏好。
+- **⌘K 快速命令面板**：使用 `⌘K` / `Ctrl+K` 快速在项目、会话与系统功能间全局瞬移。
+- **多语言国际化**：原生支持简体中文、English、日本語，全量文本覆盖且自动识别系统语言。
+
+---
+
+## 🏗️ 架构设计与安全性
+
+```
+┌────────────────────────────────────────────────────────┐
+│               Browser / Desktop Window (Electron)      │
+└───────────────────────────┬────────────────────────────┘
+                            │ HTTP / SSE / WebSocket
+┌───────────────────────────▼────────────────────────────┐
+│              ompweb Server (Next.js on Node)           │
+│  ├─ JSONL 会话流式解析与路径缓存 (lib/session-reader.ts)   │
+│  ├─ Web PTY 终端会话管理器 (lib/terminal-session-manager)│
+│  ├─ 文件安全沙箱与白名单校验 (lib/file-access.ts)           │
+│  └─ RPC 进程生命周期调度 (lib/rpc-manager.ts)           │
+└───────────────────────────┬────────────────────────────┘
+                            │ NDJSON over stdio (RPC v1/v2)
+┌───────────────────────────▼────────────────────────────┐
+│           本地已安装的 omp CLI (`omp --mode rpc-ui`)     │
+│  ├─ 真实的 AI 智能体执行内核与工具调用                     │
+│  ├─ 凭证存储 (`agent.db`) 与模型路由                     │
+│  └─ 会话文件写入 (`~/.omp/agent/sessions/`)             │
+└────────────────────────────────────────────────────────┘
+```
+
+- **数据主权完全归属用户**：ompweb 不自建私有数据格式，不持久化敏感 API Key，所有对话与凭证均由已安装的 `omp` 二进制和 `~/.omp/agent/` 原生驱动。
+- **默认本地回环绑定**：默认仅监听 `127.0.0.1`，杜绝未经授权的公网暴露风险。
+- **安全密码认证**：配置 `OMP_WEB_PASSWORD` 后自动对所有前端页面及 API 开启 Signed Cookie 鉴权阻断。
+- **严格的文件访问白名单**：文件预览与读取接口受到严格的路径规范化和真实路径（`realpath`）校验，彻底防止跨目录遍历与符号链接逃逸。
+
+---
+
+## 🛠️ 配置环境变量说明
+
+| 变量名 | 说明 | 默认值 / 示例 |
+| :--- | :--- | :--- |
+| `PORT` / `-p` / `--port` | Web 服务监听端口 | `30177` |
+| `OMP_WEB_HOSTNAME` / `-H` / `--hostname` | 监听主机地址 | `127.0.0.1` |
+| `OMP_WEB_PASSWORD` / `--password` | Web 访问密码保护 | *(未设置即无需密码)* |
+| `OMP_WEB_NO_OPEN` | 启动后是否跳过自动打开浏览器 | `0` (`1` 表示不自动打开) |
+| `OMP_WEB_OMP_BIN` | 指定 `omp` 二进制可执行文件的绝对路径 | 自动从 `PATH` 环境变量中查找 |
+| `PI_CODING_AGENT_DIR` | 指定 OMP 数据与配置存放根目录 | `~/.omp/agent` |
+| `HTTP_PROXY` / `HTTPS_PROXY` | 后端请求所使用的代理配置 | *(根据系统网络环境指定)* |
+
+---
+
+## 🧑‍💻 本地开发与质量保证
 
 ```bash
-npm run typecheck      # TypeScript 类型检查 (tsc --noEmit)
-npm run lint           # ESLint（零警告）
-npm test               # 运行原生 Node.js 测试套件
-npm run build          # 生产构建
+npm run dev           # 启动开发服务器 (端口 30178)
+npm run typecheck     # 执行 TypeScript 类型校验 (tsc --noEmit)
+npm run lint          # 执行 ESLint 语法与规范检查
+npm test              # 运行内置原生 Node.js 测试套件 (450+ 测试用例)
+npm run release:check # 发布前全量自动化质量验收 (Typecheck + Lint + Test + Build)
 ```
 
-本地开发时请避免运行 `next build` / `npm run build`。它会写入 `.next/`，可能干扰开发服务器；构建请留到发布阶段。
+---
 
-## 多语言支持
+## 📄 开源协议
 
-ompweb 支持英语、简体中文和日本語，三种语言均覆盖整个界面的翻译字符串。语言从 `navigator.language` 自动检测，可通过顶栏的语言菜单在运行时切换。选择会跨会话持久化。
-
-- 字典文件：`lib/i18n/locales/{en,zh-CN,ja}.json`
-- 框架：`lib/i18n/index.tsx` — 基于 `useSyncExternalStore` 的轻量 store，支持 `{var}` 插值和复数形式（`.one`/`.other`）
-- API 错误消息通过稳定的错误码（`errors.<code>`）在客户端翻译
-
-## 质量
-
-- **可访问性**：符合 WCAG AA 标准 — Lighthouse 可访问性评分 100/100，全键盘导航，焦点可见环，ARIA 角色
-- **性能**：列表组件 memo 化、RAF 节流滚动/鼠标处理、防抖搜索、流式 JSONL 读取器、ETag 缓存会话列表
-- **健壮性**：优雅关闭 omp 子进程（进程组杀死）、错误边界、原子化会话文件重写
-- **测试**：聚焦的测试套件覆盖会话解析、终端输入、Markdown 渲染、消息展示、原生设置和 MCP 配置
-
-## 致谢
-
-ompweb 分叉自 [agegr/pi-web](https://github.com/agegr/pi-web)（MIT）——[earendil/pi-mono](https://github.com/earendil-works/pi) pi 编程智能体的 Web UI，并针对 [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 进行了适配。
-
-## 许可证
-
-MIT��过受信任反向代理或 VPN 提供 HTTPS，以保护密码和会话 Cookie。默认仅监听 `127.0.0.1`；不要将 ompweb 直接暴露到互联网。
-
-### 安全与故障排查
-
-- 服务器默认仅绑定 `127.0.0.1`。非环回地址属于显式选择，仅可在可信网络边界内使用；ompweb 不适合直接向公网暴露。
-- 文件 API 严格限制在所选工作区、有效 Git 工作树、会话引用的目录以及显式选择的根目录。路径会经过规范化处理，杜绝路径穿越和符号链接逃逸。
-- 优先从 `OMP_WEB_OMP_BIN` 解析 `omp`，其次从 `PATH` 解析。如果无法启动实时对话，请在相同终端运行 `omp --version` 或设置绝对路径。
-- 会话历史保留原生的 OMP JSONL 格式。OMP 拥有实时会话的写入权；ompweb 直接读取文件，仅在不与实时写入冲突时执行显式标题、归档和删除操作。
-- 会话归档采用 OMP 原生的 `archive/sessions/<cwd>/<file>.jsonl.gz` 布局，并将附属产物与记录一同移动；原始 JSONL 完整保存在 gzip 内。
-
-## 功能特性
-
-- **随时接续之前的工作**：按项目浏览以往的 omp 对话，不必翻找终端历史或会话文件路径。
-- **放心尝试不同方向**：从更早的消息继续，或将会话分叉为一条独立路线。
-- **整理侧边栏**：归档不活跃会话而不删除原生记录，或在不再需要时明确删除。
-- **跨分支工作**：在侧边栏切换 Git 工作树，新会话和资源管理器都会跟随你选择的检出。
-- **边看项目边聊天**：左侧浏览文件，右侧预览源码、文档、图片、音频和 PDF，同时智能体继续工作。
-- **清晰掌握会话状态**：上下文用量、费用、压缩上下文状态和系统提示词详情都显示在顶栏。
-- **减少对终端配置的依赖**：在 Web UI 中管理模型、登录/API 密钥、模型测试、原生 OMP 控制（顾问、审批、Bash 策略、思考、压缩、记忆、自动学习、重试/回退）、技能、插件和项目 MCP 服务器。
-- **在设置中管理 MCP**：专用 MCP 标签页显示项目服务器状态（已启用 / 已禁用 / 无效），支持添加、编辑、重命名、校验和删除，并通过角落提示显示配置失败。
-- **保持 OMP 为最新版本**：可在设置中检查已安装运行时、更新它，并按需重启活动会话。
-- **及时获知完成状态**：可选择在智能体完成时接收浏览器通知，并检查已安装技能的更新。
-- **⌘K 随处跳转**：命令面板（⌘K / Ctrl+K）支持切换会话、新建会话和切换主题。
-- **温暖的纸感设计**：浅色/深色双主题，衬线展示字体，对比度经 WCAG AA 验证，基于令牌驱动的 UI 套件（Base UI 基元、cmdk、lucide 图标）构建。
-
-## 配置
-
-| 变量 | 含义 |
-| --- | --- |
-| `PORT` | 服务器端口（默认 `30177`；`-p/--port` 优先） |
-| `OMP_WEB_HOSTNAME` | 绑定主机名（默认 `127.0.0.1`；`-H/--hostname` 优先） |
-| `OMP_WEB_PASSWORD` | 登录页面使用的可选密码 |
-| `OMP_WEB_NO_OPEN` | 设为 `1`/`true` 可跳过自动打开浏览器 |
-| `OMP_WEB_OMP_BIN` | `omp` 不在 `PATH` 中时，指向其二进制文件的绝对路径 |
-| `PI_CODING_AGENT_DIR` | 指向其他 omp agent 目录（默认 `~/.omp/agent`） |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | 服务器端请求使用的标准代理变量 |
-
-## 架构
-
-ompweb 是一个由 Node 托管的 Next.js 应用，驱动你已安装的 `omp` 二进制文件——它并不内嵌智能体：
-
-- **实时会话**：启动 `omp --mode rpc-ui`（基于 stdio 的 NDJSON），每个活动会话对应一个子进程，因此智能体版本始终与你安装的完全一致。
-- **会话浏览**：直接读取 omp 的会话文件（`~/.omp/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`）；标题、归档和删除是受保护的原生文件维护操作，不会与 OMP 的实时写入竞争。
-- **模型与认证**：通过 RPC 命令与 omp 子进程交互；模型面板编辑 omp agent 目录中的 `models.yml`。
-- **技能与插件**：扫描 omp 的技能目录（`~/.omp/agent/skills`、项目内 `.omp/skills` 及兼容目录），并调用 `omp plugin` 进行插件管理。
-- **文件访问**：文件浏览与预览仅限于所选项目目录以及会话中出现过的工作目录。
-- **分叉与会话内分支**：分叉会创建新的 `.jsonl` 文件；“从此处编辑”则在同一会话文件内创建另一个分支。
-
-## 开发
-
-```bash
-npm install
-npm run dev
-```
-
-本地开发服务器运行在 [http://127.0.0.1:30177](http://127.0.0.1:30177)。
-
-常用检查：
-
-```bash
-npx tsc --noEmit       # 类型检查
-npm run lint           # ESLint（零警告）
-node --test lib/*.test.mjs components/*.test.mjs   # 运行测试
-```
-
-本地开发时请避免运行 `next build` / `npm run build`。它会写入 `.next/`，可能干扰开发服务器；构建请留到发布阶段。
-
-## 多语言支持
-
-ompweb 支持英语、简体中文和日本語，三种语言均覆盖整个界面的翻译字符串。语言从 `navigator.language` 自动检测，可通过顶栏的语言菜单在运行时切换。选择会跨会话持久化。
-
-- 字典文件：`lib/i18n/locales/{en,zh-CN,ja}.json`
-- 框架：`lib/i18n/index.tsx` — 基于 `useSyncExternalStore` 的轻量 store，支持 `{var}` 插值和复数形式（`.one`/`.other`）
-- API 错误消息通过稳定的错误码（`errors.<code>`）在客户端翻译
-
-## 质量
-
-- **可访问性**：符合 WCAG AA 标准 — Lighthouse 可访问性评分 100/100，全键盘导航，焦点可见环，ARIA 角色
-- **性能**：列表组件 memo 化、RAF 节流滚动/鼠标处理、防抖搜索、流式 JSONL 读取器、ETag 缓存会话列表
-- **健壮性**：优雅关闭 omp 子进程（进程组杀死）、错误边界、原子化会话文件重写
-- **测试**：聚焦的测试套件覆盖会话解析、终端输入、Markdown 渲染、消息展示、原生设置和 MCP 配置
-
-## 致谢
-
-ompweb 分叉自 [agegr/pi-web](https://github.com/agegr/pi-web)（MIT）——[badlogic/pi-mono](https://github.com/badlogic/pi-mono) pi 编程智能体的 Web UI，并针对 [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 进行了适配。
-
-## 许可证
-
-MIT
+本项目遵循 [MIT 许可证](./LICENSE)。

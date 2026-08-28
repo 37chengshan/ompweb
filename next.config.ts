@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
 let version = "0.0.0";
 try {
@@ -17,7 +16,10 @@ try {
 // produce stale "module factory is not available" / hydration errors after
 // every restart.
 const nextConfig = (phase: string): NextConfig => {
-  const isDev = phase === PHASE_DEVELOPMENT_SERVER;
+  // String compare avoids importing next/constants: the transpiled
+  // config runs outside the app bundle (Resources/), where module
+  // resolution for "next/constants" fails.
+  const isDev = phase.includes("development");
   return {
     // Keep standalone/server tracing inside this package. Without this explicit
     // root, Next can choose a parent lockfile on Windows and traverse protected

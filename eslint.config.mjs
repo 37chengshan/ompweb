@@ -11,6 +11,15 @@ const eslintConfig = [
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  // Electron main/preload run in Node CJS (no TS, no ESM): the require-import
+  // rule does not apply there.
+  {
+    files: ["desktop/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-var-requires": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

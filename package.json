@@ -43,7 +43,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "prepack": "npm run build",
-    "release:check": "npm run typecheck && npm run lint && npm test && npm run build"
+    "release:check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "desktop:start": "electron .",
+    "desktop:build": "electron-builder --mac",
+    "desktop:build:win": "electron-builder --win",
+    "desktop:build:all": "electron-builder -mwl"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -66,6 +70,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "jiti": "^2.7.0",
@@ -81,5 +87,40 @@
     "remark-math": "^6.0.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5"
+  },
+  "main": "desktop/main.js",
+  "build": {
+    "appId": "io.github.37chengshan.ompweb",
+    "productName": "OmpWeb",
+    "files": [
+      "desktop/**",
+      "bin/**",
+      ".next/**",
+      "next.config.ts",
+      "package.json",
+      "public/**"
+    ],
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "public/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    }
   }
 }

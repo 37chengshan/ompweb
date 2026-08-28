@@ -35,12 +35,16 @@
   // codecs/containers, which made the launch "flash past".
   let playStarted = false;
   video.addEventListener("loadedmetadata", () => {
+    const d = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 8;
+    console.log("splash metadata duration=" + d + " rate=" + video.playbackRate);
     if (playStarted) return;
     playStarted = true;
-    const durMs = Math.min(video.duration / video.playbackRate, 6) * 1000;
-    setTimeout(fadeIntoApp, durMs + 150);
+    setTimeout(fadeIntoApp, (d / video.playbackRate) * 1000 + 150);
   });
+  video.addEventListener("error", () => console.log("splash video error: " + (video.error ? video.error.code : "?")));
+  video.addEventListener("playing", () => console.log("splash playing"));
   video.addEventListener("ended", fadeIntoApp);
+  video.play().catch((e) => console.log("splash play rejected: " + e));
   // Fallback: never leave the launch animation hanging.
   setTimeout(fadeIntoApp, 8000);
   document.body.addEventListener("click", fadeIntoApp);

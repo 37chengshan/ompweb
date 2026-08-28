@@ -178,6 +178,8 @@ function createWindow() {
     event.preventDefault();
     if (/^https?:/i.test(url)) shell.openExternal(url);
   });
+  mainWindow.webContents.on("console-message", (_e, _lvl, message) => appLog("window console: " + String(message).slice(0, 200)));
+  mainWindow.webContents.on("did-finish-load", () => appLog("window loaded: " + mainWindow.webContents.getURL()));
   mainWindow.on("closed", () => {
     mainWindow = null;
   });

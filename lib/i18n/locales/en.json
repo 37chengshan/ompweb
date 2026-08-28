@@ -1358,5 +1358,10 @@
   "diagnostics.healthy": "All services healthy",
   "diagnostics.warning": "Degraded",
   "diagnostics.restartRpc": "Restart OMP sessions",
-  "diagnostics.restarting": "Restarting…"
+  "diagnostics.restarting": "Restarting…",
+  "settingsConfig.splashAnimation": "Launch splash",
+  "settingsConfig.splashAnimationDesc": "Logo animation shown at app launch",
+  "settingsConfig.splashModeAlways": "Every launch",
+  "settingsConfig.splashModeOnce": "First launch only",
+  "settingsConfig.splashModeOff": "Off"
 }

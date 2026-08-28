@@ -20,4 +20,6 @@ contextBridge.exposeInMainWorld("ompWebDesktop", {
 contextBridge.exposeInMainWorld("piDesktop", {
   isDesktop: true,
   selectDirectory: () => ipcRenderer.invoke("select-directory"),
+  getSplashPref: () => ipcRenderer.invoke("get-splash-pref"),
+  setSplashPref: (mode) => ipcRenderer.invoke("set-splash-pref", mode),
 });

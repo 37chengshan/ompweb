@@ -1358,5 +1358,10 @@
   "diagnostics.healthy": "服务正常",
   "diagnostics.warning": "部分异常",
   "diagnostics.restartRpc": "重启 OMP 会话",
-  "diagnostics.restarting": "重启中…"
+  "diagnostics.restarting": "重启中…",
+  "settingsConfig.splashAnimation": "开屏动画",
+  "settingsConfig.splashAnimationDesc": "应用启动时的 logo 动画",
+  "settingsConfig.splashModeAlways": "每次启动都播放",
+  "settingsConfig.splashModeOnce": "仅首次启动播放",
+  "settingsConfig.splashModeOff": "关闭开屏动画"
 }

@@ -21,6 +21,7 @@ const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => m
 const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading, ssr: false });
 const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading, ssr: false });
 import { NetworkProxyConfig } from "./NetworkProxyConfig";
+import { SplashAnimationSetting } from "./SplashAnimationSetting";
 import { UpdateNoticeDialog } from "./UpdateNoticeDialog";
 import { loadUpdateHistory, clearUpdateHistory, isUpdateNoticeEnabled, setUpdateNoticeEnabled, type UpdateRecord } from "@/lib/update-notice";
 
@@ -703,6 +704,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                 </div>
 
                 <NetworkProxyConfig />
+
+                <SplashAnimationSetting />
 
                 <div style={{ marginTop: 12, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                   <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 4px", color: "var(--text)" }}>{t("settingsConfig.updateNotice")}</h4>

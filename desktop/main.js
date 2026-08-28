@@ -139,8 +139,10 @@ function waitForServer(attempt = 0, loadWhenReady = true) {
 /** First-launch: the MAIN window plays the logo video full-screen, then
  *  fades into the app UI. Returns true when the launch animation runs. */
 function isFirstLaunchSplash() {
+  const pref = readSplashPref();
+  if (pref === "off") return false;
   const markPath = path.join(app.getPath("userData"), "splash-shown");
-  if (fs.existsSync(markPath)) return false;
+  if (pref === "once" && fs.existsSync(markPath)) return false;
   const splashFile = path.join(pkgDir, "desktop", "splash.html");
   const splashVideo = app.isPackaged
     ? path.join(process.resourcesPath, "splash.mp4")
@@ -292,10 +294,30 @@ if (!gotLock) {
   });
 }
 
+// Splash animation preference: "always" | "once" | "off" (default "once").
+const SPLASH_PREF_PATH = () => path.join(app.getPath("userData"), "splash-pref.json");
+function readSplashPref() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(SPLASH_PREF_PATH(), "utf8"));
+    if (raw && (raw.mode === "always" || raw.mode === "once" || raw.mode === "off")) return raw.mode;
+  } catch { /* missing/corrupt -> default */ }
+  return "once";
+}
+function writeSplashPref(mode) {
+  try { fs.writeFileSync(SPLASH_PREF_PATH(), JSON.stringify({ mode })); } catch { /* best effort */ }
+}
+
 // Native folder picker (macOS / Windows / Linux all use Electron's dialog).
 ipcMain.handle("select-directory", async () => {
   const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
   return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+});
+
+// Splash animation preference (used by the Settings UI).
+ipcMain.handle("get-splash-pref", () => readSplashPref());
+ipcMain.handle("set-splash-pref", (_event, mode) => {
+  if (mode === "always" || mode === "once" || mode === "off") writeSplashPref(mode);
+  return readSplashPref();
 });
 
 // Renderer -> main helpers (window controls, open external).

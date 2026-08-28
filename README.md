@@ -171,63 +171,13 @@ npm run dev
 
 ## 🏗️ Architecture & Security
 
-> 🧭 **[Interactive Architecture Viewer (GitHub Pages)](https://37chengshan.github.io/ompweb/)** · **[Local Offline HTML](docs/ompweb-architecture.html)**: Standalone HTML built with Archify, featuring node focus, theme toggles, multi-view exploration, and crisp export.
+> 🧭 **[Interactive Architecture Viewer (Live on GitHub Pages)](https://37chengshan.github.io/ompweb/)** · **[Local Offline HTML](docs/ompweb-architecture.html)**
 
-```mermaid
-flowchart TB
-    subgraph Presentation["🖥️ Client Presentation Layer"]
-        BrowserUI["Web Browser UI<br/>(React 19 / Base UI)"]
-        DesktopApp["Desktop Client<br/>(Electron 44 / Tray)"]
-        TerminalUI["Web PTY Terminal<br/>(xterm.js / TrueColor)"]
-        ComposerUI["Composer & Plan UI<br/>(Todo Kanban / Subagents)"]
-    end
-
-    subgraph AppServer["⚙️ ompweb Server (Next.js 16 / Node.js Runtime)"]
-        NextGateway["Next.js Gateway<br/>(HTTP / SSE / Cookie Auth)"]
-        RpcMgr["RPC Session Manager<br/>(Process Registry & Pool)"]
-        SessionReader["Session Stream Reader<br/>(JSONL LRU Cache / Tree)"]
-        TerminalMgr["PTY Manager<br/>(FIFO Queue / 30m TTL)"]
-        FileSandbox["File Sandbox & Reveal<br/>(Canonical Path Validator)"]
-    end
-
-    subgraph OmpCore["🤖 Local OMP Agent Core & Host Runtime"]
-        OmpProc["omp CLI Process<br/>(omp --mode rpc-ui)"]
-        AgentCore["Agent Execution Loop<br/>(Tools / Memory / Reasoning)"]
-        PtyShell["System PTY Shell<br/>(zsh / bash / cmd.exe)"]
-        GitWorktrees["Git Worktree Manager<br/>(Multi-Branch Workspace)"]
-        AgentMcpDaemon["Agent-MCP Daemon<br/>(Multi-Agent Coordinator)"]
-    end
-
-    subgraph External["💾 Persistence & External Ecosystem"]
-        ModelProviders["LLM Providers<br/>(Anthropic / OpenAI / DeepSeek)"]
-        AgentDb[("Auth DB<br/>(~/.omp/agent/agent.db)")]
-        LocalStorage[("Session Storage<br/>(~/.omp/agent/sessions/*.jsonl)")]
-        McpServers["Project MCP Servers<br/>(.omp/mcp.json)"]
-        SkillsHub["Skills Hub & Plugins<br/>(skills.sh / .agents/skills)"]
-    end
-
-    %% Client to Server
-    BrowserUI -->|HTTP / SSE| NextGateway
-    DesktopApp -->|Internal IPC| NextGateway
-    TerminalUI -->|SSE Stream| TerminalMgr
-    ComposerUI -->|Plan Context| FileSandbox
-
-    %% Server Internal & Server to Core
-    NextGateway -->|Route Dispatch| RpcMgr
-    RpcMgr ==>|stdio NDJSON (v1/v2)| OmpProc
-    SessionReader -->|Read-only JSONL| LocalStorage
-    TerminalMgr ==>|pty.spawn()| PtyShell
-    FileSandbox -->|Path Check| GitWorktrees
-
-    %% Omp Core to External
-    OmpProc -->|Loop Lifecycle| AgentCore
-    OmpProc -->|SQLite Auth| AgentDb
-    OmpProc ==>|LLM Inference| ModelProviders
-    AgentCore -->|Atomic Append| LocalStorage
-    AgentCore -->|MCP Protocol| McpServers
-    McpServers -->|Multi-Agent Bridge| AgentMcpDaemon
-    AgentCore -->|Skill Invocation| SkillsHub
-```
+<p align="center">
+  <a href="https://37chengshan.github.io/ompweb/">
+    <img src="docs/architecture.png" alt="ompweb System & Runtime Architecture" width="100%" />
+  </a>
+</p>
 
 - **Data Sovereignty**: ompweb does not introduce secondary data stores or store API keys. All state is backed by the user's installed `omp` binary and `~/.omp/agent/`.
 - **Loopback-Only by Default**: Binds to `127.0.0.1` out of the box to prevent unauthorized network exposure.

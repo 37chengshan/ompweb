@@ -1293,5 +1293,8 @@
   "planViewer.toc": "目次",
   "planViewer.loading": "プランを読込中…",
   "planViewer.executePrompt": "上記の計画を確認しました。段階に沿って実行してください。",
-  "planViewer.rejectPrompt": "上記の計画を再検討し、修正点と改訂版を提示してください。"
+  "planViewer.rejectPrompt": "上記の計画を再検討し、修正点と改訂版を提示してください。",
+  "appShell.ompMissing": "omp ランタイムが見つかりません。AI 機能は利用できません。導入：",
+  "appShell.ompInstallDocs": "oh-my-pi 導入ドキュメント",
+  "appShell.dismiss": "閉じる"
 }

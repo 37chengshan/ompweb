@@ -11,7 +11,7 @@ import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { Check, CircleCheck, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2 } from "lucide-react";
+import { Check, CircleCheck, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
 import { ThemePicker } from "./ThemePicker";
 import { TerminalPanel } from "./TerminalPanel";
 import { useTheme } from "@/hooks/useTheme";
@@ -203,6 +203,8 @@ export function AppShell() {
   }, [sidebarWidth, sidebarResizing]);
   const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
   const [ompUpdateAvailable, setOmpUpdateAvailable] = useState(false);
+  const [ompMissing, setOmpMissing] = useState(false);
+  const [ompMissingDismissed, setOmpMissingDismissed] = useState(false);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
   useEffect(() => {
@@ -262,6 +264,16 @@ export function AppShell() {
       })
       .catch(() => {});
     return () => controller.abort();
+  }, []);
+  // Detect a missing omp runtime once at startup so the UI can prompt the
+  // install command instead of failing on the first AI request.
+  useEffect(() => {
+    void fetch("/api/omp-version")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { version?: string | null } | null) => {
+        setOmpMissing(!data?.version);
+      })
+      .catch(() => {});
   }, []);
   useEffect(() => {
     const controller = new AbortController();
@@ -1059,6 +1071,22 @@ export function AppShell() {
 
       {/* Center: chat */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+        {ompMissing && !ompMissingDismissed && (
+          <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 14px", background: "color-mix(in srgb, var(--status-warning) 12%, var(--bg-panel))", borderBottom: "1px solid color-mix(in srgb, var(--status-warning) 35%, var(--border))", fontSize: 12, color: "var(--text)", flexShrink: 0 }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {t("appShell.ompMissing")}
+              <code style={{ marginLeft: 8, padding: "1px 6px", borderRadius: 4, background: "var(--bg)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                curl -fsSL https://omp.sh/install | sh
+              </code>
+            </span>
+            <button type="button" className="shell-toolbar-btn ui-focus-ring" title={t("appShell.ompInstallDocs")} aria-label={t("appShell.ompInstallDocs")} onClick={() => window.open("https://github.com/can1357/oh-my-pi", "_blank", "noopener,noreferrer")} style={{ width: 24, height: 24, borderRadius: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>?</span>
+            </button>
+            <button type="button" className="shell-toolbar-btn ui-focus-ring" title={t("appShell.dismiss")} aria-label={t("appShell.dismiss")} onClick={() => setOmpMissingDismissed(true)} style={{ width: 24, height: 24, borderRadius: 6 }}>
+              <X size={13} strokeWidth={2} />
+            </button>
+          </div>
+        )}
         {/* Top bar: compact icon-led control bar */}
         <div ref={topBarRef} className="shell-topbar" style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: isMobile ? 44 : 36, background: "var(--bg-panel)" }}>
         {/* Utility group: sidebar, theme, language */}

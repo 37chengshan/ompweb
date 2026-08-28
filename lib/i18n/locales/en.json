@@ -1293,5 +1293,8 @@
   "planViewer.toc": "Contents",
   "planViewer.loading": "Loading plan…",
   "planViewer.executePrompt": "I reviewed and approve the plan above — execute it step by step.",
-  "planViewer.rejectPrompt": "Re-review the plan above, point out what needs to change, and provide a revised plan."
+  "planViewer.rejectPrompt": "Re-review the plan above, point out what needs to change, and provide a revised plan.",
+  "appShell.ompMissing": "omp runtime not found — AI features unavailable. Install:",
+  "appShell.ompInstallDocs": "Open oh-my-pi install docs",
+  "appShell.dismiss": "Dismiss"
 }

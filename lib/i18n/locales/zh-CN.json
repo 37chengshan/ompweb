@@ -1293,5 +1293,8 @@
   "planViewer.toc": "目录",
   "planViewer.loading": "加载计划…",
   "planViewer.executePrompt": "已审阅并确认上述计划，请开始按照规划阶段分步执行所有任务。",
-  "planViewer.rejectPrompt": "请重新审查上述计划，指出需要调整的地方并给出修正后的完整方案。"
+  "planViewer.rejectPrompt": "请重新审查上述计划，指出需要调整的地方并给出修正后的完整方案。",
+  "appShell.ompMissing": "未检测到 omp 运行时，AI 功能不可用。安装：",
+  "appShell.ompInstallDocs": "查看 oh-my-pi 安装文档",
+  "appShell.dismiss": "关闭"
 }

@@ -100,11 +100,15 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
     }
   }, [cwd]);
 
+  // Only create a backend terminal session while the panel is OPEN. A closed
+  // panel used to spawn a PTY + SSE stream on every page load — with several
+  // tabs open that exhausts the browser's per-host connection pool (HTTP/1.1
+  // caps at 6, shared across tabs) and starves the session-load fetches.
   useEffect(() => {
-    if (!sessionId) {
+    if (open && !sessionId) {
       void initSession();
     }
-  }, [sessionId, initSession]);
+  }, [open, sessionId, initSession]);
 
   // Setup xterm.js instance
   useEffect(() => {
@@ -194,7 +198,7 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
   // connection stayed open), while the fetch stream path is the one verified
   // to deliver every frame. SSE frames are parsed manually ("data:" lines).
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !open) return;
 
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -265,13 +269,17 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
       cancelled = true;
       controller.abort();
       if (retryTimer) clearTimeout(retryTimer);
-      // Reap the server-side session when the component unmounts.
+      // Reap the server-side session when the panel closes or the component
+      // unmounts — never leave a PTY + SSE stream attached to a hidden panel.
       void fetch(`/api/terminal/session?id=${encodeURIComponent(sessionId)}`, {
         method: "DELETE",
         keepalive: true,
       }).catch(() => {});
+      // Drop the id so the next OPEN re-creates the session instead of
+      // reconnecting to a reaped one. Harmless on unmount (React ignores it).
+      setSessionId(null);
     };
-  }, [sessionId]);
+  }, [sessionId, open]);
 
   // Handle auto-fit on resize or when drawer opens
   useEffect(() => {

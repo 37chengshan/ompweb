@@ -171,7 +171,7 @@ npm run dev
 
 ## 🏗️ 架构设计与安全性
 
-> 🧭 **[在线交互式架构图 HTML / Interactive Architecture Viewer (HTML)](docs/ompweb-architecture.html)**：基于 Archify 生成，支持节点聚焦、深浅主题切换、多视图探索与高精度导出。
+> 🧭 **[在线交互式架构图 (GitHub Pages)](https://37chengshan.github.io/ompweb/)** · **[本地 HTML 离线文件](docs/ompweb-architecture.html)**：基于 Archify 生成，支持节点聚焦、深浅主题切换、多视图探索与高精度导出。
 
 ```mermaid
 flowchart TB

@@ -171,7 +171,7 @@ npm run dev
 
 ## 🏗️ Architecture & Security
 
-> 🧭 **[Interactive Architecture Viewer (HTML)](docs/ompweb-architecture.html)**: Standalone HTML built with Archify, featuring node focus, theme toggles, multi-view exploration, and crisp export.
+> 🧭 **[Interactive Architecture Viewer (GitHub Pages)](https://37chengshan.github.io/ompweb/)** · **[Local Offline HTML](docs/ompweb-architecture.html)**: Standalone HTML built with Archify, featuring node focus, theme toggles, multi-view exploration, and crisp export.
 
 ```mermaid
 flowchart TB

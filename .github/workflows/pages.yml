@@ -1,0 +1,51 @@
+name: Deploy Architecture to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare site directory
+        run: |
+          mkdir -p _site
+          cp docs/ompweb-architecture.html _site/index.html
+          cp docs/ompweb-architecture.html _site/ompweb-architecture.html
+          cp docs/ompweb-architecture.json _site/ompweb-architecture.json
+          if [ -f docs/demo.gif ]; then cp docs/demo.gif _site/; fi
+          if [ -f docs/screenshot-light.png ]; then cp docs/screenshot-light.png _site/; fi
+          if [ -f docs/screenshot-dark.png ]; then cp docs/screenshot-dark.png _site/; fi
+          touch _site/.nojekyll
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "_site"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

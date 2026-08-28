@@ -52,13 +52,11 @@ async function startServer() {
     await nextApp.prepare();
     const handler = nextApp.getRequestHandler();
     httpServer = createServer((req, res) => {
-      try {
-        handler(req, res);
-      } catch (error) {
+      Promise.resolve(handler(req, res)).catch((error) => {
         const message = error instanceof Error ? error.stack || error.message : String(error);
         appLog("request failed " + req.url + ": " + message);
         if (!res.headersSent) res.writeHead(500).end("Internal Server Error");
-      }
+      });
     });
     httpServer.listen(APP_PORT, HOST);
   } catch (error) {

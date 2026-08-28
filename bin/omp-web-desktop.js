@@ -18,7 +18,7 @@ if (!isNodeVersionSupported(process.versions.node)) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { spawn } = require("child_process");
+const { spawn, execFileSync } = require("child_process");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require("path");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -139,14 +139,12 @@ function installDesktopApp() {
     console.error("--install creates a macOS .app; on Windows use the win-start.vbs template instead.");
     process.exit(1);
   }
-  const fs = require("fs");
-  const { execFileSync } = require("child_process");
   const template = path.join(pkgDir, "templates", "desktop", "OmpWeb.app");
   if (!fs.existsSync(path.join(template, "Contents", "MacOS", "ompweb-launcher"))) {
     console.error("OmpWeb.app template not found in this package.");
     process.exit(1);
   }
-  const target = path.join(require("os").homedir(), "Applications", "OmpWeb.app");
+  const target = path.join(process.env.HOME || "", "Applications", "OmpWeb.app");
   fs.rmSync(target, { recursive: true, force: true });
   fs.cpSync(template, target, { recursive: true });
   // Ad-hoc sign so macOS Gatekeeper does not quarantine the launcher.

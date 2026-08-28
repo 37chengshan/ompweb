@@ -51,14 +51,23 @@ let quitting = false;
  *  second app instance in the Dock (spawning the Electron binary, even with
  *  ELECTRON_RUN_AS_NODE, makes macOS treat it as another OmpWeb). */
 function resolveNodeBin() {
+  const isWin = process.platform === "win32";
   const candidates = [
     process.env.OMP_WEB_NODE_BIN,
-    "/usr/local/bin/node",
-    "/opt/homebrew/bin/node",
-    "/usr/bin/node",
-    process.env.HOME ? `${process.env.HOME}/.bun/bin/node` : null,
-    process.env.HOME ? `${process.env.HOME}/.nvm/current/bin/node` : null,
-    process.env.HOME ? `${process.env.HOME}/.npm-global/bin/node` : null,
+    // Windows: standard install dirs + nvm-windows
+    ...(isWin ? [
+      process.env.ProgramFiles ? `${process.env.ProgramFiles}/nodejs/node.exe` : null,
+      process.env["ProgramFiles(x86)"] ? `${process.env["ProgramFiles(x86)"]}/nodejs/node.exe` : null,
+      process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}/Programs/nodejs/node.exe` : null,
+      process.env.APPDATA ? `${process.env.APPDATA}/nvm/current/node.exe` : null,
+    ] : [
+      "/usr/local/bin/node",
+      "/opt/homebrew/bin/node",
+      "/usr/bin/node",
+      process.env.HOME ? `${process.env.HOME}/.bun/bin/node` : null,
+      process.env.HOME ? `${process.env.HOME}/.nvm/current/bin/node` : null,
+      process.env.HOME ? `${process.env.HOME}/.npm-global/bin/node` : null,
+    ]),
   ].filter(Boolean);
   for (const candidate of candidates) {
     try { if (fs.existsSync(candidate)) return candidate; } catch { /* keep looking */ }

@@ -46,6 +46,8 @@ const THINKING_DISPLAY_MODE_STORAGE_KEY = "omp-web:thinking-display-mode";
 export type ThinkingDisplayMode = "auto" | "collapsed" | "expanded";
 const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 520;
+/** Right (file/plan) panel: draggable floor — never closes on drag. */
+const RIGHT_PANEL_MIN_WIDTH = 180;
 const SIDEBAR_DEFAULT_WIDTH = 260;
 
 function clampSidebarWidth(width: number): number {
@@ -129,16 +131,15 @@ export function AppShell() {
     const onMouseMove = (ev: MouseEvent) => {
       const delta = startX - ev.clientX;
       const newW = startW + delta;
-      if (newW < 180) {
-        setRightPanelOpen(false);
-      } else {
-        setRightPanelOpen(true);
-        const clamped = Math.min(window.innerWidth * 0.75, Math.max(260, newW));
-        setRightPanelWidth(clamped);
-        try {
-          localStorage.setItem("omp-right-panel-width", String(clamped));
-        } catch {}
-      }
+      // Dragging narrower must keep the panel visible (clamp to the minimum
+      // width) — closing it mid-drag made it "disappear" for no reason. The
+      // toolbar toggle is the explicit close affordance.
+      setRightPanelOpen(true);
+      const clamped = Math.min(window.innerWidth * 0.75, Math.max(RIGHT_PANEL_MIN_WIDTH, newW));
+      setRightPanelWidth(clamped);
+      try {
+        localStorage.setItem("omp-right-panel-width", String(clamped));
+      } catch {}
     };
 
     const onMouseUp = () => {
@@ -1626,8 +1627,12 @@ export function AppShell() {
           flexDirection: "column",
           borderLeft: rightPanelOpen ? "1px solid var(--border)" : "none",
           background: "var(--bg)",
-          width: rightPanelOpen ? `${rightPanelWidth}px` : 0,
-          minWidth: rightPanelOpen ? 260 : 0,
+          // Draggable width, but never let the panel crowd the chat out when
+          // the window shrinks: cap it so the sidebar + a readable chat column
+          // always fit (360px = ~260 sidebar + ~100 chat floor).
+          width: rightPanelOpen ? (isMobile ? "100%" : `${rightPanelWidth}px`) : 0,
+          minWidth: rightPanelOpen ? (isMobile ? 0 : RIGHT_PANEL_MIN_WIDTH) : 0,
+          maxWidth: rightPanelOpen && !isMobile ? "calc(100vw - 360px)" : undefined,
           position: "relative",
         }}
       >

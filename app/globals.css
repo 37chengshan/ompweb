@@ -2671,10 +2671,11 @@ html.dark .dropdown-surface :is(select, option) {
     min-width: 0;
     border-left: none !important;
   }
-  /* keep inner content at fixed width so it doesn't reflow during animation */
+  /* keep inner content at the container width so it doesn't reflow during
+     animation and follows the draggable/max-width-constrained panel */
   .right-panel-container > * {
-    width: 42vw;
-    min-width: 300px;
+    width: 100%;
+    min-width: 0;
   }
 }
 

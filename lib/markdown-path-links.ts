@@ -106,5 +106,20 @@ export function remarkPathLinks() {
       );
       parent.children.splice(index, 1, ...children);
     });
+
+    // Agents frequently quote paths in inline code (`docs/plans/x.md`); those
+    // live in inlineCode nodes, not text. Link them too (block code is left
+    // alone — it is code, not a reference).
+    visit(tree, "inlineCode", (node, index, parent) => {
+      if (!parent || typeof index !== "number") return;
+      const tokens = splitPathTokens(node.value);
+      if (tokens.length === 1 && !tokens[0].isPath) return;
+      const children = tokens.map((token) =>
+        token.isPath
+          ? { type: "link" as const, url: token.text, children: [{ type: "text" as const, value: token.text }] }
+          : { type: "text" as const, value: token.text },
+      );
+      parent.children.splice(index, 1, ...children);
+    });
   };
 }

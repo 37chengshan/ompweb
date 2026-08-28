@@ -13,7 +13,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
-import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, MoreHorizontal, Play, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 
 declare global {
@@ -2324,6 +2324,21 @@ function ProjectRow({
           </button>
         )}
         <div style={{ flex: 1 }} />
+        {/* Quick scripts: build / publish / start ... (one click, always visible). */}
+        <Tooltip content={t("projects.quickScripts")}>
+          <button
+            type="button"
+            className="sidebar-project-action"
+            onClick={() => { setActionMenuOpen(false); setScriptsMenuOpen((open) => !open); }}
+            aria-label={t("projects.quickScripts")}
+            title={t("projects.quickScripts")}
+            aria-expanded={scriptsMenuOpen}
+            aria-haspopup="menu"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, border: "none", borderRadius: "var(--radius-control)", background: scriptsMenuOpen ? "var(--bg-selected)" : "transparent", color: scriptsMenuOpen ? "var(--accent)" : "var(--text-dim)", cursor: "pointer", lineHeight: 0, transition: SIDEBAR_BUTTON_TRANSITION }}
+          >
+            <Play size={13} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </Tooltip>
         {/* Always-visible: open the workspace folder in the system file manager. */}
         <Tooltip content={t("fileExplorer.revealInFileManager")}>
           <button

@@ -13,7 +13,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
-import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, MoreHorizontal, Play, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Trash2, Upload, Wrench } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 
 declare global {
@@ -206,17 +206,28 @@ function formatRelativeTime(value: string, _locale: string, now: number): string
 
 const SIDEBAR_BUTTON_TRANSITION = "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)";
 
-/** Quick-script menu (build/publish/start...) for a project row. Lists the
- *  merged scripts, runs one (wait mode, output via toast), and adds new ones. */
+/** Quick-script menu (build/publish/start...) for a project row. Commands are
+ *  fully user-defined: name + shell command + one of three preset icons.
+ *  No preset commands ship by default. */
+const SCRIPT_ICON_MAP = {
+  play: Play,
+  rocket: Rocket,
+  wrench: Wrench,
+} as const;
+
 function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPath: string; anchor: React.RefObject<HTMLElement | null>; open: boolean; onClose: () => void }) {
   const { t } = useI18n();
-  const [scripts, setScripts] = useState<{ name: string; command: string; description?: string }[] | null>(null);
+  const [scripts, setScripts] = useState<{ name: string; command: string; description?: string; icon?: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newCommand, setNewCommand] = useState("");
+  const [newIcon, setNewIcon] = useState<string>("play");
 
   const reload = useCallback(() => {
     setScripts(null);
     void fetch(`/api/scripts?cwd=${encodeURIComponent(projectPath)}`)
-      .then((res) => (res.ok ? res.json() as Promise<{ scripts: { name: string; command: string; description?: string }[] }> : null))
+      .then((res) => (res.ok ? res.json() as Promise<{ scripts: { name: string; command: string; description?: string; icon?: string }[] }> : null))
       .then((data) => { if (data) setScripts(data.scripts); })
       .catch(() => setScripts([]));
   }, [projectPath]);
@@ -251,13 +262,10 @@ function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPat
   }, [projectPath, t]);
 
   const addScript = useCallback(async () => {
-    const name = window.prompt(t("projects.addScriptName"));
-    if (!name?.trim()) return;
-    const command = window.prompt(t("projects.addScriptCommand"));
-    if (!command?.trim()) return;
+    if (!newName.trim() || !newCommand.trim()) return;
     try {
       const current = scripts ?? [];
-      const next = [...current.filter((s) => s.name !== name.trim()), { name: name.trim(), command: command.trim() }];
+      const next = [...current.filter((s) => s.name !== newName.trim()), { name: newName.trim(), command: newCommand.trim(), icon: newIcon }];
       const res = await fetch(`/api/scripts?cwd=${encodeURIComponent(projectPath)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -267,15 +275,34 @@ function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPat
         toast.error(t("projects.scriptSaveFailed"));
         return;
       }
+      setNewName("");
+      setNewCommand("");
+      setNewIcon("play");
+      setAdding(false);
       reload();
-      toast.success(t("projects.scriptSaved", { name: name.trim() }));
+      toast.success(t("projects.scriptSaved", { name: newName.trim() }));
     } catch {
       toast.error(t("projects.scriptSaveFailed"));
     }
-  }, [projectPath, scripts, reload, t]);
+  }, [projectPath, scripts, newName, newCommand, newIcon, reload, t]);
+
+  const removeScript = useCallback(async (name: string) => {
+    const current = scripts ?? [];
+    const next = current.filter((s) => s.name !== name);
+    try {
+      await fetch(`/api/scripts?cwd=${encodeURIComponent(projectPath)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scripts: next }),
+      });
+      setScripts(next);
+    } catch {
+      // best effort
+    }
+  }, [projectPath, scripts]);
 
   return (
-    <SidebarPortalMenu anchor={anchor} open={open} onClose={onClose} placement="below" minWidth={200} align="end">
+    <SidebarPortalMenu anchor={anchor} open={open} onClose={onClose} placement="below" minWidth={240} align="end">
       <div style={{ padding: "5px 9px 3px", fontSize: 10, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.04em", fontFamily: "var(--font-mono)" }}>
         {t("projects.quickScripts")}
       </div>
@@ -285,27 +312,70 @@ function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPat
       {scripts !== null && scripts.length === 0 && (
         <div style={{ padding: "6px 9px", fontSize: 11, color: "var(--text-dim)" }}>{t("projects.noScripts")}</div>
       )}
-      {scripts?.map((s) => (
-        <button
-          key={s.name}
-          type="button"
-          role="menuitem"
-          className="sidebar-menu-item"
-          disabled={busy !== null}
-          onClick={() => { void runScript(s); }}
-          title={s.command}
-          style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: busy === null ? "pointer" : "default", textAlign: "left", fontSize: 11 }}
-        >
-          <span style={{ flexShrink: 0, color: busy === s.name ? "var(--accent)" : "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 10 }}>{busy === s.name ? "…" : "▶"}</span>
-          <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
-          {s.description && <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10 }}>{s.description}</span>}
-        </button>
-      ))}
+      {scripts?.map((s) => {
+        const Icon = SCRIPT_ICON_MAP[(s.icon as keyof typeof SCRIPT_ICON_MAP) ?? "play"] ?? Play;
+        return (
+          <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 4px" }}>
+            <button
+              type="button"
+              role="menuitem"
+              className="sidebar-menu-item"
+              disabled={busy !== null}
+              onClick={() => { void runScript(s); }}
+              title={s.command}
+              style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0, padding: "6px 7px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: busy === null ? "pointer" : "default", textAlign: "left", fontSize: 11 }}
+            >
+              <span style={{ flexShrink: 0, color: busy === s.name ? "var(--accent)" : "var(--accent)", display: "inline-flex" }}>
+                {busy === s.name ? <LoaderCircle size={12} className="animate-spin" /> : <Icon size={12} aria-hidden="true" />}
+              </span>
+              <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+              {s.description && <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10 }}>{s.description}</span>}
+            </button>
+            <button
+              type="button"
+              aria-label={t("projects.removeScript", { name: s.name })}
+              title={t("projects.removeScript", { name: s.name })}
+              onClick={() => void removeScript(s.name)}
+              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, padding: 0, border: "none", borderRadius: 5, background: "transparent", color: "var(--text-dim)", cursor: "pointer", flexShrink: 0 }}
+            >
+              <Trash2 size={11} aria-hidden="true" />
+            </button>
+          </div>
+        );
+      })}
       <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
-      <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { void addScript(); }} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--accent)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
-        <Plus size={12} strokeWidth={2} aria-hidden="true" />
-        <span>{t("projects.addScript")}</span>
-      </button>
+      {adding ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "6px 9px" }}>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t("projects.addScriptName")} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+          <input value={newCommand} onChange={(e) => setNewCommand(e.target.value)} placeholder={t("projects.addScriptCommand")} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, fontFamily: "var(--font-mono)", outline: "none" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            {(Object.keys(SCRIPT_ICON_MAP) as (keyof typeof SCRIPT_ICON_MAP)[]).map((key) => {
+              const Icon = SCRIPT_ICON_MAP[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setNewIcon(key)}
+                  aria-label={key}
+                  title={key}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 6, border: newIcon === key ? "1.5px solid var(--accent)" : "1px solid var(--border)", background: newIcon === key ? "var(--bg-selected)" : "var(--bg)", color: newIcon === key ? "var(--accent)" : "var(--text-muted)", cursor: "pointer" }}
+                >
+                  <Icon size={13} aria-hidden="true" />
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 5, justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => setAdding(false)} style={{ padding: "4px 9px", borderRadius: 6, background: "transparent", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, cursor: "pointer" }}>{t("projects.cancel")}</button>
+            <button type="button" onClick={() => void addScript()} disabled={!newName.trim() || !newCommand.trim()} style={{ padding: "4px 10px", borderRadius: 6, background: "var(--accent)", color: "var(--on-accent)", border: "none", fontSize: 11, fontWeight: 600, cursor: newName.trim() && newCommand.trim() ? "pointer" : "default", opacity: newName.trim() && newCommand.trim() ? 1 : 0.5 }}>{t("projects.save")}</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => setAdding(true)} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--accent)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
+          <Plus size={12} strokeWidth={2} aria-hidden="true" />
+          <span>{t("projects.addScript")}</span>
+        </button>
+      )}
     </SidebarPortalMenu>
   );
 }

@@ -1345,5 +1345,8 @@
   "diagnostics.proxyOff": "off",
   "diagnostics.rpc": "RPC sessions",
   "diagnostics.sessions": "active",
-  "diagnostics.server": "Server"
+  "diagnostics.server": "Server",
+  "projects.removeScript": "Remove {name}",
+  "projects.cancel": "Cancel",
+  "projects.save": "Save"
 }

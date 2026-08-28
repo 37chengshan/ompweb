@@ -8,10 +8,15 @@ import { homedir } from "os";
  * `~/.omp/agent/scripts.json`. Atomic writes (temp file + rename).
  */
 
+export const QUICK_SCRIPT_ICONS = ["play", "rocket", "wrench"] as const;
+export type QuickScriptIcon = (typeof QUICK_SCRIPT_ICONS)[number];
+
 export interface QuickScript {
   name: string;
   command: string;
   description?: string;
+  /** One of the preset icons; undefined defaults to "play". */
+  icon?: QuickScriptIcon;
 }
 
 interface ScriptsFile {
@@ -28,10 +33,12 @@ export function validateQuickScripts(value: unknown): QuickScript[] | null {
     const name = (item as { name?: unknown }).name;
     const command = (item as { command?: unknown }).command;
     if (typeof name !== "string" || !name.trim() || typeof command !== "string" || !command.trim()) return null;
+    const icon = (item as { icon?: unknown }).icon;
     out.push({
       name: name.trim(),
       command: command.trim(),
       ...(typeof (item as { description?: unknown }).description === "string" ? { description: (item as { description: string }).description } : {}),
+      ...(typeof icon === "string" && (QUICK_SCRIPT_ICONS as readonly string[]).includes(icon) ? { icon: icon as QuickScriptIcon } : {}),
     });
   }
   return out;

@@ -1345,5 +1345,8 @@
   "diagnostics.proxyOff": "未启用",
   "diagnostics.rpc": "RPC 会话",
   "diagnostics.sessions": "个活跃会话",
-  "diagnostics.server": "服务器"
+  "diagnostics.server": "服务器",
+  "projects.removeScript": "删除命令 {name}",
+  "projects.cancel": "取消",
+  "projects.save": "保存"
 }

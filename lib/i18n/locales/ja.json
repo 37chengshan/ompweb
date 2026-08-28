@@ -1345,5 +1345,8 @@
   "diagnostics.proxyOff": "オフ",
   "diagnostics.rpc": "RPC セッション",
   "diagnostics.sessions": "アクティブ",
-  "diagnostics.server": "サーバー"
+  "diagnostics.server": "サーバー",
+  "projects.removeScript": "{name} を削除",
+  "projects.cancel": "キャンセル",
+  "projects.save": "保存"
 }

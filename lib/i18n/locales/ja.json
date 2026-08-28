@@ -1274,5 +1274,17 @@
   "projects.githubPrs": "{prs} 件のPR",
   "projects.ci.success": "成功",
   "projects.ci.failure": "失敗",
-  "projects.ci.pending": "実行中"
+  "projects.ci.pending": "実行中",
+  "projects.quickScripts": "クイックスクリプト",
+  "projects.addScript": "コマンド追加",
+  "projects.addScriptName": "コマンド名",
+  "projects.addScriptCommand": "実行するコマンド",
+  "projects.noScripts": "スクリプトはありません",
+  "projects.scriptLoading": "読込中…",
+  "projects.scriptRunFailed": "実行失敗",
+  "projects.scriptDone": "{name} 完了",
+  "projects.scriptFailed": "{name} 失敗 (exit {code})",
+  "projects.scriptTimedOut": "{name} タイムアウト",
+  "projects.scriptSaved": "{name} 保存済み",
+  "projects.scriptSaveFailed": "保存失敗"
 }

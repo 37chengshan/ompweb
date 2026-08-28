@@ -272,6 +272,110 @@ function GitHubStatusButton({ projectPath }: { projectPath: string }) {
   );
 }
 
+/** Quick-script menu (build/publish/start...) for a project row. Lists the
+ *  merged scripts, runs one (wait mode, output via toast), and adds new ones. */
+function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPath: string; anchor: React.RefObject<HTMLElement | null>; open: boolean; onClose: () => void }) {
+  const { t } = useI18n();
+  const [scripts, setScripts] = useState<{ name: string; command: string; description?: string }[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const reload = useCallback(() => {
+    setScripts(null);
+    void fetch(`/api/scripts?cwd=${encodeURIComponent(projectPath)}`)
+      .then((res) => (res.ok ? res.json() as Promise<{ scripts: { name: string; command: string; description?: string }[] }> : null))
+      .then((data) => { if (data) setScripts(data.scripts); })
+      .catch(() => setScripts([]));
+  }, [projectPath]);
+
+  useEffect(() => {
+    if (open) reload();
+  }, [open, reload]);
+
+  const runScript = useCallback(async (s: { name: string; command: string }) => {
+    setBusy(s.name);
+    try {
+      const res = await fetch("/api/scripts/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd: projectPath, command: s.command, mode: "wait" }),
+      });
+      const data = await res.json() as { output?: string; exitCode?: number | null; timedOut?: boolean; error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? t("projects.scriptRunFailed"));
+      } else if (data.timedOut) {
+        toast.info(t("projects.scriptTimedOut", { name: s.name }));
+      } else if (data.exitCode !== 0) {
+        toast.error(t("projects.scriptFailed", { name: s.name, code: data.exitCode ?? "?" }), data.output ? data.output.slice(0, 300) : undefined);
+      } else {
+        toast.success(t("projects.scriptDone", { name: s.name }), data.output ? data.output.slice(0, 300) : undefined);
+      }
+    } catch {
+      toast.error(t("projects.scriptRunFailed"));
+    } finally {
+      setBusy(null);
+    }
+  }, [projectPath, t]);
+
+  const addScript = useCallback(async () => {
+    const name = window.prompt(t("projects.addScriptName"));
+    if (!name?.trim()) return;
+    const command = window.prompt(t("projects.addScriptCommand"));
+    if (!command?.trim()) return;
+    try {
+      const current = scripts ?? [];
+      const next = [...current.filter((s) => s.name !== name.trim()), { name: name.trim(), command: command.trim() }];
+      const res = await fetch(`/api/scripts?cwd=${encodeURIComponent(projectPath)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scripts: next }),
+      });
+      if (!res.ok) {
+        toast.error(t("projects.scriptSaveFailed"));
+        return;
+      }
+      reload();
+      toast.success(t("projects.scriptSaved", { name: name.trim() }));
+    } catch {
+      toast.error(t("projects.scriptSaveFailed"));
+    }
+  }, [projectPath, scripts, reload, t]);
+
+  return (
+    <SidebarPortalMenu anchor={anchor} open={open} onClose={onClose} placement="below" minWidth={200} align="end">
+      <div style={{ padding: "5px 9px 3px", fontSize: 10, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.04em", fontFamily: "var(--font-mono)" }}>
+        {t("projects.quickScripts")}
+      </div>
+      {scripts === null && (
+        <div style={{ padding: "6px 9px", fontSize: 11, color: "var(--text-dim)" }}>{t("projects.scriptLoading")}</div>
+      )}
+      {scripts !== null && scripts.length === 0 && (
+        <div style={{ padding: "6px 9px", fontSize: 11, color: "var(--text-dim)" }}>{t("projects.noScripts")}</div>
+      )}
+      {scripts?.map((s) => (
+        <button
+          key={s.name}
+          type="button"
+          role="menuitem"
+          className="sidebar-menu-item"
+          disabled={busy !== null}
+          onClick={() => { void runScript(s); }}
+          title={s.command}
+          style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: busy === null ? "pointer" : "default", textAlign: "left", fontSize: 11 }}
+        >
+          <span style={{ flexShrink: 0, color: busy === s.name ? "var(--accent)" : "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 10 }}>{busy === s.name ? "…" : "▶"}</span>
+          <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+          {s.description && <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10 }}>{s.description}</span>}
+        </button>
+      ))}
+      <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+      <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { void addScript(); }} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--accent)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
+        <Plus size={12} strokeWidth={2} aria-hidden="true" />
+        <span>{t("projects.addScript")}</span>
+      </button>
+    </SidebarPortalMenu>
+  );
+}
+
 /** Quiet square icon button used across the sidebar chrome (header, section
  *  headers, footer). Stays visually subdued; the accent appears on hover and
  *  when active (e.g. an applied filter). */
@@ -2091,6 +2195,7 @@ function ProjectRow({
   const [focusWithin, setFocusWithin] = useState(false);
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [scriptsMenuOpen, setScriptsMenuOpen] = useState(false);
   const actionButtonRef = useRef<HTMLButtonElement>(null);
   const [aliasEditing, setAliasEditing] = useState(false);
   const [aliasValue, setAliasValue] = useState("");
@@ -2352,6 +2457,9 @@ function ProjectRow({
             <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { startAliasEdit(); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
               {project.alias ? t("projects.editAlias") : t("projects.nameAlias")}
             </button>
+            <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { setActionMenuOpen(false); setScriptsMenuOpen(true); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
+              {t("projects.quickScripts")}
+            </button>
             <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { setActionMenuOpen(false); void onMoveProject(project.path, -1); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
               {t("projects.moveUp")}
             </button>
@@ -2362,6 +2470,12 @@ function ProjectRow({
               {t("projects.remove", { name: label })}
             </button>
           </SidebarPortalMenu>
+          <ProjectScriptsMenu
+            projectPath={project.path}
+            anchor={actionButtonRef}
+            open={scriptsMenuOpen}
+            onClose={() => setScriptsMenuOpen(false)}
+          />
         </div>
         <button
           className="sidebar-project-toggle"

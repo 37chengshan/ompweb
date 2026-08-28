@@ -1274,5 +1274,17 @@
   "projects.githubPrs": "{prs} open PRs",
   "projects.ci.success": "passing",
   "projects.ci.failure": "failing",
-  "projects.ci.pending": "pending"
+  "projects.ci.pending": "pending",
+  "projects.quickScripts": "Quick scripts",
+  "projects.addScript": "Add command",
+  "projects.addScriptName": "Command name (e.g. build)",
+  "projects.addScriptCommand": "Shell command to run",
+  "projects.noScripts": "No scripts yet — add one below",
+  "projects.scriptLoading": "Loading…",
+  "projects.scriptRunFailed": "Script failed",
+  "projects.scriptDone": "{name} finished",
+  "projects.scriptFailed": "{name} failed (exit {code})",
+  "projects.scriptTimedOut": "{name} timed out and was stopped",
+  "projects.scriptSaved": "{name} saved",
+  "projects.scriptSaveFailed": "Save failed"
 }

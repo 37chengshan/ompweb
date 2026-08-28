@@ -1274,5 +1274,17 @@
   "projects.githubPrs": "{prs} 个开放 PR",
   "projects.ci.success": "通过",
   "projects.ci.failure": "失败",
-  "projects.ci.pending": "进行中"
+  "projects.ci.pending": "进行中",
+  "projects.quickScripts": "快捷命令",
+  "projects.addScript": "添加命令",
+  "projects.addScriptName": "命令名称（如 build）",
+  "projects.addScriptCommand": "要执行的 shell 命令",
+  "projects.noScripts": "暂无命令，点击下方添加",
+  "projects.scriptLoading": "加载中…",
+  "projects.scriptRunFailed": "命令执行失败",
+  "projects.scriptDone": "命令 {name} 完成",
+  "projects.scriptFailed": "命令 {name} 失败 (退出码 {code})",
+  "projects.scriptTimedOut": "命令 {name} 超时，已终止",
+  "projects.scriptSaved": "命令 {name} 已保存",
+  "projects.scriptSaveFailed": "保存失败"
 }

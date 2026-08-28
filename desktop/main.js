@@ -114,12 +114,21 @@ function createWindow() {
     if (/^https?:/i.test(url)) shell.openExternal(url);
   });
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
-}
-
 function createTray() {
+  const iconPath = path.join(__dirname, "..", "public", "trayTemplate.png");
+  let image = nativeImage.createFromPath(iconPath);
+  // Template image: macOS renders it black on light menu bars and WHITE on
+  // dark menu bars automatically (the standard tray-icon treatment).
+  image.setTemplateImage(true);
+  tray = new Tray(image);
+  tray.setToolTip("OmpWeb");
+
+  const iconPath = path.join(__dirname, "..", "public", "trayTemplate.png");
+  let image = nativeImage.createFromPath(iconPath);
+  // Template image: macOS renders it black on light menu bars and WHITE on
+  // dark menu bars automatically (the standard tray-icon treatment).
+  image.setTemplateImage(true);
+  tray = new Tray(image);
   const iconPath = path.join(__dirname, "..", "public", "icon.png");
   let image = nativeImage.createFromPath(iconPath);
   image = image.resize({ width: 18, height: 18 });

@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background Gradient: Warm Amber to Ember Crimson -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFC000" />
+      <stop offset="28%" stop-color="#FF7A00" />
+      <stop offset="58%" stop-color="#E62E00" />
+      <stop offset="82%" stop-color="#990026" />
+      <stop offset="100%" stop-color="#36000E" />
+    </linearGradient>
+
+    <!-- Glowing Core Accent (Radial Ember Pulse behind Monogram) -->
+    <radialGradient id="coreGlow" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#FFA800" stop-opacity="0.65" />
+      <stop offset="40%" stop-color="#FF4500" stop-opacity="0.35" />
+      <stop offset="80%" stop-color="#D60036" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Top Specular Highlight Overlay -->
+    <linearGradient id="specularOverlay" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28" />
+      <stop offset="25%" stop-color="#FFFFFF" stop-opacity="0.08" />
+      <stop offset="60%" stop-color="#000000" stop-opacity="0" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.25" />
+    </linearGradient>
+
+    <!-- Outer Rim Highlight -->
+    <linearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.6" />
+      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0.2" />
+      <stop offset="70%" stop-color="#FF6B00" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.35" />
+    </linearGradient>
+
+    <!-- Monogram Main Fill Gradient -->
+    <linearGradient id="monogramGrad" x1="0%" y1="0%" x2="30%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="55%" stop-color="#FFF4EC" />
+      <stop offset="100%" stop-color="#FFD6B8" />
+    </linearGradient>
+
+    <!-- Caret Accent Gradient (Subtle Amber Tip Glow) -->
+    <linearGradient id="caretGrad" x1="0%" y1="0%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="70%" stop-color="#FFF0E5" />
+      <stop offset="100%" stop-color="#FFCA99" />
+    </linearGradient>
+
+    <!-- Ambient Glow Filter -->
+    <filter id="amberGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="28" result="blur" />
+      <feComponentTransfer in="blur" result="boostBlur">
+        <feFuncA type="linear" slope="0.85" />
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="boostBlur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Sharp Contact & Soft Ambient Drop Shadow -->
+    <filter id="monogramShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#240008" flood-opacity="0.55" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#400000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Canvas Background (Squircle rx=220) -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#bgGrad)" />
+
+  <!-- Core Radiant Light Field -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#coreGlow)" />
+
+  <!-- Specular Light Reflection -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#specularOverlay)" />
+
+  <!-- Crisp Beveled Outer Rim -->
+  <rect x="3" y="3" width="1018" height="1018" rx="217" ry="217" fill="none" stroke="url(#rimGrad)" stroke-width="5" opacity="0.85" />
+
+  <!-- Monogram System: Terminal Prompt ('O' Ring + Caret '›') -->
+  <g filter="url(#monogramShadow)">
+    
+    <!-- Neon Amber Back-Glow Layer -->
+    <g opacity="0.65" filter="url(#amberGlow)">
+      <circle cx="512" cy="512" r="210" fill="none" stroke="#FF7700" stroke-width="68" />
+      <path d="M 460 432 L 560 512 L 460 592" fill="none" stroke="#FF7700" stroke-width="64" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+
+    <!-- Main Foreground Crisp Monogram -->
+    <g>
+      <!-- 'O' Ring -->
+      <circle cx="512" cy="512" r="210" fill="none" stroke="url(#monogramGrad)" stroke-width="58" stroke-linecap="round" />
+
+      <!-- Terminal Caret '›' -->
+      <path d="M 460 432 L 560 512 L 460 592" fill="none" stroke="url(#caretGrad)" stroke-width="54" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+
+  </g>
+</svg>

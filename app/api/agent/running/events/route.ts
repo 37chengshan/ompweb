@@ -57,7 +57,9 @@ export async function GET(req: Request) {
       // client-side once a CLI session stops writing (no event fires then).
       const externalHeartbeat = setInterval(() => {
         try {
-          const active = getExternallyActiveIds(5000);
+          // Exclude the web's own RPC sessions: their file writes are ours.
+          const rpcIds = new Set(getRunningRpcSessionIds());
+          const active = getExternallyActiveIds(5000).filter((id) => !rpcIds.has(id));
           if (active.length > 0) {
             encode({ type: "externally-running", externallyRunning: active });
           }

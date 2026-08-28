@@ -687,6 +687,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // the external writer) and the transcript updates come from the watcher.
   const externalRunningRef = useRef(false);
   const externalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Unmount: never leak the external-reclaim poller.
+  useEffect(() => () => {
+    if (externalPollRef.current) {
+      clearInterval(externalPollRef.current);
+      externalPollRef.current = null;
+    }
+  }, []);
   const bashRecoveryIdRef = useRef(0);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
   const initialScrollDoneRef = useRef(false);
@@ -1582,6 +1589,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       },
     });
   }, []);
+
+  // True when this session is being written by an external omp/harness:
+  // RPC write commands (compact, steer, model/thinking changes, ...) must be
+  // rejected — they would run against a stale process and fight the external
+  // writer. Returns true when the action was rejected.
+  const rejectIfExternallyRunning = useCallback((): boolean => {
+    if (!externalRunningRef.current) return false;
+    addNotice({ type: "info", message: translate("agentSession.externallyRunning") });
+    return true;
+  }, [addNotice]);
 
   // Declared after addNotice: the dependency array below is evaluated during
   // render, so addNotice must already be initialized.
@@ -2596,6 +2613,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [loadContext]);
 
   const handleModelChange = useCallback(async (provider: string, modelId: string) => {
+    if (rejectIfExternallyRunning()) return;
     if (isNew) {
       setNewSessionModel({ provider, modelId });
       setPendingModel({ provider, modelId });
@@ -2617,9 +2635,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to set model:", e);
     }
-  }, [isNew, setNewSessionModel, refreshLiveModelState]);
+  }, [isNew, setNewSessionModel, refreshLiveModelState, rejectIfExternallyRunning]);
 
   const handleFastModeChange = useCallback(async (enabled: boolean) => {
+    if (rejectIfExternallyRunning()) return;
     // A brand-new session has no runtime yet: the model picker updates local
     // state (so the Fast button appears), but set_fast_mode is a live-process
     // command — without spawning the session the click silently no-ops.
@@ -2634,7 +2653,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to change Fast mode:", error);
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [addNotice, ensureNewSession, refreshLiveModelState]);
+  }, [addNotice, ensureNewSession, refreshLiveModelState, rejectIfExternallyRunning]);
 
   /** Toggle automatic retry for transient model failures. */
   const handleAutoRetryChange = useCallback(async (enabled: boolean) => {
@@ -2703,6 +2722,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   /** Cycle to the next available model (⌘/Ctrl+Alt+M). */
   const handleCycleModel = useCallback(async () => {
+    if (rejectIfExternallyRunning()) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     try {
@@ -2712,10 +2732,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to cycle model:", error);
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [addNotice, refreshLiveModelState]);
+  }, [addNotice, refreshLiveModelState, rejectIfExternallyRunning]);
 
   /** Cycle to the next thinking level (⌘/Ctrl+Alt+T). */
   const handleCycleThinkingLevel = useCallback(async () => {
+    if (rejectIfExternallyRunning()) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     try {
@@ -2725,7 +2746,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to cycle thinking level:", error);
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [addNotice, refreshLiveModelState]);
+  }, [addNotice, refreshLiveModelState, rejectIfExternallyRunning]);
 
   /** Stop an in-progress automatic retry from the retry banner. */
   const handleAbortRetry = useCallback(async () => {
@@ -2753,6 +2774,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [addNotice, loadSession, refreshLiveModelState]);
 
   const handleCompact = useCallback(async () => {
+    if (rejectIfExternallyRunning()) return;
     const sid = sessionIdRef.current;
     if (!sid || isCompactingRef.current || isCompacting) return;
     isCompactingRef.current = true;
@@ -2771,7 +2793,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       isCompactingRef.current = false;
       setIsCompacting(false);
     }
-  }, [isCompacting, loadSession, refreshLiveModelState]);
+  }, [isCompacting, loadSession, refreshLiveModelState, rejectIfExternallyRunning]);
 
   const loadModels = useCallback(async (signal?: AbortSignal) => {
     setModelsLoading(true);
@@ -2937,6 +2959,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // a ghost message if the queue is recalled.
   const toPiImages = (images?: AttachedImage[]) => images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
   const handleSteer = useCallback(async (message: string, images?: AttachedImage[]) => {
+    if (rejectIfExternallyRunning()) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     const piImages = toPiImages(images);
@@ -2955,13 +2978,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
       opts.chatInputRef?.current?.insertIfEmpty(message);
     }
-  }, [addNotice, opts.chatInputRef]);
+  }, [addNotice, opts.chatInputRef, rejectIfExternallyRunning]);
 
   const handlePromptWithStreamingBehavior = useCallback(async (
     message: string,
     behavior: "steer" | "followUp",
     images?: AttachedImage[],
   ) => {
+    if (rejectIfExternallyRunning()) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     const piImages = toPiImages(images);
@@ -2981,9 +3005,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
       opts.chatInputRef?.current?.insertIfEmpty(message);
     }
-  }, [addNotice, opts.chatInputRef]);
+  }, [addNotice, opts.chatInputRef, rejectIfExternallyRunning]);
 
   const handleFollowUp = useCallback(async (message: string, images?: AttachedImage[]) => {
+    if (rejectIfExternallyRunning()) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     const piImages = toPiImages(images);
@@ -3000,7 +3025,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
       opts.chatInputRef?.current?.insertIfEmpty(message);
     }
-  }, [addNotice, opts.chatInputRef]);
+  }, [addNotice, opts.chatInputRef, rejectIfExternallyRunning]);
 
   const handleAbortCompaction = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -3013,6 +3038,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, []);
 
   const handleThinkingLevelChange = useCallback(async (level: ThinkingLevelOption) => {
+    if (rejectIfExternallyRunning()) return;
     setThinkingLevel(level);
     if (level === "auto") return; // "auto" leaves pi's current setting untouched
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
@@ -3023,7 +3049,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to set thinking level:", e);
     }
-  }, [refreshLiveModelState]);
+  }, [refreshLiveModelState, rejectIfExternallyRunning]);
 
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
     setToolPresetState(preset);

@@ -15,9 +15,9 @@ export async function GET(
     const rpc = getRpcSession(id);
     if (rpc?.isAlive()) {
       try {
-        const state = await rpc.send({ type: "get_state" }) as { isPromptRunning?: boolean; isStreaming?: boolean } | undefined;
+        const state = await rpc.send({ type: "get_state" }) as { isPromptRunning?: boolean; isStreaming?: boolean; isBashRunning?: boolean } | undefined;
         const externallyActive = (await isExternallyActive(id, 5000))
-          && !state?.isPromptRunning && !state?.isStreaming;
+          && !state?.isPromptRunning && !state?.isStreaming && !state?.isBashRunning;
         if (externallyActive) {
           // The web-owned omp is idle but the session file keeps changing —
           // a terminal `omp` (or a harness) is writing it. Detach: report it

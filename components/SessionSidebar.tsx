@@ -759,7 +759,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
       if (pendingRefreshRef.current) clearTimeout(pendingRefreshRef.current);
       source.close();
     };
-  }, [loadSessions, scheduleRefresh]);
+  }, [loadSessions, scheduleRefresh, markExternallyRunning]);
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;

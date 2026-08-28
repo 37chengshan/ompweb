@@ -1289,5 +1289,9 @@
   "projects.scriptSaveFailed": "保存失敗",
   "projects.githubNoPrs": "PRなし",
   "projects.githubOpenRepo": "リポジトリを開く",
-  "projects.ci.none": "なし"
+  "projects.ci.none": "なし",
+  "planViewer.toc": "目次",
+  "planViewer.loading": "プランを読込中…",
+  "planViewer.executePrompt": "上記の計画を確認しました。段階に沿って実行してください。",
+  "planViewer.rejectPrompt": "上記の計画を再検討し、修正点と改訂版を提示してください。"
 }

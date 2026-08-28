@@ -1289,5 +1289,9 @@
   "projects.scriptSaveFailed": "Save failed",
   "projects.githubNoPrs": "No open PRs",
   "projects.githubOpenRepo": "Open repository",
-  "projects.ci.none": "none"
+  "projects.ci.none": "none",
+  "planViewer.toc": "Contents",
+  "planViewer.loading": "Loading plan…",
+  "planViewer.executePrompt": "I reviewed and approve the plan above — execute it step by step.",
+  "planViewer.rejectPrompt": "Re-review the plan above, point out what needs to change, and provide a revised plan."
 }

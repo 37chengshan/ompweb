@@ -1,0 +1,55 @@
+name: Build desktop app
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS (dmg)
+          - os: windows-latest
+            name: Windows (exe)
+          - os: ubuntu-latest
+            name: Linux (AppImage)
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Package desktop app
+        run: npx electron-builder --publish ${{ github.ref_type == 'tag' && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No code-signing certificates in CI: skip auto-discovery so the
+          # unsigned build (same as local dev builds) succeeds.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ompweb-${{ matrix.name }}
+          path: |
+            dist-desktop/*.dmg
+            dist-desktop/*.exe
+            dist-desktop/*.AppImage
+            dist-desktop/*.blockmap
+            dist-desktop/latest*.yml
+          if-no-files-found: error

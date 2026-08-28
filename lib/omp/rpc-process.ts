@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "child_process";
 import { createInterface } from "readline";
-import { proxyEnv } from "@/lib/proxy-config";
+import { proxyEnv } from "../proxy-config";
 import { sanitizeProjectCommandEnvironment } from "../project-command-env";
 import { resolveOmpBin } from "./omp-cli";
 import { encodeRpcFrames, RpcFrameDecoder, type RpcFrameRecord, type RpcProtocolVersion } from "./rpc-frame";

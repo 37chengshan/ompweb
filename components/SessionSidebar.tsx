@@ -13,8 +13,9 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
-import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderGit2, FolderSearch, GitBranch, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
+import type { GitHubRepoStatus } from "@/lib/github";
 
 declare global {
   interface Window {
@@ -205,6 +206,71 @@ function formatRelativeTime(value: string, _locale: string, now: number): string
 }
 
 const SIDEBAR_BUTTON_TRANSITION = "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)";
+
+/** Worst aggregate CI state across the repo's open PRs, for the status dot. */
+function worstCiState(status: GitHubRepoStatus | null): "success" | "failure" | "pending" | null {
+  if (!status || status.pulls.length === 0) return null;
+  let worst: "success" | "failure" | "pending" = "success";
+  for (const pr of status.pulls) {
+    const s = pr.checkStatus?.state;
+    if (!s || s === "unknown" || s === "neutral") continue;
+    if (s === "failure") return "failure";
+    if (s === "pending") worst = "pending";
+  }
+  return worst;
+}
+
+/** GitHub PR/CI status button on a project row: opens the repo, tooltip shows
+ *  open-PR count and worst check state. Hidden when the project is not a
+ *  GitHub checkout (API returns repo:null). */
+function GitHubStatusButton({ projectPath }: { projectPath: string }) {
+  const { t } = useI18n();
+  const [status, setStatus] = useState<GitHubRepoStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`/api/github/status?cwd=${encodeURIComponent(projectPath)}`)
+      .then((res) => (res.ok ? res.json() as Promise<{ repo?: GitHubRepoStatus | null }> : null))
+      .then((data) => {
+        if (!cancelled && data?.repo) setStatus(data.repo);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectPath]);
+
+  if (!status) return null;
+
+  const prCount = status.pulls.length;
+  const ci = worstCiState(status);
+  const dotColor = ci === "failure" ? "var(--status-error)" : ci === "pending" ? "var(--status-warning)" : "var(--status-success)";
+  const summary = ci
+    ? t("projects.githubStatus", { prs: prCount, ci: t(`projects.ci.${ci}`) })
+    : t("projects.githubPrs", { prs: prCount });
+
+  return (
+    <Tooltip content={summary}>
+      <button
+        type="button"
+        className="sidebar-project-action"
+        onClick={(e) => {
+          e.stopPropagation();
+          window.open(status.url, "_blank", "noopener,noreferrer");
+        }}
+        aria-label={summary}
+        title={summary}
+        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4, width: "auto", minWidth: 24, height: 24, padding: "0 5px", border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-dim)", cursor: "pointer", lineHeight: 0, transition: SIDEBAR_BUTTON_TRANSITION }}
+      >
+        <FolderGit2 size={13} strokeWidth={2} aria-hidden="true" />
+        {prCount > 0 && (
+          <span style={{ fontSize: 10.5, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{prCount}</span>
+        )}
+        {ci && (
+          <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+        )}
+      </button>
+    </Tooltip>
+  );
+}
 
 /** Quiet square icon button used across the sidebar chrome (header, section
  *  headers, footer). Stays visually subdued; the accent appears on hover and
@@ -2219,6 +2285,8 @@ function ProjectRow({
           </button>
         )}
         <div style={{ flex: 1 }} />
+        {/* GitHub PR/CI status (hidden for non-GitHub projects). */}
+        <GitHubStatusButton projectPath={project.path} />
         {/* Always-visible: open the workspace folder in the system file manager. */}
         <Tooltip content={t("fileExplorer.revealInFileManager")}>
           <button

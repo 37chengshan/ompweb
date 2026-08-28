@@ -1269,5 +1269,10 @@
   "planViewer.loadFailed": "Failed to load plan",
   "planViewer.noPlan": "This session has no plan document",
   "plan.sidebarTab": "Plan",
-  "chatWindow.planDocument": "Plan document"
+  "chatWindow.planDocument": "Plan document",
+  "projects.githubStatus": "{prs} PRs · CI {ci}",
+  "projects.githubPrs": "{prs} open PRs",
+  "projects.ci.success": "passing",
+  "projects.ci.failure": "failing",
+  "projects.ci.pending": "pending"
 }

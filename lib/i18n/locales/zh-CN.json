@@ -1269,5 +1269,10 @@
   "planViewer.loadFailed": "计划加载失败",
   "planViewer.noPlan": "该会话没有计划文档",
   "plan.sidebarTab": "计划",
-  "chatWindow.planDocument": "已生成计划"
+  "chatWindow.planDocument": "已生成计划",
+  "projects.githubStatus": "{prs} 个 PR · CI {ci}",
+  "projects.githubPrs": "{prs} 个开放 PR",
+  "projects.ci.success": "通过",
+  "projects.ci.failure": "失败",
+  "projects.ci.pending": "进行中"
 }

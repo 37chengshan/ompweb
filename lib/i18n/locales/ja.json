@@ -1269,5 +1269,10 @@
   "planViewer.loadFailed": "プラン読込に失敗",
   "planViewer.noPlan": "このセッションにプラン文書はありません",
   "plan.sidebarTab": "プラン",
-  "chatWindow.planDocument": "プラン文書"
+  "chatWindow.planDocument": "プラン文書",
+  "projects.githubStatus": "{prs} PR · CI {ci}",
+  "projects.githubPrs": "{prs} 件のPR",
+  "projects.ci.success": "成功",
+  "projects.ci.failure": "失敗",
+  "projects.ci.pending": "実行中"
 }

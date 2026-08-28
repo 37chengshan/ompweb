@@ -77,6 +77,10 @@ function startServer() {
   });
 }
 
+function appLog(message) {
+  try { fs.appendFileSync(path.join(app.getPath("userData"), "omp-app.log"), `${new Date().toISOString()} ${message}\n`); } catch { /* best effort */ }
+}
+
 function waitForServer(attempt = 0) {
   if (quitting) return;
   const controller = new AbortController();

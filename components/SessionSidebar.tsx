@@ -2409,19 +2409,6 @@ function ProjectRow({
             <Play size={13} strokeWidth={2} aria-hidden="true" />
           </button>
         </Tooltip>
-        {/* Always-visible: open the workspace folder in the system file manager. */}
-        <Tooltip content={t("fileExplorer.revealInFileManager")}>
-          <button
-            type="button"
-            className="sidebar-project-action"
-            onClick={() => void revealInFileManager(project.path)}
-            aria-label={t("fileExplorer.revealInFileManager")}
-            title={t("fileExplorer.revealInFileManager")}
-            style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-dim)", cursor: "pointer", lineHeight: 0, transition: SIDEBAR_BUTTON_TRANSITION }}
-          >
-            <FolderSearch size={13} strokeWidth={2} aria-hidden="true" />
-          </button>
-        </Tooltip>
         {hasActivity && (
           <span
             aria-label={t("projects.activity", { running: activity?.running ?? 0, unread: activity?.unread ?? 0 })}
@@ -2473,6 +2460,9 @@ function ProjectRow({
           >
             <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { startAliasEdit(); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
               {project.alias ? t("projects.editAlias") : t("projects.nameAlias")}
+            </button>
+            <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { setActionMenuOpen(false); void revealInFileManager(project.path); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
+              {t("fileExplorer.revealInFileManager")}
             </button>
             <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { setActionMenuOpen(false); setScriptsMenuOpen(true); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
               {t("projects.quickScripts")}

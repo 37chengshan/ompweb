@@ -2,6 +2,9 @@ import coreWebVitals from "eslint-config-next/core-web-vitals";
 import typescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
+  {
+    ignores: ["dist-desktop/**", "**/standalone/**", "**/app.asar.unpacked/**"],
+  },
   ...coreWebVitals,
   ...typescript,
   {

@@ -3,6 +3,7 @@ import fs from "fs";
 import * as pty from "node-pty";
 import type { IPty } from "node-pty";
 import { resolveTerminalShell } from "./terminal-shell";
+import { proxyEnv } from "./proxy-config";
 
 export interface TerminalSession {
   id: string;
@@ -58,7 +59,7 @@ function spawnShellPty(cwd: string, env: NodeJS.ProcessEnv): IPty {
     cols: DEFAULT_COLS,
     rows: DEFAULT_ROWS,
     cwd,
-    env: toPtyEnv(env),
+    env: toPtyEnv({ ...env, ...proxyEnv(process.env.OMP_WEB_PROXY_URL || null) }),
   });
 }
 

@@ -1296,5 +1296,17 @@
   "planViewer.rejectPrompt": "上記の計画を再検討し、修正点と改訂版を提示してください。",
   "appShell.ompMissing": "omp ランタイムが見つかりません。AI 機能は利用できません。導入：",
   "appShell.ompInstallDocs": "oh-my-pi 導入ドキュメント",
-  "appShell.dismiss": "閉じる"
+  "appShell.dismiss": "閉じる",
+  "proxy.title": "ネットワークプロキシ",
+  "proxy.description": "システムプロキシを自動検出、または手動指定。omp と GitHub リクエストに適用（TUN 不要）",
+  "proxy.mode": "プロキシモード",
+  "proxy.modeAuto": "自動検出",
+  "proxy.modeManual": "手動設定",
+  "proxy.modeOff": "オフ",
+  "proxy.url": "プロキシURL",
+  "proxy.save": "保存",
+  "proxy.saving": "保存中…",
+  "proxy.saved": "保存済み ✓",
+  "proxy.detected": "検出されたプロキシ：",
+  "proxy.effective": "有効プロキシ"
 }

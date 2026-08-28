@@ -1296,5 +1296,17 @@
   "planViewer.rejectPrompt": "请重新审查上述计划，指出需要调整的地方并给出修正后的完整方案。",
   "appShell.ompMissing": "未检测到 omp 运行时，AI 功能不可用。安装：",
   "appShell.ompInstallDocs": "查看 oh-my-pi 安装文档",
-  "appShell.dismiss": "关闭"
+  "appShell.dismiss": "关闭",
+  "proxy.title": "网络代理",
+  "proxy.description": "自动检测系统代理或手动指定，应用于 omp 与 GitHub 请求（无需 TUN 模式）",
+  "proxy.mode": "代理模式",
+  "proxy.modeAuto": "自动检测",
+  "proxy.modeManual": "手动配置",
+  "proxy.modeOff": "关闭",
+  "proxy.url": "代理地址",
+  "proxy.save": "保存",
+  "proxy.saving": "保存中…",
+  "proxy.saved": "已保存 ✓",
+  "proxy.detected": "检测到可用代理：",
+  "proxy.effective": "生效代理"
 }

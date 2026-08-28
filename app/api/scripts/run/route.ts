@@ -4,6 +4,7 @@ import { mkdirSync, openSync } from "fs";
 import { dirname, join } from "path";
 import { resolveProject } from "@/lib/worktree";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { proxyEnv } from "@/lib/proxy-config";
 
 export const dynamic = "force-dynamic";
 
@@ -36,13 +37,13 @@ export async function POST(req: Request) {
       const logPath = join(project.projectRoot, ".omp", "scripts-logs", `${Date.now()}.log`);
       mkdirSync(dirname(logPath), { recursive: true });
       const out = openSync(logPath, "a");
-      const child = spawn(command, { cwd: project.projectRoot, shell: true, detached: true, stdio: ["ignore", out, out] });
+      const child = spawn(command, { cwd: project.projectRoot, shell: true, detached: true, stdio: ["ignore", out, out], env: { ...process.env, ...proxyEnv(process.env.OMP_WEB_PROXY_URL || null) } });
       child.unref();
       return NextResponse.json({ ok: true, mode: "detach", pid: child.pid, logPath });
     }
 
     return await new Promise<NextResponse>((resolve) => {
-      const child = spawn(command, { cwd: project.projectRoot, shell: true });
+      const child = spawn(command, { cwd: project.projectRoot, shell: true, env: { ...process.env, ...proxyEnv(process.env.OMP_WEB_PROXY_URL || null) } });
       let output = "";
       let settled = false;
       const finish = (code: number | null, timedOut: boolean) => {

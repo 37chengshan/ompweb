@@ -1296,5 +1296,17 @@
   "planViewer.rejectPrompt": "Re-review the plan above, point out what needs to change, and provide a revised plan.",
   "appShell.ompMissing": "omp runtime not found — AI features unavailable. Install:",
   "appShell.ompInstallDocs": "Open oh-my-pi install docs",
-  "appShell.dismiss": "Dismiss"
+  "appShell.dismiss": "Dismiss",
+  "proxy.title": "Network Proxy",
+  "proxy.description": "Auto-detect or set a manual proxy; applied to omp and GitHub requests (no TUN required)",
+  "proxy.mode": "Proxy mode",
+  "proxy.modeAuto": "Auto-detect",
+  "proxy.modeManual": "Manual",
+  "proxy.modeOff": "Off",
+  "proxy.url": "Proxy URL",
+  "proxy.save": "Save",
+  "proxy.saving": "Saving…",
+  "proxy.saved": "Saved ✓",
+  "proxy.detected": "Detected proxies:",
+  "proxy.effective": "Active proxy"
 }

@@ -73,7 +73,7 @@ export function isExistingPathWithinRoots(target: string, roots: Set<string>): b
 export function isExistingFilePathAllowed(target: string, allowedRoots: Set<string>): boolean {
   return isExistingPathWithinRoots(target, allowedRoots);
 }
-const OMP_IMAGE_NAME_RE = /^omp-image-[a-f0-9]+\.(png|jpe?g|webp|gif)$/i;
+const OMP_IMAGE_NAME_RE = /^omp-image-[a-f0-9]+\.(png|jpe?g|webp|gif|mp4|m4v|mov|webm|ogv|mkv)$/i;
 
 /**
  * omp's image-generation tool writes results to the system temp dir as
@@ -82,10 +82,16 @@ const OMP_IMAGE_NAME_RE = /^omp-image-[a-f0-9]+\.(png|jpe?g|webp|gif)$/i;
  * pattern (nothing else in the temp dir).
  */
 export function isOmpGeneratedImagePath(filePath: string): boolean {
-  const tmp = normalizeSlashes(tmpdir());
-  const normalized = normalizeSlashes(filePath);
-  const prefix = tmp.endsWith("/") ? tmp : `${tmp}/`;
-  if (!normalized.startsWith(prefix)) return false;
-  const name = normalized.slice(normalized.lastIndexOf("/") + 1);
-  return OMP_IMAGE_NAME_RE.test(name);
+  const name = normalizeSlashes(filePath).slice(normalizeSlashes(filePath).lastIndexOf("/") + 1);
+  if (!OMP_IMAGE_NAME_RE.test(name)) return false;
+  // macOS /tmp is a symlink to /private/tmp and omp may report either form;
+  // realpath both sides so string prefixes cannot miss the temp dir.
+  try {
+    const real = realpathSync(filePath);
+    const realTmp = realpathSync(tmpdir());
+    const prefix = normalizeSlashes(realTmp).replace(/\/+$/, "") + "/";
+    return normalizeSlashes(real).startsWith(prefix);
+  } catch {
+    return false;
+  }
 }

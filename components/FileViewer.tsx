@@ -17,6 +17,7 @@ import {
   DOCX_PREVIEW_MAX_BYTES,
   getFileExt,
   isAudioPath,
+  isVideoPath,
   isDocumentPreviewPath,
   isImagePath,
 } from "@/lib/file-types";
@@ -659,6 +660,67 @@ function AudioViewer({ filePath, cwd, sourceSessionId }: Props) {
   );
 }
 
+function VideoViewer({ filePath, cwd, sourceSessionId }: Props) {
+  const { t } = useI18n();
+  const [error, setError] = useState<string | null>(null);
+  const ext = getFileName(filePath).toLowerCase().split(".").pop() ?? "";
+  const src = getFileApiUrl(filePath, "read", sourceSessionId);
+
+  useEffect(() => {
+    setError(null);
+  }, [filePath]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "6px 12px",
+          borderBottom: "1px solid var(--border)",
+          fontSize: 11,
+          color: "var(--text-dim)",
+          background: "var(--bg)",
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontFamily: "var(--font-mono)" }} title={filePath}>
+          {getRelativeFilePath(filePath, cwd)}
+        </span>
+        <span style={{ marginLeft: "auto" }}>{ext || t("fileViewer.videoType")}</span>
+        <DownloadLink filePath={filePath} sourceSessionId={sourceSessionId} />
+      </div>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          background: "var(--bg-panel)",
+        }}
+      >
+        <div style={{ width: "min(960px, 100%)" }}>
+          {error && (
+            <div style={{ color: "var(--status-error)", fontSize: 13, marginBottom: 12, textAlign: "center" }}>
+              {error}
+            </div>
+          )}
+          <video
+            key={src}
+            controls
+            preload="metadata"
+            src={src}
+            onError={() => setError(t("fileViewer.videoLoadFailed"))}
+            style={{ width: "100%", maxHeight: "70vh", borderRadius: "var(--radius-control)", background: "#000" }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
   const { t } = useI18n();
   const [watching, setWatching] = useState(false);
@@ -794,6 +856,9 @@ export function FileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMenti
   }
   if (isAudioPath(filePath)) {
     return <AudioViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} />;
+  }
+  if (isVideoPath(filePath)) {
+    return <VideoViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} />;
   }
   if (isDocumentPreviewPath(filePath)) {
     return <DocumentViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} />;

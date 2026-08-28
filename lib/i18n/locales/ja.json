@@ -1262,5 +1262,7 @@
   "plan.critiqueBody": "現在の計画の問題点（冗長なステップ、テスト不足、順序の誤り、リスクなど）を指摘してください。エージェントがフィードバックに基づいて再計画します。",
   "plan.critiquePlaceholder": "具体的な修正提案や却下理由を入力...",
   "plan.cancel": "キャンセル",
-  "plan.submitCritique": "フィードバックを送信"
+  "plan.submitCritique": "フィードバックを送信",
+  "fileViewer.videoType": "動画",
+  "fileViewer.videoLoadFailed": "動画を読み込めませんでした"
 }

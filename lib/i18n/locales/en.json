@@ -1262,5 +1262,7 @@
   "plan.critiqueBody": "Point out issues in the current plan (e.g. redundant steps, missing tests, wrong order, risks); the agent will re-plan based on your feedback.",
   "plan.critiquePlaceholder": "Enter specific revision suggestions or reasons...",
   "plan.cancel": "Cancel",
-  "plan.submitCritique": "Submit feedback"
+  "plan.submitCritique": "Submit feedback",
+  "fileViewer.videoType": "video",
+  "fileViewer.videoLoadFailed": "Could not load video"
 }

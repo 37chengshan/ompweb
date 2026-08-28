@@ -1262,5 +1262,7 @@
   "plan.critiqueBody": "指出当前计划存在的问题（如步骤冗余、缺少测试、顺序不当或风险项），智能体将根据意见重新规划。",
   "plan.critiquePlaceholder": "请输入具体的修改建议或打回理由...",
   "plan.cancel": "取消",
-  "plan.submitCritique": "提交修改意见"
+  "plan.submitCritique": "提交修改意见",
+  "fileViewer.videoType": "视频",
+  "fileViewer.videoLoadFailed": "无法加载视频"
 }

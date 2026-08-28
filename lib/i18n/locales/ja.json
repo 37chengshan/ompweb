@@ -1286,5 +1286,8 @@
   "projects.scriptFailed": "{name} 失敗 (exit {code})",
   "projects.scriptTimedOut": "{name} タイムアウト",
   "projects.scriptSaved": "{name} 保存済み",
-  "projects.scriptSaveFailed": "保存失敗"
+  "projects.scriptSaveFailed": "保存失敗",
+  "projects.githubNoPrs": "PRなし",
+  "projects.githubOpenRepo": "リポジトリを開く",
+  "projects.ci.none": "なし"
 }

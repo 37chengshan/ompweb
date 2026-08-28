@@ -1286,5 +1286,8 @@
   "projects.scriptFailed": "{name} failed (exit {code})",
   "projects.scriptTimedOut": "{name} timed out and was stopped",
   "projects.scriptSaved": "{name} saved",
-  "projects.scriptSaveFailed": "Save failed"
+  "projects.scriptSaveFailed": "Save failed",
+  "projects.githubNoPrs": "No open PRs",
+  "projects.githubOpenRepo": "Open repository",
+  "projects.ci.none": "none"
 }

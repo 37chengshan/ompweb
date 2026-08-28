@@ -220,8 +220,8 @@ function worstCiState(status: GitHubRepoStatus | null): "success" | "failure" | 
   return worst;
 }
 
-/** GitHub PR/CI status button on a project row: opens the repo, tooltip shows
- *  open-PR count and worst check state. Hidden when the project is not a
+/** GitHub PR/CI status button on a project row: opens the repo, hover shows
+ *  an open-PR list with per-PR CI state. Hidden when the project is not a
  *  GitHub checkout (API returns repo:null). */
 function GitHubStatusButton({ projectPath }: { projectPath: string }) {
   const { t } = useI18n();
@@ -243,12 +243,52 @@ function GitHubStatusButton({ projectPath }: { projectPath: string }) {
   const prCount = status.pulls.length;
   const ci = worstCiState(status);
   const dotColor = ci === "failure" ? "var(--status-error)" : ci === "pending" ? "var(--status-warning)" : "var(--status-success)";
-  const summary = ci
-    ? t("projects.githubStatus", { prs: prCount, ci: t(`projects.ci.${ci}`) })
-    : t("projects.githubPrs", { prs: prCount });
+  const ciKey = ci ? `projects.ci.${ci}` : null;
+  const ciLabel = ciKey ? t(ciKey) : null;
+
+  const hoverCard = (
+    <div style={{ minWidth: 200, maxWidth: 260, padding: 4 }}>
+      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {status.owner}/{status.repo}
+      </div>
+      {prCount === 0 && (
+        <div style={{ color: "var(--text-dim)", fontSize: 11, padding: "2px 0" }}>{t("projects.githubNoPrs")}</div>
+      )}
+      {status.pulls.map((pr) => {
+        const state = pr.checkStatus?.state;
+        const color = state === "failure" ? "var(--status-error)" : state === "pending" ? "var(--status-warning)" : state === "success" ? "var(--status-success)" : "var(--text-dim)";
+        return (
+          <button
+            key={pr.number}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(`${status.url}/pull/${pr.number}`, "_blank", "noopener,noreferrer");
+            }}
+            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "3px 4px", border: "none", borderRadius: 5, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11, lineHeight: 1.3 }}
+          >
+            <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>#{pr.number}</span>
+            <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pr.title}</span>
+            <span aria-hidden="true" style={{ flexShrink: 0, width: 7, height: 7, borderRadius: "50%", background: color }} />
+          </button>
+        );
+      })}
+      <div style={{ borderTop: "1px solid var(--border)", margin: "5px 0 4px" }} />
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          window.open(status.url, "_blank", "noopener,noreferrer");
+        }}
+        style={{ display: "block", width: "100%", padding: "3px 4px", border: "none", borderRadius: 5, background: "transparent", color: "var(--accent)", cursor: "pointer", textAlign: "left", fontSize: 11 }}
+      >
+        {t("projects.githubOpenRepo")}
+      </button>
+    </div>
+  );
 
   return (
-    <Tooltip content={summary}>
+    <Tooltip content={hoverCard} side="bottom">
       <button
         type="button"
         className="sidebar-project-action"
@@ -256,16 +296,19 @@ function GitHubStatusButton({ projectPath }: { projectPath: string }) {
           e.stopPropagation();
           window.open(status.url, "_blank", "noopener,noreferrer");
         }}
-        aria-label={summary}
-        title={summary}
-        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4, width: "auto", minWidth: 24, height: 24, padding: "0 5px", border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-dim)", cursor: "pointer", lineHeight: 0, transition: SIDEBAR_BUTTON_TRANSITION }}
+        aria-label={t("projects.githubStatus", { prs: prCount, ci: ciLabel ?? t("projects.ci.none") })}
+        title={t("projects.githubStatus", { prs: prCount, ci: ciLabel ?? t("projects.ci.none") })}
+        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4, width: "auto", minWidth: 24, maxWidth: 130, height: 24, padding: "0 5px", border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-dim)", cursor: "pointer", lineHeight: 0, transition: SIDEBAR_BUTTON_TRANSITION }}
       >
-        <FolderGit2 size={13} strokeWidth={2} aria-hidden="true" />
+        <FolderGit2 size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10.5, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+          {status.owner}/{status.repo}
+        </span>
         {prCount > 0 && (
-          <span style={{ fontSize: 10.5, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{prCount}</span>
+          <span style={{ flexShrink: 0, fontSize: 10.5, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{prCount}</span>
         )}
         {ci && (
-          <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+          <span aria-hidden="true" style={{ flexShrink: 0, width: 7, height: 7, borderRadius: "50%", background: dotColor }} />
         )}
       </button>
     </Tooltip>

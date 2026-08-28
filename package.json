@@ -141,6 +141,10 @@
       {
         "from": "public",
         "to": "standalone/public"
+      },
+      {
+        "from": "templates/desktop/splash.mp4",
+        "to": "splash.mp4"
       }
     ]
   }

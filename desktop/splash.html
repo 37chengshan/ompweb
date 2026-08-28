@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; cursor: pointer; }
+  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+</style>
+</head>
+<body>
+<video id="splash" autoplay muted playsinline></video>
+<script>
+  const video = document.getElementById("splash");
+  const src = new URLSearchParams(location.search).get("video");
+  if (src) video.src = src;
+  video.addEventListener("ended", () => window.close());
+  // Fallback: never leave the splash hanging if the video stalls.
+  setTimeout(() => { if (!video.ended) window.close(); }, 14000);
+  document.body.addEventListener("click", () => window.close());
+</script>
+</body>
+</html>

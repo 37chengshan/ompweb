@@ -119,7 +119,8 @@
       "target": [
         "AppImage"
       ],
-      "category": "Development"
+      "category": "Development",
+      "executableName": "ompweb"
     },
     "extraResources": [
       {

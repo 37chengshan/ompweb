@@ -47,6 +47,13 @@ const launchOptions = parseLaunchOptions();
 if (launchOptions.help || launchOptions.version) {
   process.exit(0);
 }
+
+// `ompweb-desktop --install`: copy the packaged OmpWeb.app template to
+// ~/Applications (macOS) so the app has a real double-clickable entry.
+if (process.argv.includes("--install")) {
+  installDesktopApp();
+  process.exit(0);
+}
 const port = launchOptions.port;
 const hostname = launchOptions.hostname;
 const password = launchOptions.password;
@@ -124,6 +131,28 @@ function openBrowser() {
   const opener = spawn(openCmd, [browserUrl], { stdio: "ignore", detached: true });
   opener.on("error", () => { /* best effort */ });
   opener.unref();
+}
+
+/** Copy the bundled OmpWeb.app to ~/Applications (macOS only). */
+function installDesktopApp() {
+  if (process.platform !== "darwin") {
+    console.error("--install creates a macOS .app; on Windows use the win-start.vbs template instead.");
+    process.exit(1);
+  }
+  const fs = require("fs");
+  const { execFileSync } = require("child_process");
+  const template = path.join(pkgDir, "templates", "desktop", "OmpWeb.app");
+  if (!fs.existsSync(path.join(template, "Contents", "MacOS", "ompweb-launcher"))) {
+    console.error("OmpWeb.app template not found in this package.");
+    process.exit(1);
+  }
+  const target = path.join(require("os").homedir(), "Applications", "OmpWeb.app");
+  fs.rmSync(target, { recursive: true, force: true });
+  fs.cpSync(template, target, { recursive: true });
+  // Ad-hoc sign so macOS Gatekeeper does not quarantine the launcher.
+  try { execFileSync("codesign", ["--force", "--sign", "-", target], { stdio: "ignore" }); } catch { /* best effort */ }
+  console.log(`Installed OmpWeb.app → ${target}`);
+  console.log("Double-click it to start omp-web (or run: open " + target + ")");
 }
 
 main().catch((error) => {

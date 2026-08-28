@@ -7,6 +7,8 @@ import { ClickableImage } from "./ImageLightbox";
 import { translate, useI18n, type Locale } from "@/lib/i18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { isEmptyThinkingBlock } from "@/lib/message-display";
+import { splitPathTokens } from "@/lib/markdown-path-links";
+import { resolveLocalFileHref } from "@/lib/file-links";
 import { Tooltip, Collapsible, CollapsibleTrigger } from "./ui/primitives";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { SubagentStatusIcon } from "./SubagentStatusIcon";
@@ -164,7 +166,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
       return null;
     }
     if (custom.customType === "compaction") {
-      return <CompactionMessageView message={custom} />;
+      return <CompactionMessageView message={custom} cwd={cwd} onOpenFile={onOpenFile} />;
     }
     if (custom.display === false) {
       return <HiddenExtensionView message={custom} cwd={cwd} onOpenFile={onOpenFile} />;
@@ -583,7 +585,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} isStreaming={isStreaming} defaultCollapsed={toolCallsDefaultCollapsed} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} isStreaming={isStreaming} defaultCollapsed={toolCallsDefaultCollapsed} onOpenFile={onOpenFile} cwd={cwd} />;
   }
   return null;
 }
@@ -710,7 +712,7 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
 ));
 
 
-const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isStreaming, defaultCollapsed = true }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean; defaultCollapsed?: boolean }) {
+const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isStreaming, defaultCollapsed = true, onOpenFile, cwd }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean; defaultCollapsed?: boolean; onOpenFile?: (filePath: string) => void; cwd?: string }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(Boolean(isStreaming) && !defaultCollapsed);
   const resultText = result
@@ -763,7 +765,7 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
                 resultDiff ? (
                   <PairedDiffResult diff={resultDiff} />
                 ) : (
-                  <PairedResult text={formatToolOutput(resultText ?? "", block.toolName)} isEmpty={resultIsEmpty} isError={isError} />
+                  <PairedResult text={formatToolOutput(resultText ?? "", block.toolName)} isEmpty={resultIsEmpty} isError={isError} onOpenFile={onOpenFile} cwd={cwd} />
                 )
               ) : null}
             </div>
@@ -1152,27 +1154,55 @@ function PatchTextView({ text }: { text: string }) {
   );
 }
 
-function PairedResult({ text, isEmpty, isError }: {
+function PairedResult({ text, isEmpty, isError, onOpenFile, cwd }: {
   text: string;
   isEmpty: boolean;
   isError: boolean;
+  onOpenFile?: (filePath: string) => void;
+  cwd?: string;
 }) {
   const { t } = useI18n();
   const MAX_TEXT_LENGTH = 100_000;
   const isTruncated = text.length > MAX_TEXT_LENGTH;
   const displayText = isTruncated ? text.slice(0, MAX_TEXT_LENGTH) : text;
 
+  // Paths in tool output become clickable (open in the right panel), matching
+  // the message-text behavior.
+  const rendered = useMemo(() => {
+    if (isEmpty || !onOpenFile || !displayText) return null;
+    const tokens = splitPathTokens(displayText);
+    if (tokens.length === 1 && !tokens[0].isPath) return null;
+    return tokens.map((token, i) => {
+      if (!token.isPath) return token.text;
+      const filePath = resolveLocalFileHref(token.text, cwd);
+      if (!filePath) return token.text;
+      return (
+        <a
+          key={i}
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            onOpenFile(filePath);
+          }}
+          style={{ color: "var(--accent)", textDecoration: "underline", cursor: "pointer" }}
+        >
+          {token.text}
+        </a>
+      );
+    });
+  }, [displayText, isEmpty, onOpenFile, cwd]);
+
   return (
     <div className={`tool-call-output${isError ? " tool-call-output-error" : ""}`}>
       <pre className="tool-call-output-text" data-tool-output="true">
-        {isEmpty ? t("messageView.noOutput") : displayText}
+        {isEmpty ? t("messageView.noOutput") : rendered ?? displayText}
         {isTruncated && `\n\n... (Output truncated, ${text.length - MAX_TEXT_LENGTH} characters hidden) ...`}
       </pre>
     </div>
   );
 }
 
-function CompactionMessageView({ message }: { message: CustomMessage }) {
+function CompactionMessageView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void }) {
   const { t, locale } = useI18n();
   const summary = getMessageText(message.content);
   const parsedSummary = useMemo(() => parseCompactionSummary(summary), [summary]);
@@ -1211,7 +1241,9 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
             </div>
           )}
           <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>{t("messageView.compactionDescription")}</div>
-          {parsedSummary.body ? <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("messageView.noSummary")}</span>}
+          {parsedSummary.body
+            ? <MarkdownBody className="markdown-compaction-message" cwd={cwd} onOpenFile={onOpenFile}>{parsedSummary.body}</MarkdownBody>
+            : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("messageView.noSummary")}</span>}
           <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
         </div>
       </div>

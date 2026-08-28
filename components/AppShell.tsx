@@ -31,7 +31,6 @@ import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
 import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
 import { ArchiveBrowser } from "./ArchiveBrowser";
-import { PlanViewer } from "./PlanViewer";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 // The settings shell is part of the app bundle so opening it does not fetch or compile a modal chunk. The file viewer remains on demand.
 const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer), {
@@ -836,19 +835,24 @@ export function AppShell() {
     handleOpenFile(filePath, getFileName(filePath), selectedSession?.id ?? null);
   }, [handleOpenFile, selectedSession?.id]);
 
-  // Open the session's omp plan document as a special sidebar tab (plan://).
-  // The panel renders PlanViewer for these instead of FileViewer.
-  const handleOpenPlan = useCallback((sessionId: string) => {
-    const tabId = `plan:${sessionId}`;
-    setFileTabs((prev) => {
-      const existing = prev.find((t) => t.id === tabId);
-      if (existing) return prev;
-      return [...prev, { id: tabId, label: translate("plan.sidebarTab") || "计划", filePath: `plan://${sessionId}`, sourceSessionId: sessionId }];
-    });
-    setActiveFileTabId(tabId);
-    setRightPanelOpen(true);
-    if (isMobile) setSidebarOpen(false);
-  }, [isMobile]);
+  // Open the session's omp plan document as a normal file in the sidebar
+  // viewer: fetch the plan artifact (which authorizes its local/ dir), then
+  // open the .md through the standard file pipeline (FileViewer renders
+  // markdown in preview mode automatically).
+  const handleOpenPlan = useCallback(async (sessionId: string) => {
+    let planFile: string | null = null;
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/plan`);
+      const data = await res.json().catch(() => ({})) as { planFile?: string | null };
+      planFile = typeof data.planFile === "string" ? data.planFile : null;
+    } catch {
+      // Fall through to the pill-less state; the chat pill only shows when a
+      // plan document is known to exist, so this is a best-effort fetch.
+    }
+    if (planFile) {
+      handleOpenFile(planFile, getFileName(planFile), sessionId);
+    }
+  }, [handleOpenFile]);
 
   const handleCloseFileTab = useCallback((tabId: string) => {
     // Compute everything from the current list outside the updaters: no side
@@ -1659,25 +1663,18 @@ export function AppShell() {
         <div style={{ flex: 1, overflow: "hidden" }}>
           {fileTabs.length > 0 ? fileTabs.map((tab) => (
             <div key={tab.id} style={{ display: tab.id === activeFileTabId ? "block" : "none", height: "100%" }}>
-              {tab.id.startsWith("plan:") ? (
-                <PlanViewer
-                  sessionId={tab.sourceSessionId ?? ""}
-                  onComposerPrompt={(text) => chatInputRef.current?.insertIfEmpty(text)}
-                />
-              ) : (
-                <FileViewer
-                  filePath={tab.filePath}
-                  cwd={activeCwd ?? undefined}
-                  sourceSessionId={tab.sourceSessionId}
-                  gitRefreshKey={explorerRefreshKey}
-                  onMentionLines={tab.id === activeFileTabId && rightPanelOpen ? handleFileLineMention : undefined}
-                  onOpenFile={(filePath) => handleOpenFile(
-                    filePath,
-                    getFileName(filePath),
-                    tab.sourceSessionId,
-                  )}
-                />
-              )}
+              <FileViewer
+                filePath={tab.filePath}
+                cwd={activeCwd ?? undefined}
+                sourceSessionId={tab.sourceSessionId}
+                gitRefreshKey={explorerRefreshKey}
+                onMentionLines={tab.id === activeFileTabId && rightPanelOpen ? handleFileLineMention : undefined}
+                onOpenFile={(filePath) => handleOpenFile(
+                  filePath,
+                  getFileName(filePath),
+                  tab.sourceSessionId,
+                )}
+              />
             </div>
           )) : (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>

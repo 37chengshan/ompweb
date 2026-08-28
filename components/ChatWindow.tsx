@@ -1155,7 +1155,10 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               todoPhases={todoPhases}
               subagents={subagents}
               onSelectSubagent={setSelectedSubagent}
-              planModeActive={Boolean(activePlan || planInfo?.planModeActive)}
+              // Hide the todo grid only while a plan is actively being
+              // produced; a historical plan document (planInfo) must not
+              // suppress the task list of a plain run.
+              planModeActive={Boolean(activePlan)}
             />
             <ExtensionWidgets widgets={belowEditorWidgets} />
           </div>

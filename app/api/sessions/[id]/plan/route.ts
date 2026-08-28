@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { openSync, readSync, statSync, closeSync } from "fs";
+import { dirname } from "path";
 import { StringDecoder } from "string_decoder";
 import { resolveSessionPathOr404, apiErrorResponse } from "@/lib/api-utils";
 import { resolvePlanArtifact } from "@/lib/plan-reader";
+import { allowFileRoot } from "@/lib/file-access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     let plan: string | null = null;
     let truncated = false;
     if (artifact.planPath) {
+      // The plan markdown lives in the session's local/ dir, outside the
+      // normal file allowlist — authorize that directory so the sidebar file
+      // viewer can open the .md directly (the canonical "open the document"
+      // path the composer pill uses).
+      allowFileRoot(dirname(artifact.planPath));
       try {
         const size = statSync(artifact.planPath).size;
         const fd = openSync(artifact.planPath, "r");

@@ -1,0 +1,7 @@
+#!/bin/bash
+# OmpWeb desktop launcher — starts the omp-web server (hidden) and opens the browser.
+set -e
+# Hide this terminal-less launch context's window (when launched via Terminal).
+osascript -e 'tell application "Terminal" to set visible of front window to false' >/dev/null 2>&1 || true
+nohup ompweb-desktop --port 30177 >/dev/null 2>&1 &
+disown 2>/dev/null || true

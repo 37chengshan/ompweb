@@ -1335,5 +1335,15 @@
   "updateNoticePref.history": "更新历史",
   "updateNoticePref.historyEmpty": "暂无更新记录",
   "updateNoticePref.historyDesc": "已记录的版本与时间",
-  "updateNoticePref.clearHistory": "清空历史"
+  "updateNoticePref.clearHistory": "清空历史",
+  "diagnostics.title": "后端服务诊断",
+  "diagnostics.refresh": "刷新",
+  "diagnostics.error": "诊断失败",
+  "diagnostics.omp": "omp 运行时",
+  "diagnostics.ompMissing": "未安装",
+  "diagnostics.proxy": "网络代理",
+  "diagnostics.proxyOff": "未启用",
+  "diagnostics.rpc": "RPC 会话",
+  "diagnostics.sessions": "个活跃会话",
+  "diagnostics.server": "服务器"
 }

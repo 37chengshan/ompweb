@@ -1335,5 +1335,15 @@
   "updateNoticePref.history": "更新履歴",
   "updateNoticePref.historyEmpty": "更新履歴はありません",
   "updateNoticePref.historyDesc": "記録されたバージョンと日時",
-  "updateNoticePref.clearHistory": "履歴をクリア"
+  "updateNoticePref.clearHistory": "履歴をクリア",
+  "diagnostics.title": "バックエンド診断",
+  "diagnostics.refresh": "更新",
+  "diagnostics.error": "診断失敗",
+  "diagnostics.omp": "omp ランタイム",
+  "diagnostics.ompMissing": "未導入",
+  "diagnostics.proxy": "プロキシ",
+  "diagnostics.proxyOff": "オフ",
+  "diagnostics.rpc": "RPC セッション",
+  "diagnostics.sessions": "アクティブ",
+  "diagnostics.server": "サーバー"
 }

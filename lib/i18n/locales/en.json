@@ -1335,5 +1335,15 @@
   "updateNoticePref.history": "Update history",
   "updateNoticePref.historyEmpty": "No updates recorded yet",
   "updateNoticePref.historyDesc": "Recorded versions and times",
-  "updateNoticePref.clearHistory": "Clear history"
+  "updateNoticePref.clearHistory": "Clear history",
+  "diagnostics.title": "Backend Diagnostics",
+  "diagnostics.refresh": "Refresh",
+  "diagnostics.error": "Diagnostics failed",
+  "diagnostics.omp": "omp runtime",
+  "diagnostics.ompMissing": "not installed",
+  "diagnostics.proxy": "Network proxy",
+  "diagnostics.proxyOff": "off",
+  "diagnostics.rpc": "RPC sessions",
+  "diagnostics.sessions": "active",
+  "diagnostics.server": "Server"
 }

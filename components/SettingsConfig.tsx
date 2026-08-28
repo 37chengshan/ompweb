@@ -21,6 +21,7 @@ const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => m
 const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading, ssr: false });
 const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading, ssr: false });
 import { NetworkProxyConfig } from "./NetworkProxyConfig";
+import { loadUpdateHistory, clearUpdateHistory, isUpdateNoticeEnabled, setUpdateNoticeEnabled, type UpdateRecord } from "@/lib/update-notice";
 
 type UpdateState = {
   currentVersion: string | null;
@@ -491,6 +492,9 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
     void checkForAppUpdate();
   }, [currentTab, hasCheckedUpdates, checkForUpdate, checkForAppUpdate]);
 
+  const [noticeEnabled, setNoticeEnabled] = useState(isUpdateNoticeEnabled());
+  const [noticeHistory, setNoticeHistory] = useState<UpdateRecord[]>(() => loadUpdateHistory());
+
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const searchActive = trimmedQuery.length > 0;
 
@@ -697,6 +701,42 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                 </div>
 
                 <NetworkProxyConfig />
+
+                <div style={{ marginTop: 12, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 4px", color: "var(--text)" }}>{t("settingsConfig.updateNotice")}</h4>
+                  <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.updateNoticeDesc")}</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 520 }}>
+                    <NativeSetting searchId="update-notice-enabled" label={t("settingsConfig.updateNoticeToggle")} description={t("settingsConfig.updateNoticeToggleDesc")} scope="UI">
+                      <ToggleSwitch checked={noticeEnabled} onChange={(next) => { setNoticeEnabled(next); setUpdateNoticeEnabled(next); }} />
+                    </NativeSetting>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.04em", fontFamily: "var(--font-mono)", marginBottom: 6 }}>
+                        {t("settingsConfig.updateHistory")}
+                      </div>
+                      {noticeHistory.length === 0 ? (
+                        <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("settingsConfig.updateHistoryEmpty")}</div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {noticeHistory.map((r) => (
+                            <div key={r.version} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "var(--font-mono)" }}>
+                              <span style={{ fontWeight: 600, color: "var(--text)" }}>v{r.version}</span>
+                              <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{new Date(r.seenAt).toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {noticeHistory.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setNoticeHistory(clearUpdateHistory())}
+                          style={{ marginTop: 8, padding: "4px 10px", borderRadius: "var(--radius-control)", background: "transparent", border: "1px solid var(--border)", color: "var(--status-error)", fontSize: 11, cursor: "pointer" }}
+                        >
+                          {t("settingsConfig.updateHistoryClear")}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 

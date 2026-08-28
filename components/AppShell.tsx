@@ -32,6 +32,8 @@ import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { GitHubStatusPanel } from "./GitHubStatusPanel";
+import { UpdateNoticeDialog } from "./UpdateNoticeDialog";
+import { recordCurrentVersion, isUpdateNoticeEnabled } from "@/lib/update-notice";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 // The settings shell is part of the app bundle so opening it does not fetch or compile a modal chunk. The file viewer remains on demand.
 const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer), {
@@ -206,6 +208,7 @@ export function AppShell() {
   const [ompUpdateAvailable, setOmpUpdateAvailable] = useState(false);
   const [ompMissing, setOmpMissing] = useState(false);
   const [ompMissingDismissed, setOmpMissingDismissed] = useState(false);
+  const [updateNoticeVersion, setUpdateNoticeVersion] = useState<string | null>(null);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
   useEffect(() => {
@@ -238,6 +241,12 @@ export function AppShell() {
       .then((response) => response.ok ? response.json() : null)
       .then((data: { currentVersion?: string | null; availableVersion?: string | null; updateAvailable?: boolean; updateCommand?: string } | null) => {
         setOmpUpdateAvailable(Boolean(data?.updateAvailable));
+        // Post-update notice: record the running version; show a one-time
+        // dialog when it is a newly-seen version and the toggle is on.
+        if (data?.currentVersion) {
+          const { isNew } = recordCurrentVersion(data.currentVersion);
+          if (isNew && isUpdateNoticeEnabled()) setUpdateNoticeVersion(data.currentVersion);
+        }
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "omp update";
         toast.info(
@@ -1754,6 +1763,9 @@ export function AppShell() {
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
+    {updateNoticeVersion && (
+      <UpdateNoticeDialog version={updateNoticeVersion} onClose={() => setUpdateNoticeVersion(null)} />
+    )}
     {settingsTab && <SettingsConfig activeTab={settingsTab} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onToolCallsDefaultCollapsedChange={handleToolCallsDefaultCollapsedChange} thinkingDisplayMode={thinkingDisplayMode} onThinkingDisplayModeChange={handleThinkingDisplayModeChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onOmpUpdateAvailabilityChange={setOmpUpdateAvailable} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
     {archiveBrowserOpen && (
       <ArchiveBrowser

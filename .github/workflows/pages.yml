@@ -3,9 +3,6 @@ name: Deploy Architecture to GitHub Pages
 on:
   push:
     branches: ["main"]
-    paths:
-      - "docs/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -29,6 +26,8 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Prepare site directory
         run: |
@@ -36,6 +35,7 @@ jobs:
           cp docs/ompweb-architecture.html _site/index.html
           cp docs/ompweb-architecture.html _site/ompweb-architecture.html
           cp docs/ompweb-architecture.json _site/ompweb-architecture.json
+          if [ -f docs/architecture.png ]; then cp docs/architecture.png _site/; fi
           if [ -f docs/demo.gif ]; then cp docs/demo.gif _site/; fi
           if [ -f docs/screenshot-light.png ]; then cp docs/screenshot-light.png _site/; fi
           if [ -f docs/screenshot-dark.png ]; then cp docs/screenshot-dark.png _site/; fi

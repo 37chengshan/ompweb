@@ -1308,5 +1308,13 @@
   "proxy.saving": "保存中…",
   "proxy.saved": "保存済み ✓",
   "proxy.detected": "検出されたプロキシ：",
-  "proxy.effective": "有効プロキシ"
+  "proxy.effective": "有効プロキシ",
+  "appShell.githubStatus": "GitHub リポジトリとPR",
+  "githubPanel.noWorkspace": "ワークスペース未選択",
+  "githubPanel.loading": "読込中…",
+  "githubPanel.noRepo": "GitHub リポジトリではありません",
+  "githubPanel.openPrs": "{count} 件のPR",
+  "githubPanel.noPrs": "PR なし",
+  "githubPanel.noOpenPrs": "すべてマージ済み/クローズ",
+  "githubPanel.openRepo": "リポジトリを開く"
 }

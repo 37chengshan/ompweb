@@ -11,7 +11,7 @@ import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { Check, CircleCheck, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
+import { Check, CircleCheck, FolderGit2, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
 import { ThemePicker } from "./ThemePicker";
 import { TerminalPanel } from "./TerminalPanel";
 import { useTheme } from "@/hooks/useTheme";
@@ -31,6 +31,7 @@ import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
 import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
 import { ArchiveBrowser } from "./ArchiveBrowser";
+import { GitHubStatusPanel } from "./GitHubStatusPanel";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 // The settings shell is part of the app bundle so opening it does not fetch or compile a modal chunk. The file viewer remains on demand.
 const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer), {
@@ -401,9 +402,9 @@ export function AppShell() {
   }, []);
 
   // Single active panel — only one dropdown open at a time
-  const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "session" | null>(null);
+  const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "session" | "github" | null>(null);
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
-  const toggleTopPanel = useCallback((panel: "branches" | "system" | "session") => {
+  const toggleTopPanel = useCallback((panel: "branches" | "system" | "session" | "github") => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile]);
@@ -1178,6 +1179,17 @@ export function AppShell() {
                   </button>
                 );
               })()}
+              <button
+                type="button"
+                onClick={() => toggleTopPanel("github")}
+                title={t("appShell.githubStatus")}
+                aria-label={t("appShell.githubStatus")}
+                aria-pressed={activeTopPanel === "github"}
+                className="shell-toolbar-btn ui-focus-ring"
+                style={{ color: activeTopPanel === "github" ? "var(--accent)" : undefined, background: activeTopPanel === "github" ? "var(--bg-selected)" : undefined }}
+              >
+                <FolderGit2 size={16} strokeWidth={1.8} aria-hidden="true" />
+              </button>
               <BranchNavigator
                 tree={branchTree}
                 activeLeafId={branchActiveLeafId}
@@ -1348,7 +1360,7 @@ export function AppShell() {
               branch panel renders inside BranchNavigator itself; never mount
               an empty fixed layer for it (it would sit over the top-bar
               region and swallow clicks). */}
-          {(activeTopPanel === "system" || activeTopPanel === "session") && topPanelPos && (
+          {(activeTopPanel === "system" || activeTopPanel === "session" || activeTopPanel === "github") && topPanelPos && (
             <div data-top-panel className="dropdown-surface" style={{
               position: "fixed",
               top: topPanelPos.top,
@@ -1390,6 +1402,11 @@ export function AppShell() {
                       {systemPromptLoading ? t("appShell.systemPromptLoading") : t("appShell.systemPromptLoadHint")}
                     </div>
                   )}
+                </div>
+              )}
+              {activeTopPanel === "github" && (
+                <div style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)", boxShadow: "var(--shadow-pop)", maxHeight: "min(60vh, calc(100dvh - 200px))", overflowY: "auto" }}>
+                  <GitHubStatusPanel cwd={activeCwd ?? selectedSession?.cwd ?? null} />
                 </div>
               )}
               {activeTopPanel === "session" && (

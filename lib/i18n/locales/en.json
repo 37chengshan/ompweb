@@ -1308,5 +1308,13 @@
   "proxy.saving": "Saving…",
   "proxy.saved": "Saved ✓",
   "proxy.detected": "Detected proxies:",
-  "proxy.effective": "Active proxy"
+  "proxy.effective": "Active proxy",
+  "appShell.githubStatus": "GitHub repo & PR status",
+  "githubPanel.noWorkspace": "No workspace selected",
+  "githubPanel.loading": "Loading…",
+  "githubPanel.noRepo": "Not a GitHub checkout",
+  "githubPanel.openPrs": "{count} open PRs",
+  "githubPanel.noPrs": "No open PRs",
+  "githubPanel.noOpenPrs": "All merged or closed",
+  "githubPanel.openRepo": "Open repository"
 }

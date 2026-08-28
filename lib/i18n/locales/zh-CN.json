@@ -1308,5 +1308,13 @@
   "proxy.saving": "保存中…",
   "proxy.saved": "已保存 ✓",
   "proxy.detected": "检测到可用代理：",
-  "proxy.effective": "生效代理"
+  "proxy.effective": "生效代理",
+  "appShell.githubStatus": "GitHub 仓库与 PR 状态",
+  "githubPanel.noWorkspace": "未选择工作区",
+  "githubPanel.loading": "加载中…",
+  "githubPanel.noRepo": "当前工作区不是 GitHub 仓库",
+  "githubPanel.openPrs": "{count} 个开放 PR",
+  "githubPanel.noPrs": "无开放 PR",
+  "githubPanel.noOpenPrs": "全部已合并或关闭",
+  "githubPanel.openRepo": "打开仓库"
 }

@@ -95,7 +95,6 @@
     "files": [
       "desktop/**",
       "bin/**",
-      ".next/**",
       "next.config.ts",
       "package.json",
       "public/**"
@@ -121,6 +120,12 @@
         "AppImage"
       ],
       "category": "Development"
-    }
+    },
+    "extraResources": [
+      {
+        "from": ".next",
+        "to": "next"
+      }
+    ]
   }
 }

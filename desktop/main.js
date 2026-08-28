@@ -21,7 +21,11 @@ const HOST = "127.0.0.1";
 const APP_URL = `http://${HOST}:${APP_PORT}`;
 
 const pkgDir = path.join(__dirname, "..");
-const nextDir = path.join(pkgDir, ".next");
+// Packaged: .next ships as an extra resource (writable) at Resources/next;
+// dev: the repo's own .next.
+const nextDir = app.isPackaged
+  ? path.join(process.resourcesPath, "next")
+  : path.join(pkgDir, ".next");
 
 let mainWindow = null;
 let tray = null;
@@ -113,6 +117,10 @@ function createWindow() {
     event.preventDefault();
     if (/^https?:/i.test(url)) shell.openExternal(url);
   });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+}
 
 function createTray() {
   const iconPath = path.join(__dirname, "..", "public", "trayTemplate.png");
@@ -120,18 +128,6 @@ function createTray() {
   // Template image: macOS renders it black on light menu bars and WHITE on
   // dark menu bars automatically (the standard tray-icon treatment).
   image.setTemplateImage(true);
-  tray = new Tray(image);
-  tray.setToolTip("OmpWeb");
-
-  const iconPath = path.join(__dirname, "..", "public", "trayTemplate.png");
-  let image = nativeImage.createFromPath(iconPath);
-  // Template image: macOS renders it black on light menu bars and WHITE on
-  // dark menu bars automatically (the standard tray-icon treatment).
-  image.setTemplateImage(true);
-  tray = new Tray(image);
-  const iconPath = path.join(__dirname, "..", "public", "icon.png");
-  let image = nativeImage.createFromPath(iconPath);
-  image = image.resize({ width: 18, height: 18 });
   tray = new Tray(image);
   tray.setToolTip("OmpWeb");
   tray.setContextMenu(Menu.buildFromTemplate([

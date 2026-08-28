@@ -29,19 +29,20 @@
     }, 560);
   }
 
-  // Timed transition: play the (now ~4s) video, then fade into the app.
-  // The timer is the source of truth — video ended events can fire early
-  // on some codecs/containers, which made the launch "flash past".
+  // Play the FULL logo video sped up (2.5x -> ~4s) so nothing is cut.
+  video.playbackRate = 2.5;
+  // Timed transition is the source of truth — ended can fire early on some
+  // codecs/containers, which made the launch "flash past".
   let playStarted = false;
   video.addEventListener("loadedmetadata", () => {
     if (playStarted) return;
     playStarted = true;
-    const durMs = Math.min(video.duration || 4, 6) * 1000;
+    const durMs = Math.min(video.duration / video.playbackRate, 6) * 1000;
     setTimeout(fadeIntoApp, durMs + 150);
   });
   video.addEventListener("ended", fadeIntoApp);
   // Fallback: never leave the launch animation hanging.
-  setTimeout(fadeIntoApp, 9000);
+  setTimeout(fadeIntoApp, 8000);
   document.body.addEventListener("click", fadeIntoApp);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" || e.key === "Enter" || e.key === " ") fadeIntoApp(); });
 </script>

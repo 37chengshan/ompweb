@@ -20,11 +20,10 @@ const APP_PORT = Number(process.env.OMP_WEB_APP_PORT || 30179);
 const HOST = "127.0.0.1";
 const APP_URL = `http://${HOST}:${APP_PORT}`;
 
-const pkgDir = path.join(__dirname, "..");
-// Packaged: .next ships as an extra resource (writable) at Resources/next;
+// Packaged: .next ships as an extra resource (writable) at Resources/.next;
 // dev: the repo's own .next.
 const nextDir = app.isPackaged
-  ? path.join(process.resourcesPath, "next")
+  ? path.join(process.resourcesPath, ".next")
   : path.join(pkgDir, ".next");
 
 let mainWindow = null;
@@ -43,7 +42,7 @@ async function startServer() {
     // next as a child cannot work from a packaged app (asar paths are not
     // executable), while require() understands asar transparently.
     const next = require("next");
-    const nextApp = next({ dir: nextDir, dev: false, hostname: HOST, port: APP_PORT });
+    const nextApp = next({ dir: appRootDir, dev: false, hostname: HOST, port: APP_PORT });
     await nextApp.prepare();
     const handler = nextApp.getRequestHandler();
     httpServer = createServer((req, res) => handler(req, res));

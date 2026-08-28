@@ -124,7 +124,11 @@
     "extraResources": [
       {
         "from": ".next",
-        "to": "next"
+        "to": ".next"
+      },
+      {
+        "from": "public",
+        "to": "public"
       }
     ]
   }

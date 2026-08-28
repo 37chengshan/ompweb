@@ -40,6 +40,25 @@ let tray = null;
 let serverProcess = null;
 let quitting = false;
 
+/** Locate a real node binary so the hosted server never shows up as a
+ *  second app instance in the Dock (spawning the Electron binary, even with
+ *  ELECTRON_RUN_AS_NODE, makes macOS treat it as another OmpWeb). */
+function resolveNodeBin() {
+  const candidates = [
+    process.env.OMP_WEB_NODE_BIN,
+    "/usr/local/bin/node",
+    "/opt/homebrew/bin/node",
+    "/usr/bin/node",
+    process.env.HOME ? `${process.env.HOME}/.bun/bin/node` : null,
+    process.env.HOME ? `${process.env.HOME}/.nvm/current/bin/node` : null,
+    process.env.HOME ? `${process.env.HOME}/.npm-global/bin/node` : null,
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try { if (fs.existsSync(candidate)) return candidate; } catch { /* keep looking */ }
+  }
+  return process.execPath;
+}
+
 /** Start the Next standalone server (self-contained server.js + node_modules). */
 function startServer() {
   const standaloneDir = app.isPackaged
@@ -51,14 +70,15 @@ function startServer() {
     console.error("Standalone build missing at", serverJs);
     return;
   }
-  serverProcess = spawn(process.execPath, [serverJs], {
+  const nodeBin = resolveNodeBin();
+  const nodeIsElectron = nodeBin === process.execPath;
+  serverProcess = spawn(nodeBin, [serverJs], {
     cwd: standaloneDir,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
-      // Run the Electron binary as plain Node so server.js boots as a
-      // normal Next server instead of launching another Electron app.
-      ELECTRON_RUN_AS_NODE: "1",
+      // Only needed when falling back to the Electron binary.
+      ...(nodeIsElectron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
       PORT: String(APP_PORT),
       HOSTNAME: HOST,
       OMP_WEB_PACKAGE_DIR: pkgDir,

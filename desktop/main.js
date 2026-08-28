@@ -53,6 +53,9 @@ function startServer() {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
+      // Run the Electron binary as plain Node so server.js boots as a
+      // normal Next server instead of launching another Electron app.
+      ELECTRON_RUN_AS_NODE: "1",
       PORT: String(APP_PORT),
       HOSTNAME: HOST,
       OMP_WEB_PACKAGE_DIR: pkgDir,

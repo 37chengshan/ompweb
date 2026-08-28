@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import * as pty from "node-pty";
 import type { IPty } from "node-pty";
+import { resolveTerminalShell } from "./terminal-shell";
 
 export interface TerminalSession {
   id: string;
@@ -50,11 +51,7 @@ function toPtyEnv(env: NodeJS.ProcessEnv): { [key: string]: string } {
  * macOS 25 (earlier 1.x releases failed with posix_spawnp errors there).
  */
 function spawnShellPty(cwd: string, env: NodeJS.ProcessEnv): IPty {
-  const isWindows = process.platform === "win32";
-  const shell = isWindows
-    ? (process.env.COMSPEC || "cmd.exe")
-    : (process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash"));
-  const args = isWindows ? [] : ["-i"];
+  const { shell, args } = resolveTerminalShell(process.platform, env);
 
   return pty.spawn(shell, args, {
     name: "xterm-256color",

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { statSync } from "fs";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { buildRevealCommand } from "@/lib/reveal-command";
 
 export const dynamic = "force-dynamic";
 
@@ -31,32 +32,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Path does not exist", code: "path_not_found" }, { status: 404 });
     }
 
-    const isWindows = process.platform === "win32";
-    const isMac = process.platform === "darwin";
-    const isLinux = process.platform === "linux";
-
     let command: string;
-    if (isMac) {
-      // Directories: open the folder itself. Files: `open -R` reveals the item.
-      command = stat.isDirectory()
-        ? `open ${shellQuote(target)}`
-        : `open -R ${shellQuote(target)}`;
-    } else if (isWindows) {
-      // Explorer has no clean select flag for directories; selecting the item
-      // itself works for files, opening the folder for directories.
-      command = stat.isDirectory()
-        ? `explorer ${winQuote(target)}`
-        : `explorer /select,${winQuote(target)}`;
-    } else if (isLinux) {
-      const parent = target.slice(0, target.lastIndexOf("/")) || "/";
-      command = `xdg-open ${shellQuote(parent)}`;
-    } else {
+    try {
+      command = buildRevealCommand(process.platform, target, stat.isDirectory());
+    } catch {
       return NextResponse.json(
         { error: `Reveal unsupported on ${process.platform}`, code: "unsupported_platform" },
         { status: 501 },
       );
     }
 
+    const isWindows = process.platform === "win32";
     await new Promise<void>((resolve, reject) => {
       // Cap the command so a hanging file manager never wedges the request.
       exec(command, { timeout: 8000 }, (error) => {
@@ -72,14 +58,4 @@ export async function POST(req: Request) {
     const message = err instanceof Error ? err.message : "Failed to reveal path";
     return NextResponse.json({ error: message, code: "reveal_failed" }, { status: 500 });
   }
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-function winQuote(value: string): string {
-  // Explorer's /select, takes a comma-separated argument; quotes around the
-  // whole path keep spaces intact.
-  return `"${value.replace(/"/g, '""')}"`;
 }

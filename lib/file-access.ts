@@ -1,4 +1,5 @@
 import { realpathSync } from "fs";
+import { tmpdir } from "os";
 import path from "path";
 import { isWindowsAbsolutePath } from "./paths";
 import { listAllSessions } from "./session-reader";
@@ -71,4 +72,20 @@ export function isExistingPathWithinRoots(target: string, roots: Set<string>): b
 
 export function isExistingFilePathAllowed(target: string, allowedRoots: Set<string>): boolean {
   return isExistingPathWithinRoots(target, allowedRoots);
+}
+const OMP_IMAGE_NAME_RE = /^omp-image-[a-f0-9]+\.(png|jpe?g|webp|gif)$/i;
+
+/**
+ * omp's image-generation tool writes results to the system temp dir as
+ * `omp-image-<hex>.<ext>`. Those files are not under any session root, so the
+ * allowlist would 403 them — allow read access to exactly that generated
+ * pattern (nothing else in the temp dir).
+ */
+export function isOmpGeneratedImagePath(filePath: string): boolean {
+  const tmp = normalizeSlashes(tmpdir());
+  const normalized = normalizeSlashes(filePath);
+  const prefix = tmp.endsWith("/") ? tmp : `${tmp}/`;
+  if (!normalized.startsWith(prefix)) return false;
+  const name = normalized.slice(normalized.lastIndexOf("/") + 1);
+  return OMP_IMAGE_NAME_RE.test(name);
 }

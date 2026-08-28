@@ -7,6 +7,7 @@ import { useTheme } from "@/hooks/useTheme";
 
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
+import { extractTerminalStreamFrames } from "@/lib/terminal-stream";
 
 interface Props {
   open: boolean;
@@ -224,35 +225,21 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          let frameEnd: number;
-          while ((frameEnd = buffer.indexOf("\n\n")) !== -1) {
-            const frame = buffer.slice(0, frameEnd);
-            buffer = buffer.slice(frameEnd + 2);
-            const lines = frame.split("\n");
-            // Named events (e.g. the server's `event: connected` frame) are
-            // connection metadata, not terminal output — skip them.
-            if (lines.some((line) => line.startsWith("event:"))) continue;
-            const dataLine = lines.find((line) => line.startsWith("data:"));
-            if (!dataLine) continue;
-            const raw = dataLine.slice(5).trimStart();
-            let chunk = raw;
-            try {
-              const parsed = JSON.parse(raw);
-              if (parsed && typeof parsed.data === "string") chunk = parsed.data;
-            } catch {
-              // Not JSON — treat the raw line as the chunk.
+          // Protocol frames (event metadata, keep-alive comments, JSON data)
+          // are parsed by the pure extractor; a trailing partial frame stays
+          // in the buffer for the next read.
+          const { chunks, rest } = extractTerminalStreamFrames(buffer);
+          buffer = rest;
+          for (const chunk of chunks) {
+            if (chunk.includes("[Terminal closed")) {
+              // The server reaped the session; stop reconnecting.
+              streamDead = true;
+              setStatus("disconnected");
             }
-            if (chunk) {
-              if (chunk.includes("[Terminal closed")) {
-                // The server reaped the session; stop reconnecting.
-                streamDead = true;
-                setStatus("disconnected");
-              }
-              if (xtermInstanceRef.current) {
-                xtermInstanceRef.current.write(chunk);
-              } else {
-                pendingOutputRef.current += chunk;
-              }
+            if (xtermInstanceRef.current) {
+              xtermInstanceRef.current.write(chunk);
+            } else {
+              pendingOutputRef.current += chunk;
             }
           }
         }

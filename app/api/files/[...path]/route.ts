@@ -6,6 +6,7 @@ import {
   getAllowedFileRoots,
   isExistingFilePathAllowed,
   isFilePathAllowed,
+  isOmpGeneratedImagePath,
   isWindowsAbsolutePath,
   normalizeSlashes,
 } from "@/lib/file-access";
@@ -434,11 +435,13 @@ export async function GET(
 
     const allowedRoots = await getAllowedFileRoots();
     const allowedByRoot = isFilePathAllowed(filePath, allowedRoots);
+    const allowedByOmpImage = isOmpGeneratedImagePath(filePath);
     const allowedBySessionReference =
       !allowedByRoot &&
+      !allowedByOmpImage &&
       type !== "list" &&
       await isFilePathReferencedBySession(filePath, sessionId);
-    if (!allowedByRoot && !allowedBySessionReference) {
+    if (!allowedByRoot && !allowedByOmpImage && !allowedBySessionReference) {
       return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 
@@ -449,7 +452,7 @@ export async function GET(
       return NextResponse.json({ error: "Not found", code: "file_not_found" }, { status: 404 });
     }
 
-    if (!allowedBySessionReference && !isExistingFilePathAllowed(filePath, allowedRoots)) {
+    if (!allowedBySessionReference && !allowedByOmpImage && !isExistingFilePathAllowed(filePath, allowedRoots)) {
       return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
     }
 

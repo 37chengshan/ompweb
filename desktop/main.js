@@ -20,6 +20,12 @@ const APP_PORT = Number(process.env.OMP_WEB_APP_PORT || 30179);
 const HOST = "127.0.0.1";
 const APP_URL = `http://${HOST}:${APP_PORT}`;
 
+const pkgDir = path.join(__dirname, "..");
+// Packaged: the project root lives at Resources (with .next and public as
+// extra resources); dev: the repo itself.
+const appRootDir = app.isPackaged
+  ? process.resourcesPath
+  : pkgDir;
 // Packaged: .next ships as an extra resource (writable) at Resources/.next;
 // dev: the repo's own .next.
 const nextDir = app.isPackaged

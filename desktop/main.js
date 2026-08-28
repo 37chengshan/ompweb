@@ -198,12 +198,12 @@ function createWindow() {
 }
 
 function createTray() {
-  // Menu-bar icon = the app logo, as a template image (black shape on
-  // transparent): macOS renders it black on light bars and WHITE on dark
-  // bars automatically — the logo stays monochrome either way.
-  const iconPath = path.join(__dirname, "..", "public", "trayTemplate.png");
+  // macOS: logo as a template image (auto black on light / white on dark).
+  // Linux/Windows: template images are meaningless — use the color logo.
+  const isMac = process.platform === "darwin";
+  const iconPath = path.join(__dirname, "..", "public", isMac ? "trayTemplate.png" : "icon.png");
   const image = nativeImage.createFromPath(iconPath);
-  image.setTemplateImage(true);
+  if (isMac) image.setTemplateImage(true);
   tray = new Tray(image);
   tray.setToolTip("OmpWeb");
   tray.setContextMenu(Menu.buildFromTemplate([

@@ -1154,7 +1154,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               todoPhases={todoPhases}
               onExecutePlan={(prompt) => handleSend(prompt)}
               onRejectPlan={(critique) => handleSend(critique)}
-              planModeActive={Boolean(activePlan)}
+              planModeActive={Boolean(activePlan || planInfo?.planModeActive)}
               planContent={planInfo?.plan ?? null}
               planFile={planInfo?.planFile ?? null}
               planTruncated={Boolean(planInfo?.truncated)}
@@ -1163,7 +1163,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               todoPhases={todoPhases}
               subagents={subagents}
               onSelectSubagent={setSelectedSubagent}
-              planModeActive={Boolean(activePlan)}
+              planModeActive={Boolean(activePlan || planInfo?.planModeActive)}
             />
             <ExtensionWidgets widgets={belowEditorWidgets} />
           </div>

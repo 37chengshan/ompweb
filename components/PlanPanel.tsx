@@ -168,7 +168,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
 
         {/* Action button cluster */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          {allTasks.length > 0 && (
+          {(allTasks.length > 0 || Boolean(planContent)) && (
             <>
               <button
                 type="button"

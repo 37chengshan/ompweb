@@ -68,3 +68,17 @@ test("renders the plan markdown document above the task grid", () => {
   assert.match(html, /Audit the store/);
   assert.match(html, /(Plan file too large|plan\.truncatedNote)/);
 });
+test("shows execute/reject actions when a plan document exists without tasks", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(PlanPanel, {
+      plan: null,
+      todoPhases: [],
+      onExecutePlan: noop,
+      onRejectPlan: noop,
+      planModeActive: true,
+      planContent: "# Plan only",
+    }),
+  );
+  assert.match(html, /(Execute Plan|执行此计划|plan\.executeButton)/);
+  assert.match(html, /(Request Revision|打回修改|plan\.rejectButton)/);
+});

@@ -59,8 +59,11 @@ export function resolvePlanArtifact(sessionFilePath: string): PlanArtifact {
     // No artifacts directory.
   }
 
+  // A plan document on disk is the authoritative signal: continuation sessions
+  // ("execute this plan" resumed from a terminal) carry no plan-mode-context
+  // entry even though their plan file exists.
   return {
-    planModeActive,
+    planModeActive: planModeActive || planPath !== null,
     planPath,
     planSlug: planPath ? basename(planPath, ".md") : null,
   };

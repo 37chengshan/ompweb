@@ -31,6 +31,21 @@ export interface GitHubRepoStatus {
 }
 
 const API_BASE = "https://api.github.com";
+
+// The GitHub client honors the app's configured proxy (see next.config
+// warm-up). undici ignores system proxies without TUN mode, so we build an
+// explicit ProxyAgent when OMP_WEB_PROXY_URL is set.
+import { ProxyAgent, fetch as undiciFetch, type Dispatcher } from "undici";
+
+let cachedProxyAgent: ProxyAgent | null | undefined = undefined;
+function proxyDispatcher(): Dispatcher | undefined {
+  const url = process.env.OMP_WEB_PROXY_URL;
+  if (!url) return undefined;
+  if (cachedProxyAgent === undefined) {
+    cachedProxyAgent = new ProxyAgent(url);
+  }
+  return cachedProxyAgent ?? undefined;
+}
 const USER_AGENT = "ompweb/4.0.0";
 const PER_PAGE = 20;
 
@@ -53,7 +68,11 @@ async function ghFetch<T>(path: string): Promise<T | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(`${API_BASE}${path}`, { headers: headers(), signal: controller.signal });
+    const res = await undiciFetch(`${API_BASE}${path}`, {
+      headers: headers(),
+      signal: controller.signal,
+      dispatcher: proxyDispatcher(),
+    });
     if (res.status === 404) return null;
     if (!res.ok) return null; // 401/403 (rate limit, private repo) → degrade silently
     return await res.json() as T;

@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "child_process";
 import { createInterface } from "readline";
+import { proxyEnv } from "@/lib/proxy-config";
 import { sanitizeProjectCommandEnvironment } from "../project-command-env";
 import { resolveOmpBin } from "./omp-cli";
 import { encodeRpcFrames, RpcFrameDecoder, type RpcFrameRecord, type RpcProtocolVersion } from "./rpc-frame";
@@ -105,7 +106,13 @@ export class RpcProcess {
     const isCmdWrapper = process.platform === "win32" && /\.cmd$/i.test(bin);
     this.child = this.spawnProcess(isCmdWrapper ? "cmd.exe" : bin, isCmdWrapper ? ["/d", "/s", "/c", quoteCmdLine(bin, args)] : args, {
       cwd: options.cwd,
-      env: sanitizeProjectCommandEnvironment({ ...process.env, ...options.env }),
+      env: sanitizeProjectCommandEnvironment({
+        ...process.env,
+        // Network proxy (auto-detected or manual): without TUN mode, Bun's
+        // fetch inside omp ignores the system proxy — inject it explicitly.
+        ...proxyEnv(process.env.OMP_WEB_PROXY_URL || null),
+        ...options.env,
+      }),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       // On POSIX, omp launches grandchildren (LSP servers, extension subprocesses). Run the

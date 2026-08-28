@@ -15,6 +15,15 @@ try {
 // chunk rule in development, make the browser cache dev chunks forever, and
 // produce stale "module factory is not available" / hydration errors after
 // every restart.
+// Warm the effective network proxy into the process env before the first
+// omp spawn / GitHub request: Bun's fetch (omp) and undici (GitHub client)
+// ignore the system proxy without TUN mode, so we resolve the configured
+// proxy (auto-detected or manual) once at startup.
+import { resolveEffectiveProxy } from "./lib/proxy-config";
+void resolveEffectiveProxy().then((url) => {
+  if (url) process.env.OMP_WEB_PROXY_URL = url;
+});
+
 const nextConfig = (phase: string): NextConfig => {
   // String compare avoids importing next/constants: the transpiled
   // config runs outside the app bundle (Resources/), where module

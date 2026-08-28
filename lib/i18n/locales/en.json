@@ -1338,7 +1338,7 @@
   "updateNoticePref.clearHistory": "Clear history",
   "diagnostics.title": "Backend Diagnostics",
   "diagnostics.refresh": "Refresh",
-  "diagnostics.error": "Diagnostics failed",
+  "diagnostics.error": "Service error",
   "diagnostics.omp": "omp runtime",
   "diagnostics.ompMissing": "not installed",
   "diagnostics.proxy": "Network proxy",
@@ -1349,5 +1349,14 @@
   "projects.removeScript": "Remove {name}",
   "projects.cancel": "Cancel",
   "projects.save": "Save",
-  "directoryPicker.useNative": "Use system folder picker"
+  "directoryPicker.useNative": "Use system folder picker",
+  "updateNotice.loading": "Loading release notes…",
+  "updateNotice.noNotes": "No release notes found for this version. ",
+  "updateNotice.viewOnGithub": "View on GitHub",
+  "settingsConfig.updateHistoryView": "View release notes",
+  "diagnostics.status": "Backend status",
+  "diagnostics.healthy": "All services healthy",
+  "diagnostics.warning": "Degraded",
+  "diagnostics.restartRpc": "Restart OMP sessions",
+  "diagnostics.restarting": "Restarting…"
 }

@@ -6,6 +6,7 @@ import type { ManagedProject, SessionInfo } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { BackendStatusButton } from "./BackendDiagnostics";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { Tooltip } from "./ui/primitives";
 import { toast } from "./ui/toast";
@@ -525,7 +526,7 @@ function SidebarPortalMenu({
         e.preventDefault();
         onClose();
         anchor.current?.focus();
-      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !(e.target as HTMLElement | null)?.closest?.("input, textarea")) {
         e.preventDefault();
         const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? []);
         if (buttons.length === 0) return;
@@ -1698,7 +1699,10 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <OmpWebTitle />
+          <div style={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0 }}>
+            <OmpWebTitle />
+            <BackendStatusButton />
+          </div>
           <div style={{ display: "flex", gap: 2 }}>
             {onOpenArchive && (
               <Tooltip content={t("sessionSidebar.archiveBrowserTitle")} side="bottom">

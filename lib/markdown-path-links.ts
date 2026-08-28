@@ -15,21 +15,28 @@ import type { Root } from "mdast";
  * ("2026-08-13"), "and/or"-style fragments without extensions.
  */
 
-const PATH_CHAR = "[^\\s\"'`<>()\\[\\]{}|,;]";
+// Path characters: anything except whitespace/quotes/brackets/ASCII commas,
+// and — crucially — any Unicode punctuation or symbol (\p{P}/\p{S}), so full
+// width "，。" or emoji right after a path never get swallowed into the link.
+// ".", "-" and "_" stay allowed (they are punctuation classes but essential
+// to file names).
+// "/" and "\\" are themselves Unicode punctuation (Po), so they are allowed
+// explicitly alongside ".-_" — everything else must not be P/S.
+const PATH_CHAR = "(?:[.\\-_/\\\\]|(?![\\s\"'`<>()\\[\\]{}|,;\\p{P}\\p{S}])[^\\s\"'`<>()\\[\\]{}|,;])";
 // Rooted path: drive letter, UNC, ~/, ./, ../, or an absolute multi-segment
 // path (leading "/" that has another "/" ahead — "and/or" stays text).
 const ROOTED_PATH_RE = new RegExp(
   // "/" starts a path only at a word boundary (start/whitespace/punctuation),
   // so "and/or" never matches while /Users/... and /tmp/... always do.
   String.raw`(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\|~\/|\.\.?\/|(?<=^|[\s(,;])/(?=[^\s/]))${PATH_CHAR}*`,
-  "g",
+  "gu",
 );
 // Relative multi-segment path ending in an extension: docs/plans/2026-08-13-x.md
 const RELATIVE_PATH_RE = new RegExp(
   // Extension must contain a letter: "HTTP/1.1" and "v2/3.0" are versions,
   // not paths (".1"/".0" are digit-only).
-  String.raw`(?:^|(?<=[\s(,;]))[\w\u4e00-\u9fff.-]+(?:\/[\w\u4e00-\u9fff.-]+)+\.[a-zA-Z][a-zA-Z0-9]{0,7}(?=$|(?=[\s),;]))`,
-  "g",
+  String.raw`(?:^|(?<=[\s(,;]))[\w\u4e00-\u9fff.-]+(?:\/[\w\u4e00-\u9fff.-]+)+\.[a-zA-Z][a-zA-Z0-9]{0,7}(?=$|(?=[\s),;\p{P}\p{S}]))`,
+  "gu",
 );
 
 const SKIPPED_SCHEMES = /^(?:https?|ftp):\/\//i;

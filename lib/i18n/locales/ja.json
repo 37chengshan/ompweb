@@ -1338,7 +1338,7 @@
   "updateNoticePref.clearHistory": "履歴をクリア",
   "diagnostics.title": "バックエンド診断",
   "diagnostics.refresh": "更新",
-  "diagnostics.error": "診断失敗",
+  "diagnostics.error": "異常",
   "diagnostics.omp": "omp ランタイム",
   "diagnostics.ompMissing": "未導入",
   "diagnostics.proxy": "プロキシ",
@@ -1349,5 +1349,14 @@
   "projects.removeScript": "{name} を削除",
   "projects.cancel": "キャンセル",
   "projects.save": "保存",
-  "directoryPicker.useNative": "システムフォルダ選択を使用"
+  "directoryPicker.useNative": "システムフォルダ選択を使用",
+  "updateNotice.loading": "リリースノートを読み込み中…",
+  "updateNotice.noNotes": "このバージョンのリリースノートが見つかりません。 ",
+  "updateNotice.viewOnGithub": "GitHub で見る",
+  "settingsConfig.updateHistoryView": "リリースノートを見る",
+  "diagnostics.status": "バックエンド状態",
+  "diagnostics.healthy": "正常",
+  "diagnostics.warning": "警告",
+  "diagnostics.restartRpc": "OMP セッションを再起動",
+  "diagnostics.restarting": "再起動中…"
 }

@@ -1338,7 +1338,7 @@
   "updateNoticePref.clearHistory": "清空历史",
   "diagnostics.title": "后端服务诊断",
   "diagnostics.refresh": "刷新",
-  "diagnostics.error": "诊断失败",
+  "diagnostics.error": "服务异常",
   "diagnostics.omp": "omp 运行时",
   "diagnostics.ompMissing": "未安装",
   "diagnostics.proxy": "网络代理",
@@ -1349,5 +1349,14 @@
   "projects.removeScript": "删除命令 {name}",
   "projects.cancel": "取消",
   "projects.save": "保存",
-  "directoryPicker.useNative": "使用系统文件夹选择"
+  "directoryPicker.useNative": "使用系统文件夹选择",
+  "updateNotice.loading": "加载更新说明…",
+  "updateNotice.noNotes": "未找到该版本的更新说明。",
+  "updateNotice.viewOnGithub": "在 GitHub 查看",
+  "settingsConfig.updateHistoryView": "查看更新说明",
+  "diagnostics.status": "后端服务状态",
+  "diagnostics.healthy": "服务正常",
+  "diagnostics.warning": "部分异常",
+  "diagnostics.restartRpc": "重启 OMP 会话",
+  "diagnostics.restarting": "重启中…"
 }

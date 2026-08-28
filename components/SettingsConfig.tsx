@@ -21,7 +21,7 @@ const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => m
 const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading, ssr: false });
 const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading, ssr: false });
 import { NetworkProxyConfig } from "./NetworkProxyConfig";
-import { BackendDiagnostics } from "./BackendDiagnostics";
+import { UpdateNoticeDialog } from "./UpdateNoticeDialog";
 import { loadUpdateHistory, clearUpdateHistory, isUpdateNoticeEnabled, setUpdateNoticeEnabled, type UpdateRecord } from "@/lib/update-notice";
 
 type UpdateState = {
@@ -495,6 +495,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
   const [noticeEnabled, setNoticeEnabled] = useState(isUpdateNoticeEnabled());
   const [noticeHistory, setNoticeHistory] = useState<UpdateRecord[]>(() => loadUpdateHistory());
+  const [historyVersion, setHistoryVersion] = useState<string | null>(null);
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const searchActive = trimmedQuery.length > 0;
@@ -719,10 +720,16 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           {noticeHistory.map((r) => (
-                            <div key={r.version} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "var(--font-mono)" }}>
-                              <span style={{ fontWeight: 600, color: "var(--text)" }}>v{r.version}</span>
+                            <button
+                              key={r.version}
+                              type="button"
+                              onClick={() => setHistoryVersion(r.version)}
+                              title={t("settingsConfig.updateHistoryView")}
+                              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "var(--font-mono)", padding: "3px 6px", borderRadius: 6, background: "transparent", border: "none", color: "var(--text)", cursor: "pointer", textAlign: "left" }}
+                            >
+                              <span style={{ fontWeight: 600, color: "var(--accent)" }}>v{r.version}</span>
                               <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{new Date(r.seenAt).toLocaleString()}</span>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -739,9 +746,6 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                   </div>
                 </div>
 
-                <div style={{ marginTop: 12, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-                  <BackendDiagnostics />
-                </div>
               </div>
             )}
 
@@ -1161,6 +1165,9 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
             </SettingsHighlightContext.Provider>
           )}
         </div>
+      {historyVersion && (
+        <UpdateNoticeDialog version={historyVersion} onClose={() => setHistoryVersion(null)} />
+      )}
       </DialogContent>
     </Dialog>
   );

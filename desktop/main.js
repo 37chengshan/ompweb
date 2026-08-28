@@ -51,12 +51,26 @@ async function startServer() {
     const nextApp = next({ dir: appRootDir, dev: false, hostname: HOST, port: APP_PORT });
     await nextApp.prepare();
     const handler = nextApp.getRequestHandler();
-    httpServer = createServer((req, res) => handler(req, res));
+    httpServer = createServer((req, res) => {
+      try {
+        handler(req, res);
+      } catch (error) {
+        const message = error instanceof Error ? error.stack || error.message : String(error);
+        appLog("request failed " + req.url + ": " + message);
+        if (!res.headersSent) res.writeHead(500).end("Internal Server Error");
+      }
+    });
     httpServer.listen(APP_PORT, HOST);
   } catch (error) {
-    console.error("Failed to start the hosted server:", error);
+    const message = error instanceof Error ? error.stack || error.message : String(error);
+    console.error("Failed to start the hosted server:", message);
+    appLog("startServer failed: " + message);
     if (!quitting) app.quit();
   }
+}
+
+function appLog(message) {
+  try { fs.appendFileSync(path.join(app.getPath("userData"), "omp-app.log"), `${new Date().toISOString()} ${message}\n`); } catch { /* best effort */ }
 }
 
 function waitForServer(attempt = 0) {

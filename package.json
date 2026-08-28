@@ -15,7 +15,8 @@
     "node": ">=22.19.0"
   },
   "bin": {
-    "ompweb": "bin/omp-web.js"
+    "ompweb": "bin/omp-web.js",
+    "ompweb-desktop": "bin/omp-web-desktop.js"
   },
   "files": [
     "bin",
@@ -29,7 +30,8 @@
     "!.next/**/*.map",
     "public",
     "next.config.ts",
-    "package.json"
+    "package.json",
+    "templates"
   ],
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 30178",

@@ -241,12 +241,6 @@ export function AppShell() {
       .then((response) => response.ok ? response.json() : null)
       .then((data: { currentVersion?: string | null; availableVersion?: string | null; updateAvailable?: boolean; updateCommand?: string } | null) => {
         setOmpUpdateAvailable(Boolean(data?.updateAvailable));
-        // Post-update notice: record the running version; show a one-time
-        // dialog when it is a newly-seen version and the toggle is on.
-        if (data?.currentVersion) {
-          const { isNew } = recordCurrentVersion(data.currentVersion);
-          if (isNew && isUpdateNoticeEnabled()) setUpdateNoticeVersion(data.currentVersion);
-        }
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "omp update";
         toast.info(
@@ -291,6 +285,12 @@ export function AppShell() {
       .then((response) => response.ok ? response.json() : null)
       .then((data: { currentVersion?: string; availableVersion?: string | null; updateAvailable?: boolean; updateCommand?: string } | null) => {
         setAppUpdateAvailable(Boolean(data?.updateAvailable));
+        // Post-update notice: record the OmpWeb (npm) version — not the omp
+        // CLI version — and show the one-time dialog on a newly-seen version.
+        if (data?.currentVersion) {
+          const { isNew } = recordCurrentVersion(data.currentVersion);
+          if (isNew && isUpdateNoticeEnabled()) setUpdateNoticeVersion(data.currentVersion);
+        }
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "npm install -g @37chengshan/ompweb";
         toast.info(

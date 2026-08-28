@@ -133,10 +133,6 @@
       {
         "from": "next.config.ts",
         "to": "next.config.ts"
-      },
-      {
-        "from": "package.json",
-        "to": "package.json"
       }
     ]
   }

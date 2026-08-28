@@ -3,7 +3,12 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
-const { version } = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8")) as { version: string };
+let version = "0.0.0";
+try {
+  version = (JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8")) as { version?: string }).version ?? "0.0.0";
+} catch {
+  // Packaged apps may not carry package.json next to the config.
+}
 
 // Function form: `phase` is authoritative even when the host environment
 // carries a stray NODE_ENV (e.g. NODE_ENV=production inherited by `next dev`

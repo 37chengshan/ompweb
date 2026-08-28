@@ -131,10 +131,8 @@ function waitForServer(attempt = 0) {
 function showSplashOnce() {
   const markPath = path.join(app.getPath("userData"), "splash-shown");
   if (fs.existsSync(markPath)) return false;
-  const splashDir = app.isPackaged
-    ? process.resourcesPath
-    : path.join(pkgDir, "templates", "desktop");
-  const splashFile = path.join(splashDir, "splash.html");
+  // splash.html ships inside the asar (desktop/**); loadFile handles asar paths.
+  const splashFile = path.join(pkgDir, "desktop", "splash.html");
   const splashVideo = app.isPackaged
     ? path.join(process.resourcesPath, "splash.mp4")
     : path.join(pkgDir, "templates", "desktop", "splash.mp4");

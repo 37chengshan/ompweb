@@ -26,7 +26,9 @@ const ROOTED_PATH_RE = new RegExp(
 );
 // Relative multi-segment path ending in an extension: docs/plans/2026-08-13-x.md
 const RELATIVE_PATH_RE = new RegExp(
-  String.raw`(?:^|(?<=[\s(,;]))[\w\u4e00-\u9fff.-]+(?:\/[\w\u4e00-\u9fff.-]+)+\.[a-zA-Z0-9]{1,8}(?=$|(?=[\s),;]))`,
+  // Extension must contain a letter: "HTTP/1.1" and "v2/3.0" are versions,
+  // not paths (".1"/".0" are digit-only).
+  String.raw`(?:^|(?<=[\s(,;]))[\w\u4e00-\u9fff.-]+(?:\/[\w\u4e00-\u9fff.-]+)+\.[a-zA-Z][a-zA-Z0-9]{0,7}(?=$|(?=[\s),;]))`,
   "g",
 );
 

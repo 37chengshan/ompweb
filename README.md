@@ -88,6 +88,39 @@ ompweb
 
 Then open [http://127.0.0.1:30177](http://127.0.0.1:30177). The CLI will try to open the browser automatically after the server is ready. ompweb listens on `127.0.0.1` by default.
 
+### 🚀 Quick Start from Source (clone & run locally)
+
+Clone this repository and run it directly on your machine:
+
+```bash
+# 1. Clone
+git clone https://github.com/37chengshan/ompweb.git
+cd ompweb
+
+# 2. Install dependencies (Node.js >= 22.19 required, see .nvmrc)
+npm install
+
+# 3. Start the dev server
+npm run dev
+# → open http://127.0.0.1:30178
+```
+
+Requirements:
+
+- **Node.js ≥ 22.19** (`.nvmrc` pins 22.19.0; `nvm use` will pick it up).
+- **omp (oh-my-pi) CLI** on `PATH` (or set `OMP_WEB_OMP_BIN`). Live agent
+  features and the built-in terminal need it; session browsing works without.
+- **Native build toolchain** for the `node-pty` dependency during
+  `npm install` when no prebuilt binary matches your platform:
+  - Linux: `python3`, `make`, `g++` (`sudo apt install build-essential python3`)
+  - macOS: Xcode Command Line Tools (`xcode-select --install`)
+  - Windows: prebuilt binaries are shipped for arm64/x64 — no toolchain needed.
+    The terminal spawns `cmd.exe` on Windows (input echo works over pipes;
+    zsh-style PTY line editing is not available there).
+
+Production-style check before publishing: `npm run release:check` (typecheck +
+lint + tests + production build).
+
 **Options:**
 
 ```bash

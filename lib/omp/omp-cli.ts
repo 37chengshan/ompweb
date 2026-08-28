@@ -14,7 +14,11 @@ let binMissAt = 0;
 let cachedVersion: string | null = null;
 let versionMissAt = 0;
 
-const BIN_NAME = process.platform === "win32" ? "omp.exe" : "omp";
+// Windows installs vary: official binaries are `omp.exe`, npm/bun global
+// installs ship `omp.cmd` (and a bare `omp` shim), so probe in that order.
+const BIN_CANDIDATES = process.platform === "win32"
+  ? ["omp.exe", "omp.cmd", "omp"]
+  : ["omp"];
 // Only successes are cached for the process lifetime. omp may be installed (or
 // PATH repaired) while the server runs; a permanently cached "not found" would
 // keep the UI reporting a missing binary until restart.
@@ -33,8 +37,10 @@ function probeOmpBin(): string | null {
   if (override) return existsSync(override) ? override : null;
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
-    const candidate = join(dir, BIN_NAME);
-    if (existsSync(candidate)) return candidate;
+    for (const name of BIN_CANDIDATES) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
   }
   // GUI-launched processes often miss homebrew/bun dirs in PATH; probe the
   // usual install locations before giving up.
@@ -45,8 +51,10 @@ function probeOmpBin(): string | null {
     join(homedir(), ".local", "bin"),
   ];
   for (const dir of fallbackDirs) {
-    const candidate = join(dir, BIN_NAME);
-    if (existsSync(candidate)) return candidate;
+    for (const name of BIN_CANDIDATES) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
   }
   return null;
 }

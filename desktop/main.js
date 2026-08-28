@@ -152,6 +152,9 @@ function showSplashOnce() {
     backgroundColor: "#000000",
     webPreferences: { contextIsolation: true, sandbox: true },
   });
+  splashWindow.webContents.on("did-finish-load", () => appLog("splash loaded"));
+  splashWindow.webContents.on("console-message", (_e, level, message) => appLog("splash console: " + message));
+  splashWindow.webContents.on("did-fail-load", (_e, code, desc) => appLog("splash fail: " + code + " " + desc));
   void splashWindow.loadFile(splashFile, { query: { video: splashVideo } });
   splashWindow.on("closed", () => {
     splashWindow = null;

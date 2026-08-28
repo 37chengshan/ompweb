@@ -29,8 +29,8 @@
     }, 560);
   }
 
-  // Trimmed to 8s (first/last second cut), played at 2x -> ~4s launch.
-  video.playbackRate = 2;
+  // Trimmed to 8s (first/last second cut), played at 1.6x -> ~5s launch.
+  video.playbackRate = 1.6;
   // Timed transition is the source of truth — ended can fire early on some
   // codecs/containers, which made the launch "flash past".
   let playStarted = false;

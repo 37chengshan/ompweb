@@ -120,7 +120,10 @@ function waitForServer(attempt = 0, loadWhenReady = true) {
     })
     .catch(() => {
       clearTimeout(timer);
-      if (attempt < 60) setTimeout(() => waitForServer(attempt + 1, 700), loadWhenReady);
+      // BUGFIX: loadWhenReady must stay a flag — the previous version passed
+      // it as the setTimeout delay (false = immediate), retried with
+      // loadWhenReady=700 (truthy), and loaded the app URL over the splash.
+      if (attempt < 60) setTimeout(() => waitForServer(attempt + 1, loadWhenReady), 700);
     });
 }
 

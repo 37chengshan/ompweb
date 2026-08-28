@@ -42,7 +42,12 @@
     setTimeout(fadeIntoApp, (d / video.playbackRate) * 1000 + 150);
   });
   video.addEventListener("error", () => console.log("splash video error: " + (video.error ? video.error.code : "?")));
-  video.addEventListener("playing", () => console.log("splash playing"));
+  video.addEventListener("playing", () => {
+    console.log("splash playing");
+    // Warm the app UI (HTML + static assets) while the video plays so the
+    // post-fade navigation lands on a rendered page instead of a blank one.
+    if (appUrl) fetch(appUrl, { cache: "force-cache" }).catch(() => {});
+  });
   video.addEventListener("ended", fadeIntoApp);
   video.play().catch((e) => console.log("splash play rejected: " + e));
   // Fallback: never leave the launch animation hanging.

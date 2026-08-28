@@ -27,15 +27,21 @@
 **インストールせずに実行:**
 
 ```bash
-npx @kahme247/ompweb@latest
+npx @37chengshan/ompweb@latest
 ```
 
 **またはグローバルにインストール:**
 
 ```bash
-npm install -g @kahme247/ompweb
+npm install -g @37chengshan/ompweb
 ompweb
 ```
+
+> **ミラーリポジトリ（例: npmmirror）では新規公開パッケージの同期が遅れたり E404 になる場合があります。** 公式レジストリを明示してください:
+>
+> ```bash
+> npm install -g @37chengshan/ompweb --registry=https://registry.npmjs.org
+> ```
 
 続いて [http://127.0.0.1:30177](http://127.0.0.1:30177) を開きます。サーバーの準備が整うと、CLI はブラウザを自動的に開こうとします。ompweb はデフォルトで `127.0.0.1` で待ち受けます。
 

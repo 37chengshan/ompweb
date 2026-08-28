@@ -19,60 +19,72 @@ Local web UI for the [oh-my-pi (omp) coding agent](https://github.com/can1357/oh
 
 ## 🌟 Enhancements & Optimizations over Upstream (相比上游仓库的优化与增强)
 
-This repository ([37chengshan/ompweb](https://github.com/37chengshan/ompweb)) is a feature-rich, hardened fork of [kahme247/ompweb](https://github.com/kahme247/ompweb). Based on actual code implementations, the following key features, architectural upgrades, and performance optimizations have been added:
+This repository ([37chengshan/ompweb](https://github.com/37chengshan/ompweb)) is a feature-rich, hardened fork of [kahme247/ompweb](https://github.com/kahme247/ompweb). Verified directly against the codebase, the following key features, architectural upgrades, and performance optimizations have been implemented:
 
-### 1. 🖥️ Interactive Web Terminal (内置交互式终端)
-- **Real PTY Shell Integration (`app/api/terminal/route.ts`, `components/EmbeddedTerminal.tsx`)**: Spawns true pseudo-terminals (`python3 -c "import pty; pty.spawn(...)"`) with ANSI color decoding, bidirectional SSE streaming, serialized inputs, and dynamic window resize (`cols`/`rows`).
-- **Dockable Bottom Panel**: Run Git commands, build scripts, tests, and CLI tools directly within ompweb without leaving the browser. Includes auto session reaping and bounded output ring buffers.
+### 1. 🖥️ Interactive Web PTY Terminal (内置交互式 Web 终端)
+- **Real PTY Shell Allocation (`lib/terminal-session-manager.ts`, `components/TerminalPanel.tsx`, `app/api/terminal/*`)**: Spawns true pseudo-terminals (`python3 -c "import pty,sys; pty.spawn(...)" /bin/zsh -i` on macOS, `script -qfc` on Linux) supporting full ANSI 256/TrueColor color decoding, real interactive line editing, cursor navigation, and live zsh/bash echo.
+- **Session Lifecycle & Resource Bounds**: Automatically reaps idle shell processes (30min TTL) and enforces an 8-session global cap to prevent lingering orphan processes.
+- **Buffer Safety & Ordered Keystrokes**: History output buffer is bounded by total byte size (`MAX_HISTORY_BYTES = 1MB`) rather than line count. Keystrokes are serialized through a FIFO queue with a 5s AbortSignal timeout to eliminate out-of-order execution during rapid typing.
 
-### 2. 📂 Native File Manager Integration & Workspace Ordering (文件管理与工作区排序)
-- **Always-Visible Reveal Action (`components/FileExplorer.tsx`, `app/api/files/open/route.ts`)**: Permanent "Reveal in Finder / Explorer / File Manager" quick-actions on workspace headers and file tree nodes (not hover-gated) with cross-platform support (macOS `open`, Windows `explorer.exe`, Linux `xdg-open`).
-- **Workspace Aliases & Custom Ordering (`lib/project-registry.ts`, `lib/project-ordering.ts`)**: Rename workspace display labels (aliases) and customize project sidebar ordering persistently without mutating repository paths on disk.
+### 2. 📂 Native File Manager Integration (系统文件管理器一键定位)
+- **Always-Visible Reveal Action (`app/api/reveal/route.ts`, `components/FileExplorer.tsx`, `components/SessionSidebar.tsx`)**: Permanent "Reveal in Finder / Explorer / File Manager" quick-actions on workspace headers and file tree nodes (not hover-gated) with cross-platform support (macOS `open <dir>` / `open -R <file>`, Windows `explorer /select,`, Linux `xdg-open`).
+- **Security & Timeout Protection**: Paths are strictly validated against `getAllowedFileRoots()` and execution is capped at 8 seconds (`timeout: 8000`) so desktop file manager hangs never freeze the browser.
 
 ### 3. 🎨 Visual Theme Studio & Motion Controls (主题工作室与动效偏好)
-- **Theme Studio (`components/ThemeStudio.tsx`, `hooks/useTheme.ts`)**: Live preview and customize paper/ember design tokens with WCAG AA contrast verification, instant light/dark/system cycling, and custom color accents.
-- **Motion Accessibility (`hooks/useMotionPrefs.ts`)**: OS `prefers-reduced-motion` integration that instantly disables heavy SVG SMIL animations and replaces smooth-scrolling with instant jumps for users sensitive to motion.
+- **Theme Studio (`components/ThemePicker.tsx`, `hooks/useTheme.ts`)**: 18+ fine-tuned preset themes (Classic Paper, Ember Dark, Nord, Oatmeal, Matcha, OLED True Black, Sepia, Dracula, Pine, Navy, plus 6 fluid animated flow themes: `aurora-flow`, `dawn-flow`, `cosmic-flow`, `ocean-flow`, `sakura-flow`, `bamboo-flow`) and a full custom color palette picker.
+- **Typography & Motion Accessibility (`hooks/useTypography.ts`, `hooks/useMotionPrefs.ts`)**: Custom font families, font scale multipliers, and line-height controls. Fully integrates with OS `prefers-reduced-motion` to instantly disable heavy animations and replace smooth scrolls with instant jumps.
 
-### 4. 🧭 Plan Mode Surface & History Traceability (计划看板与压缩前历史追溯)
-- **Interactive Plan Panel (`components/PlanPanel.tsx`, `lib/plan-reader.ts`)**: Live plan document rendering from `<session>/local/*-plan.md`, one-click plan execution, and a dedicated critique/feedback modal (`onRejectPlan`).
-- **Pre-Compaction History Browsing (`lib/session-reader.ts`)**: Toggle and inspect full pre-compaction message history without polluting the active agent context.
+### 4. 🧭 Plan Mode Kanban & History Traceability (计划执行看板与历史追溯)
+- **Interactive Plan Panel (`components/PlanPanel.tsx`, `lib/plan-reader.ts`, `app/api/sessions/[id]/plan/route.ts`)**: Live plan document rendering from `<session>/local/*-plan.md` with safe 256KB UTF-8 chunk reading (`StringDecoder`) that prevents loading oversized files into Node memory.
+- **Session Switch Safety**: Automatically resets `planInfo` on session navigation so failed plan fetches can never leak previous session plans.
 
-### 5. ⚡ Frontend Rendering & Viewport Safety (前端渲染极致优化)
-- **Streaming Markdown AST Bypass (`components/MarkdownBody.tsx`)**: Bypasses expensive math regex scans (`normalizeDisplayMath`) and dynamic KaTeX imports during streaming, compiling AST only once on message commit for a smooth 60fps experience.
-- **LRU Memory Caches (`lib/markdown.ts`, `lib/patch.ts`)**: 200-slot LRU cache for display math normalization and 20-slot LRU cache for unified diff parsing (`parseUnifiedPatch`).
-- **DOM Explosion Protection (`components/MessageView.tsx`)**: 800-row limit (`MAX_ROWS = 800`) on Git diff views and 100KB safety caps on thinking/tool outputs.
-- **Component Memoization (`components/PlanPanel.tsx`, `components/MessageView.tsx`)**: `React.memo` wrappers prevent cascading re-renders during active streaming.
+### 5. ⚡ Frontend Rendering Performance & Memory Safety (前端渲染极致优化)
+- **Streaming Markdown AST Bypass (`components/MarkdownBody.tsx`)**: Skips heavy `normalizeDisplayMath` regex scans and dynamic KaTeX imports during active token streaming, compiling the full AST only once on message commit.
+- **LRU Math Delimiter Normalizer (`lib/markdown.ts`)**: 200-slot LRU cache (`NORMALIZE_CACHE_MAX = 200`) for display math normalization ensures committed messages render in $O(1)$ without re-running regex passes.
+- **Granular `MessageView` Memoization (`components/MessageView.tsx`)**: Custom comparator (`haveSameRelevantToolResults`) ensures incoming tool results only re-render the specific message holding that `toolCallId`, avoiding global re-renders of the entire message list.
+- **Large Markdown Safety Collapse (`components/MessageView.tsx`)**: Messages exceeding 100,000 characters automatically collapse into a lightweight virtualized raw text view (`SafeMarkdownBody`) to prevent React AST DOM explosion.
+- **LRU Unified Patch Cache (`lib/patch.ts`)**: 20-slot LRU cache for diff parsing avoids duplicate regex and line parsing on re-renders.
+- **Adaptive TPS Polling Backoff (`hooks/useAgentSession.ts`)**: Dynamically backs off `tokensPerSecond` polling from 2s to 4s during model thinking or tool execution, snapping back to 2s immediately when tokens stream.
 
-### 6. 🛡️ Backend Node.js, RPC & File I/O Hardening (后端 RPC 内存安全加固)
-- **Git ProjectRoot Dedup & 5-minute Cache (`lib/worktree.ts`)**: `__piProjectPendingCache` coalesces concurrent `resolveProject` calls into a single Promise and caches results for 5 minutes.
-- **SSE Socket & Memory Leak Prevention (`app/api/agent/[id]/events/route.ts`, `lib/rpc-manager.ts`)**: Emits `session_destroyed` upon session termination to immediately close SSE streams and unregister listeners.
-- **Child Process Dispose Failsafe (`lib/omp/rpc-process.ts`)**: `Promise.race` timeout fallback prevents hanging promises on un-reaped processes; `crlfDelay: Infinity` standardizes NDJSON parsing.
-- **Context Payload Shrinking (`lib/session-reader.ts`, `lib/types.ts`)**: Completely strips deferred `thinking` fields from JSON payloads rather than sending empty strings.
+### 6. 🛡️ Backend Concurrency, RPC & File I/O Hardening (后端并发与 RPC 内存安全)
+- **Git Worktree In-Flight Promise Dedup (`lib/worktree.ts`)**: `__piProjectPendingCache` coalesces concurrent `resolveProject` calls for identical directories into a single Promise and caches results with a 5-minute TTL.
+- **Session Loader Concurrency Cap & Cache (`lib/session-reader.ts`)**: `loadAllSessions` restricts concurrent Git processes with `CONCURRENCY = 6`. File parses are memoized with a 32-slot LRU cache (`loadSessionEntriesCached`) keyed on `(size, mtimeMs)`.
+- **Task Tool Telemetry Truncation (`lib/session-reader.ts`)**: `keepTaskToolResultDetails` bounds long string fields to 240 characters and 50 rows, eliminating multi-megabyte JSON payload bloat in session histories.
+- **Child Process Dispose Failsafe (`lib/omp/rpc-process.ts`)**: Failsafe race timer fallback in `RpcProcess.dispose()` prevents un-reaped processes from hanging server teardown.
+- **Atomic MCP Configuration (`lib/omp/mcp-config.ts`)**: Temp file write-and-rename wrapped in `try...finally` to guarantee orphan `.tmp-*` files are cleaned up on error; adds user-level MCP configuration support (`~/.omp/agent/mcp.json`).
 
 ### 7. ⚙️ Redesigned MCP Manager & Built-in Agent MCP (MCP 管理器重构与 Agent MCP 集成)
-- **Dual-Mode Visual Form Editor (`components/McpConfig.tsx`)**: Form-based editing (Transport, Command, Args, URL, Enabled switch) + JSON mode with quick templates (`Python stdio`, `NPX stdio`, `Remote HTTP`) and project/global configuration support.
-- **Categorized Accordion & Filter (`components/McpConfig.tsx`)**: Accordion grouping with real-time search for multi-client discovered MCP servers.
-- **Built-in Agent MCP Integration (`vendor/agent-mcp/`)**: Vendored `agent-mcp` (v3.0.0) multi-agent orchestration tools with SQLite tuning (`PRAGMA temp_store=MEMORY`, autocommit mode) and lock-free SSE broadcaster queues.
+- **Visual Form & Template Editor (`components/McpConfig.tsx`)**: Dual-mode editor (Visual Form / Raw JSON) with quick templates (`Python stdio`, `NPX stdio`, `Remote HTTP`, `Brave Search`, `PostgreSQL`, `GitHub`, `Fetch`, `Filesystem`) and workspace/user scope switching.
+- **Categorized Multi-Source Accordion (`components/McpConfig.tsx`)**: Collapsible accordion grouping with real-time fuzzy search across 50+ auto-discovered MCP servers.
+- **Built-in Agent MCP Multi-Agent Orchestrator (`vendor/agent-mcp/`, `.omp/agents/`)**: Native Python multi-agent coordination daemon supporting 11+ Agent CLIs (OMP, Claude, Codex, Copilot, OpenCode, Pi, Grok, Kimi, ZCode, etc.), SQLite WAL mode with memory temp storage (`PRAGMA temp_store=MEMORY`), exponential backoff in `wait_agent` polling (0.1s to 2.0s), and bundled specialized agent system prompts (`designer`, `librarian`, `reviewer`, `scout`, `security-reviewer`, `sonic`, `task`).
 
 ## Requirements
 
 - [omp](https://github.com/can1357/oh-my-pi) installed and on your `PATH` (or point `OMP_WEB_OMP_BIN` at the binary)
-- Node.js 22.19.0 (`nvm use`; `node --version`)
+- Node.js >= 22.19.0 (`node --version`)
 
 ## Quick Start
 
 **Run without installing:**
 
 ```bash
-npx @kahme247/ompweb@latest
+npx @37chengshan/ompweb@latest
 ```
 
 **Or install globally:**
 
 ```bash
-npm install -g @kahme247/ompweb
+npm install -g @37chengshan/ompweb
 ompweb
 ```
+
+> **Mirror registries (e.g. npmmirror) may lag or 404 for newly published packages.** If install fails with `E404`, point npm at the official registry:
+>
+> ```bash
+> npm install -g @37chengshan/ompweb --registry=https://registry.npmjs.org
+> ```
+>
+> For `npx` on macOS/Linux: `npm_config_registry=https://registry.npmjs.org npx @37chengshan/ompweb@latest`; on Windows PowerShell: `$env:npm_config_registry="https://registry.npmjs.org"; npx @37chengshan/ompweb@latest`.
 
 Then open [http://127.0.0.1:30177](http://127.0.0.1:30177). The CLI will try to open the browser automatically after the server is ready. ompweb listens on `127.0.0.1` by default.
 
@@ -117,9 +129,9 @@ Set `OMP_WEB_PASSWORD` (or pass `--password`) to protect the interface and every
 - **See session state clearly**: context usage, cost, tokens-per-second (reported by omp itself), compaction state and method (with before → after token counts on compaction cards), and system prompt details are visible from the top bar and transcript.
 - **Preview markdown faithfully**: YAML frontmatter renders in a summary card (title + key/value rows), math fences stay aligned inside lists, and CJK ranges like `5~7U` are no longer mangled (GFM now requires `~~` for strikethrough).
 - **Pick projects naturally on Windows**: a drive picker at the filesystem root and a case-folded, symlink-aware project identity keep the sidebar stable across drives and worktrees.
-- **Configure less from the terminal**: manage models, login/API keys, model tests, task agents, native OMP controls (advisor, approval, Bash policy, thinking, compaction, memory, auto-learn, retry/fallback), skills (search, install, update checks), plugins, and project MCP servers from the web UI.
-- **MCP management in Settings**: a dedicated MCP tab lists installed project servers with status (enabled / disabled / invalid), supports add/edit/rename/validate/remove, and surfaces configuration failures as corner toasts.
-- **Slash commands that travel**: `/goal`, `/plan`, `/review`, `/fix`, `/test`, `/explain`, `/simplify`, `/commit`, and `/advisor` expand into well-structured prompts; omp's own commands (skills, `/compact`, …) appear via `available_commands_update`.
+- **Configure less from the terminal**: manage models, login/API keys, model tests, task agents, native OMP controls (advisor, approval, Bash policy, thinking, compaction, memory, auto-learn, retry/fallback), skills (search, install, update checks), plugins, and project/global MCP servers from the web UI.
+- **MCP management in Settings**: a dedicated MCP tab lists installed project and global servers with status (enabled / disabled / invalid), supports add/edit/rename/validate/remove, and surfaces configuration failures as corner toasts.
+- **Slash commands that travel**: `/goal`, `/plan`, `/terminal`, `/theme`, `/mcp`, `/review`, `/fix`, `/test`, `/explain`, `/simplify`, `/commit`, and `/advisor` expand into well-structured prompts; omp's own commands (skills, `/compact`, …) appear via `available_commands_update`.
 - **Keep OMP current**: check the installed runtime version, update it, and restart active sessions from Settings when needed.
 - **Stay informed**: opt into browser notifications when an agent finishes, play a completion sound, and check installed skills for updates.
 - **Jump anywhere with ⌘K**: a command palette (⌘K / Ctrl+K) for switching sessions, starting new ones, and toggling the theme.
@@ -131,7 +143,7 @@ Set `OMP_WEB_PASSWORD` (or pass `--password`) to protect the interface and every
 | --- | --- |
 | `PORT` | Server port (default `30177`; `-p/--port` wins) |
 | `OMP_WEB_HOSTNAME` | Bind hostname (default `127.0.0.1`; `-H/--hostname` wins) |
-| `OMP_WEB_PASSWORD` / `--password` | Password for the sign-in screen; `--password` works in every shell (PowerShell/CMD) without ` $env:` syntax |
+| `OMP_WEB_PASSWORD` / `--password` | Password for the sign-in screen; `--password` works in every shell (PowerShell/CMD) without `$env:` syntax |
 | `OMP_WEB_NO_OPEN` | Set to `1`/`true` to skip auto-opening the browser |
 | `OMP_WEB_OMP_BIN` | Absolute path to the `omp` binary when it is not on `PATH` |
 | `PI_CODING_AGENT_DIR` | Point at another omp agent directory (default `~/.omp/agent`) |
@@ -146,7 +158,7 @@ ompweb is a Node-hosted Next.js app that drives your installed `omp` binary — 
 - **Models and auth**: RPC commands against the omp child process with strict payload validation (unknown-shape guards, safe fallbacks); the Models panel edits `models.yml` in the omp agent directory, dropping blank placeholder rows and rejecting ambiguous `enabledModels` entries.
 - **Native settings**: the General/MCP settings panels read and write the allow-listed subset of `~/.omp/agent/config.yml` (or `config.yaml` fallback), preserving unrelated keys and comments. Changes apply to new and restarted sessions.
 - **Skills and plugins**: scans omp's skill directories (`~/.omp/agent/skills`, project `.omp/skills`, and compat dirs) and shells out to `omp plugin` for plugin management.
-- **MCP servers**: project servers are managed through OMP's native locations (`.omp/mcp.json`, then compatibility files) at the git top level, validated against the stdio/http/sse schema and written atomically.
+- **MCP servers**: project and global servers are managed through OMP's native locations (`.omp/mcp.json`, `~/.omp/agent/mcp.json`), validated against the stdio/http/sse schema and written atomically.
 - **File access**: file browsing and preview are scoped to the selected project directory and working directories that appear in sessions; paths are canonicalized via a single `isWindowsAbsolutePath`/`samePath` helper and symlink escapes are rejected after `realpath` resolution. On Windows the directory picker offers a drive list at the root.
 - **Forks vs in-session branches**: Fork creates a new `.jsonl` file. "Edit from here" creates another branch inside the same session file.
 
@@ -162,10 +174,10 @@ The local dev server runs at [http://127.0.0.1:30178](http://127.0.0.1:30178).
 Common checks:
 
 ```bash
-npm run typecheck      # type check
-npm run lint           # ESLint (zero warnings enforced)
-npm test               # run test suite
-npm run build          # production build
+npm run typecheck      # TypeScript type check (tsc --noEmit)
+npm run lint           # ESLint
+npm test               # Run native Node.js test suite
+npm run build          # Production build
 ```
 
 Avoid running `next build` / `npm run build` during local development. It writes to `.next/` and can interfere with the dev server; leave builds for release work.

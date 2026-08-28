@@ -161,10 +161,12 @@ function createWindow() {
 }
 
 function createTray() {
-  // The menu-bar icon IS the app logo (not a template glyph): user requested
-  // the logo itself in the tray.
-  const iconPath = path.join(__dirname, "..", "public", "icon.png");
-  let image = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+  // Menu-bar icon = the app logo, as a template image (black shape on
+  // transparent): macOS renders it black on light bars and WHITE on dark
+  // bars automatically — the logo stays monochrome either way.
+  const iconPath = path.join(__dirname, "..", "public", "trayTemplate.png");
+  const image = nativeImage.createFromPath(iconPath);
+  image.setTemplateImage(true);
   tray = new Tray(image);
   tray.setToolTip("OmpWeb");
   tray.setContextMenu(Menu.buildFromTemplate([

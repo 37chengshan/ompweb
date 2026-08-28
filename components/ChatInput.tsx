@@ -96,6 +96,8 @@ interface Props {
   cwd?: string | null;
   activeGoal?: ActiveGoal | null;
   activePlan?: ActivePlan | null;
+  /** Open the session's plan document in the right sidebar panel. */
+  onOpenPlan?: () => void;
   advisorEnabled?: boolean;
   /** Toggle the per-chat advisor (composer icon + /advisor command). */
   onAdvisorChange?: (enabled: boolean) => void;
@@ -326,7 +328,7 @@ export function ModelErrorBanner({ error }: { error?: string | null }) {
   );
 }
 
-function ComposerModeStatus({ goal, plan }: { goal?: ActiveGoal | null; plan?: ActivePlan | null }) {
+function ComposerModeStatus({ goal, plan, onOpenPlan }: { goal?: ActiveGoal | null; plan?: ActivePlan | null; onOpenPlan?: () => void }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -368,11 +370,25 @@ function ComposerModeStatus({ goal, plan }: { goal?: ActiveGoal | null; plan?: A
         </button>
       )}
       {plan && (
-        <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text-muted)", fontSize: 12 }}>
+        <button
+          type="button"
+          role="status"
+          aria-live="polite"
+          onClick={onOpenPlan}
+          title={t("chatInput.openPlanSidebar")}
+          style={{
+            display: "flex", alignItems: "center", gap: 7, padding: "5px 9px",
+            border: "1px solid color-mix(in srgb, var(--accent) 32%, var(--border))",
+            borderRadius: "var(--radius-control)",
+            background: "color-mix(in srgb, var(--accent) 7%, var(--bg-panel))",
+            color: "var(--text-muted)", fontSize: 12, cursor: "pointer", textAlign: "left", width: "100%",
+            transition: "background var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
+          }}
+        >
           <ListChecks size={14} strokeWidth={2} style={{ flexShrink: 0, color: "var(--accent)" }} aria-hidden="true" />
           <span style={{ fontWeight: 600 }}>{t("chatInput.planningInProgress")}</span>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)" }}>{plan.objective}</span>
-        </div>
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", flex: 1 }}>{plan.objective}</span>
+        </button>
       )}
     </div>
   );
@@ -396,6 +412,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   cwd,
   activeGoal,
   activePlan,
+  onOpenPlan,
   advisorEnabled,
   onAdvisorChange,
 }: Props, ref) {
@@ -1504,7 +1521,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       />
       <div style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH, margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
-        <ComposerModeStatus goal={activeGoal} plan={activePlan} />
+        <ComposerModeStatus goal={activeGoal} plan={activePlan} onOpenPlan={onOpenPlan} />
         {/* Retry banner */}
         {retryInfo && (
           <div style={{

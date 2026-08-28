@@ -1264,5 +1264,10 @@
   "plan.cancel": "取消",
   "plan.submitCritique": "提交修改意见",
   "fileViewer.videoType": "视频",
-  "fileViewer.videoLoadFailed": "无法加载视频"
+  "fileViewer.videoLoadFailed": "无法加载视频",
+  "chatInput.openPlanSidebar": "在侧边栏打开计划文档",
+  "planViewer.loadFailed": "计划加载失败",
+  "planViewer.noPlan": "该会话没有计划文档",
+  "plan.sidebarTab": "计划",
+  "chatWindow.planDocument": "已生成计划"
 }

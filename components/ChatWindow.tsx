@@ -13,7 +13,6 @@ import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ComposerPanels } from "./ComposerPanels";
 import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
 import { EmptyChatHero } from "./EmptyChatHero";
-import { PlanPanel } from "./PlanPanel";
 import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentInfo } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -51,6 +50,8 @@ interface Props {
   onGenerationSpeedChange?: (speed: GenerationSpeedInfo | null) => void;
   terminalOpen?: boolean;
   onCloseTerminal?: () => void;
+  /** Open the session's plan document in the right sidebar panel. */
+  onOpenPlan?: () => void;
 }
 
 function phaseLabel(phase: AgentPhase): string {
@@ -419,7 +420,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
   );
 });
 
-export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile, terminalOpen = false, onCloseTerminal }: Props) {
+export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile, terminalOpen = false, onCloseTerminal, onOpenPlan }: Props) {
   const { t, tn } = useI18n();
   const isMobile = useIsMobile();
   const { playDoneSound, unlockAudio } = useAudio();
@@ -867,7 +868,8 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
       modelNameOverride={liveModelMeta?.name ?? null}
       retryInfo={retryInfo}
       activeGoal={activeGoal}
-      activePlan={activePlan}
+      activePlan={activePlan ?? (planInfo?.planModeActive ? { objective: t("chatWindow.planDocument") } : null)}
+      onOpenPlan={onOpenPlan}
       advisorEnabled={advisorEnabled}
       onAdvisorChange={handleAdvisorChange}
       advisorModel={advisorModelMeta}
@@ -1149,16 +1151,6 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
                 />
               </div>
             )}
-            <PlanPanel
-              plan={activePlan}
-              todoPhases={todoPhases}
-              onExecutePlan={(prompt) => handleSend(prompt)}
-              onRejectPlan={(critique) => handleSend(critique)}
-              planModeActive={Boolean(activePlan || planInfo?.planModeActive)}
-              planContent={planInfo?.plan ?? null}
-              planFile={planInfo?.planFile ?? null}
-              planTruncated={Boolean(planInfo?.truncated)}
-            />
             <ComposerPanels
               todoPhases={todoPhases}
               subagents={subagents}

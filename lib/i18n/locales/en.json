@@ -1264,5 +1264,10 @@
   "plan.cancel": "Cancel",
   "plan.submitCritique": "Submit feedback",
   "fileViewer.videoType": "video",
-  "fileViewer.videoLoadFailed": "Could not load video"
+  "fileViewer.videoLoadFailed": "Could not load video",
+  "chatInput.openPlanSidebar": "Open plan document in sidebar",
+  "planViewer.loadFailed": "Failed to load plan",
+  "planViewer.noPlan": "This session has no plan document",
+  "plan.sidebarTab": "Plan",
+  "chatWindow.planDocument": "Plan document"
 }

@@ -1264,5 +1264,10 @@
   "plan.cancel": "キャンセル",
   "plan.submitCritique": "フィードバックを送信",
   "fileViewer.videoType": "動画",
-  "fileViewer.videoLoadFailed": "動画を読み込めませんでした"
+  "fileViewer.videoLoadFailed": "動画を読み込めませんでした",
+  "chatInput.openPlanSidebar": "プラン文書をサイドバーで開く",
+  "planViewer.loadFailed": "プラン読込に失敗",
+  "planViewer.noPlan": "このセッションにプラン文書はありません",
+  "plan.sidebarTab": "プラン",
+  "chatWindow.planDocument": "プラン文書"
 }

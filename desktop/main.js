@@ -52,7 +52,9 @@ function startServer() {
     return;
   }
   serverProcess = spawn(process.execPath, [bin, "start", "-p", String(APP_PORT), "-H", HOST], {
-    cwd: pkgDir,
+    // Packaged: app.asar is a file — child_process cannot chdir into it, so
+    // use the real, writable userData dir as the server's working directory.
+    cwd: app.isPackaged ? app.getPath("userData") : pkgDir,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,

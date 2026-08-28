@@ -83,3 +83,4 @@ Desktop.ini
 # local tooling cruft
 /.commandcode/
 /patch-paths.mjs
+dist-desktop/

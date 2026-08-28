@@ -171,25 +171,62 @@ npm run dev
 
 ## 🏗️ 架构设计与安全性
 
-```
-┌────────────────────────────────────────────────────────┐
-│               Browser / Desktop Window (Electron)      │
-└───────────────────────────┬────────────────────────────┘
-                            │ HTTP / SSE / WebSocket
-┌───────────────────────────▼────────────────────────────┐
-│              ompweb Server (Next.js on Node)           │
-│  ├─ JSONL 会话流式解析与路径缓存 (lib/session-reader.ts)   │
-│  ├─ Web PTY 终端会话管理器 (lib/terminal-session-manager)│
-│  ├─ 文件安全沙箱与白名单校验 (lib/file-access.ts)           │
-│  └─ RPC 进程生命周期调度 (lib/rpc-manager.ts)           │
-└───────────────────────────┬────────────────────────────┘
-                            │ NDJSON over stdio (RPC v1/v2)
-┌───────────────────────────▼────────────────────────────┐
-│           本地已安装的 omp CLI (`omp --mode rpc-ui`)     │
-│  ├─ 真实的 AI 智能体执行内核与工具调用                     │
-│  ├─ 凭证存储 (`agent.db`) 与模型路由                     │
-│  └─ 会话文件写入 (`~/.omp/agent/sessions/`)             │
-└────────────────────────────────────────────────────────┘
+> 🧭 **[在线交互式架构图 HTML / Interactive Architecture Viewer (HTML)](docs/ompweb-architecture.html)**：基于 Archify 生成，支持节点聚焦、深浅主题切换、多视图探索与高精度导出。
+
+```mermaid
+flowchart TB
+    subgraph Presentation["🖥️ 客户端展示层 (Client Presentation Layer)"]
+        BrowserUI["Web Browser UI<br/>(React 19 / Base UI)"]
+        DesktopApp["Desktop Client<br/>(Electron 44 / Tray)"]
+        TerminalUI["Web PTY Terminal<br/>(xterm.js / TrueColor)"]
+        ComposerUI["Composer & Plan UI<br/>(Todo Kanban / Subagents)"]
+    end
+
+    subgraph AppServer["⚙️ ompweb 应用服务 (Next.js 16 / Node.js Runtime)"]
+        NextGateway["Next.js Gateway<br/>(HTTP / SSE / Cookie Auth)"]
+        RpcMgr["RPC Session Manager<br/>(Process Registry & Pool)"]
+        SessionReader["Session Stream Reader<br/>(JSONL LRU Cache / Tree)"]
+        TerminalMgr["PTY Manager<br/>(FIFO Queue / 30m TTL)"]
+        FileSandbox["File Sandbox & Reveal<br/>(Canonical Path Validator)"]
+    end
+
+    subgraph OmpCore["🤖 本地 OMP 智能体内核与宿主环境 (Local Runtime)"]
+        OmpProc["omp CLI Process<br/>(omp --mode rpc-ui)"]
+        AgentCore["Agent Execution Loop<br/>(Tools / Memory / Reasoning)"]
+        PtyShell["System PTY Shell<br/>(zsh / bash / cmd.exe)"]
+        GitWorktrees["Git Worktree Manager<br/>(Multi-Branch Workspace)"]
+        AgentMcpDaemon["Agent-MCP Daemon<br/>(Multi-Agent Coordinator)"]
+    end
+
+    subgraph External["💾 持久化存储与外部生态 (Persistence & Cloud Ecosystem)"]
+        ModelProviders["LLM Providers<br/>(Anthropic / OpenAI / DeepSeek)"]
+        AgentDb[("Auth DB<br/>(~/.omp/agent/agent.db)")]
+        LocalStorage[("Session Storage<br/>(~/.omp/agent/sessions/*.jsonl)")]
+        McpServers["Project MCP Servers<br/>(.omp/mcp.json)"]
+        SkillsHub["Skills Hub & Plugins<br/>(skills.sh / .agents/skills)"]
+    end
+
+    %% Client to Server
+    BrowserUI -->|HTTP / SSE| NextGateway
+    DesktopApp -->|Internal IPC| NextGateway
+    TerminalUI -->|SSE Stream| TerminalMgr
+    ComposerUI -->|Plan Context| FileSandbox
+
+    %% Server Internal & Server to Core
+    NextGateway -->|Route Dispatch| RpcMgr
+    RpcMgr ==>|stdio NDJSON (v1/v2)| OmpProc
+    SessionReader -->|Read-only JSONL| LocalStorage
+    TerminalMgr ==>|pty.spawn()| PtyShell
+    FileSandbox -->|Path Check| GitWorktrees
+
+    %% Omp Core to External
+    OmpProc -->|Loop Lifecycle| AgentCore
+    OmpProc -->|SQLite Auth| AgentDb
+    OmpProc ==>|LLM Inference| ModelProviders
+    AgentCore -->|Atomic Append| LocalStorage
+    AgentCore -->|MCP Protocol| McpServers
+    McpServers -->|Multi-Agent Bridge| AgentMcpDaemon
+    AgentCore -->|Skill Invocation| SkillsHub
 ```
 
 - **数据主权完全归属用户**：ompweb 不自建私有数据格式，不持久化敏感 API Key，所有对话与凭证均由已安装的 `omp` 二进制和 `~/.omp/agent/` 原生驱动。

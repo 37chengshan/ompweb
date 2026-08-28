@@ -1,0 +1,608 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "ompweb System & Runtime Architecture",
+    "quality_profile": "standard",
+    "viewBox": [
+      1360,
+      920
+    ],
+    "views": [
+      {
+        "id": "full-overview",
+        "label": "Full System Topology",
+        "focus": [
+          "browser-ui",
+          "desktop-app",
+          "next-server",
+          "rpc-manager",
+          "omp-process",
+          "model-providers",
+          "local-storage"
+        ],
+        "note": "Complete end-to-end architecture from UI clients to OMP runtime and cloud LLM providers."
+      },
+      {
+        "id": "session-and-chat",
+        "label": "Session & Agent RPC Flow",
+        "focus": [
+          "browser-ui",
+          "session-reader",
+          "rpc-manager",
+          "omp-process",
+          "local-storage",
+          "model-providers"
+        ],
+        "note": "Streaming JSONL reads directly from disk and prompt execution via NDJSON stdio RPC."
+      },
+      {
+        "id": "terminal-and-files",
+        "label": "Terminal & Workspace Sandbox",
+        "focus": [
+          "terminal-ui",
+          "terminal-manager",
+          "pty-shell",
+          "file-sandbox",
+          "git-worktree"
+        ],
+        "note": "Interactive pseudo-terminal execution and canonicalized workspace file security boundary."
+      },
+      {
+        "id": "multi-agent-and-mcp",
+        "label": "Multi-Agent & MCP Ecosystem",
+        "focus": [
+          "composer-panel",
+          "agent-core",
+          "agent-mcp-daemon",
+          "mcp-servers",
+          "skills-hub"
+        ],
+        "note": "Todo plan tracking, subagent roster monitoring, Agent-MCP orchestration, and MCP servers."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser-ui",
+      "type": "frontend",
+      "label": "Web Browser UI",
+      "sublabel": "React 19 / Base UI",
+      "brand": "react",
+      "pos": [
+        80,
+        100
+      ],
+      "size": [
+        160,
+        68
+      ]
+    },
+    {
+      "id": "desktop-app",
+      "type": "frontend",
+      "label": "Desktop Client",
+      "sublabel": "Electron 44 / Tray",
+      "pos": [
+        80,
+        230
+      ],
+      "size": [
+        160,
+        68
+      ]
+    },
+    {
+      "id": "terminal-ui",
+      "type": "frontend",
+      "label": "Web PTY Terminal",
+      "sublabel": "xterm.js / ANSI TrueColor",
+      "pos": [
+        80,
+        480
+      ],
+      "size": [
+        160,
+        68
+      ]
+    },
+    {
+      "id": "composer-panel",
+      "type": "frontend",
+      "label": "Composer & Plan UI",
+      "sublabel": "Todo Kanban / Subagents",
+      "pos": [
+        80,
+        630
+      ],
+      "size": [
+        160,
+        68
+      ]
+    },
+    {
+      "id": "next-server",
+      "type": "backend",
+      "label": "Next.js Gateway",
+      "sublabel": "HTTP / SSE / Cookie Auth",
+      "brand": "next-js",
+      "pos": [
+        360,
+        100
+      ],
+      "size": [
+        180,
+        68
+      ]
+    },
+    {
+      "id": "rpc-manager",
+      "type": "backend",
+      "label": "RPC Manager",
+      "sublabel": "Process Pool & Lifecycle",
+      "brand": "node-js",
+      "pos": [
+        360,
+        230
+      ],
+      "size": [
+        180,
+        68
+      ]
+    },
+    {
+      "id": "session-reader",
+      "type": "backend",
+      "label": "Session Reader",
+      "sublabel": "JSONL LRU Cache / Tree",
+      "pos": [
+        360,
+        360
+      ],
+      "size": [
+        180,
+        68
+      ]
+    },
+    {
+      "id": "terminal-manager",
+      "type": "backend",
+      "label": "PTY Manager",
+      "sublabel": "FIFO Queue / 30m TTL",
+      "pos": [
+        360,
+        490
+      ],
+      "size": [
+        180,
+        68
+      ]
+    },
+    {
+      "id": "file-sandbox",
+      "type": "security",
+      "label": "File Sandbox",
+      "sublabel": "Canonical Path Validator",
+      "pos": [
+        360,
+        630
+      ],
+      "size": [
+        180,
+        68
+      ]
+    },
+    {
+      "id": "omp-process",
+      "type": "backend",
+      "label": "omp Process",
+      "sublabel": "omp --mode rpc-ui (v1/v2)",
+      "pos": [
+        690,
+        160
+      ],
+      "size": [
+        190,
+        72
+      ],
+      "tag": "Per Active Session"
+    },
+    {
+      "id": "agent-core",
+      "type": "backend",
+      "label": "Agent Core",
+      "sublabel": "Tools, Memory, Reasoning",
+      "pos": [
+        690,
+        310
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "pty-shell",
+      "type": "backend",
+      "label": "System PTY Shell",
+      "sublabel": "zsh / bash / cmd.exe",
+      "pos": [
+        690,
+        490
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "git-worktree",
+      "type": "backend",
+      "label": "Git Worktrees",
+      "sublabel": "Multi-Branch Workspace",
+      "brand": "github",
+      "pos": [
+        690,
+        630
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "agent-mcp-daemon",
+      "type": "backend",
+      "label": "Agent-MCP Daemon",
+      "sublabel": "Multi-Agent Coordinator",
+      "brand": "python",
+      "pos": [
+        690,
+        760
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "model-providers",
+      "type": "cloud",
+      "label": "LLM Providers",
+      "sublabel": "Anthropic, OpenAI, DeepSeek",
+      "brand": "anthropic",
+      "pos": [
+        1030,
+        80
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "agent-db",
+      "type": "database",
+      "label": "Auth DB",
+      "sublabel": "~/.omp/agent/agent.db (SQLite)",
+      "brand": "sqlite",
+      "pos": [
+        1030,
+        200
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "local-storage",
+      "type": "database",
+      "label": "Session Storage",
+      "sublabel": "~/.omp/agent/sessions/*.jsonl",
+      "pos": [
+        1030,
+        350
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "mcp-servers",
+      "type": "messagebus",
+      "label": "Project MCP",
+      "sublabel": ".omp/mcp.json (Stdio/HTTP)",
+      "pos": [
+        1030,
+        530
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "skills-hub",
+      "type": "cloud",
+      "label": "Skills Hub",
+      "sublabel": "skills.sh / .agents/skills",
+      "pos": [
+        1030,
+        670
+      ],
+      "size": [
+        190,
+        68
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Presentation Layer (Web Browser & Electron Desktop)",
+      "wraps": [
+        "browser-ui",
+        "desktop-app",
+        "terminal-ui",
+        "composer-panel"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "ompweb Application Server (Next.js 16 / Node.js)",
+      "wraps": [
+        "next-server",
+        "rpc-manager",
+        "session-reader",
+        "terminal-manager",
+        "file-sandbox"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Local OMP Agent Core & Host Runtime",
+      "wraps": [
+        "omp-process",
+        "agent-core",
+        "pty-shell",
+        "git-worktree",
+        "agent-mcp-daemon"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Persistence & External Cloud Ecosystem",
+      "wraps": [
+        "model-providers",
+        "agent-db",
+        "local-storage",
+        "mcp-servers",
+        "skills-hub"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-to-server",
+      "from": "browser-ui",
+      "to": "next-server",
+      "label": "HTTP / SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "desktop-to-server",
+      "from": "desktop-app",
+      "to": "next-server",
+      "label": "internal IPC",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "terminal-ui-to-manager",
+      "from": "terminal-ui",
+      "to": "terminal-manager",
+      "label": "SSE Stream",
+      "labelAt": [
+        295,
+        495
+      ],
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "composer-to-reader",
+      "from": "composer-panel",
+      "to": "file-sandbox",
+      "label": "plan context",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "gateway-to-rpc",
+      "from": "next-server",
+      "to": "rpc-manager",
+      "label": "route dispatch",
+      "labelAt": [
+        450,
+        195
+      ],
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "rpc-to-omp",
+      "from": "rpc-manager",
+      "to": "omp-process",
+      "label": "stdio NDJSON",
+      "variant": "emphasis"
+    },
+    {
+      "id": "reader-to-storage",
+      "from": "session-reader",
+      "to": "local-storage",
+      "label": "read JSONL",
+      "labelAt": [
+        600,
+        420
+      ],
+      "fromSide": "right",
+      "toSide": "left",
+      "via": [
+        [
+          570,
+          394
+        ],
+        [
+          570,
+          420
+        ],
+        [
+          980,
+          420
+        ],
+        [
+          980,
+          384
+        ]
+      ]
+    },
+    {
+      "id": "terminal-mgr-to-shell",
+      "from": "terminal-manager",
+      "to": "pty-shell",
+      "label": "pty.spawn()",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sandbox-to-worktree",
+      "from": "file-sandbox",
+      "to": "git-worktree",
+      "label": "path validator"
+    },
+    {
+      "id": "omp-to-agent-core",
+      "from": "omp-process",
+      "to": "agent-core",
+      "label": "loop lifecycle",
+      "labelAt": [
+        785,
+        270
+      ],
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "omp-to-db",
+      "from": "omp-process",
+      "to": "agent-db",
+      "label": "SQLite auth"
+    },
+    {
+      "id": "omp-to-models",
+      "from": "omp-process",
+      "to": "model-providers",
+      "label": "LLM Inference",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "left",
+      "via": [
+        [
+          785,
+          114
+        ]
+      ]
+    },
+    {
+      "id": "agent-to-storage",
+      "from": "agent-core",
+      "to": "local-storage",
+      "label": "atomic append"
+    },
+    {
+      "id": "agent-to-mcp",
+      "from": "agent-core",
+      "to": "mcp-servers",
+      "label": "MCP Protocol",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          785,
+          440
+        ],
+        [
+          970,
+          440
+        ],
+        [
+          970,
+          564
+        ]
+      ]
+    },
+    {
+      "id": "mcp-to-daemon",
+      "from": "mcp-servers",
+      "to": "agent-mcp-daemon",
+      "label": "agent bridge",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "agent-to-skills",
+      "from": "agent-core",
+      "to": "skills-hub",
+      "label": "skill calls",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          785,
+          460
+        ],
+        [
+          950,
+          460
+        ],
+        [
+          950,
+          704
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Presentation & Interaction",
+      "items": [
+        "React 19 & Base UI warm-paper styled workspace",
+        "Electron 44 desktop client with system tray integration",
+        "node-pty interactive shell with TrueColor & FIFO queue",
+        "Composer-attached Todo Plan & Subagent live telemetry"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Application Gateway & Sandbox",
+      "items": [
+        "Next.js 16 server on Node 22+ with HTTP-only signed cookies",
+        "RPC manager driving omp child processes over stdio NDJSON",
+        "JSONL stream parsing with 32-slot LRU caching & branch tree",
+        "Strict file sandbox enforcing canonical project root bounds"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "OMP Core & Sovereignty",
+      "items": [
+        "Native omp CLI owns agent logic, SQLite auth, and live writes",
+        "Direct connection to LLM providers (Anthropic, OpenAI, DeepSeek)",
+        "Visual project & global MCP server management",
+        "Integrated Agent-MCP daemon for multi-agent coordination"
+      ]
+    }
+  ]
+}

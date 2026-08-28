@@ -53,7 +53,7 @@ function TaskStatusIcon({ status }: { status: TodoItem["status"] }) {
 }
 
 export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExecutePlan, onRejectPlan, planModeActive, planContent = null, planTruncated = false }: Props) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [expanded, setExpanded] = useState(true);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [critiqueText, setCritiqueText] = useState("");
@@ -72,19 +72,19 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
   const inProgressCount = allTasks.filter((t) => t.status === "in_progress").length;
 
   const quickCritiques = [
-    { label: "简化改动 (YAGNI)", text: "改动范围过大，请遵循最小必要改动原则 (YAGNI)，剔除不必要的抽象与额外功能。" },
-    { label: "增加测试与验证", text: "请在计划中增加详尽的单元测试与端到端自动化验证步骤，确保无回归风险。" },
-    { label: "调整步骤顺序", text: "请调整步骤顺序，先排查并修复阻塞性前置依赖，再进行核心逻辑实现。" },
-    { label: "保持向下兼容", text: "方案存在破坏性变更风险，请补充向前与向下兼容性方案及回退机制。" },
+    { label: t("plan.quickYagniLabel"), text: t("plan.quickYagniText") },
+    { label: t("plan.quickTestsLabel"), text: t("plan.quickTestsText") },
+    { label: t("plan.quickOrderLabel"), text: t("plan.quickOrderText") },
+    { label: t("plan.quickCompatLabel"), text: t("plan.quickCompatText") },
   ];
 
   const handleExecute = () => {
-    onExecutePlan("已审阅并确认上述计划，请开始按照规划阶段分步执行所有任务。");
+    onExecutePlan(t("plan.executePrompt"));
   };
 
   const handleRejectSubmit = () => {
     if (!critiqueText.trim()) return;
-    const finalPrompt = `【计划打回修改】当前计划存在以下问题需要调整：\n\n${critiqueText.trim()}\n\n请根据上述审查意见重新分析并输出修正后的完整方案与 Todo 步骤。`;
+    const finalPrompt = t("plan.rejectPrompt", { critique: critiqueText.trim() });
     onRejectPlan(finalPrompt);
     setCritiqueText("");
     setRejectModalOpen(false);
@@ -146,7 +146,9 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
                   fontFamily: "var(--font-mono)",
                 }}
               >
-                {allTasks.length > 0 ? `${completedCount}/${allTasks.length} 任务已完成` : "待规划"}
+                {allTasks.length > 0
+                  ? tn("plan.tasksDone", completedCount, { completed: completedCount, total: allTasks.length })
+                  : t("plan.pendingPlanning")}
               </span>
             </div>
             {plan?.objective && (
@@ -220,7 +222,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            title={expanded ? "折叠计划" : "展开计划"}
+            title={expanded ? t("plan.collapse") : t("plan.expand")}
             className="shell-toolbar-btn ui-focus-ring"
             style={{ width: 26, height: 26, borderRadius: 6 }}
           >
@@ -270,7 +272,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
                       fontFamily: "var(--font-mono)",
                     }}
                   >
-                    阶段 {pIdx + 1}: {phase.name}
+                    {t("plan.phaseLabel", { index: pIdx + 1, name: phase.name })}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 6 }}>
                     {phase.tasks.map((task, tIdx) => (
@@ -299,7 +301,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
                               borderRadius: 4,
                             }}
                           >
-                            阻塞: {task.blocker}
+                            {t("plan.blockedBy", { blocker: task.blocker })}
                           </span>
                         )}
                       </div>
@@ -311,7 +313,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
           ) : (
             <div style={{ padding: "8px 0", color: "var(--text-muted)", fontSize: 13, textAlign: "center" }}>
               <Sparkles size={16} style={{ color: "var(--accent)", margin: "0 auto 6px" }} />
-              <p style={{ margin: 0 }}>正在就位 Plan 模式。在输入框提交目标即可生成多阶段执行规划。</p>
+              <p style={{ margin: 0 }}>{t("plan.standby")}</p>
             </div>
           )}
         </div>
@@ -367,7 +369,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
             </div>
 
             <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              指出当前计划存在的问题（如步骤冗余、缺少测试、顺序不当或风险项），智能体将根据意见重新规划。
+              {t("plan.critiqueBody")}
             </p>
 
             {/* Quick critique preset tags */}
@@ -399,7 +401,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
               rows={4}
               value={critiqueText}
               onChange={(e) => setCritiqueText(e.target.value)}
-              placeholder="请输入具体的修改建议或打回理由..."
+              placeholder={t("plan.critiquePlaceholder")}
               style={{
                 width: "100%",
                 padding: "10px 12px",
@@ -431,7 +433,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
                   cursor: "pointer",
                 }}
               >
-                取消
+                {t("plan.cancel")}
               </button>
               <button
                 type="button"
@@ -453,7 +455,7 @@ export const PlanPanel = memo(function PlanPanel({ plan, todoPhases = [], onExec
                 }}
               >
                 <Send size={13} />
-                <span>提交修改意见</span>
+                <span>{t("plan.submitCritique")}</span>
               </button>
             </div>
           </div>

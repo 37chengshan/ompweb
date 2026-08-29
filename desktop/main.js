@@ -141,7 +141,10 @@ function waitForServer(attempt = 0, loadWhenReady = true) {
 function isFirstLaunchSplash() {
   const pref = readSplashPref();
   if (pref === "off") return false;
-  const markPath = path.join(app.getPath("userData"), "splash-shown");
+  // Version-scoped mark: the animation plays once per installed version, so
+  // an in-place upgrade (which keeps userData, including the old splash-shown
+  // file) shows it again instead of skipping silently forever.
+  const markPath = path.join(app.getPath("userData"), `splash-shown-${app.getVersion()}`);
   if (pref === "once" && fs.existsSync(markPath)) return false;
   const splashFile = path.join(pkgDir, "desktop", "splash.html");
   const splashVideo = app.isPackaged

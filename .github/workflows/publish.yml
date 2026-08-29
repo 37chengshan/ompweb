@@ -64,7 +64,8 @@ jobs:
               printf '%s\n\n' "$CHANGES"
               printf '%s\n\n' '## Upgrade'
               printf '%s\n' '```bash'
-              printf 'npm install -g @kahme247/ompweb@%s\n' "$VERSION"
+              printf 'npm install -g @37chengshan/ompweb@%s\n' "$VERSION"
+              printf 'Desktop app: download from the release assets below (macOS dmg/zip, Windows exe, Linux AppImage). The app auto-updates from GitHub Releases on launch.\n'
               printf '%s\n\n' '```'
               printf '**Full changelog:** %s\n' "$CHANGELOG_URL"
             } > release-notes.md

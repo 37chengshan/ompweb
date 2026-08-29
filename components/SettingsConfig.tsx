@@ -23,6 +23,7 @@ const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => mod
 const RemoteAccessSetting = dynamic(() => import("./RemoteAccessSetting").then((module) => module.RemoteAccessSetting), { loading: SettingsTabLoading, ssr: false });
 import { NetworkProxyConfig } from "./NetworkProxyConfig";
 import { SplashAnimationSetting } from "./SplashAnimationSetting";
+import { NativeExtrasSetting } from "./NativeExtrasSetting";
 import { UpdateNoticeDialog } from "./UpdateNoticeDialog";
 import { loadUpdateHistory, clearUpdateHistory, isUpdateNoticeEnabled, setUpdateNoticeEnabled, type UpdateRecord } from "@/lib/update-notice";
 
@@ -989,6 +990,15 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                     </NativeSetting>
                   </div>
                 </section>
+
+                {/* OMP internal settings: model roles, feature toggles, advanced */}
+                {nativeSettings && (
+                  <NativeExtrasSetting
+                    settings={nativeSettings}
+                    onPatch={(patch) => patchSettings(patch)}
+                    onPatchSection={(key, patch) => patchSection(key as never, patch as never)}
+                  />
+                )}
               </div>
             )}
 

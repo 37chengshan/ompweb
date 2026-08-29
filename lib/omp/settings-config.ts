@@ -28,6 +28,21 @@ export type NativeSettings = {
   autolearn?: { enabled?: boolean; autoContinue?: boolean; minToolCalls?: number };
   mnemopi?: { scoping?: "global" | "per-project" | "per-project-tagged"; autoRecall?: boolean; autoRetain?: boolean; noEmbeddings?: boolean };
   mcp?: { enableProjectConfig?: boolean; renderMarkdownResults?: boolean; notifications?: boolean; notificationDebounceMs?: number };
+  modelRoles?: Record<string, string>;
+  generateImage?: { enabled?: boolean };
+  computer?: { enabled?: boolean };
+  skills?: { enableCodexUser?: boolean; enableAgentsUser?: boolean; enableClaudeUser?: boolean; enableClaudeProject?: boolean };
+  bash?: { autoBackground?: { enabled?: boolean } };
+  providers?: { memoryModel?: string; webSearchOrder?: string[] };
+  security?: { enabled?: boolean };
+  github?: { enabled?: boolean };
+  colorBlindMode?: boolean;
+  contextPromotion?: { enabled?: boolean };
+  snapcompact?: { toolResults?: boolean };
+  edit?: { mode?: string };
+  composer?: { shape?: string };
+  dev?: { autoqaConsent?: string };
+  symbolPreset?: string;
 };
 
 const THINKING_LEVELS = new Set(["auto", "minimal", "low", "medium", "high", "xhigh", "max"]);
@@ -81,6 +96,19 @@ export function readNativeSettings(): { path: string; settings: NativeSettings }
   const autolearn = isRecord(data.autolearn) ? data.autolearn : {};
   const mnemopi = isRecord(data.mnemopi) ? data.mnemopi : {};
   const mcp = isRecord(data.mcp) ? data.mcp : {};
+  const generateImage = isRecord(data.generate_image) ? data.generate_image : {};
+  const computer = isRecord(data.computer) ? data.computer : {};
+  const skills = isRecord(data.skills) ? data.skills : {};
+  const bash = isRecord(data.bash) ? data.bash : {};
+  const bashAutoBackground = isRecord(bash.autoBackground) ? bash.autoBackground : {};
+  const providers = isRecord(data.providers) ? data.providers : {};
+  const security = isRecord(data.security) ? data.security : {};
+  const github = isRecord(data.github) ? data.github : {};
+  const contextPromotion = isRecord(data.contextPromotion) ? data.contextPromotion : {};
+  const snapcompact = isRecord(data.snapcompact) ? data.snapcompact : {};
+  const edit = isRecord(data.edit) ? data.edit : {};
+  const composer = isRecord(data.composer) ? data.composer : {};
+  const dev = isRecord(data.dev) ? data.dev : {};
   const registryHasScopedEntries = [data.enabledModels, data.disabledProviders, data.modelProviderOrder]
     .some((value) => Array.isArray(value) && !value.every((item) => typeof item === "string"));
   return {
@@ -143,8 +171,40 @@ export function readNativeSettings(): { path: string; settings: NativeSettings }
         ...(typeof mcp.notifications === "boolean" ? { notifications: mcp.notifications } : {}),
         ...(typeof mcp.notificationDebounceMs === "number" && Number.isInteger(mcp.notificationDebounceMs) ? { notificationDebounceMs: mcp.notificationDebounceMs } : {}),
       } } : {}),
+      ...(modelRolesRecord(data.modelRoles) ? { modelRoles: modelRolesRecord(data.modelRoles)! } : {}),
+      ...(Object.keys(generateImage).length ? { generateImage: { ...(typeof generateImage.enabled === "boolean" ? { enabled: generateImage.enabled } : {}) } } : {}),
+      ...(Object.keys(computer).length ? { computer: { ...(typeof computer.enabled === "boolean" ? { enabled: computer.enabled } : {}) } } : {}),
+      ...(Object.keys(skills).length ? { skills: {
+        ...(typeof skills.enableCodexUser === "boolean" ? { enableCodexUser: skills.enableCodexUser } : {}),
+        ...(typeof skills.enableAgentsUser === "boolean" ? { enableAgentsUser: skills.enableAgentsUser } : {}),
+        ...(typeof skills.enableClaudeUser === "boolean" ? { enableClaudeUser: skills.enableClaudeUser } : {}),
+        ...(typeof skills.enableClaudeProject === "boolean" ? { enableClaudeProject: skills.enableClaudeProject } : {}),
+      } } : {}),
+      ...(Object.keys(bash).length ? { bash: { ...(Object.keys(bashAutoBackground).length ? { autoBackground: { ...(typeof bashAutoBackground.enabled === "boolean" ? { enabled: bashAutoBackground.enabled } : {}) } } : {}) } } : {}),
+      ...(Object.keys(providers).length ? { providers: {
+        ...(typeof providers.memoryModel === "string" && providers.memoryModel ? { memoryModel: providers.memoryModel } : {}),
+        ...(stringArray(providers.webSearchOrder) ? { webSearchOrder: stringArray(providers.webSearchOrder) } : {}),
+      } } : {}),
+      ...(Object.keys(security).length ? { security: { ...(typeof security.enabled === "boolean" ? { enabled: security.enabled } : {}) } } : {}),
+      ...(Object.keys(github).length ? { github: { ...(typeof github.enabled === "boolean" ? { enabled: github.enabled } : {}) } } : {}),
+      ...(typeof data.colorBlindMode === "boolean" ? { colorBlindMode: data.colorBlindMode } : {}),
+      ...(Object.keys(contextPromotion).length ? { contextPromotion: { ...(typeof contextPromotion.enabled === "boolean" ? { enabled: contextPromotion.enabled } : {}) } } : {}),
+      ...(Object.keys(snapcompact).length ? { snapcompact: { ...(typeof snapcompact.toolResults === "boolean" ? { toolResults: snapcompact.toolResults } : {}) } } : {}),
+      ...(Object.keys(edit).length && typeof edit.mode === "string" && edit.mode ? { edit: { mode: edit.mode } } : {}),
+      ...(Object.keys(composer).length && typeof composer.shape === "string" && composer.shape ? { composer: { shape: composer.shape } } : {}),
+      ...(Object.keys(dev).length && typeof dev.autoqaConsent === "string" && dev.autoqaConsent ? { dev: { autoqaConsent: dev.autoqaConsent } } : {}),
+      ...(typeof data.symbolPreset === "string" && data.symbolPreset ? { symbolPreset: data.symbolPreset } : {}),
     },
   };
+}
+
+function modelRolesRecord(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key && typeof item === "string" && item) out[key] = item;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** Validates and applies a reviewed subset of OMP's global config schema. */
@@ -159,6 +219,20 @@ export function writeNativeSettings(settings: NativeSettings): void {
   assertOptionalRecord(settings.autolearn, "autolearn");
   assertOptionalRecord(settings.mnemopi, "mnemopi");
   assertOptionalRecord(settings.mcp, "mcp");
+  assertOptionalRecord(settings.modelRoles, "modelRoles");
+  assertOptionalRecord(settings.generateImage, "generateImage");
+  assertOptionalRecord(settings.computer, "computer");
+  assertOptionalRecord(settings.skills, "skills");
+  assertOptionalRecord(settings.bash, "bash");
+  assertOptionalRecord(settings.bash?.autoBackground, "bash.autoBackground");
+  assertOptionalRecord(settings.providers, "providers");
+  assertOptionalRecord(settings.security, "security");
+  assertOptionalRecord(settings.github, "github");
+  assertOptionalRecord(settings.contextPromotion, "contextPromotion");
+  assertOptionalRecord(settings.snapcompact, "snapcompact");
+  assertOptionalRecord(settings.edit, "edit");
+  assertOptionalRecord(settings.composer, "composer");
+  assertOptionalRecord(settings.dev, "dev");
   for (const [name, value] of Object.entries({
     hideThinkingBlock: settings.hideThinkingBlock,
     externalThinking: settings.externalThinking,
@@ -178,7 +252,31 @@ export function writeNativeSettings(settings: NativeSettings): void {
     "mcp.enableProjectConfig": settings.mcp?.enableProjectConfig,
     "mcp.renderMarkdownResults": settings.mcp?.renderMarkdownResults,
     "mcp.notifications": settings.mcp?.notifications,
+    "generateImage.enabled": settings.generateImage?.enabled,
+    "computer.enabled": settings.computer?.enabled,
+    "skills.enableCodexUser": settings.skills?.enableCodexUser,
+    "skills.enableAgentsUser": settings.skills?.enableAgentsUser,
+    "skills.enableClaudeUser": settings.skills?.enableClaudeUser,
+    "skills.enableClaudeProject": settings.skills?.enableClaudeProject,
+    "bash.autoBackground.enabled": settings.bash?.autoBackground?.enabled,
+    "security.enabled": settings.security?.enabled,
+    "github.enabled": settings.github?.enabled,
+    "colorBlindMode": settings.colorBlindMode,
+    "contextPromotion.enabled": settings.contextPromotion?.enabled,
+    "snapcompact.toolResults": settings.snapcompact?.toolResults,
   })) assertOptionalBoolean(value, name);
+  if (settings.modelRoles !== undefined) {
+    for (const [role, model] of Object.entries(settings.modelRoles)) {
+      if (!role.trim() || typeof model !== "string" || !model.trim()) throw new Error("Model roles require non-empty role and model values");
+    }
+  }
+  if (settings.providers?.webSearchOrder !== undefined && (!Array.isArray(settings.providers.webSearchOrder) || settings.providers.webSearchOrder.some((value) => typeof value !== "string"))) {
+    throw new Error("providers.webSearchOrder must be an array of strings");
+  }
+  if (settings.providers?.memoryModel !== undefined && typeof settings.providers.memoryModel !== "string") throw new Error("providers.memoryModel must be a string");
+  for (const [key, value] of Object.entries({ "edit.mode": settings.edit?.mode, "composer.shape": settings.composer?.shape, "dev.autoqaConsent": settings.dev?.autoqaConsent, symbolPreset: settings.symbolPreset })) {
+    if (value !== undefined && (typeof value !== "string" || !value.trim())) throw new Error(`${key} must be a non-empty string`);
+  }
   if (settings.defaultThinkingLevel !== undefined && !THINKING_LEVELS.has(settings.defaultThinkingLevel)) throw new Error("Invalid default thinking level");
   if (settings.textVerbosity !== undefined && !TEXT_VERBOSITIES.has(settings.textVerbosity)) throw new Error("Invalid text verbosity");
   if (settings.personality !== undefined && !PERSONALITIES.has(settings.personality)) throw new Error("Invalid personality");
@@ -207,8 +305,12 @@ export function writeNativeSettings(settings: NativeSettings): void {
   const { path, doc } = readDocument();
   mkdirSync(dirname(path), { recursive: true });
   if (doc.contents === null) {
+    // The YAML key differs from the settings name for one field; map it
+    // before serializing so the very first write matches OMP's schema.
+    const { generateImage, ...rest } = settings;
+    const mapped = generateImage !== undefined ? { ...rest, generate_image: generateImage } : rest;
     const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-    writeFileSync(temp, stringify(settings), "utf8");
+    writeFileSync(temp, stringify(mapped), "utf8");
     renameSync(temp, path);
     return;
   }
@@ -231,6 +333,22 @@ export function writeNativeSettings(settings: NativeSettings): void {
   for (const [key, value] of Object.entries(settings.autolearn ?? {})) doc.setIn(["autolearn", key], value);
   for (const [key, value] of Object.entries(settings.mnemopi ?? {})) doc.setIn(["mnemopi", key], value);
   for (const [key, value] of Object.entries(settings.mcp ?? {})) doc.setIn(["mcp", key], value);
+  if (settings.modelRoles !== undefined) doc.set("modelRoles", settings.modelRoles);
+  if (settings.generateImage?.enabled !== undefined) doc.setIn(["generate_image", "enabled"], settings.generateImage.enabled);
+  if (settings.computer?.enabled !== undefined) doc.setIn(["computer", "enabled"], settings.computer.enabled);
+  for (const [key, value] of Object.entries(settings.skills ?? {})) doc.setIn(["skills", key], value);
+  if (settings.bash?.autoBackground?.enabled !== undefined) doc.setIn(["bash", "autoBackground", "enabled"], settings.bash.autoBackground.enabled);
+  if (settings.providers?.memoryModel !== undefined) doc.setIn(["providers", "memoryModel"], settings.providers.memoryModel);
+  if (settings.providers?.webSearchOrder !== undefined) doc.setIn(["providers", "webSearchOrder"], settings.providers.webSearchOrder);
+  if (settings.security?.enabled !== undefined) doc.setIn(["security", "enabled"], settings.security.enabled);
+  if (settings.github?.enabled !== undefined) doc.setIn(["github", "enabled"], settings.github.enabled);
+  if (settings.colorBlindMode !== undefined) doc.set("colorBlindMode", settings.colorBlindMode);
+  if (settings.contextPromotion?.enabled !== undefined) doc.setIn(["contextPromotion", "enabled"], settings.contextPromotion.enabled);
+  if (settings.snapcompact?.toolResults !== undefined) doc.setIn(["snapcompact", "toolResults"], settings.snapcompact.toolResults);
+  if (settings.edit?.mode !== undefined) doc.setIn(["edit", "mode"], settings.edit.mode);
+  if (settings.composer?.shape !== undefined) doc.setIn(["composer", "shape"], settings.composer.shape);
+  if (settings.dev?.autoqaConsent !== undefined) doc.setIn(["dev", "autoqaConsent"], settings.dev.autoqaConsent);
+  if (settings.symbolPreset !== undefined) doc.set("symbolPreset", settings.symbolPreset);
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(temp, doc.toString(), "utf8");
   renameSync(temp, path);

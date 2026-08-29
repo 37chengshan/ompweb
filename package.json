@@ -152,7 +152,8 @@
       {
         "provider": "github",
         "owner": "37chengshan",
-        "repo": "ompweb"
+        "repo": "ompweb",
+        "releaseType": "release"
       }
     ]
   },

@@ -15,14 +15,13 @@ try {
 // chunk rule in development, make the browser cache dev chunks forever, and
 // produce stale "module factory is not available" / hydration errors after
 // every restart.
-// Warm the effective network proxy into the process env before the first
-// omp spawn / GitHub request: Bun's fetch (omp) and undici (GitHub client)
-// ignore the system proxy without TUN mode, so we resolve the configured
-// proxy (auto-detected or manual) once at startup.
-import { resolveEffectiveProxy } from "./lib/proxy-config";
-void resolveEffectiveProxy().then((url) => {
-  if (url) process.env.OMP_WEB_PROXY_URL = url;
-});
+
+// This file is transpiled to next.config.compiled.js OUTSIDE the app bundle,
+// so every import here must resolve inside the published npm package —
+// `lib/` is not shipped. A relative import (./lib/proxy-config) crashed
+// `next start` on npm installs with MODULE_NOT_FOUND (4.0.10). Startup work
+// that needs app code (the OMP_WEB_PROXY_URL warm-up) belongs in
+// instrumentation.ts, which is bundled and traced with the server build.
 
 const nextConfig = (phase: string): NextConfig => {
   // String compare avoids importing next/constants: the transpiled

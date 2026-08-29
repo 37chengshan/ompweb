@@ -1,6 +1,22 @@
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  // Warm the effective network proxy into the process env before the first
+  // omp spawn / GitHub request: Bun's fetch (omp) and undici (GitHub client)
+  // ignore the system proxy without TUN mode, so we resolve the configured
+  // proxy (auto-detected or manual) once at startup. Lives here, not in
+  // next.config.ts — that file must stay free of app-code imports (it is
+  // transpiled outside the app bundle where lib/ does not exist).
+  void (async () => {
+    try {
+      const { resolveEffectiveProxy } = await import("@/lib/proxy-config");
+      const url = await resolveEffectiveProxy();
+      if (url) process.env.OMP_WEB_PROXY_URL = url;
+    } catch {
+      // Best-effort; lib/proxy-config consumers resolve on demand too.
+    }
+  })();
+
   // Honor HTTP(S)_PROXY/NO_PROXY for server-side fetch (update checks, skill
   // search, model connection tests). Node's built-in fetch ignores proxy env
   // vars (NODE_USE_ENV_PROXY is Node 24+ only; engines floor is 22).

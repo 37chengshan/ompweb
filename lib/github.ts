@@ -3,6 +3,7 @@
  * without a token (rate-limited); GITHUB_TOKEN / GH_TOKEN raise the quota and
  * unlock private repos. Nothing here writes to GitHub.
  */
+import packageJson from "../package.json";
 
 export interface GitHubCheckStatus {
   /** Aggregate check-run conclusion for the PR head commit. */
@@ -32,9 +33,9 @@ export interface GitHubRepoStatus {
 
 const API_BASE = "https://api.github.com";
 
-// The GitHub client honors the app's configured proxy (see next.config
-// warm-up). undici ignores system proxies without TUN mode, so we build an
-// explicit ProxyAgent when OMP_WEB_PROXY_URL is set.
+// The GitHub client honors the app's configured proxy (warm-up in
+// instrumentation.ts). undici ignores system proxies without TUN mode, so we
+// build an explicit ProxyAgent when OMP_WEB_PROXY_URL is set.
 import { ProxyAgent, fetch as undiciFetch, type Dispatcher } from "undici";
 
 let cachedProxyAgent: ProxyAgent | null | undefined = undefined;
@@ -46,7 +47,7 @@ function proxyDispatcher(): Dispatcher | undefined {
   }
   return cachedProxyAgent ?? undefined;
 }
-const USER_AGENT = "ompweb/4.0.0";
+const USER_AGENT = `ompweb/${packageJson.version}`;
 const PER_PAGE = 20;
 
 function authToken(): string | undefined {

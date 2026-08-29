@@ -95,7 +95,11 @@ export function RemoteAccessSetting() {
   const startTunnel = async () => {
     setBusy(true);
     try {
-      const res = await fetch("/api/pair/tunnel", { method: "POST" });
+      const res = await fetch("/api/pair/tunnel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ port: typeof window !== "undefined" ? Number(window.location.port || 80) : undefined }),
+      });
       const body = (await res.json()) as { url?: string; error?: string };
       if (!res.ok) throw new Error(body.error ?? "tunnel_failed");
       setTunnelUrl(body.url ?? null);

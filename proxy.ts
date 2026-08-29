@@ -9,19 +9,22 @@ import { getAgentDir } from "@/lib/omp/paths";
 /**
  * Remote-access gate for /api/*: when pairing requires it, requests from a
  * non-loopback Host (LAN IP or public tunnel) must carry a valid
- * paired-device cookie — except the /api/pair/* endpoints themselves.
- *
- * The pairing state file is the source of truth (route handlers persist
- * atomically), so a fresh read per request avoids cross-worker staleness.
- * Device liveness is refreshed by /api/pair/heartbeat and paired-route
- * usage, not by this gate.
+ * paired-device cookie. Only the pairing FLOW itself is exempt — issuing
+ * and consuming tokens — so an unpaired LAN attacker cannot reach
+ * revoke-all, config (which could disable the gate), devices, or tunnel.
  */
+const PAIRING_FLOW_PATHS = ["/api/pair/token", "/api/pair/accept"];
+
+function isPairingFlowPath(pathname: string): boolean {
+  return PAIRING_FLOW_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
 function checkPairingGate(request: NextRequest): NextResponse | null {
   const host = request.headers.get("host");
   if (!isRemoteRequest(host)) return null;
 
   const pathname = request.nextUrl.pathname;
-  if (pathname.startsWith("/api/pair")) return null;
+  if (isPairingFlowPath(pathname)) return null;
 
   let state: { config?: Record<string, unknown>; devices?: Array<{ id?: unknown; lastActiveAt?: unknown }> };
   try {
@@ -65,6 +68,12 @@ export function proxy(request: NextRequest) {
   }
 
   const { pathname } = request.nextUrl;
+  // The pairing flow must stay reachable from a phone even when a web
+  // password is enabled (the paired cookie is checked on every other
+  // remote /api request; the password protects the session afterwards).
+  // The /remote landing page performs the accept itself, so it is exempt
+  // too; it renders no data.
+  if (isPairingFlowPath(pathname) || pathname === "/remote") return NextResponse.next();
   const hasSession = isValidWebSession(request.cookies.get(OMP_WEB_SESSION_COOKIE)?.value);
   if (pathname === "/login") {
     return hasSession ? NextResponse.redirect(new URL("/", request.url)) : NextResponse.next();

@@ -466,9 +466,15 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
         setUpdatingApp(false);
         setMessage(status.message ?? t("settingsConfig.desktopUpdateFailed"));
       }
+      if (status.status === "available" || status.status === "downloaded") {
+        onOmpUpdateAvailabilityChange(true);
+      }
+      if (status.status === "up-to-date" || status.status === "error") {
+        onOmpUpdateAvailabilityChange(false);
+      }
     });
     return unsubscribe;
-  }, [t]);
+  }, [t, onOmpUpdateAvailabilityChange]);
 
   const runAppUpdate = useCallback(async () => {
     // Desktop app: the native updater downloads and restarts the packaged
@@ -542,6 +548,20 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   }, [onOmpUpdateAvailabilityChange]);
 
   const checkForAppUpdate = useCallback(async (force = false) => {
+    // Desktop app: ask the native updater (GitHub releases feed) instead of
+    // the npm registry; its status events drive the card and the badge.
+    const desktop = (window as { ompWebDesktop?: { updateCheck?: () => Promise<unknown> } }).ompWebDesktop;
+    if (desktop?.updateCheck) {
+      setCheckingAppUpdate(true);
+      try {
+        await desktop.updateCheck();
+      } catch {
+        setMessage(t("settingsConfig.desktopUpdateUnavailable"));
+      } finally {
+        setCheckingAppUpdate(false);
+      }
+      return;
+    }
     setCheckingAppUpdate(true);
     try {
       const response = await fetch(force ? "/api/app-update?force=1" : "/api/app-update");
@@ -553,7 +573,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
     } finally {
       setCheckingAppUpdate(false);
     }
-  }, []);
+  }, [t]);
 
   const restartSessions = useCallback(async () => {
     setRestarting(true);

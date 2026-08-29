@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const g = globalThis as GlobalWithTunnel;
   const service = getPairingService();
   const config = service.getConfig();
-  const body = (await request.json().catch(() => ({}))) as { action?: unknown };
+  const body = (await request.json().catch(() => ({}))) as { action?: unknown; port?: unknown };
 
   if (body.action === "stop") {
     g[GLOBAL_KEY]?.kill("SIGTERM");
@@ -30,7 +30,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "tunnel already running", code: "tunnel_running" }, { status: 409 });
   }
 
-  const port = process.env.PORT ?? "30178";
+  // The dev server runs on 30178, CLI start on 30177 and the desktop app on
+  // 30179 — the renderer knows its own origin, so it passes the real port.
+  const requestedPort = typeof body.port === "number" ? String(body.port) : String(body.port ?? "").replace(/\D/g, "");
+  const port = /^\d{2,5}$/.test(requestedPort) ? requestedPort : (process.env.PORT ?? "30178");
   const child = spawn("cloudflared", ["tunnel", "--no-autoupdate", "--url", `http://127.0.0.1:${port}`], {
     stdio: ["ignore", "pipe", "pipe"],
   });

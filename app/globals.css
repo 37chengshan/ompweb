@@ -1556,6 +1556,11 @@ pre, code {
   isolation: isolate;
   transition: margin var(--dur-med) var(--ease-out-warm);
 }
+/* Quiet hairline between consecutive workspace blocks. */
+.sidebar-project + .sidebar-project {
+  border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  padding-top: 10px;
+}
 .sidebar-project-header {
   position: relative;
   z-index: 1;
@@ -1799,6 +1804,14 @@ span.token.table {
 .animate-scale-in   { animation: ui-scale-in var(--dur-med) var(--ease-out-warm) both; }
 .animate-slide-down { animation: ui-slide-down var(--dur-med) var(--ease-out-warm) both; }
 .animate-slide-up   { animation: ui-slide-up   var(--dur-med) var(--ease-out-warm) both; }
+@keyframes ui-slide-down-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+.animate-slide-down-out {
+  animation: ui-slide-down-out var(--dur-fast) var(--ease-out-warm) both;
+  pointer-events: none;
+}
 /* Modal popups are centered via `transform: translate(-50%, -50%)`; the
    entrance animation must own that transform so it never fights the
    centering (an animation overrides inline styles for its lifetime). */

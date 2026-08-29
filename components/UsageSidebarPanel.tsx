@@ -51,6 +51,7 @@ export function UsageSidebarPanel() {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [reports, setReports] = useState<ProviderUsageReport[] | null>(null);
   const [error, setError] = useState(false);
+  const [closing, setClosing] = useState(false);
   const loadedRef = useRef(false);
 
   const load = useCallback(() => {
@@ -73,6 +74,18 @@ export function UsageSidebarPanel() {
       load();
     }
   }, [open, load]);
+
+  // Keep the body mounted briefly after close so the exit animation can play.
+  useEffect(() => {
+    if (open) {
+      setClosing(false);
+      return;
+    }
+    if (!loadedRef.current) return;
+    setClosing(true);
+    const timer = window.setTimeout(() => setClosing(false), 180);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     try {
@@ -110,8 +123,11 @@ export function UsageSidebarPanel() {
         <ChevronDownIcon open={open} />
       </button>
 
-      {open && (
-        <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", padding: "8px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+      {(open || closing) && (
+        <div
+          className={open ? "animate-slide-down" : "animate-slide-down-out"}
+          style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", padding: "8px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}
+        >
           {error && (
             <span style={{ fontSize: 11, color: "var(--status-error)" }}>{t("sidebar.usageEmpty")}</span>
           )}

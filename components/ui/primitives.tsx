@@ -38,6 +38,7 @@ export function DialogContent({ children, className, style, ariaLabel }: {
           background: "var(--overlay-backdrop)",
           backdropFilter: "blur(2px)",
           zIndex: 1000,
+          animation: "ui-fade-in var(--dur-med) var(--ease-out-warm) both",
         }}
       />
       <BaseDialog.Popup

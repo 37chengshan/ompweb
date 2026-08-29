@@ -16,6 +16,9 @@ export async function GET() {
   const effectiveProxy = await resolveEffectiveProxy();
   const rpcSessionCount = getRpcSessionIds().length;
   const activeRpc = rpcSessionCount;
+  const webPort = process.env.OMP_WEB_PORT
+    ?? process.env.PORT
+    ?? (process.env.NODE_ENV === "production" ? "30177" : "30178");
 
   return NextResponse.json({
     server: {
@@ -35,6 +38,10 @@ export async function GET() {
     },
     rpc: {
       activeSessions: activeRpc,
+    },
+    web: {
+      port: webPort,
+      url: `http://127.0.0.1:${webPort}`,
     },
   });
 }

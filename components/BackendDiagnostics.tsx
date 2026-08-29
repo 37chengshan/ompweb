@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
-import { Activity, RefreshCw, RotateCcw } from "lucide-react";
+import { Activity, ExternalLink, RefreshCw, RotateCcw } from "lucide-react";
 
 export interface DiagnosticsData {
   server: { node: string; platform: string; arch: string; uptimeSeconds: number };
   omp: { installed: boolean; path: string | null; version: string | null };
   proxy: { config: { mode: string; url?: string }; effective: string | null };
   rpc: { activeSessions: number };
+  web: { port: string; url: string };
 }
 
 export type BackendHealth = "ok" | "warn" | "error";
@@ -20,7 +21,7 @@ export function healthOf(d: DiagnosticsData): BackendHealth {
   return "ok";
 }
 
-function Row({ label, ok, detail }: { label: string; ok: boolean; detail: string }) {
+function Row({ label, ok, detail, action }: { label: string; ok: boolean; detail: string; action?: ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, lineHeight: 1.5 }}>
       <span
@@ -28,9 +29,10 @@ function Row({ label, ok, detail }: { label: string; ok: boolean; detail: string
         style={{ width: 7, height: 7, borderRadius: "50%", background: ok ? "var(--status-success)" : "var(--status-error)", flexShrink: 0 }}
       />
       <span style={{ color: "var(--text-muted)", minWidth: 78, flexShrink: 0 }}>{label}</span>
-      <code style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <code style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
         {detail}
       </code>
+      {action}
     </div>
   );
 }
@@ -105,6 +107,24 @@ export function BackendDiagnosticsBody() {
           <Row label={t("diagnostics.proxy")} ok={Boolean(diag.proxy.effective)} detail={diag.proxy.effective ?? t("diagnostics.proxyOff")} />
           <Row label={t("diagnostics.rpc")} ok={diag.rpc.activeSessions > 0} detail={`${diag.rpc.activeSessions} ${t("diagnostics.sessions")}`} />
           <Row label={t("diagnostics.server")} ok detail={`${diag.server.platform}/${diag.server.arch} · node ${diag.server.node}`} />
+          {diag.web && (
+            <Row
+              label={t("diagnostics.webPort")}
+              ok
+              detail={diag.web.url}
+              action={
+                <button
+                  type="button"
+                  onClick={() => window.open(diag.web.url, "_blank", "noopener")}
+                  aria-label={t("diagnostics.openBrowser")}
+                  title={t("diagnostics.openBrowser")}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, padding: 0, border: "none", borderRadius: 4, background: "transparent", color: "var(--accent)", cursor: "pointer", flexShrink: 0 }}
+                >
+                  <ExternalLink size={11} aria-hidden="true" />
+                </button>
+              }
+            />
+          )}
           {(!diag.omp.installed || diag.rpc.activeSessions === 0) && (
             <button
               type="button"
@@ -131,6 +151,7 @@ export function BackendStatusButton() {
   const [health, setHealth] = useState<BackendHealth>("ok");
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +173,26 @@ export function BackendStatusButton() {
     };
   }, []);
 
+  // Close on any pointer press outside the panel/button, or on Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (panelRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   const color = health === "ok" ? "var(--status-success)" : health === "warn" ? "var(--status-warning)" : "var(--status-error)";
 
   return (
@@ -171,6 +212,7 @@ export function BackendStatusButton() {
       </button>
       {open && (
         <div
+          ref={panelRef}
           role="menu"
           style={{ position: "fixed", zIndex: 1100, top: 46, left: 14, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-card)", boxShadow: "var(--shadow-pop)" }}
           onClick={(e) => e.stopPropagation()}

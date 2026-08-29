@@ -3163,6 +3163,7 @@ const SessionItem = memo(function SessionItem({
         gap: 6,
         width: "100%",
         margin: "1px 0",
+        borderBottom: "1px solid color-mix(in srgb, var(--border) 45%, transparent)",
         padding: `0 8px 0 ${30 + depth * 14}px`,
         position: "relative",
         overflow: "hidden",

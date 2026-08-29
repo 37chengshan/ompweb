@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld("ompWebDesktop", {
     ipcRenderer.on("desktop-update-status", listener);
     return () => ipcRenderer.removeListener("desktop-update-status", listener);
   },
+  // The splash page waits for the standalone server to answer before
+  // navigating (no blank/black window while cold-starting).
+  onServerReady: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("server-ready", listener);
+    return () => ipcRenderer.removeListener("server-ready", listener);
+  },
 });
 
 // Native folder picker bridge (SessionSidebar's DirectoryPicker prefers it

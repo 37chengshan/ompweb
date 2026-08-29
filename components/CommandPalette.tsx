@@ -28,6 +28,14 @@ export function CommandPalette({ onSelectSession, onNewSession, currentModel }: 
   const { t, locale } = useI18n();
   const { isDark, toggleTheme } = useTheme();
   const [open, setOpen] = useState(false);
+
+  // Touch entry point: mobile has no ⌘K/Ctrl+K keyboard, so the sidebar
+  // header dispatches this event; browsers keep the keyboard shortcut.
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener("omp-open-palette", onOpen);
+    return () => window.removeEventListener("omp-open-palette", onOpen);
+  }, []);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(false);
 

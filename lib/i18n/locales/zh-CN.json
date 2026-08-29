@@ -1458,5 +1458,11 @@
   "remote.networkError": "无法连接电脑。请确认手机与电脑在同一网络,且防火墙已放行该端口。",
   "remote.retry": "重试",
   "settingsConfig.updateCheckFailed": "版本 {version} — 更新检查失败(可能离线)",
-  "chatInput.abortFailed": "停止失败 — 请重试。"
+  "chatInput.abortFailed": "停止失败 — 请重试。",
+  "settingsConfig.pairDiagnostics": "可达性检查",
+  "settingsConfig.pairListenOn": "手机应访问:",
+  "settingsConfig.pairNoLanIp": "(未找到局域网地址 — 请检查网络适配器)",
+  "settingsConfig.firewallRuleOk": "防火墙规则已存在(OmpWeb-<port>)",
+  "settingsConfig.firewallRuleMissing": "尚无防火墙规则 — 请以管理员执行下方命令",
+  "appShell.commandPalette": "命令面板"
 }

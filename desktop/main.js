@@ -182,6 +182,12 @@ function waitForServer(attempt = 0, loadWhenReady = true) {
   fetch(APP_URL, { signal: controller.signal })
     .then(() => {
       clearTimeout(timer);
+      // The splash page waits for this signal before navigating (so the
+      // transition never lands on a cold server); the non-splash startup
+      // page ignores it.
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send("server-ready");
+      }
       if (loadWhenReady && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.loadURL(APP_URL);
       }

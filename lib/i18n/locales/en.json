@@ -1458,5 +1458,11 @@
   "remote.networkError": "Cannot reach the computer. Make sure the phone and computer are on the same network and the firewall allows this port.",
   "remote.retry": "Try again",
   "settingsConfig.updateCheckFailed": "Version {version} — update check failed (offline?)",
-  "chatInput.abortFailed": "Failed to stop the agent — please retry."
+  "chatInput.abortFailed": "Failed to stop the agent — please retry.",
+  "settingsConfig.pairDiagnostics": "Reachability check",
+  "settingsConfig.pairListenOn": "Phone should open:",
+  "settingsConfig.pairNoLanIp": "(no LAN address found — check your network adapter)",
+  "settingsConfig.firewallRuleOk": "Firewall rule exists (OmpWeb-<port>)",
+  "settingsConfig.firewallRuleMissing": "No firewall rule yet — run the command below as admin",
+  "appShell.commandPalette": "Command palette"
 }

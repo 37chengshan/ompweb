@@ -55,6 +55,11 @@ function checkPairingGate(request: NextRequest): NextResponse | null {
     return NextResponse.json({ error: "Pairing tokens can only be issued from this computer", code: "token_loopback_only" }, { status: 403 });
   }
   if (isPairingFlowPath(pathname)) return null;
+  // The /remote landing page is part of the pairing FLOW itself (the phone
+  // opens it from the QR and it performs the accept): it renders no data,
+  // so it must stay reachable before any device is paired. Previously a
+  // fresh phone hit this gate first and got a 401 JSON instead of the page.
+  if (pathname === "/remote" || pathname.startsWith("/remote/")) return null;
 
   const state = readPairingState();
   if (!state) {

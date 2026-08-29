@@ -38,6 +38,19 @@ export function RemoteAccessSetting() {
   const [busy, setBusy] = useState(false);
   const [qr, setQr] = useState<TokenResponse | null>(null);
   const [tunnelUrl, setTunnelUrl] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<{ port: string; physicalAddresses: Array<{ name: string; address: string }>; platform: string; firewallRuleExists: boolean | null } | null>(null);
+
+  // Fetch reachability diagnostics alongside the QR so the user can see at a
+  // glance which address the phone must reach and whether Windows needs a
+  // firewall rule.
+  useEffect(() => {
+    if (!qr) return;
+    fetch("/api/pair/diagnostics")
+      .then((res) => (res.ok ? res.json() as Promise<typeof diagnostics> : null))
+      .then((d) => setDiagnostics(d))
+      .catch(() => undefined);
+  }, [qr]);
+
 
   const refresh = useCallback(() => {
     fetch("/api/pair/devices")
@@ -164,6 +177,23 @@ export function RemoteAccessSetting() {
             <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
               {t("settingsConfig.qrHint")} <RefreshCw size={11} style={{ display: "inline", verticalAlign: -1 }} aria-hidden="true" /> {t("settingsConfig.qrRefreshHint")}
             </span>
+
+            {/* Reachability diagnostics: which address/port the phone must
+                reach, and (Windows) whether a firewall rule exists. */}
+            {diagnostics && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-subtle)", fontSize: 11, color: "var(--text-muted)" }}>
+                <span>{t("settingsConfig.pairDiagnostics")}</span>
+                <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>
+                  {t("settingsConfig.pairListenOn")} :{diagnostics.port}{" "}
+                  {diagnostics.physicalAddresses.map((a) => a.address).join(", ") || t("settingsConfig.pairNoLanIp")}
+                </span>
+                {diagnostics.platform === "win32" && (
+                  <span style={{ color: diagnostics.firewallRuleExists ? "var(--status-ok, #2e9e5b)" : "var(--status-error)" }}>
+                    {diagnostics.firewallRuleExists ? t("settingsConfig.firewallRuleOk") : t("settingsConfig.firewallRuleMissing")}
+                  </span>
+                )}
+              </div>
+            )}
 
             {isWindows && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-subtle)", fontSize: 11, color: "var(--text-muted)" }}>

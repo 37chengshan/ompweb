@@ -325,11 +325,14 @@ function NativeSetting({ label, description, scope, searchId, children }: { labe
         ...(highlighted ? { borderColor: "var(--accent)", boxShadow: "0 0 0 2px var(--accent)" } : {}),
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <label id={labelId} htmlFor={settingId} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", cursor: "pointer", minWidth: 0, overflowWrap: "anywhere" }}>{label}</label>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto" }}>
+          {/* flexShrink 0 keeps CJK labels from collapsing to one glyph per
+              line ("vertical text"); flexWrap above moves the control below
+              the label on narrow cards instead of squeezing it. */}
+          <label id={labelId} htmlFor={settingId} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", cursor: "pointer", flexShrink: 0 }}>{label}</label>
           {scope && (
-            <span style={chipStyle}>
+            <span style={{ ...chipStyle, flexShrink: 0 }}>
               {formatScope(scope)}
             </span>
           )}

@@ -11,7 +11,7 @@ import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { Check, CircleCheck, FolderGit2, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
+import { Check, CircleCheck, FolderGit2, History, Menu, Moon, PanelLeft, Search, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
 import { ThemePicker } from "./ThemePicker";
 import { DesktopUpdateBanner } from "./DesktopUpdateBanner";
 import { TerminalPanel } from "./TerminalPanel";
@@ -1123,6 +1123,16 @@ export function AppShell() {
             className="shell-toolbar-btn ui-focus-ring"
           >
             {sidebarOpen ? <PanelLeft size={16} strokeWidth={1.8} aria-hidden="true" /> : <Menu size={16} strokeWidth={1.8} aria-hidden="true" />}
+          </button>
+          {/* Touch entry for the command palette (mobile has no ⌘K/Ctrl+K) */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("omp-open-palette"))}
+            title={t("appShell.commandPalette")}
+            aria-label={t("appShell.commandPalette")}
+            className="shell-toolbar-btn ui-focus-ring"
+          >
+            <Search size={16} strokeWidth={1.8} aria-hidden="true" />
           </button>
           <ThemePicker />
           <button

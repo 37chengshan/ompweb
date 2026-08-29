@@ -1458,5 +1458,11 @@
   "remote.networkError": "コンピューターに接続できません。スマホとPCが同じネットワークにあり、ファイアウォールでポートが許可されているか確認してください。",
   "remote.retry": "再試行",
   "settingsConfig.updateCheckFailed": "バージョン {version} — 更新確認に失敗(オフライン?)",
-  "chatInput.abortFailed": "停止に失敗しました — 再試行してください。"
+  "chatInput.abortFailed": "停止に失敗しました — 再試行してください。",
+  "settingsConfig.pairDiagnostics": "到達性チェック",
+  "settingsConfig.pairListenOn": "スマホが開くべきURL:",
+  "settingsConfig.pairNoLanIp": "(LANアドレスが見つかりません — ネットワークアダプターを確認してください)",
+  "settingsConfig.firewallRuleOk": "ファイアウォール規則あり(OmpWeb-<port>)",
+  "settingsConfig.firewallRuleMissing": "ファイアウォール規則がありません — 管理者で下のコマンドを実行してください",
+  "appShell.commandPalette": "コマンドパレット"
 }

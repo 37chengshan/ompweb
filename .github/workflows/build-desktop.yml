@@ -72,7 +72,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ github.ref_name }}"
-          gh release edit "$TAG" --draft=false
+          # --repo is required: this job has no checkout, so gh cannot resolve
+          # the repository from a git remote ("not a git repository" failure).
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
           # If no release exists yet (e.g. publish.yml draft creation raced
           # and lost), electron-builder created it itself — nothing to do.
           true

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isApiRequestOriginAllowed, shouldCheckApiRequestOrigin } from "@/lib/request-security";
 import { isValidWebSession, isWebPasswordEnabled, OMP_WEB_SESSION_COOKIE } from "@/lib/web-auth";
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { join } from "path";
 import { isRemoteRequest } from "@/lib/remote-pairing";
 import { getAgentDir } from "@/lib/omp/paths";
@@ -19,6 +19,29 @@ function isPairingFlowPath(pathname: string): boolean {
   return PAIRING_FLOW_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
+// The pairing file is small but the gate runs on every remote /api request;
+// cache by mtime so the file is only read when it actually changed.
+interface PairingFileState {
+  config?: Record<string, unknown>;
+  devices?: Array<{ id?: unknown; lastActiveAt?: unknown }>;
+}
+
+let pairingCache: { mtimeMs: number; state: PairingFileState } | null = null;
+
+function readPairingState(): PairingFileState | null {
+  const path = join(getAgentDir(), "remote-pairing.json");
+  try {
+    const mtimeMs = statSync(path).mtimeMs;
+    if (pairingCache && pairingCache.mtimeMs === mtimeMs) return pairingCache.state;
+    const state = JSON.parse(readFileSync(path, "utf8")) as PairingFileState;
+    pairingCache = { mtimeMs, state };
+    return state;
+  } catch {
+    pairingCache = null;
+    return null;
+  }
+}
+
 function checkPairingGate(request: NextRequest): NextResponse | null {
   const host = request.headers.get("host");
   if (!isRemoteRequest(host)) return null;
@@ -26,10 +49,8 @@ function checkPairingGate(request: NextRequest): NextResponse | null {
   const pathname = request.nextUrl.pathname;
   if (isPairingFlowPath(pathname)) return null;
 
-  let state: { config?: Record<string, unknown>; devices?: Array<{ id?: unknown; lastActiveAt?: unknown }> };
-  try {
-    state = JSON.parse(readFileSync(join(getAgentDir(), "remote-pairing.json"), "utf8")) as typeof state;
-  } catch {
+  const state = readPairingState();
+  if (!state) {
     // No state file: nothing can ever have been paired — deny remote access.
     return deny();
   }

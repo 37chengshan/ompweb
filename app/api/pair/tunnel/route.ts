@@ -38,6 +38,11 @@ export async function POST(request: Request) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   g[GLOBAL_KEY] = child;
+  // Clear the stale handle when the tunnel dies so a later start attempt
+  // does not hit a bogus "already running" 409.
+  child.once("exit", () => {
+    if (g[GLOBAL_KEY] === child) delete g[GLOBAL_KEY];
+  });
 
   const url = await new Promise<string | null>((resolve) => {
     let buffer = "";

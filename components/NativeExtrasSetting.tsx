@@ -99,7 +99,7 @@ export function NativeExtrasSetting({ settings, onPatch, onPatchSection }: Props
             placeholder="qwen3-1.7b"
             onBlur={(e) => {
               const value = e.target.value.trim();
-              if (value !== (settings.providers?.memoryModel ?? "")) onPatchSection("providers", { memoryModel: value || undefined });
+              if (value !== (settings.providers?.memoryModel ?? "")) onPatchSection("providers", { memoryModel: value || null });
             }}
             style={inputStyle}
           />
@@ -126,7 +126,7 @@ export function NativeExtrasSetting({ settings, onPatch, onPatchSection }: Props
             placeholder="hashline"
             onBlur={(e) => {
               const value = e.target.value.trim();
-              if (value !== (settings.edit?.mode ?? "")) onPatchSection("edit", { mode: value || undefined });
+              if (value !== (settings.edit?.mode ?? "")) onPatchSection("edit", { mode: value || null });
             }}
             style={inputStyle}
           />
@@ -139,7 +139,7 @@ export function NativeExtrasSetting({ settings, onPatch, onPatchSection }: Props
             placeholder="box"
             onBlur={(e) => {
               const value = e.target.value.trim();
-              if (value !== (settings.composer?.shape ?? "")) onPatchSection("composer", { shape: value || undefined });
+              if (value !== (settings.composer?.shape ?? "")) onPatchSection("composer", { shape: value || null });
             }}
             style={inputStyle}
           />
@@ -152,7 +152,7 @@ export function NativeExtrasSetting({ settings, onPatch, onPatchSection }: Props
             placeholder="granted"
             onBlur={(e) => {
               const value = e.target.value.trim();
-              if (value !== (settings.dev?.autoqaConsent ?? "")) onPatchSection("dev", { autoqaConsent: value || undefined });
+              if (value !== (settings.dev?.autoqaConsent ?? "")) onPatchSection("dev", { autoqaConsent: value || null });
             }}
             style={inputStyle}
           />
@@ -165,7 +165,7 @@ export function NativeExtrasSetting({ settings, onPatch, onPatchSection }: Props
             placeholder="unicode"
             onBlur={(e) => {
               const value = e.target.value.trim();
-              if (value !== (settings.symbolPreset ?? "")) onPatch({ symbolPreset: value || undefined });
+              if (value !== (settings.symbolPreset ?? "")) onPatch({ symbolPreset: value || null });
             }}
             style={inputStyle}
           />

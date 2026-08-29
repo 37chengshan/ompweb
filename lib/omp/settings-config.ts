@@ -33,16 +33,16 @@ export type NativeSettings = {
   computer?: { enabled?: boolean };
   skills?: { enableCodexUser?: boolean; enableAgentsUser?: boolean; enableClaudeUser?: boolean; enableClaudeProject?: boolean };
   bash?: { autoBackground?: { enabled?: boolean } };
-  providers?: { memoryModel?: string; webSearchOrder?: string[] };
+  providers?: { memoryModel?: string | null; webSearchOrder?: string[] };
   security?: { enabled?: boolean };
   github?: { enabled?: boolean };
   colorBlindMode?: boolean;
   contextPromotion?: { enabled?: boolean };
   snapcompact?: { toolResults?: boolean };
-  edit?: { mode?: string };
-  composer?: { shape?: string };
-  dev?: { autoqaConsent?: string };
-  symbolPreset?: string;
+  edit?: { mode?: string | null };
+  composer?: { shape?: string | null };
+  dev?: { autoqaConsent?: string | null };
+  symbolPreset?: string | null;
 };
 
 const THINKING_LEVELS = new Set(["auto", "minimal", "low", "medium", "high", "xhigh", "max"]);
@@ -273,9 +273,9 @@ export function writeNativeSettings(settings: NativeSettings): void {
   if (settings.providers?.webSearchOrder !== undefined && (!Array.isArray(settings.providers.webSearchOrder) || settings.providers.webSearchOrder.some((value) => typeof value !== "string"))) {
     throw new Error("providers.webSearchOrder must be an array of strings");
   }
-  if (settings.providers?.memoryModel !== undefined && typeof settings.providers.memoryModel !== "string") throw new Error("providers.memoryModel must be a string");
+  if (settings.providers?.memoryModel !== undefined && settings.providers.memoryModel !== null && typeof settings.providers.memoryModel !== "string") throw new Error("providers.memoryModel must be a string");
   for (const [key, value] of Object.entries({ "edit.mode": settings.edit?.mode, "composer.shape": settings.composer?.shape, "dev.autoqaConsent": settings.dev?.autoqaConsent, symbolPreset: settings.symbolPreset })) {
-    if (value !== undefined && (typeof value !== "string" || !value.trim())) throw new Error(`${key} must be a non-empty string`);
+    if (value !== undefined && value !== null && (typeof value !== "string" || !value.trim())) throw new Error(`${key} must be a non-empty string`);
   }
   if (settings.defaultThinkingLevel !== undefined && !THINKING_LEVELS.has(settings.defaultThinkingLevel)) throw new Error("Invalid default thinking level");
   if (settings.textVerbosity !== undefined && !TEXT_VERBOSITIES.has(settings.textVerbosity)) throw new Error("Invalid text verbosity");
@@ -307,8 +307,12 @@ export function writeNativeSettings(settings: NativeSettings): void {
   if (doc.contents === null) {
     // The YAML key differs from the settings name for one field; map it
     // before serializing so the very first write matches OMP's schema.
+    // nulls mean "delete" and cannot exist in an empty document — drop them.
     const { generateImage, ...rest } = settings;
-    const mapped = generateImage !== undefined ? { ...rest, generate_image: generateImage } : rest;
+    const mapped: Record<string, unknown> = { ...rest, ...(generateImage !== undefined ? { generate_image: generateImage } : {}) };
+    for (const key of Object.keys(mapped)) {
+      if (mapped[key] === null || mapped[key] === undefined) delete mapped[key];
+    }
     const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
     writeFileSync(temp, stringify(mapped), "utf8");
     renameSync(temp, path);
@@ -338,17 +342,33 @@ export function writeNativeSettings(settings: NativeSettings): void {
   if (settings.computer?.enabled !== undefined) doc.setIn(["computer", "enabled"], settings.computer.enabled);
   for (const [key, value] of Object.entries(settings.skills ?? {})) doc.setIn(["skills", key], value);
   if (settings.bash?.autoBackground?.enabled !== undefined) doc.setIn(["bash", "autoBackground", "enabled"], settings.bash.autoBackground.enabled);
-  if (settings.providers?.memoryModel !== undefined) doc.setIn(["providers", "memoryModel"], settings.providers.memoryModel);
+  // null deletes the key (used when the UI clears a field); undefined leaves it untouched.
+  if (settings.providers?.memoryModel !== undefined) {
+    if (settings.providers.memoryModel === null) doc.deleteIn(["providers", "memoryModel"]);
+    else doc.setIn(["providers", "memoryModel"], settings.providers.memoryModel);
+  }
   if (settings.providers?.webSearchOrder !== undefined) doc.setIn(["providers", "webSearchOrder"], settings.providers.webSearchOrder);
   if (settings.security?.enabled !== undefined) doc.setIn(["security", "enabled"], settings.security.enabled);
   if (settings.github?.enabled !== undefined) doc.setIn(["github", "enabled"], settings.github.enabled);
   if (settings.colorBlindMode !== undefined) doc.set("colorBlindMode", settings.colorBlindMode);
   if (settings.contextPromotion?.enabled !== undefined) doc.setIn(["contextPromotion", "enabled"], settings.contextPromotion.enabled);
   if (settings.snapcompact?.toolResults !== undefined) doc.setIn(["snapcompact", "toolResults"], settings.snapcompact.toolResults);
-  if (settings.edit?.mode !== undefined) doc.setIn(["edit", "mode"], settings.edit.mode);
-  if (settings.composer?.shape !== undefined) doc.setIn(["composer", "shape"], settings.composer.shape);
-  if (settings.dev?.autoqaConsent !== undefined) doc.setIn(["dev", "autoqaConsent"], settings.dev.autoqaConsent);
-  if (settings.symbolPreset !== undefined) doc.set("symbolPreset", settings.symbolPreset);
+  if (settings.edit?.mode !== undefined) {
+    if (settings.edit.mode === null) doc.deleteIn(["edit", "mode"]);
+    else doc.setIn(["edit", "mode"], settings.edit.mode);
+  }
+  if (settings.composer?.shape !== undefined) {
+    if (settings.composer.shape === null) doc.deleteIn(["composer", "shape"]);
+    else doc.setIn(["composer", "shape"], settings.composer.shape);
+  }
+  if (settings.dev?.autoqaConsent !== undefined) {
+    if (settings.dev.autoqaConsent === null) doc.deleteIn(["dev", "autoqaConsent"]);
+    else doc.setIn(["dev", "autoqaConsent"], settings.dev.autoqaConsent);
+  }
+  if (settings.symbolPreset !== undefined) {
+    if (settings.symbolPreset === null) doc.delete("symbolPreset");
+    else doc.set("symbolPreset", settings.symbolPreset);
+  }
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(temp, doc.toString(), "utf8");
   renameSync(temp, path);

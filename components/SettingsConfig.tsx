@@ -456,10 +456,17 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   const [desktopUpdateState, setDesktopUpdateState] = useState<{ status: string; version?: string; percent?: number; message?: string }>({ status: "idle" });
 
   // Desktop app: subscribe to the native updater's status broadcasts and
-  // surface them in the update card (available -> downloading -> downloaded).
   useEffect(() => {
-    const desktop = (window as { ompWebDesktop?: { onUpdateStatus?: (cb: (s: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void } }).ompWebDesktop;
-    if (!desktop?.onUpdateStatus) return;
+    const desktop = (window as { ompWebDesktop?: { isDesktop?: boolean; version?: string; updateCheck?: () => Promise<unknown>; onUpdateStatus?: (cb: (s: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void } }).ompWebDesktop;
+    if (!desktop?.isDesktop) return;
+    const localVersion = desktop.version ?? "?";
+
+    // Show the installed version IMMEDIATELY — the update card must never
+    // sit on "version unavailable" while the (slow/offline) native check
+    // runs. The check events refine this afterwards.
+    setAppUpdate((prev) => prev ?? { currentVersion: localVersion, availableVersion: null, updateAvailable: false, updateCommand: "" });
+
+    if (!desktop.onUpdateStatus) return;
     const unsubscribe = desktop.onUpdateStatus((status) => {
       setDesktopUpdateState(status);
       if (status.status === "downloaded") {
@@ -468,6 +475,9 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       }
       if (status.status === "error") {
         setUpdatingApp(false);
+        // Keep the installed version visible and mark the CHECK as failed
+        // instead of falling back to "version unavailable".
+        setAppUpdate({ currentVersion: localVersion, availableVersion: null, updateAvailable: false, updateCommand: "", checkError: true });
         setMessage(status.message ?? t("settingsConfig.desktopUpdateFailed"));
       }
       if (status.status === "available" || status.status === "downloaded") {
@@ -476,10 +486,6 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       if (status.status === "up-to-date" || status.status === "error") {
         onOmpUpdateAvailabilityChange(false);
       }
-      // The update card's version row is driven by `appUpdate`, which the
-      // desktop flow never sets — without this it falls back to
-      // "version unavailable" even though the native updater answered.
-      const localVersion = (window as { ompWebDesktop?: { version?: string } }).ompWebDesktop?.version ?? "?";
       if (status.status === "up-to-date") {
         setAppUpdate({ currentVersion: localVersion, availableVersion: null, updateAvailable: false, updateCommand: "" });
       }
@@ -487,6 +493,9 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
         setAppUpdate({ currentVersion: localVersion, availableVersion: status.version ?? "?", updateAvailable: true, updateCommand: "" });
       }
     });
+    // One quiet check on mount so the card reflects reality without the user
+    // having to click Refresh (launch-time events fired before mount).
+    desktop.updateCheck?.().catch(() => undefined);
     return unsubscribe;
   }, [t, onOmpUpdateAvailabilityChange]);
 

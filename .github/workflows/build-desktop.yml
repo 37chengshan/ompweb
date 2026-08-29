@@ -1,5 +1,8 @@
 name: Build desktop app
 
+permissions:
+  contents: write
+
 on:
   push:
     tags:

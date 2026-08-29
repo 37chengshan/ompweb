@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
+import { spawn } from "child_process";
 import { statSync } from "fs";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { buildRevealCommand } from "@/lib/reveal-command";
+import { buildRevealSpawn } from "@/lib/reveal-command";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,9 @@ export const dynamic = "force-dynamic";
  *   - macOS:  Finder (`open -R` selects the item)
  *   - Windows: Explorer (`explorer /select,` selects the item)
  *   - Linux:  xdg-open on the parent directory (no native select flag)
- * Only paths under the allowed file roots are accepted.
+ * Only paths under the allowed file roots are accepted. The launcher is
+ * spawned from an argv array (see lib/reveal-command.ts) — the target path is
+ * never interpolated into a shell string.
  */
 export async function POST(req: Request) {
   try {
@@ -32,9 +34,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Path does not exist", code: "path_not_found" }, { status: 404 });
     }
 
-    let command: string;
+    let launcher: { command: string; args: string[] };
     try {
-      command = buildRevealCommand(process.platform, target, stat.isDirectory());
+      launcher = buildRevealSpawn(process.platform, target, stat.isDirectory());
     } catch {
       return NextResponse.json(
         { error: `Reveal unsupported on ${process.platform}`, code: "unsupported_platform" },
@@ -42,14 +44,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const isWindows = process.platform === "win32";
     await new Promise<void>((resolve, reject) => {
-      // Cap the command so a hanging file manager never wedges the request.
-      exec(command, { timeout: 8000 }, (error) => {
-        // explorer.exe returns a nonzero exit code even on success in some
-        // Windows versions; treat exit as best-effort there.
-        if (error && !isWindows) reject(error);
-        else resolve();
+      const child = spawn(launcher.command, launcher.args, { stdio: "ignore" });
+      // Cap the wait so a hanging file manager never wedges the request.
+      const timer = setTimeout(() => {
+        try { child.kill(); } catch { /* already gone */ }
+        resolve();
+      }, 8000);
+      child.on("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      // Exit codes are not meaningful here (explorer.exe returns nonzero even
+      // on success in some Windows versions); exiting at all is success enough.
+      child.on("close", () => {
+        clearTimeout(timer);
+        resolve();
       });
     });
 

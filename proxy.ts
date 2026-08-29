@@ -47,6 +47,13 @@ function checkPairingGate(request: NextRequest): NextResponse | null {
   if (!isRemoteRequest(host)) return null;
 
   const pathname = request.nextUrl.pathname;
+  // Token ISSUANCE must stay loopback-only: the server now listens on
+  // 0.0.0.0 (that is what makes LAN pairing possible), so without this a
+  // LAN attacker could mint a token and pair themselves. The phone only
+  // ever consumes tokens via /api/pair/accept, which stays reachable.
+  if (pathname === "/api/pair/token") {
+    return NextResponse.json({ error: "Pairing tokens can only be issued from this computer", code: "token_loopback_only" }, { status: 403 });
+  }
   if (isPairingFlowPath(pathname)) return null;
 
   const state = readPairingState();

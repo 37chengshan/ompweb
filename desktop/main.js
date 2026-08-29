@@ -17,12 +17,40 @@ const fs = require("fs");
 
 // Internal port for the hosted server (dev 30178 / cli 30177 stay free).
 const APP_PORT = Number(process.env.OMP_WEB_APP_PORT || 30179);
-const HOST = "127.0.0.1";
-const APP_URL = `http://${HOST}:${APP_PORT}`;
+// Listening on 0.0.0.0 is what makes phone/PC pairing work over the LAN;
+// the pairing gate (proxy.ts) denies every remote /api request without a
+// paired-device cookie, and token issuance is loopback-only, so exposing
+// the port is safe.
+const HOST = "0.0.0.0";
+const APP_URL = `http://127.0.0.1:${APP_PORT}`;
 
 const pkgDir = path.join(__dirname, "..");
 
 const APP_LOG_MAX_BYTES = 256 * 1024;
+
+// Lightweight startup page shown while the standalone server cold-starts
+// (no splash animation runs). Inline data URL: zero files, zero network.
+const STARTUP_PAGE = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
+  body { background: #faf9f6; color: #2b2b2b; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; font-family: -apple-system, "Segoe UI", system-ui, sans-serif; }
+  .logo { font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
+  .logo span { color: #c98a1b; }
+  .bar { width: 180px; height: 3px; border-radius: 2px; background: #e8e4dc; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 40%; background: #c98a1b; border-radius: 2px; animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(450%); } }
+  .hint { font-size: 12px; color: #8a867e; }
+</style>
+</head>
+<body>
+  <div class="logo">Omp<span>Web</span></div>
+  <div class="bar"><i></i></div>
+  <div class="hint">正在启动…</div>
+</body>
+</html>`)}`;
 
 function appLog(message) {
   try {
@@ -285,6 +313,10 @@ if (!gotLock) {
       waitForServer(0, false);
       void mainWindow?.loadFile(splashFile_, { query: { video: splashVideo_, app: APP_URL } });
     } else {
+      // No animation: show the startup page immediately so the window is
+      // never blank while the standalone server cold-starts, then load the
+      // app once it answers.
+      void mainWindow?.loadURL(STARTUP_PAGE);
       waitForServer();
     }
   });
@@ -292,6 +324,7 @@ if (!gotLock) {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      void mainWindow?.loadURL(STARTUP_PAGE);
       waitForServer();
     }
   });

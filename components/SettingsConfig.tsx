@@ -324,8 +324,8 @@ function NativeSetting({ label, description, scope, searchId, children }: { labe
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <label id={labelId} htmlFor={settingId} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", cursor: "pointer" }}>{label}</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <label id={labelId} htmlFor={settingId} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", cursor: "pointer", minWidth: 0, overflowWrap: "anywhere" }}>{label}</label>
           {scope && (
             <span style={chipStyle}>
               {formatScope(scope)}
@@ -334,7 +334,7 @@ function NativeSetting({ label, description, scope, searchId, children }: { labe
         </div>
         <span style={{ flexShrink: 0 }}>{enhancedChild}</span>
       </div>
-      <span id={descId} style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1.45 }}>{description}</span>
+      <span id={descId} style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1.45, overflowWrap: "anywhere" }}>{description}</span>
     </div>
   );
 }

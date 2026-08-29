@@ -20,6 +20,7 @@ const SkillsConfig = dynamic(() => import("./SkillsConfig").then((module) => mod
 const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => module.PluginsConfig), { loading: SettingsTabLoading, ssr: false });
 const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading, ssr: false });
 const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading, ssr: false });
+const RemoteAccessSetting = dynamic(() => import("./RemoteAccessSetting").then((module) => module.RemoteAccessSetting), { loading: SettingsTabLoading, ssr: false });
 import { NetworkProxyConfig } from "./NetworkProxyConfig";
 import { SplashAnimationSetting } from "./SplashAnimationSetting";
 import { UpdateNoticeDialog } from "./UpdateNoticeDialog";
@@ -1162,6 +1163,13 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                   </div>
                   {message && <p role="status" style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{message}</p>}
                 </section>
+              </div>
+            )}
+
+            {/* REMOTE ACCESS TAB */}
+            {currentTab === "remote" && (
+              <div role="tabpanel" id="settings-panel-remote" aria-labelledby="settings-tab-remote" style={{ display: currentTab === "remote" ? "flex" : "none", height: "100%", minHeight: 0, flexDirection: "column", overflowY: "auto", padding: 20, gap: 16 }}>
+                <RemoteAccessSetting />
               </div>
             )}
               </div>

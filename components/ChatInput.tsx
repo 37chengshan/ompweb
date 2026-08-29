@@ -417,6 +417,19 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   onAdvisorChange,
 }: Props, ref) {
   const isMobile = useIsMobile();
+  const [mobileEnterToSend, setMobileEnterToSend] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/pair/devices")
+      .then((res) => (res.ok ? res.json() as Promise<{ config?: { mobileEnterToSend?: boolean } }> : null))
+      .then((body) => {
+        if (!cancelled && body?.config?.mobileEnterToSend !== undefined) {
+          setMobileEnterToSend(body.config.mobileEnterToSend);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   const { t, tn, locale } = useI18n();
   const modelCollator = React.useMemo(
     () => new Intl.Collator(locale, { numeric: true, sensitivity: "base" }),
@@ -1314,6 +1327,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       }
 
       if (e.key === "Enter" && !e.shiftKey) {
+        // On mobile, Enter inserts a newline unless "Mobile Enter to send"
+        // (remote-access setting) is on; desktop always submits.
+        if (isMobile && !mobileEnterToSend) return;
         e.preventDefault();
         if (isStreaming && (onSteer || onFollowUp)) {
           // Submit-during-run behavior comes from Settings (Steer current run

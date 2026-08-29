@@ -948,6 +948,7 @@ export function AppShell() {
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
         onOpenSettings={() => setSettingsTab("general")}
+        onOpenRemote={() => setSettingsTab("remote")}
         onOpenArchive={() => setArchiveBrowserOpen(true)}
         updateAvailable={appUpdateAvailable || ompUpdateAvailable}
       />

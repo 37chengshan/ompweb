@@ -1,7 +1,7 @@
 "use client";
 
 import { useI18n } from "@/lib/i18n";
-import { Bot, Cable, Cpu, KeyRound, RefreshCw, Settings2, ShieldCheck, Sparkles } from "lucide-react";
+import { Bot, Cable, Cpu, KeyRound, RefreshCw, Settings2, ShieldCheck, Smartphone, Sparkles } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
 
 export type SettingsTab =
@@ -15,7 +15,8 @@ export type SettingsTab =
   | "mcp"
   | "skills"
   | "plugins"
-  | "system";
+  | "system"
+  | "remote";
 
 export interface TabItem {
   id: SettingsTab;
@@ -34,6 +35,7 @@ export const SETTINGS_CATEGORIES: TabItem[] = [
   { id: "agents", label: "Agents", description: "Task agents, model settings, and tool policy", Icon: Bot },
   { id: "mcp", label: "Extensions & Tools", description: "MCP servers, managed skills, and OMP plugins", Icon: Cable },
   { id: "system", label: "System & Updates", description: "App updates, runtime version, and active session restart", Icon: RefreshCw },
+  { id: "remote", label: "Remote Access", description: "Pair phones/PCs over LAN or a public tunnel", Icon: Smartphone },
 ];
 
 export const getNormalizedActive = (tab: SettingsTab): SettingsTab => {

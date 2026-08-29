@@ -14,7 +14,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
-import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Trash2, Upload, Wrench } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Smartphone, Trash2, Upload, Wrench } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 
 declare global {
@@ -47,6 +47,7 @@ interface Props {
   onAtMentions?: (relativePaths: string[]) => void;
   /** Opens the app settings (pinned sidebar footer row). */
   onOpenSettings?: () => void;
+  onOpenRemote?: () => void;
   /** True when an omp/ompweb update is available — shows a badge on the gear. */
   updateAvailable?: boolean;
   /** Opens the archived sessions browser. */
@@ -726,7 +727,7 @@ function OmpWebTitle() {
     </button>
   );
 }
-export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions, onOpenSettings, onOpenArchive, updateAvailable }: Props) {
+export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions, onOpenSettings, onOpenRemote, onOpenArchive, updateAvailable }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2087,13 +2088,15 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
 
       {/* Pinned footer: Settings */}
       <div style={{ borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center" }}>
         <button
           className="sidebar-settings-row"
           onClick={onOpenSettings}
           title={t("chatInput.settings")}
           aria-label={t("chatInput.settings")}
           style={{
-            width: "100%",
+            flex: 1,
+            minWidth: 0,
             height: 36,
             boxSizing: "border-box",
             display: "flex",
@@ -2125,6 +2128,32 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
           </span>
           <ChevronRight size={13} strokeWidth={2} style={{ flexShrink: 0, color: "var(--text-dim)" }} aria-hidden="true" />
         </button>
+        {onOpenRemote && (
+          <button
+            type="button"
+            onClick={onOpenRemote}
+            title={t("settingsConfig.remoteAccess")}
+            aria-label={t("settingsConfig.remoteAccess")}
+            style={{
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "none",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              transition: SIDEBAR_BUTTON_TRANSITION,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
+          >
+            <Smartphone size={14} strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
+        </div>
       </div>
     </div>
   );

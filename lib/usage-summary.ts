@@ -6,7 +6,7 @@
  * per-window buckets sum `input + output` (cache reads are excluded from the
  * "usage" numbers).
  */
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { getSessionsDir } from "./omp/paths";
 
@@ -102,8 +102,6 @@ export function listSessionFilesWithTime(): Array<{ path: string; fileTime: numb
   // Reuse omp's cached directory walk via a minimal re-implementation here is
   // unnecessary: getSessionsDir is the root; encode dirs are one level deep.
   const root = getSessionsDir();
-  const { readdirSync } = require("fs") as typeof import("fs");
-  const { statSync } = require("fs") as typeof import("fs");
   const out: Array<{ path: string; fileTime: number }> = [];
   let projectDirs: string[] = [];
   try {

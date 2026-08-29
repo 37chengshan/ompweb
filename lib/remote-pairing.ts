@@ -17,6 +17,7 @@
  */
 import { randomBytes } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { networkInterfaces } from "os";
 import { dirname } from "path";
 import { isRecord } from "./type-guards";
 
@@ -337,8 +338,7 @@ export function lanAddress(interfaces: NetIfaces = networkInterfaces0()): string
 }
 
 function networkInterfaces0(): NetIfaces {
-  // Injected lazily so tests can pass fixtures without the os module.
-  return require("os").networkInterfaces() as NetIfaces;
+  return networkInterfaces() as NetIfaces;
 }
 
 /** The QR base URL must be reachable from the phone. A request coming from

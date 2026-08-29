@@ -32,6 +32,7 @@ type UpdateState = {
   availableVersion: string | null;
   updateAvailable: boolean;
   updateCommand?: string;
+  checkError?: boolean;
 };
 
 type NativeSettings = {
@@ -471,6 +472,16 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       }
       if (status.status === "up-to-date" || status.status === "error") {
         onOmpUpdateAvailabilityChange(false);
+      }
+      // The update card's version row is driven by `appUpdate`, which the
+      // desktop flow never sets — without this it falls back to
+      // "version unavailable" even though the native updater answered.
+      const localVersion = (window as { ompWebDesktop?: { version?: string } }).ompWebDesktop?.version ?? "?";
+      if (status.status === "up-to-date") {
+        setAppUpdate({ currentVersion: localVersion, availableVersion: null, updateAvailable: false, updateCommand: "" });
+      }
+      if (status.status === "available") {
+        setAppUpdate({ currentVersion: localVersion, availableVersion: status.version ?? "?", updateAvailable: true, updateCommand: "" });
       }
     });
     return unsubscribe;
@@ -1195,7 +1206,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{t("settingsConfig.appLabel")}</div>
                       <div style={{ marginTop: 4, color: appUpdate?.updateAvailable ? "var(--accent)" : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                        {checkingAppUpdate ? t("settingsConfig.checkingUpdates") : appUpdate?.updateAvailable ? t("appShell.updateVersion", { current: appUpdate.currentVersion ?? "?", available: appUpdate.availableVersion ?? "?" }) : appUpdate?.currentVersion ? t("settingsConfig.upToDate", { version: appUpdate.currentVersion }) : t("settingsConfig.versionUnavailable")}
+                        {checkingAppUpdate ? t("settingsConfig.checkingUpdates") : appUpdate?.updateAvailable ? t("appShell.updateVersion", { current: appUpdate.currentVersion ?? "?", available: appUpdate.availableVersion ?? "?" }) : appUpdate?.checkError ? t("settingsConfig.updateCheckFailed", { version: appUpdate.currentVersion ?? "?" }) : appUpdate?.currentVersion ? t("settingsConfig.upToDate", { version: appUpdate.currentVersion }) : t("settingsConfig.versionUnavailable")}
                       </div>
                     </div>
                     <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate} aria-label={t("settingsConfig.checkAppUpdates")} style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checkingAppUpdate ? "wait" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>

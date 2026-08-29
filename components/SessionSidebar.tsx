@@ -16,6 +16,7 @@ import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } fr
 import { comparableProjectPath } from "@/lib/comparable-path";
 import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Smartphone, Trash2, Upload, Wrench } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
+import { UsageSidebarPanel } from "./UsageSidebarPanel";
 
 declare global {
   interface Window {
@@ -2086,7 +2087,8 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         </div>
       )}
 
-      {/* Pinned footer: Settings */}
+      {/* Pinned footer: Usage panel + Settings */}
+      <UsageSidebarPanel />
       <div style={{ borderTop: "1px solid var(--border)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center" }}>
         <button

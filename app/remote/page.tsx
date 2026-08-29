@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, LoaderCircle, Smartphone, XCircle } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
-type PairState = "pairing" | "paired" | "failed";
+type PairState = "pairing" | "paired" | "failed" | "network-error";
 
 function RemotePairContent() {
   const searchParams = useSearchParams();
@@ -14,16 +14,13 @@ function RemotePairContent() {
   const [deviceName, setDeviceName] = useState<string | null>(null);
   const started = useRef(false);
 
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+  const attemptPair = useCallback(() => {
+    setState("pairing");
     const token = searchParams.get("token");
     const isMobile = /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent);
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    headers["X-Requested-With"] = "omp-web-remote";
     void fetch("/api/pair/accept", {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json", "X-Requested-With": "omp-web-remote" },
       body: JSON.stringify({ token, mobile: isMobile }),
     })
       .then((res) => (res.ok ? res.json() as Promise<{ device: { name: string } }> : null))
@@ -35,8 +32,14 @@ function RemotePairContent() {
         setDeviceName(body.device.name);
         setState("paired");
       })
-      .catch(() => setState("failed"));
+      .catch(() => setState("network-error"));
   }, [searchParams]);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    attemptPair();
+  }, [attemptPair]);
 
   const base = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -80,10 +83,19 @@ function RemotePairContent() {
         </div>
       )}
 
-      {state === "failed" && (
+      {(state === "failed" || state === "network-error") && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
           <XCircle size={40} strokeWidth={1.6} style={{ color: "var(--status-error)" }} aria-hidden="true" />
-          <span style={{ fontSize: 14, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.5 }}>{t("remote.pairingFailed")}</span>
+          <span style={{ fontSize: 14, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.5 }}>
+            {state === "network-error" ? t("remote.networkError") : t("remote.pairingFailed")}
+          </span>
+          <button
+            type="button"
+            onClick={attemptPair}
+            style={{ padding: "9px 16px", borderRadius: "var(--radius-control)", border: "1px solid var(--border)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 13 }}
+          >
+            {t("remote.retry")}
+          </button>
         </div>
       )}
     </main>

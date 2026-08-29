@@ -75,6 +75,26 @@ export default function RootLayout({
         />
       </head>
       <body translate="no" className="notranslate" style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
+        {/* Pre-hydration skeleton: page.tsx mounts AppShell via dynamic(ssr:false),
+            so before hydration the body is empty and cold starts show pure
+            white. AppShell removes this node on mount. */}
+        <div
+          id="boot-skeleton"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "#faf9f6",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#8a867e",
+            fontSize: 13,
+            fontFamily: "system-ui, sans-serif",
+          }}
+        >
+          正在启动…
+        </div>
         {children}
       </body>
     </html>

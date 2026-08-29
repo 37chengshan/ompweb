@@ -30,6 +30,9 @@ const NUM_FIELDS: Array<{ key: keyof PairingConfig; label: string; min?: number;
 
 export function RemoteAccessSetting() {
   const { t } = useI18n();
+  const isWindows = typeof navigator !== "undefined" && /Win/i.test(navigator.userAgent);
+  const port = typeof window !== "undefined" ? (window.location.port || "30179") : "30179";
+  const firewallCommand = `netsh advfirewall firewall add rule name="OmpWeb-${port}" dir=in action=allow protocol=TCP localport=${port}`;
   const [data, setData] = useState<DevicesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -161,6 +164,23 @@ export function RemoteAccessSetting() {
             <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
               {t("settingsConfig.qrHint")} <RefreshCw size={11} style={{ display: "inline", verticalAlign: -1 }} aria-hidden="true" /> {t("settingsConfig.qrRefreshHint")}
             </span>
+
+            {isWindows && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-subtle)", fontSize: 11, color: "var(--text-muted)" }}>
+                <span>{t("settingsConfig.firewallHint")}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 10.5, wordBreak: "break-all", color: "var(--text)" }}>{firewallCommand}</code>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(firewallCommand).catch(() => undefined)}
+                    aria-label={t("appShell.copyCommand")}
+                    style={{ border: "none", background: "none", color: "var(--accent)", cursor: "pointer", display: "inline-flex", padding: 2 }}
+                  >
+                    <Copy size={13} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

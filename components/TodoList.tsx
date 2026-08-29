@@ -82,7 +82,10 @@ export function TodoList({ phases = [], collapsible = false, defaultExpanded = f
       )}
       {!collapsed && (
         <>
-      <div className="grid gap-3 px-3 py-2.5 animate-slide-down">
+      {/* Scrollable task area: long plans used to be clipped by the outer
+          overflow-hidden with no way to scroll (only collapse). Matches the
+          SubagentsPanel constraint pattern. */}
+      <div className="grid gap-3 overflow-y-auto px-3 py-2.5 animate-slide-down" style={{ maxHeight: "min(40vh, 320px)" }}>
         {displayedPhases.map((phase, phaseIndex) => (
           <div key={phase.id ?? `${phase.name}-${phaseIndex}`} className="grid gap-1.5">
             <div className="text-[11px] font-medium text-text-muted">{phase.name}</div>

@@ -18,9 +18,20 @@
   const videoSrc = params.get("video");
   if (videoSrc) video.src = videoSrc;
 
+  // Navigation waits for BOTH the video timeline AND the server being warm,
+  // so the transition never lands on a cold/blank page. serverReady flips on
+  // a successful pre-warm; if the server is slow, we hold the animation up to
+  // the hard deadline (videoEndDeadline) and then go anyway.
+  let serverReady = false;
+  let navigateWhenReady = null;
   let faded = false;
   function fadeIntoApp() {
     if (faded) return;
+    if (!serverReady) {
+      // Not warm yet: wait for warmUp success (or a forced call).
+      if (navigateWhenReady === null) navigateWhenReady = fadeIntoApp;
+      return;
+    }
     faded = true;
     document.body.classList.add("fade");
     setTimeout(() => {
@@ -28,24 +39,42 @@
       else window.close();
     }, 560);
   }
+  function markServerReady() {
+    serverReady = true;
+    if (navigateWhenReady) {
+      const go = navigateWhenReady;
+      navigateWhenReady = null;
+      go();
+    }
+  }
+  // Forced path (user click / hard deadline): navigate immediately; a cold
+  // server is handled by the main process's did-fail-load backoff retry.
+  function fadeIntoAppForced() {
+    serverReady = true;
+    navigateWhenReady = null;
+    fadeIntoApp();
+  }
 
   // Trimmed to 8s (first/last second cut), played at 1.6x -> ~5s launch.
   video.playbackRate = 1.6;
   // Timed transition is the source of truth — ended can fire early on some
   // codecs/containers, which made the launch "flash past".
   let playStarted = false;
+  let videoEndDeadline = 0;
   video.addEventListener("loadedmetadata", () => {
     const d = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 8;
     console.log("splash metadata duration=" + d + " rate=" + video.playbackRate);
     if (playStarted) return;
     playStarted = true;
+    videoEndDeadline = Date.now() + (d / video.playbackRate) * 1000 + 150;
     setTimeout(fadeIntoApp, (d / video.playbackRate) * 1000 + 150);
   });
   video.addEventListener("error", () => console.log("splash video error: " + (video.error ? video.error.code : "?")));
-  // Warm the app UI while the video plays: the standalone server's first
-  // request does one-time initialization, and the JS/CSS bundles need to be
-  // in the HTTP cache — otherwise navigation lands on a blank page for ~1s.
-  // Retried until the server is actually up (it can take a second to start).
+  // Warm the app UI as early as possible (script runs immediately, not on
+  // `playing`, so a slow video decode can't skip the pre-warm): the
+  // standalone server's first request does one-time initialization, and the
+  // JS/CSS bundles need to be in the HTTP cache — otherwise navigation lands
+  // on a blank page for ~1s. Retried until the server is actually up.
   async function warmUp() {
     if (!appUrl) return;
     for (let attempt = 0; attempt < 12; attempt++) {
@@ -58,22 +87,26 @@
             fetch(new URL(a, appUrl).toString(), { cache: "force-cache" }).catch(() => {});
           }
           console.log("splash warm: " + assets.length + " assets");
+          markServerReady();
           return;
         }
       } catch { /* server not up yet */ }
       await new Promise((r) => setTimeout(r, 700));
     }
   }
-  video.addEventListener("playing", () => {
-    console.log("splash playing");
-    void warmUp();
+  void warmUp();
+  video.addEventListener("ended", () => {
+    // If we hit the end of the video before the server is warm, wait a little
+    // longer (deadline-based) instead of navigating onto a blank page.
+    fadeIntoApp();
   });
-  video.addEventListener("ended", fadeIntoApp);
   video.play().catch((e) => console.log("splash play rejected: " + e));
-  // Fallback: never leave the launch animation hanging.
-  setTimeout(fadeIntoApp, 8000);
-  document.body.addEventListener("click", fadeIntoApp);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" || e.key === "Enter" || e.key === " ") fadeIntoApp(); });
+  // Hard fallbacks: never leave the launch animation hanging. The 8s timer
+  // becomes the absolute ceiling; if the server still is not warm by then,
+  // navigate anyway (did-fail-load in the main process retries with backoff).
+  setTimeout(fadeIntoAppForced, 8000);
+  document.body.addEventListener("click", fadeIntoAppForced);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" || e.key === "Enter" || e.key === " ") fadeIntoAppForced(); });
 </script>
 </body>
 </html>

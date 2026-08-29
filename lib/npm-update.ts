@@ -11,6 +11,9 @@ export interface NpmUpdateStatus {
   availableVersion: string | null;
   updateAvailable: boolean;
   updateCommand: string;
+  /** True when the registry check itself failed (network/proxy); the UI
+   *  should not claim "up to date" in that case. */
+  checkError?: boolean;
 }
 
 let cached: { checkedAt: number; status: NpmUpdateStatus } | null = null;
@@ -58,7 +61,7 @@ export async function checkNpmUpdate(force = false): Promise<NpmUpdateStatus> {
     cached = { checkedAt: Date.now(), status };
     return status;
   } catch {
-    return { currentVersion, availableVersion: null, updateAvailable: false, updateCommand };
+    return { currentVersion, availableVersion: null, updateAvailable: false, updateCommand, checkError: true };
   }
 }
 

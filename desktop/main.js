@@ -104,7 +104,7 @@ function resolveNodeBin() {
 }
 
 /** Start the Next standalone server (self-contained server.js + node_modules). */
-function startServer() {
+async function startServer() {
   const standaloneDir = app.isPackaged
     ? path.join(process.resourcesPath, "standalone")
     : path.join(pkgDir, ".next", "standalone");
@@ -112,6 +112,16 @@ function startServer() {
   if (!fs.existsSync(serverJs)) {
     appLog("standalone server.js missing at " + serverJs);
     console.error("Standalone build missing at", serverJs);
+    return;
+  }
+  // Port pre-check: a stale zombie process on APP_PORT used to make the app
+  // exit silently (EADDRINUSE), looking like a crash on launch.
+  if (!(await isPortFree())) {
+    dialog.showErrorBox(
+      "端口被占用",
+      `OmpWeb 需要的内部端口 ${APP_PORT} 已被其他程序占用。\n\n请关闭占用该端口的程序后重新启动 OmpWeb。`,
+    );
+    app.quit();
     return;
   }
   const nodeBin = resolveNodeBin();
@@ -138,9 +148,30 @@ function startServer() {
     serverProcess = null;
     if (!quitting) app.quit();
   });
-  serverProcess.on("exit", () => {
+  serverProcess.on("exit", (code, signal) => {
     serverProcess = null;
-    if (!quitting) app.quit();
+    if (quitting) return;
+    if (code !== 0) {
+      dialog.showErrorBox(
+        "服务启动失败",
+        `内部服务器异常退出 (code=${code}, signal=${signal ?? "none"})。\n\n请查看应用日志后重试。`,
+      );
+    }
+    app.quit();
+  });
+}
+
+/** True when nothing listens on 127.0.0.1:APP_PORT yet. */
+function isPortFree() {
+  const net = require("net");
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const done = (free) => { socket.destroy(); resolve(free); };
+    socket.setTimeout(800);
+    socket.once("connect", () => done(false));
+    socket.once("timeout", () => done(true));
+    socket.once("error", () => done(true));
+    socket.connect(APP_PORT, "127.0.0.1");
   });
 }
 
@@ -230,16 +261,21 @@ function createWindow() {
   // installed standalone) the server may not be listening yet — the app then
   // sits on a blank page until a manual refresh. Retry the navigation a few
   // times until the server answers.
+  // Exponential backoff (1.2s, 2.4s, ... up to ~10 attempts ≈ 30s) instead of
+  // a fixed 1.2s x 8: first-run cold starts (Windows Defender scanning the
+  // freshly installed standalone) can take longer than 9.6s and previously
+  // exhausted the retries into a permanent blank window.
   let splashReloads = 0;
   mainWindow.webContents.on("did-fail-load", (_event, code, desc, url) => {
     appLog(`did-fail-load ${code} ${desc} ${url}`);
     if (!url.startsWith(APP_URL)) return;
-    if (splashReloads >= 8) return;
+    if (splashReloads >= 10) return;
+    const attempt = splashReloads;
     splashReloads += 1;
     setTimeout(() => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
       if (!quitting) mainWindow.loadURL(APP_URL);
-    }, 1200);
+    }, Math.min(1200 * Math.pow(2, attempt), 30000));
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -301,9 +337,10 @@ if (!gotLock) {
     if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     createAppMenu();
-    startServer();
+    await startServer();
+    if (quitting) return;
     const splashFirst = isFirstLaunchSplash();
     createWindow();
     createTray();

@@ -13,7 +13,6 @@ import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Check, CircleCheck, FolderGit2, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
 import { ThemePicker } from "./ThemePicker";
-import { ProviderUsageBadge } from "./ProviderUsageBadge";
 import { DesktopUpdateBanner } from "./DesktopUpdateBanner";
 import { TerminalPanel } from "./TerminalPanel";
 import { useTheme } from "@/hooks/useTheme";
@@ -161,6 +160,10 @@ export function AppShell() {
   const sidebarContainerRef = useRef<HTMLDivElement>(null);
   const pendingSidebarWidthRef = useRef<number>(SIDEBAR_DEFAULT_WIDTH);
   useEffect(() => {
+    // Remove the pre-hydration skeleton (app/layout.tsx) once the app shell
+    // is mounted; until this effect runs the body would otherwise show the
+    // static boot text even after the UI is interactive.
+    document.getElementById("boot-skeleton")?.remove();
     setSidebarWidth(loadSidebarWidth());
     try {
       setToolCallsDefaultCollapsed(window.localStorage.getItem(TOOL_CALLS_COLLAPSED_STORAGE_KEY) !== "false");
@@ -422,7 +425,12 @@ export function AppShell() {
 
   // Generation speed — current live t/s and the session average.
   const [generationSpeed, setGenerationSpeed] = useState<GenerationSpeedInfo | null>(null);
+  const lastGenerationSpeedRef = useRef<GenerationSpeedInfo | null>(null);
   const handleGenerationSpeedChange = useCallback((speed: GenerationSpeedInfo | null) => {
+    // Keep the last known speed on screen after streaming ends (t/s stays
+    // visible instead of vanishing); a null only clears the badge when the
+    // session actually switches (ChatWindow unmount resets lastSpeedRef).
+    if (speed) lastGenerationSpeedRef.current = speed;
     setGenerationSpeed(speed);
   }, []);
   const handleSystemPromptToggle = useCallback(() => {
@@ -651,6 +659,21 @@ export function AppShell() {
     router.replace("/", { scroll: false });
   }, [router, selectedSession]);
 
+  // Client-built transient SessionInfo (new session / fork) lacks the
+  // server-computed projectRoot, which the same-project check in
+  // handleCwdChange relies on. Hydrate it from the session list so switching
+  // worktrees right after creating a session doesn't close the chat.
+  const hydrateSelectedSession = useCallback((sessionId: string) => {
+    void fetch("/api/sessions")
+      .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
+      .then((d) => {
+        const full = d?.sessions.find((s) => s.id === sessionId);
+        if (!full) return;
+        setSelectedSession((prev) => (prev && prev.id === sessionId && !prev.projectRoot ? full : prev));
+      })
+      .catch(() => {});
+  }, []);
+
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     setNewSessionCwd(null);
     setSelectedSession(session);
@@ -660,17 +683,21 @@ export function AppShell() {
     setInitialSessionRestored(true);
     // On mobile, collapse the overlay drawer so the chat is revealed after pick.
     if (isMobile && !isRestore) setSidebarOpen(false);
-    if (isRestore) {
-      // Suppress the redundant sessionKey bump that would come from the
-      // onCwdChange effect firing after setSelectedCwd in the sidebar
-      suppressCwdBumpRef.current = true;
-    }
+    // The sidebar sets selectedCwd BEFORE calling onSelectSession, and its
+    // change effect fires after this callback. Without suppressing it, a
+    // cross-project click first selects the session, then handleCwdChange
+    // clears the selection again ("clicking a session does nothing").
+    suppressCwdBumpRef.current = true;
+    // Transient sessions (new/fork) lack projectRoot, which the
+    // same-project check in handleCwdChange relies on — hydrate it so the
+    // comparison cannot misfire and close the chat we just opened.
+    hydrateSelectedSession(session.id);
     // Skip router.replace when restoring from URL — the param is already correct
     // and calling replace in production Next.js triggers a Suspense remount loop
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [router, isMobile]);
+  }, [router, isMobile, hydrateSelectedSession]);
 
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
@@ -690,21 +717,6 @@ export function AppShell() {
     onNewSession: (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
     activeCwd,
   });
-
-  // Client-built transient SessionInfo (new session / fork) lacks the
-  // server-computed projectRoot, which the same-project check in
-  // handleCwdChange relies on. Hydrate it from the session list so switching
-  // worktrees right after creating a session doesn't close the chat.
-  const hydrateSelectedSession = useCallback((sessionId: string) => {
-    void fetch("/api/sessions")
-      .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
-      .then((d) => {
-        const full = d?.sessions.find((s) => s.id === sessionId);
-        if (!full) return;
-        setSelectedSession((prev) => (prev && prev.id === sessionId && !prev.projectRoot ? full : prev));
-      })
-      .catch(() => {});
-  }, []);
 
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo) => {
@@ -1226,17 +1238,19 @@ export function AppShell() {
           </>
         )}
           {/* Session stats and generation speed — right-aligned in top bar */}
-          {showChat && (sessionStats || contextUsage || modelCapacity || generationSpeed) && (() => {
+          {showChat && (sessionStats || contextUsage || modelCapacity || generationSpeed || lastGenerationSpeedRef.current) && (() => {
             const tok = sessionStats?.tokens;
             const c = sessionStats?.cost ?? 0;
             const costStr = c > 0 ? (c >= 0.01 ? `$${c.toFixed(2)}` : `<$0.01`) : null;
             const cacheHitRate = tok ? getCacheHitRate(tok.input, tok.cacheRead) : null;
             const cacheRateStr = cacheHitRate !== null ? formatPercent(cacheHitRate) : null;
-            const currentSpeedStr = generationSpeed?.current !== null && generationSpeed?.current !== undefined
-              ? `${generationSpeed.current.toFixed(1)} t/s`
+            // The last known speed stays visible after streaming ends.
+            const displaySpeed = generationSpeed ?? lastGenerationSpeedRef.current;
+            const currentSpeedStr = displaySpeed?.current !== null && displaySpeed?.current !== undefined
+              ? `${displaySpeed.current.toFixed(1)} t/s`
               : null;
-            const averageSpeedStr = generationSpeed?.average !== null && generationSpeed?.average !== undefined
-              ? `AVG ${generationSpeed.average.toFixed(1)} t/s`
+            const averageSpeedStr = displaySpeed?.average !== null && displaySpeed?.average !== undefined
+              ? `AVG ${displaySpeed.average.toFixed(1)} t/s`
               : null;
 
             let ctxColor = "var(--text-muted)";
@@ -1336,7 +1350,6 @@ export function AppShell() {
                 {!isMobile && modelCapacity?.maxTokens && (
                   <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>↗ {formatCompactNumber(modelCapacity.maxTokens)}</span>
                 )}
-                {!isMobile && <ProviderUsageBadge />}
                 {!isMobile && cacheRateStr && (
                   <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
                     <CircleCheck size={12} strokeWidth={1.8} aria-hidden="true" />

@@ -88,11 +88,16 @@ const nextConfig = (phase: string): NextConfig => {
         { key: "Referrer-Policy", value: "no-referrer" },
         { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
       ];
+      // The desktop app's splash page is loaded from a file:// URL (origin
+      // null); its asset pre-warm fetch is CORS-blocked without this header.
+      // Safe: /api/* stays protected by proxy.ts's origin check, and this
+      // only relaxes reads of public assets and the HTML shell.
+      const corsAllowAllHeader = { key: "Access-Control-Allow-Origin", value: "*" };
       const globalRule = {
         // Everything except /api/files (negative lookahead, same pattern style
         // as the proxy matcher).
         source: "/((?!api/files/).*)",
-        headers: securityHeaders,
+        headers: [...securityHeaders, corsAllowAllHeader],
       };
       const fileRule = {
         source: "/api/files/:path*",

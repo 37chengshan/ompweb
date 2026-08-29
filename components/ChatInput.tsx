@@ -1109,10 +1109,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     }
     clearInput();
   }, [value, attachedImages, attachedTextFiles, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t, advisorEnabled]);
-  // A typed, text-only message during a run is a queued follow-up. Keep Stop
-  // as the action while the composer is empty or contains attachments.
+  // Stop must stay reachable WHILE a run is active: the primary button is
+  // always Stop when streaming (queued follow-ups are still submitted via
+  // Enter / the queued-follow-up bar). Previously a typed message replaced
+  // Stop with a Queue button, so clicking what looked like Stop did nothing.
   const primaryActionQueuesMessage =
-    isStreaming
+    !isStreaming
     && Boolean(value.trim())
     && attachedImages.length === 0
     && attachedTextFiles.length === 0

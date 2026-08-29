@@ -4,8 +4,6 @@ import { useI18n } from "@/lib/i18n";
 import type { NativeSettings } from "@/lib/omp/settings-config";
 import { Check } from "./ui/field";
 
-const MODEL_ROLES = ["slow", "plan", "designer", "advisor", "smol", "task", "tiny", "vision", "commit", "default"] as const;
-
 interface Props {
   settings: NativeSettings;
   /** Patch top-level native settings (merged by the parent). */
@@ -45,30 +43,6 @@ export function NativeExtrasSetting({ settings, onPatch, onPatchSection }: Props
     <section style={{ display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
       <div style={{ fontSize: 13, fontWeight: 600 }}>{t("settingsConfig.internalSettings")}</div>
       <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 12 }}>{t("settingsConfig.internalSettingsDesc")}</p>
-
-      {/* Model roles */}
-      <div style={cardStyle}>
-        <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("settingsConfig.modelRoles")}</span>
-        {MODEL_ROLES.map((role) => (
-          <div key={role} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 80, flexShrink: 0, fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{role}</span>
-            <input
-              type="text"
-              defaultValue={settings.modelRoles?.[role] ?? ""}
-              placeholder={t("settingsConfig.modelRolePlaceholder")}
-              onBlur={(e) => {
-                const value = e.target.value.trim();
-                if (value === (settings.modelRoles?.[role] ?? "")) return;
-                const next = { ...(settings.modelRoles ?? {}) };
-                if (value) next[role] = value;
-                else delete next[role];
-                onPatch({ modelRoles: next });
-              }}
-              style={inputStyle}
-            />
-          </div>
-        ))}
-      </div>
 
       {/* Feature toggles */}
       <div style={cardStyle}>

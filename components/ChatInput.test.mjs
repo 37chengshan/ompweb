@@ -11,7 +11,7 @@ const jiti = createJiti(import.meta.url, {
 const { ChatInput, ModelErrorBanner, filterModelOptions } = await jiti.import("./ChatInput.tsx");
 const { setDraft, clearDraft } = await jiti.import("@/lib/draft-store");
 
-test("shows Queue instead of Stop for typed text during a run", () => {
+test("keeps Stop as the primary action while streaming, even with typed text", () => {
   const draftKey = "chat-input-queue-action-test";
   setDraft(draftKey, { value: "Continue after the current run", images: [], files: [] });
   try {
@@ -25,9 +25,11 @@ test("shows Queue instead of Stop for typed text during a run", () => {
       }),
     );
 
-    assert.match(html, />(Queue|chatInput\.queue)</);
-    assert.match(html, /title="(Queue this message after the agent finishes|chatInput\.queueMessage)"/);
-    assert.doesNotMatch(html, />(Stop|chatInput\.stop)</);
+    // Stop must stay reachable during a run; queued follow-ups are sent via
+    // Enter / the queued-follow-up bar instead of replacing the Stop button.
+    assert.match(html, />(Stop|chatInput\.stop)</);
+    assert.match(html, /title="(Stop agent|chatInput\.stopAgent)"/);
+    assert.doesNotMatch(html, />(Queue|chatInput\.queue)</);
   } finally {
     clearDraft(draftKey);
   }

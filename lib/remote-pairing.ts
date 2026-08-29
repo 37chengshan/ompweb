@@ -298,3 +298,70 @@ export function isRemoteRequest(host: string | null | undefined): boolean {
   if (hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]") return false;
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// QR base-URL derivation (shared with app/api/pair/token/route.ts).
+// ---------------------------------------------------------------------------
+
+/** Host names / IP literals / ports are the only characters reflected into
+ *  a pairing URL — anything else (CR/LF, path, scheme) is rejected so a
+ *  crafted Host header cannot turn the QR into a phishing link. */
+export const PAIRING_HOST_RE = /^[A-Za-z0-9.:\-[\]]{1,255}$/;
+
+export const PAIRING_LOOPBACK_RE = /^127\.|^::1$|^\[::1\]$/;
+
+/** Virtual adapters whose addresses a phone can never reach (WSL/Hyper-V
+ *  vEthernet, VirtualBox/VMware host-only, Docker, Tailscale, ZeroTier...).
+ *  Mirrors bin/network-addresses.js isVirtualBridge. */
+const VIRTUAL_IFACE_RE = /vEthernet|VirtualBox|VMware|vboxnet|tap\d|tun\d|docker|tailscale|zerotier|virbr/i;
+
+type NetIfaces = Record<string, Array<{ address: string; family: string | number; internal?: boolean }>>;
+
+/** First physical-NIC IPv4 address (skips loopback/link-local/virtuals). */
+export function lanAddress(interfaces: NetIfaces = networkInterfaces0()): string | null {
+  const seen = new Set<string>();
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    if (VIRTUAL_IFACE_RE.test(name)) continue;
+    for (const info of addrs ?? []) {
+      if (info.family !== "IPv4" && (info.family as string | number) !== 4) continue;
+      const addr = info.address;
+      if (seen.has(addr)) continue;
+      seen.add(addr);
+      if (info.internal) continue;
+      if (PAIRING_LOOPBACK_RE.test(addr)) continue;
+      if (addr.startsWith("169.254.")) continue;
+      return addr;
+    }
+  }
+  return null;
+}
+
+function networkInterfaces0(): NetIfaces {
+  // Injected lazily so tests can pass fixtures without the os module.
+  return require("os").networkInterfaces() as NetIfaces;
+}
+
+/** The QR base URL must be reachable from the phone. A request coming from
+ *  localhost advertises a LAN address (or the configured public URL); a
+ *  request that already arrived over the LAN/public host keeps its Host. */
+export function pairingBase(
+  request: { headers: { get(name: string): string | null } },
+  fallbackUrl: string | undefined,
+  portFallback = "30178",
+): string {
+  const rawHost = request.headers.get("host") ?? "";
+  const host = PAIRING_HOST_RE.test(rawHost) ? rawHost : "";
+  const scheme = request.headers.get("x-forwarded-proto") === "https" ? "https" : "http";
+  const hostname = host.split(":")[0];
+  const port = host.split(":")[1] ?? portFallback;
+
+  if (host && !PAIRING_LOOPBACK_RE.test(hostname) && hostname !== "localhost") {
+    return `${scheme}://${host}`;
+  }
+  if (fallbackUrl) {
+    return fallbackUrl.replace(/\/+$/, "");
+  }
+  const lan = lanAddress();
+  if (lan) return `${scheme}://${lan}:${port}`;
+  return `${scheme}://${host || "127.0.0.1"}`;
+}

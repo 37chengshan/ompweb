@@ -560,8 +560,12 @@ function AssistantMessageView({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {/* Stable key per block index: streaming instances (no entryId yet)
+            and the committed message must reuse the same component instance,
+            otherwise ThinkingBlock remounts on commit and loses the expanded
+            state (the "thinking flash" bug). */}
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} thinkingDisplayMode={thinkingDisplayMode} />
+          <BlockView key={`${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} thinkingDisplayMode={thinkingDisplayMode} />
         ))}
       </div>
 
@@ -619,11 +623,17 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Auto-expansion latches on the FIRST streaming frame and never un-expands
+  // when streaming ends — previously isStreaming flipping to false collapsed
+  // the block right after it appeared (the "thinking flash").
+  const autoExpandedOnce = useRef(false);
+
   // Compute auto/default expansion based on thinkingDisplayMode
   const isAutoExpanded = useMemo(() => {
     if (thinkingDisplayMode === "expanded") return true;
     if (thinkingDisplayMode === "collapsed") return false;
-    return Boolean(isStreaming && !block.deferred);
+    if (isStreaming && !block.deferred) autoExpandedOnce.current = true;
+    return autoExpandedOnce.current;
   }, [thinkingDisplayMode, isStreaming, block.deferred]);
 
   const expanded = userToggled !== null ? userToggled : isAutoExpanded;

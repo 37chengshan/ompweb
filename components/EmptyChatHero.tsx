@@ -2,6 +2,7 @@
 
 import { Sparkles, TerminalSquare, Compass, ShieldCheck, FileCode2, ArrowRight } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { isMacPlatform } from "@/lib/platform";
 
 interface Props {
   onSelectPrompt: (prompt: string) => void;
@@ -211,7 +212,7 @@ export function EmptyChatHero({ onSelectPrompt, cwd }: Props) {
         </span>
         <span>·</span>
         <span>
-          <kbd style={{ padding: "1px 5px", borderRadius: 4, background: "var(--bg-hover)", border: "1px solid var(--border)" }}>⌘K</kbd> 命令面板
+          <kbd style={{ padding: "1px 5px", borderRadius: 4, background: "var(--bg-hover)", border: "1px solid var(--border)" }}>{isMacPlatform() ? "⌘K" : "Ctrl K"}</kbd> 命令面板
         </span>
       </div>
     </div>

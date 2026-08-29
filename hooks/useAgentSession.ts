@@ -14,11 +14,11 @@ import { normalizeToolCalls } from "@/lib/normalize";
 import type { ThinkingModelMeta } from "@/lib/thinking-levels";
 import { sendAgentCommand, setSessionAdvisorSpawn } from "@/lib/agent-client";
 import { translate } from "@/lib/i18n";
+import { toast } from "@/components/ui/toast";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { createMessageUpdateCoalescer, type MessageUpdateCoalescer } from "@/lib/message-update-coalescer";
 import { getToolNamesForPreset, type ToolPreset } from "@/lib/tool-presets";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
-import { toast } from "@/components/ui/toast";
 import { expandWebSlashCommand } from "@/lib/web-slash-commands";
 import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } from "@/lib/web-mode-state";
 import type { HostToolDefinition, HostUriSchemeDefinition, RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
@@ -2573,6 +2573,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         await sendAgentCommand(sid, { type: "abort_bash" });
       } catch (e) {
         console.error("Failed to abort bash:", e);
+        toast.error(translate("chatInput.abortFailed"));
       }
       return;
     }
@@ -2580,6 +2581,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       await sendAgentCommand(sid, { type: "abort" });
     } catch (e) {
       console.error("Failed to abort:", e);
+      toast.error(translate("chatInput.abortFailed"));
     }
   }, []);
 

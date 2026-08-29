@@ -379,6 +379,13 @@ if (app.isPackaged) {
       autoUpdater.checkForUpdates().catch((error) => appLog("updater check: " + error.message));
       return true;
     });
+    // Auto-check shortly after launch (quietly — only "available" and
+    // "downloaded" reach the renderer, so the user is prompted when an
+    // update exists instead of having to open Settings).
+    const autoCheckTimer = setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((error) => appLog("updater auto-check: " + error.message));
+    }, 8000);
+    autoUpdater.on("checking-for-update", () => clearTimeout(autoCheckTimer));
     ipcMain.handle("desktop-update-download", () => {
       autoUpdater.downloadUpdate().catch((error) => appLog("updater download: " + error.message));
       return true;

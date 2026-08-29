@@ -14,6 +14,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Check, CircleCheck, FolderGit2, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
 import { ThemePicker } from "./ThemePicker";
 import { ProviderUsageBadge } from "./ProviderUsageBadge";
+import { DesktopUpdateBanner } from "./DesktopUpdateBanner";
 import { TerminalPanel } from "./TerminalPanel";
 import { useTheme } from "@/hooks/useTheme";
 import { formatCompactNumber, formatPercent, getCacheHitRate } from "@/lib/format";
@@ -1778,6 +1779,7 @@ export function AppShell() {
       />
     )}
     </ToastProvider>
+    <DesktopUpdateBanner />
     </>
   );
 }

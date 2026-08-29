@@ -1440,5 +1440,11 @@
   "settingsConfig.restartToApply": "重启应用以生效",
   "settingsConfig.downloading": "下载中",
   "settingsConfig.desktopUpdateUnavailable": "应用内更新仅在打包版可用。",
-  "settingsConfig.desktopUpdateFailed": "更新失败 — 请查看应用日志。"
+  "settingsConfig.desktopUpdateFailed": "更新失败 — 请查看应用日志。",
+  "desktopUpdate.available": "发现新版本 OmpWeb {version}",
+  "desktopUpdate.downloading": "正在下载更新…",
+  "desktopUpdate.downloadingShort": "…",
+  "desktopUpdate.download": "下载",
+  "desktopUpdate.ready": "更新就绪 — 重启应用以生效({version})",
+  "desktopUpdate.restart": "重启"
 }

@@ -1440,5 +1440,11 @@
   "settingsConfig.restartToApply": "Restart to apply",
   "settingsConfig.downloading": "Downloading",
   "settingsConfig.desktopUpdateUnavailable": "In-app updates are only available in the packaged app.",
-  "settingsConfig.desktopUpdateFailed": "Update failed — check the app log."
+  "settingsConfig.desktopUpdateFailed": "Update failed — check the app log.",
+  "desktopUpdate.available": "OmpWeb {version} is available",
+  "desktopUpdate.downloading": "Downloading update…",
+  "desktopUpdate.downloadingShort": "…",
+  "desktopUpdate.download": "Download",
+  "desktopUpdate.ready": "Update ready — restart to apply ({version})",
+  "desktopUpdate.restart": "Restart"
 }

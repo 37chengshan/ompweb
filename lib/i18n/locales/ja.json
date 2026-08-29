@@ -1440,5 +1440,11 @@
   "settingsConfig.restartToApply": "再起動して適用",
   "settingsConfig.downloading": "ダウンロード中",
   "settingsConfig.desktopUpdateUnavailable": "アプリ内更新はパッケージ版でのみ利用できます。",
-  "settingsConfig.desktopUpdateFailed": "更新に失敗しました — アプリログを確認してください。"
+  "settingsConfig.desktopUpdateFailed": "更新に失敗しました — アプリログを確認してください。",
+  "desktopUpdate.available": "新しいバージョン OmpWeb {version} が利用可能です",
+  "desktopUpdate.downloading": "更新をダウンロード中…",
+  "desktopUpdate.downloadingShort": "…",
+  "desktopUpdate.download": "ダウンロード",
+  "desktopUpdate.ready": "更新の準備ができました — 再起動して適用({version})",
+  "desktopUpdate.restart": "再起動"
 }

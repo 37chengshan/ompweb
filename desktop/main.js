@@ -194,8 +194,25 @@ function createWindow() {
   });
   mainWindow.webContents.on("console-message", (_e, _lvl, message) => appLog("window console: " + String(message).slice(0, 200)));
   mainWindow.webContents.on("did-finish-load", () => appLog("window loaded: " + mainWindow.webContents.getURL()));
+  // Cold-start race: the splash page navigates to APP_URL on its own timer,
+  // but on slow machines (first run, Windows Defender scanning the freshly
+  // installed standalone) the server may not be listening yet — the app then
+  // sits on a blank page until a manual refresh. Retry the navigation a few
+  // times until the server answers.
+  let splashReloads = 0;
+  mainWindow.webContents.on("did-fail-load", (_event, code, desc, url) => {
+    appLog(`did-fail-load ${code} ${desc} ${url}`);
+    if (!url.startsWith(APP_URL)) return;
+    if (splashReloads >= 8) return;
+    splashReloads += 1;
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (!quitting) mainWindow.loadURL(APP_URL);
+    }, 1200);
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
+    splashReloads = 0;
   });
 }
 

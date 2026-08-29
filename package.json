@@ -115,6 +115,15 @@
       ],
       "icon": "public/icon.png"
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OmpWeb",
+      "artifactName": "OmpWeb-Setup-${version}.${ext}"
+    },
     "linux": {
       "target": [
         "AppImage"

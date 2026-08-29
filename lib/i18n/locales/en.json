@@ -1363,5 +1363,15 @@
   "settingsConfig.splashAnimationDesc": "Logo animation shown at app launch",
   "settingsConfig.splashModeAlways": "Every launch",
   "settingsConfig.splashModeOnce": "First launch only",
-  "settingsConfig.splashModeOff": "Off"
+  "settingsConfig.splashModeOff": "Off",
+  "appShell.sectionProviderUsage": "Provider Usage",
+  "appShell.providerUsageLoading": "Loading provider limits…",
+  "appShell.providerUsageUnavailable": "Provider limits unavailable",
+  "appShell.providerUsageNoData": "No provider limits reported",
+  "appShell.account": "Account {number}",
+  "appShell.allModels": "All models",
+  "appShell.providerUsageButton": "Provider usage limits",
+  "appShell.tooltipProviderUsage": "provider limits: {value}",
+  "settingsConfig.providerUsage": "Provider usage limits",
+  "settingsConfig.providerUsageDesc": "Show the current model's provider usage limits in the top bar."
 }

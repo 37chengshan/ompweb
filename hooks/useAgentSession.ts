@@ -686,6 +686,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // sends are rejected with a notice (attaching an RPC process would fight
   // the external writer) and the transcript updates come from the watcher.
   const externalRunningRef = useRef(false);
+  // Blocks prompt submission while the initial hydration's live-state fetch
+  // is still pending. Without this, showLoading=false after disk messages
+  // lets a prompt increment runId before the stale pre-prompt state arrives
+  // and clobbers the new run's derived state (model/fast-mode).
+  const initialHydrationPendingRef = useRef(false);
   const externalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Unmount: never leak the external-reclaim poller.
   useEffect(() => () => {
@@ -1081,10 +1086,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
 
       messagesLoaded = true;
+      if (showLoading) setLoading(false);
       if (!includeState) {
-        if (showLoading) setLoading(false);
         return null;
       }
+
+      // Track initial hydration so prompt submission waits for the live state.
+      const isInitialHydration = showLoading && includeState;
+      if (isInitialHydration) initialHydrationPendingRef.current = true;
 
       try {
         // Capture the sequence token BEFORE the fetch: a response snapshotted
@@ -1129,12 +1138,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         console.error("Failed to load agent state:", e);
         if (showLoading) setLoading(false);
         return null;
+      } finally {
+        if (isInitialHydration) initialHydrationPendingRef.current = false;
       }
     } catch (e) {
       setError(String(e));
+      if (showLoading && includeState) initialHydrationPendingRef.current = false;
       return null;
     } finally {
       if (showLoading && !messagesLoaded) setLoading(false);
+      // Ensure the flag is cleared even if the pre-state early-return path was taken
+      if (showLoading && includeState && !messagesLoaded) initialHydrationPendingRef.current = false;
     }
   }, [refreshSubagentHistory, refreshPlanInfo, applyAuthoritativeModel, beginAuthoritativeModelSync]);
 
@@ -2374,6 +2388,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       return false;
     }
+    if (initialHydrationPendingRef.current) return false;
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
 
     const isBashCommand = !images?.length && trimmedMessage.startsWith("!");

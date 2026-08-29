@@ -1363,5 +1363,15 @@
   "settingsConfig.splashAnimationDesc": "应用启动时的 logo 动画",
   "settingsConfig.splashModeAlways": "每次启动都播放",
   "settingsConfig.splashModeOnce": "仅首次启动播放",
-  "settingsConfig.splashModeOff": "关闭开屏动画"
+  "settingsConfig.splashModeOff": "关闭开屏动画",
+  "appShell.sectionProviderUsage": "供应商用量",
+  "appShell.providerUsageLoading": "正在加载供应商限额…",
+  "appShell.providerUsageUnavailable": "供应商限额不可用",
+  "appShell.providerUsageNoData": "无供应商限额报告",
+  "appShell.account": "账户 {number}",
+  "appShell.allModels": "全部模型",
+  "appShell.providerUsageButton": "供应商用量限额",
+  "appShell.tooltipProviderUsage": "供应商限额: {value}",
+  "settingsConfig.providerUsage": "供应商用量限额",
+  "settingsConfig.providerUsageDesc": "在顶栏显示当前模型的供应商用量限额。"
 }

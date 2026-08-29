@@ -13,6 +13,7 @@ import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Check, CircleCheck, FolderGit2, History, Menu, Moon, PanelLeft, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
 import { ThemePicker } from "./ThemePicker";
+import { ProviderUsageBadge } from "./ProviderUsageBadge";
 import { TerminalPanel } from "./TerminalPanel";
 import { useTheme } from "@/hooks/useTheme";
 import { formatCompactNumber, formatPercent, getCacheHitRate } from "@/lib/format";
@@ -1333,6 +1334,7 @@ export function AppShell() {
                 {!isMobile && modelCapacity?.maxTokens && (
                   <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>↗ {formatCompactNumber(modelCapacity.maxTokens)}</span>
                 )}
+                {!isMobile && <ProviderUsageBadge />}
                 {!isMobile && cacheRateStr && (
                   <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
                     <CircleCheck size={12} strokeWidth={1.8} aria-hidden="true" />

@@ -1363,5 +1363,15 @@
   "settingsConfig.splashAnimationDesc": "アプリ起動時のロゴアニメーション",
   "settingsConfig.splashModeAlways": "毎回再生",
   "settingsConfig.splashModeOnce": "初回のみ再生",
-  "settingsConfig.splashModeOff": "オフ"
+  "settingsConfig.splashModeOff": "オフ",
+  "appShell.sectionProviderUsage": "プロバイダー使用量",
+  "appShell.providerUsageLoading": "プロバイダー制限を読み込み中…",
+  "appShell.providerUsageUnavailable": "プロバイダー制限を利用できません",
+  "appShell.providerUsageNoData": "プロバイダー制限の報告なし",
+  "appShell.account": "アカウント {number}",
+  "appShell.allModels": "すべてのモデル",
+  "appShell.providerUsageButton": "プロバイダー使用量制限",
+  "appShell.tooltipProviderUsage": "プロバイダー制限: {value}",
+  "settingsConfig.providerUsage": "プロバイダー使用量制限",
+  "settingsConfig.providerUsageDesc": "現在のモデルのプロバイダー使用量制限を上部バーに表示します。"
 }

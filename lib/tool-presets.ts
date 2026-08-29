@@ -31,8 +31,11 @@ export function getPresetFromTools(tools: ToolEntry[]): ToolPreset {
   return "default";
 }
 
-export function getToolNamesForPreset(preset: ToolPreset): string[] {
+// "full" returns undefined so callers omit --tools entirely — passing an
+// explicit list would drop any tool omp adds later (plan, computer, ...).
+// undefined means "leave OMP's native toolset unrestricted".
+export function getToolNamesForPreset(preset: ToolPreset): string[] | undefined {
   if (preset === "none") return [...PRESET_NONE];
-  if (preset === "full") return [...PRESET_FULL];
+  if (preset === "full") return undefined;
   return [...PRESET_DEFAULT];
 }

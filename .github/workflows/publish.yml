@@ -84,6 +84,10 @@ jobs:
           fi
 
       - name: Publish GitHub Release
+        # Run even when the npm publish step failed (e.g. OIDC not granted):
+        # the desktop assets are already attached by the build-desktop
+        # workflow, and a draft release would hide them from auto-updaters.
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}

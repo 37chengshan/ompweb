@@ -29,7 +29,10 @@ globalThis.__ompTerminalSessions = sessions;
 const MAX_HISTORY_BYTES = 1024 * 1024;
 
 // Global cap on concurrent terminal sessions; old sessions are reaped below.
-const MAX_SESSIONS = 8;
+// 12 (up from 8): every tab/window with the panel open holds one session, and
+// hitting the cap silently kills the oldest PTY, which surfaces on the other
+// tab as a permanent "DISCONNECTED" terminal.
+const MAX_SESSIONS = 12;
 // A session with no subscribers for this long is reaped (shell killed).
 const IDLE_TTL_MS = 30 * 60 * 1000;
 

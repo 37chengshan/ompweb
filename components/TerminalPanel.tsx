@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { TerminalSquare, RefreshCw, Trash2, X, Maximize2, Minimize2 } from "lucide-react";
+import { TerminalSquare, RefreshCw, RotateCcw, Trash2, X, Maximize2, Minimize2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -204,6 +204,7 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let retryDelay = 1000;
     let streamDead = false;
+    let reinits = 0;
     const controller = new AbortController();
 
     // New session (or reconnect): drop output buffered for the previous one.
@@ -211,12 +212,28 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
 
     const connect = async () => {
       if (cancelled) return;
+      let staleSession = false;
       try {
         const res = await fetch(`/api/terminal/stream?id=${encodeURIComponent(sessionId)}`, { signal: controller.signal });
         if (res.status === 404) {
-          // The session was reaped server-side — no point reconnecting.
-          streamDead = true;
-          setStatus("disconnected");
+          // The session id is stale: the PTY was reaped server-side (idle TTL,
+          // session cap) or the server restarted. Recreate the session ONCE by
+          // clearing the id — the open-panel effect then spawns a fresh one.
+          // Bounded so a systemic failure can't churn PTYs; past that the
+          // header's reconnect button takes over.
+          if (reinits < 1 && openRef.current) {
+            reinits += 1;
+            staleSession = true;
+            retryTimer = setTimeout(() => {
+              if (cancelled || !openRef.current) return;
+              inputChainRef.current = Promise.resolve();
+              setSessionId(null);
+            }, retryDelay);
+            retryDelay = Math.min(retryDelay * 2, 8000);
+          } else {
+            streamDead = true;
+            setStatus("disconnected");
+          }
           return;
         }
         if (!res.ok || !res.body) throw new Error(`terminal stream failed: ${res.status}`);
@@ -252,7 +269,7 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
           setStatus("disconnected");
         }
       } finally {
-        if (!cancelled && !streamDead) {
+        if (!cancelled && !streamDead && !staleSession) {
           // Exponential backoff; only reconnect while the panel is open so a
           // hidden panel doesn't spam the server.
           if (openRef.current) {
@@ -412,6 +429,17 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
           >
             {status === "connected" ? "ONLINE" : status === "connecting" ? "CONNECTING..." : "DISCONNECTED"}
           </span>
+          {status === "disconnected" && (
+            <button
+              type="button"
+              onClick={() => void handleRestart()}
+              title={t("terminal.reconnect")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer" }}
+            >
+              <RotateCcw size={10} strokeWidth={2} aria-hidden="true" />
+              {t("terminal.reconnect")}
+            </button>
+          )}
           {sessionCwd && (
             <span
               style={{

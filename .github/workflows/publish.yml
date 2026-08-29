@@ -83,15 +83,11 @@ jobs:
             npm publish --provenance --access public
           fi
 
-      - name: Publish GitHub Release
-        # Run even when the npm publish step failed (e.g. OIDC not granted):
-        # the desktop assets are already attached by the build-desktop
-        # workflow, and a draft release would hide them from auto-updaters.
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+      # Release publishing is owned by build-desktop.yml's publish-release
+      # job, which runs AFTER all three platform builds uploaded their
+      # assets. Flipping the draft here raced the electron-builder GitHub
+      # publisher (it only accepts a draft release) and dropped macOS/
+      # Windows assets.
 
   notify-discord:
     needs: publish

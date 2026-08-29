@@ -56,3 +56,23 @@ jobs:
             dist-desktop/*.blockmap
             dist-desktop/latest*.yml
           if-no-files-found: error
+
+  # Publish the release AFTER every platform has uploaded its assets: the
+  # electron-builder GitHub publisher only accepts a DRAFT release, so the
+  # draft created by publish.yml must not be flipped to "release" before the
+  # slowest builder finishes (that race dropped macOS/Windows assets).
+  publish-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          gh release edit "$TAG" --draft=false
+          # If no release exists yet (e.g. publish.yml draft creation raced
+          # and lost), electron-builder created it itself — nothing to do.
+          true

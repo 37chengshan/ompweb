@@ -1432,5 +1432,13 @@
   "settingsConfig.editMode": "編集モード",
   "settingsConfig.composerShape": "コンポーザー形状",
   "settingsConfig.autoqaConsent": "自動QA同意",
-  "settingsConfig.symbolPreset": "シンボルプリセット"
+  "settingsConfig.symbolPreset": "シンボルプリセット",
+  "settingsConfig.updateNow": "今すぐ更新",
+  "settingsConfig.updating": "更新中…",
+  "settingsConfig.ompUpdateComplete": "ompを更新しました — セッションを再起動しました。",
+  "settingsConfig.appUpdateComplete": "ompwebを更新しました — 新しいバージョンを読み込むにはアプリを再起動してください。",
+  "settingsConfig.restartToApply": "再起動して適用",
+  "settingsConfig.downloading": "ダウンロード中",
+  "settingsConfig.desktopUpdateUnavailable": "アプリ内更新はパッケージ版でのみ利用できます。",
+  "settingsConfig.desktopUpdateFailed": "更新に失敗しました — アプリログを確認してください。"
 }

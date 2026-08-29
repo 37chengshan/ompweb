@@ -1,3 +1,4 @@
+import { execFile } from "child_process";
 import packageJson from "../package.json";
 import { homedir } from "os";
 import { join, normalize, sep } from "path";
@@ -76,5 +77,27 @@ export function detectInstallMethod(packageDir: string): "bun" | "npm" {
     join(homedir(), ".bun", "install", "global", "node_modules"),
   ].map(toPlatformPath);
   return bunRoots.some((root) => normalized.startsWith(root + sep)) ? "bun" : "npm";
+}
+
+/** Installs the latest npm release through the detected package manager.
+ *  Returns the command output; the running server needs a restart afterwards
+ *  to pick up the new code. */
+export async function runNpmUpdate(): Promise<string> {
+  const packageDir = process.env.OMP_WEB_PACKAGE_DIR ?? process.cwd();
+  const method = detectInstallMethod(packageDir);
+  const bin = method === "bun" ? "bun" : "npm";
+  // npm refuses to overwrite an existing global bin shim (EEXIST) after a
+  // manual install; --force makes re-running the updater idempotent.
+  const args = method === "bun" ? ["add", "-g", NPM_PACKAGE] : ["install", "-g", "--force", NPM_PACKAGE];
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+  execFile(bin, args, {
+    timeout: 600_000,
+    maxBuffer: 2 * 1024 * 1024,
+    windowsHide: true,
+  }, (error, stdout, stderr) => {
+    if (error) reject(new Error((stderr || stdout || error.message).trim().slice(-1000)));
+    else resolve(`${stdout}\n${stderr}`.trim());
+  });
+  return promise;
 }
 

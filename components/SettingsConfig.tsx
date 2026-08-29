@@ -443,6 +443,88 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
     void saveNativeSettings({ ...base, tools: { ...tools, approval: { ...(tools.approval ?? {}), ...patch } } });
   }, [nativeSettings, saveNativeSettings]);
 
+  const [updatingOmp, setUpdatingOmp] = useState(false);
+  const [ompUpdateOutput, setOmpUpdateOutput] = useState<string | null>(null);
+  const [ompUpdated, setOmpUpdated] = useState(false);
+  const [updatingApp, setUpdatingApp] = useState(false);
+  const [appUpdateOutput, setAppUpdateOutput] = useState<string | null>(null);
+  const [appUpdated, setAppUpdated] = useState(false);
+  const [desktopUpdateState, setDesktopUpdateState] = useState<{ status: string; version?: string; percent?: number; message?: string }>({ status: "idle" });
+
+  // Desktop app: subscribe to the native updater's status broadcasts and
+  // surface them in the update card (available -> downloading -> downloaded).
+  useEffect(() => {
+    const desktop = (window as { ompWebDesktop?: { onUpdateStatus?: (cb: (s: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void } }).ompWebDesktop;
+    if (!desktop?.onUpdateStatus) return;
+    const unsubscribe = desktop.onUpdateStatus((status) => {
+      setDesktopUpdateState(status);
+      if (status.status === "downloaded") {
+        setAppUpdated(false);
+        setUpdatingApp(false);
+      }
+      if (status.status === "error") {
+        setUpdatingApp(false);
+        setMessage(status.message ?? t("settingsConfig.desktopUpdateFailed"));
+      }
+    });
+    return unsubscribe;
+  }, [t]);
+
+  const runAppUpdate = useCallback(async () => {
+    // Desktop app: the native updater downloads and restarts the packaged
+    // app. Browser/CLI: npm/bun install -g + manual restart.
+    const desktop = (window as { ompWebDesktop?: { isDesktop?: boolean; updateDownload?: () => Promise<unknown> } }).ompWebDesktop;
+    if (desktop?.isDesktop) {
+      setUpdatingApp(true);
+      setAppUpdateOutput(null);
+      setAppUpdated(false);
+      try {
+        await desktop.updateDownload?.();
+        // The updater broadcasts status events; the downloaded state flips
+        // the button into "Restart to apply".
+        setDesktopUpdateState((prev) => ({ ...prev, downloading: true }));
+      } catch {
+        setMessage(t("settingsConfig.desktopUpdateUnavailable"));
+        setUpdatingApp(false);
+      }
+      return;
+    }
+    setUpdatingApp(true);
+    setAppUpdateOutput(null);
+    setAppUpdated(false);
+    try {
+      const response = await fetch("/api/app-update", { method: "POST" });
+      const data = (await response.json()) as { success?: boolean; output?: string; restartRequired?: boolean; error?: string };
+      if (!response.ok || !data.success) throw new Error(data.error ?? `HTTP ${response.status}`);
+      setAppUpdateOutput(data.output ?? null);
+      setAppUpdated(true);
+      setAppUpdate((prev) => (prev ? { ...prev, updateAvailable: false } : prev));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpdatingApp(false);
+    }
+  }, [t]);
+
+  const runOmpUpdate = useCallback(async () => {
+    setUpdatingOmp(true);
+    setOmpUpdateOutput(null);
+    setOmpUpdated(false);
+    try {
+      const response = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
+      const data = (await response.json()) as { success?: boolean; output?: string; error?: string };
+      if (!response.ok || !data.success) throw new Error(data.error ?? `HTTP ${response.status}`);
+      setOmpUpdateOutput(data.output ?? null);
+      setOmpUpdated(true);
+      onOmpUpdateAvailabilityChange(false);
+      setUpdate((prev) => (prev ? { ...prev, updateAvailable: false } : prev));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpdatingOmp(false);
+    }
+  }, [onOmpUpdateAvailabilityChange]);
+
   const checkForUpdate = useCallback(async () => {
     setChecking(true);
     setMessage(null);
@@ -1105,6 +1187,35 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.runAppUpdateCommand")}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{appUpdate.updateCommand || "npm install -g @37chengshan/ompweb"}</code>
+                        {(window as { ompWebDesktop?: { isDesktop?: boolean; updateApply?: () => Promise<unknown> } }).ompWebDesktop?.isDesktop ? (
+                          desktopUpdateState.status === "downloaded" ? (
+                            <button
+                              type="button"
+                              onClick={() => void (window as { ompWebDesktop?: { updateApply?: () => Promise<unknown> } }).ompWebDesktop?.updateApply?.()}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--bg)", cursor: "pointer", fontSize: 11, fontWeight: 600, flexShrink: 0 }}
+                            >
+                              <RotateCcw size={12} aria-hidden="true" /> {t("settingsConfig.restartToApply")}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void runAppUpdate()}
+                              disabled={updatingApp}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--bg)", cursor: updatingApp ? "wait" : "pointer", fontSize: 11, fontWeight: 600, flexShrink: 0 }}
+                            >
+                              <RefreshCw size={12} aria-hidden="true" className={updatingApp ? "spin" : undefined} /> {updatingApp ? t("settingsConfig.updating") : desktopUpdateState.status === "downloading" ? `${t("settingsConfig.downloading")} ${desktopUpdateState.percent ?? 0}%` : t("settingsConfig.updateNow")}
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void runAppUpdate()}
+                            disabled={updatingApp}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--bg)", cursor: updatingApp ? "wait" : "pointer", fontSize: 11, fontWeight: 600, flexShrink: 0 }}
+                          >
+                            <RefreshCw size={12} aria-hidden="true" className={updatingApp ? "spin" : undefined} /> {updatingApp ? t("settingsConfig.updating") : t("settingsConfig.updateNow")}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -1117,6 +1228,12 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                           <Copy size={12} aria-hidden="true" /> {t("appShell.copyCommand")}
                         </button>
                       </div>
+                      {appUpdateOutput && (
+                        <pre style={{ margin: 0, padding: "6px 8px", background: "var(--bg-subtle)", borderRadius: 6, fontSize: 11, color: "var(--text-muted)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 140, overflow: "auto", fontFamily: "var(--font-mono)" }}>{appUpdateOutput}</pre>
+                      )}
+                      {appUpdated && (
+                        <div style={{ fontSize: 12, color: "var(--status-ok, #2e9e5b)" }} role="status">{t("settingsConfig.appUpdateComplete")}</div>
+                      )}
                     </div>
                   )}
                 </section>
@@ -1150,7 +1267,21 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                         >
                           <Copy size={12} aria-hidden="true" /> {t("appShell.copyCommand")}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => void runOmpUpdate()}
+                          disabled={updatingOmp}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--bg)", cursor: updatingOmp ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                        >
+                          <RefreshCw size={12} aria-hidden="true" className={updatingOmp ? "spin" : undefined} /> {updatingOmp ? t("settingsConfig.updating") : t("settingsConfig.updateNow")}
+                        </button>
                       </div>
+                      {ompUpdateOutput && (
+                        <pre style={{ margin: 0, padding: "6px 8px", background: "var(--bg-subtle)", borderRadius: 6, fontSize: 11, color: "var(--text-muted)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 140, overflow: "auto", fontFamily: "var(--font-mono)" }}>{ompUpdateOutput}</pre>
+                      )}
+                      {ompUpdated && (
+                        <div style={{ fontSize: 12, color: "var(--status-ok, #2e9e5b)" }} role="status">{t("settingsConfig.ompUpdateComplete")}</div>
+                      )}
                     </div>
                   )}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>

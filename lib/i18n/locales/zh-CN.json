@@ -1432,5 +1432,13 @@
   "settingsConfig.editMode": "编辑模式",
   "settingsConfig.composerShape": "输入框形状",
   "settingsConfig.autoqaConsent": "自动 QA 同意",
-  "settingsConfig.symbolPreset": "符号预设"
+  "settingsConfig.symbolPreset": "符号预设",
+  "settingsConfig.updateNow": "一键更新",
+  "settingsConfig.updating": "更新中…",
+  "settingsConfig.ompUpdateComplete": "omp 已更新 — 会话已重启。",
+  "settingsConfig.appUpdateComplete": "ompweb 已更新 — 重启应用以加载新版本。",
+  "settingsConfig.restartToApply": "重启应用以生效",
+  "settingsConfig.downloading": "下载中",
+  "settingsConfig.desktopUpdateUnavailable": "应用内更新仅在打包版可用。",
+  "settingsConfig.desktopUpdateFailed": "更新失败 — 请查看应用日志。"
 }

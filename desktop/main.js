@@ -344,3 +344,52 @@ ipcMain.on("window-control", (_event, action) => {
   else if (action === "maximize") mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
   else if (action === "close") mainWindow.close();
 });
+
+// ---------------------------------------------------------------------------
+// Desktop self-update (electron-updater). Only active in packaged builds;
+// dev runs use the plain CLI update flows. The renderer drives it from the
+// System & Updates tab: check -> download (progress) -> apply (restart).
+// ---------------------------------------------------------------------------
+let autoUpdater = null;
+if (app.isPackaged) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { autoUpdater: updater } = require("electron-updater");
+    autoUpdater = updater;
+    autoUpdater.autoDownload = false; // user confirms before downloading
+    autoUpdater.autoInstallOnAppQuit = false;
+    autoUpdater.autoRunAppAfterInstall = true;
+
+    const broadcast = (status, detail) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("desktop-update-status", { status, ...(detail ?? {}) });
+      }
+    };
+    autoUpdater.on("checking-for-update", () => broadcast("checking"));
+    autoUpdater.on("update-available", (info) => broadcast("available", { version: info.version }));
+    autoUpdater.on("update-not-available", () => broadcast("up-to-date"));
+    autoUpdater.on("download-progress", (progress) => broadcast("downloading", { percent: Math.round(progress.percent ?? 0) }));
+    autoUpdater.on("update-downloaded", (info) => broadcast("downloaded", { version: info.version }));
+    autoUpdater.on("error", (error) => {
+      appLog("updater: " + (error instanceof Error ? error.message : String(error)));
+      broadcast("error", { message: error instanceof Error ? error.message : String(error) });
+    });
+
+    ipcMain.handle("desktop-update-check", () => {
+      autoUpdater.checkForUpdates().catch((error) => appLog("updater check: " + error.message));
+      return true;
+    });
+    ipcMain.handle("desktop-update-download", () => {
+      autoUpdater.downloadUpdate().catch((error) => appLog("updater download: " + error.message));
+      return true;
+    });
+    ipcMain.handle("desktop-update-apply", () => {
+      // quitAndInstall restarts the app into the new version — the user sees
+      // the app close and reopen with the update applied.
+      autoUpdater.quitAndInstall(false, true);
+      return true;
+    });
+  } catch (error) {
+    appLog("updater init failed: " + (error instanceof Error ? error.message : String(error)));
+  }
+}

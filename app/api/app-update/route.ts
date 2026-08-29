@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkNpmUpdate } from "@/lib/npm-update";
+import { checkNpmUpdate, runNpmUpdate } from "@/lib/npm-update";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +12,17 @@ export async function GET(request: Request) {
 }
 
 export async function POST() {
-  return NextResponse.json(
-    { error: "Automatic self-updating is disabled. Run the update command manually in your terminal.", code: "update_disabled" },
-    { status: 400 }
-  );
+  try {
+    const output = await runNpmUpdate();
+    return NextResponse.json({
+      success: true,
+      output: output.slice(-2000),
+      restartRequired: true,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error), code: "update_failed" },
+      { status: 502 },
+    );
+  }
 }

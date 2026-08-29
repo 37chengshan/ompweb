@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkOmpUpdate } from "@/lib/omp/updates";
+import { checkOmpUpdate, runOmpUpdateNow } from "@/lib/omp/updates";
 import { restartAllRpcSessions } from "@/lib/rpc-manager";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,9 @@ export async function POST(request: Request) {
     const body = await request.json() as { action?: unknown };
     if (body.action === "check") return NextResponse.json(await checkOmpUpdate());
     if (body.action === "update") {
-      return NextResponse.json({ error: "Automatic self-updating is disabled. Run 'omp update' in your terminal.", code: "update_disabled" }, { status: 400 });
+      const output = await runOmpUpdateNow();
+      const sessionsRestarted = await restartAllRpcSessions();
+      return NextResponse.json({ success: true, output: output.slice(-2000), sessionsRestarted });
     }
     if (body.action === "restart") {
       const sessionsRestarted = await restartAllRpcSessions();

@@ -1185,7 +1185,9 @@ export function getRunningRpcSessionIds(): string[] {
  * reconnect sessions on demand and start them with the updated executable. */
 export async function restartAllRpcSessions(): Promise<number> {
   const sessions = [...new Set(getRegistry().values())];
-  await Promise.all(sessions.map((session) => session.destroyAndWait()));
+  // A single session may fail to tear down (e.g. a half-open SSE stream);
+  // that must not block restarting the rest.
+  await Promise.all(sessions.map((session) => session.destroyAndWait().catch(() => undefined)));
   return sessions.length;
 }
 

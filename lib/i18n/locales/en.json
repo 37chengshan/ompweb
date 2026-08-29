@@ -1432,5 +1432,13 @@
   "settingsConfig.editMode": "Edit mode",
   "settingsConfig.composerShape": "Composer shape",
   "settingsConfig.autoqaConsent": "Auto-QA consent",
-  "settingsConfig.symbolPreset": "Symbol preset"
+  "settingsConfig.symbolPreset": "Symbol preset",
+  "settingsConfig.updateNow": "Update now",
+  "settingsConfig.updating": "Updating…",
+  "settingsConfig.ompUpdateComplete": "omp updated — sessions restarted.",
+  "settingsConfig.appUpdateComplete": "ompweb updated — restart the app to load the new version.",
+  "settingsConfig.restartToApply": "Restart to apply",
+  "settingsConfig.downloading": "Downloading",
+  "settingsConfig.desktopUpdateUnavailable": "In-app updates are only available in the packaged app.",
+  "settingsConfig.desktopUpdateFailed": "Update failed — check the app log."
 }

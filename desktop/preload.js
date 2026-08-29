@@ -13,6 +13,16 @@ contextBridge.exposeInMainWorld("ompWebDesktop", {
   minimize: () => ipcRenderer.send("window-control", "minimize"),
   maximize: () => ipcRenderer.send("window-control", "maximize"),
   close: () => ipcRenderer.send("window-control", "close"),
+  // Self-update bridge (packaged builds only; dev resolves to no-ops via
+  // invoke rejection, which the renderer treats as "not supported").
+  updateCheck: () => ipcRenderer.invoke("desktop-update-check"),
+  updateDownload: () => ipcRenderer.invoke("desktop-update-download"),
+  updateApply: () => ipcRenderer.invoke("desktop-update-apply"),
+  onUpdateStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on("desktop-update-status", listener);
+    return () => ipcRenderer.removeListener("desktop-update-status", listener);
+  },
 });
 
 // Native folder picker bridge (SessionSidebar's DirectoryPicker prefers it

@@ -564,6 +564,9 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       setUpdate(data);
       onOmpUpdateAvailabilityChange(data.updateAvailable);
     } catch (error) {
+      // Same as the app card: a failed check must be visible in the card,
+      // not silently rendered as "version unavailable".
+      setUpdate((prev) => prev ?? { currentVersion: null, availableVersion: null, updateAvailable: false, checkError: true });
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setChecking(false);
@@ -592,6 +595,10 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       setAppUpdate(data);
     } catch (error) {
+      // Surface the failure in the card itself — leaving the state null kept
+      // the card on "version unavailable" with no hint that the CHECK failed
+      // (vs. genuinely having no version info).
+      setAppUpdate((prev) => prev ?? { currentVersion: null, availableVersion: null, updateAvailable: false, checkError: true });
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setCheckingAppUpdate(false);

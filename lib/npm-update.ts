@@ -2,9 +2,24 @@ import { execFile } from "child_process";
 import packageJson from "../package.json";
 import { homedir } from "os";
 import { join, normalize, sep } from "path";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 const NPM_PACKAGE = "@37chengshan/ompweb";
 const CHECK_TTL_MS = 60 * 60 * 1000;
+
+// The registry check must honor the app's resolved proxy (warm-up in
+// instrumentation.ts): on hosts where the registry is only reachable through
+// a local proxy, Node's plain fetch cannot connect and the update card would
+// always show a failed check. Same pattern as lib/github.ts.
+let cachedProxyAgent: ProxyAgent | null | undefined = undefined;
+function proxyDispatcher(): ProxyAgent | undefined {
+  const url = process.env.OMP_WEB_PROXY_URL;
+  if (!url) return undefined;
+  if (cachedProxyAgent === undefined) {
+    cachedProxyAgent = new ProxyAgent(url);
+  }
+  return cachedProxyAgent ?? undefined;
+}
 
 export interface NpmUpdateStatus {
   currentVersion: string;
@@ -46,9 +61,11 @@ export async function checkNpmUpdate(force = false): Promise<NpmUpdateStatus> {
   const updateCommand = method === "bun" ? "bun add -g @37chengshan/ompweb" : "npm install -g @37chengshan/ompweb";
 
   try {
-    const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(NPM_PACKAGE)}/latest`, {
+    const dispatcher = proxyDispatcher();
+    const response = await undiciFetch(`https://registry.npmjs.org/${encodeURIComponent(NPM_PACKAGE)}/latest`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(8_000),
+      ...(dispatcher ? { dispatcher } : {}),
     });
     const data = response.ok ? await response.json() as { version?: unknown } : null;
     const availableVersion = typeof data?.version === "string" ? data.version : null;

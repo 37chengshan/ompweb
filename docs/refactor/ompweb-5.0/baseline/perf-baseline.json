@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-08-30T06:21:21.029Z",
+  "note": "4.x W0 baseline (pre-freeze). Same-machine comparisons only; see ADR-007 for budgets and rules.",
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "25.6.0",
+    "cpuModel": "Apple M1 Pro",
+    "totalMemGb": 17.18,
+    "nodeVersion": "v24.14.0"
+  },
+  "setup": {
+    "fixture": "Sessions-L(1000)+Chat-S/L/XL",
+    "setupMs": 365.38
+  },
+  "results": {
+    "listAllSessions_count": 1003,
+    "listAllSessions_cold": {
+      "runs": 12,
+      "p50": 14.83,
+      "p95": 161.07,
+      "mean": 27.65,
+      "min": 12.95,
+      "max": 161.07
+    },
+    "listAllSessions_warm": {
+      "runs": 24,
+      "p50": 0,
+      "p95": 0,
+      "mean": 0,
+      "min": 0,
+      "max": 0.01
+    },
+    "contextLoad_chat-s_cold": {
+      "runs": 12,
+      "p50": 0.35,
+      "p95": 1.44,
+      "mean": 0.46,
+      "min": 0.28,
+      "max": 1.44,
+      "messages": 120,
+      "bytes": 41932
+    },
+    "contextLoad_chat-s_warm": {
+      "runs": 12,
+      "p50": 0.08,
+      "p95": 0.1,
+      "mean": 0.08,
+      "min": 0.06,
+      "max": 0.1
+    },
+    "contextLoad_chat-l_cold": {
+      "runs": 12,
+      "p50": 2.8,
+      "p95": 3.34,
+      "mean": 2.82,
+      "min": 2.48,
+      "max": 3.34,
+      "messages": 1200,
+      "bytes": 415931
+    },
+    "contextLoad_chat-l_warm": {
+      "runs": 12,
+      "p50": 0.67,
+      "p95": 2.05,
+      "mean": 0.85,
+      "min": 0.53,
+      "max": 2.05
+    },
+    "contextLoad_chat-xl_cold": {
+      "runs": 12,
+      "p50": 14.76,
+      "p95": 49.34,
+      "mean": 17.72,
+      "min": 12.77,
+      "max": 49.34,
+      "messages": 6000,
+      "bytes": 2085307
+    },
+    "contextLoad_chat-xl_warm": {
+      "runs": 12,
+      "p50": 2.93,
+      "p95": 7.17,
+      "mean": 3.23,
+      "min": 2.52,
+      "max": 7.17
+    },
+    "rawJsonlParse": {
+      "ms": 1.6,
+      "lines": 1203,
+      "bytes": 415931,
+      "mbPerSecond": 259.24
+    }
+  },
+  "fixtureHashes": {
+    "chat-s": "b732a5ce550e1d13b582ea43a8cc1289cbc12c8a0dcdf4dbb9dc0639bb7a8a15",
+    "chat-l": "ee8cb27e70c0cfbb949b5ae15872b49a42bcee8465e473dcf8c2d8533f1f4358",
+    "chat-xl": "6160740b86ad7ae44e8884d47adf3535234ea12819d42f376f45418db16fc9ab"
+  }
+}

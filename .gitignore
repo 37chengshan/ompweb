@@ -84,3 +84,9 @@ Desktop.ini
 /.commandcode/
 /patch-paths.mjs
 dist-desktop/
+
+# 5.0 baseline generated fixtures (node scripts/gen-session-fixtures.mjs)
+.baseline-fixtures/
+
+# security scanner workspace (never commit)
+.mimosa/

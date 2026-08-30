@@ -1,0 +1,223 @@
+{
+  "globals": {
+    "keyframes": {
+      "omp-aurora-glow": "c1b5aabe8fa8368e",
+      "sidebar-worktree-in": "01307d2ea1de8bb0",
+      "sidebar-sessions-in": "a98d91647c7c2adf",
+      "sidebar-activity-breathe": "735ea159a9c4c89b",
+      "sidebar-activity-ring": "6cbb7fd5392b58e4",
+      "sidebar-running-spin": "a13d183d093f57ac",
+      "drop-zone-in": "72a278b593e0ee28",
+      "drop-ripple": "542269b5d25cb5b4",
+      "spin": "2493a94a49cd5da9",
+      "pulse": "100e7a34069fcdf6",
+      "skeleton-shimmer": "1f7abe517872db4a",
+      "ui-fade-in": "188080960d3b7889",
+      "ui-scale-in": "d93b0d3a8c92c5fa",
+      "ui-slide-down": "ddeb72c660ef8403",
+      "ui-slide-up": "2f57f2adb19e6ac2",
+      "ui-slide-down-out": "d29c36aa47187658",
+      "dialog-backdrop-in": "754e283fde0c5e24",
+      "dialog-pop-in": "2439483a20f1ee73",
+      "chat-message-in": "4c59260c24dee34f",
+      "toast-in": "cafee66b25a05878",
+      "live-dot-pulse": "e904cd95bd53b7bc",
+      "activity-row-spin": "f0c34b0cef0f4276",
+      "omp-solo-jump-o": "182500f560f30031",
+      "omp-solo-jump-m": "9b1693b7e7239381",
+      "omp-solo-jump-p": "ae3157ed0772b229",
+      "thinking-brain-pulse": "9434abb3a9dad1ca",
+      "notice-shelf-in": "17432bd6b8a3631a",
+      "notice-shelf-out": "e773b942cafc025b",
+      "saved-pop": "dd892e255bf545e2",
+      "saved-check-draw": "4fd271d4474035f1",
+      "omp-beam-clockwise": "ca39dc144ffe7051"
+    },
+    "tokens": {
+      "ease:ease-out-warm": "cubic-bezier(0.22, 1, 0.36, 1)",
+      "dur:dur-fast": "150ms",
+      "dur:dur-med": "220ms",
+      "dur:dur-slow": "320ms",
+      "dur:dur-theme": "450ms"
+    },
+    "transitionDeclarations": 29,
+    "reducedMotionBlocks": [
+      {
+        "line": 1670,
+        "rules": 1,
+        "disables": [
+          "none"
+        ]
+      },
+      {
+        "line": 2394,
+        "rules": 1,
+        "disables": [
+          "none"
+        ]
+      },
+      {
+        "line": 2497,
+        "rules": 2,
+        "disables": [
+          "none"
+        ]
+      },
+      {
+        "line": 2600,
+        "rules": 4,
+        "disables": [
+          "none"
+        ]
+      }
+    ]
+  },
+  "components": {
+    "components/AppShell.tsx": {
+      "inlineTransitions": 5,
+      "inlineAnimations": [
+        "session-info-pop",
+        "session-info-light-wash",
+        "none"
+      ],
+      "styleKeyframes": {
+        "session-info-pop": "db65d9dba2248c9f",
+        "session-info-light-wash": "cb97c85a89bd76b6"
+      }
+    },
+    "components/ArchiveBrowser.tsx": {
+      "inlineTransitions": 4
+    },
+    "components/BranchNavigator.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/ChatInput.tsx": {
+      "inlineTransitions": 18
+    },
+    "components/ChatMinimap.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/ChatWindow.tsx": {
+      "inlineTransitions": 1,
+      "inlineAnimations": [
+        "notice"
+      ]
+    },
+    "components/ComposerPanels.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/DirectoryPicker.tsx": {
+      "inlineTransitions": 5
+    },
+    "components/EmptyChatHero.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/ExtensionDialog.tsx": {
+      "inlineTransitions": 4
+    },
+    "components/FileExplorer.tsx": {
+      "inlineTransitions": 8
+    },
+    "components/FileViewer.tsx": {
+      "inlineTransitions": 4
+    },
+    "components/LanguageSwitcher.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/McpConfig.tsx": {
+      "inlineTransitions": 1
+    },
+    "components/MessageView.tsx": {
+      "inlineTransitions": 9
+    },
+    "components/ModelsConfig.tsx": {
+      "inlineTransitions": 6,
+      "inlineAnimations": [
+        "savedOk"
+      ]
+    },
+    "components/OmpBouncingLetter.tsx": {
+      "inlineTransitions": 0,
+      "inlineAnimations": [
+        "omp-solo-jump-o",
+        "omp-solo-jump-m",
+        "omp-solo-jump-p",
+        "none"
+      ],
+      "styleKeyframes": {
+        "omp-solo-jump-o": "182500f560f30031",
+        "omp-solo-jump-m": "9b1693b7e7239381",
+        "omp-solo-jump-p": "ae3157ed0772b229"
+      }
+    },
+    "components/PluginsConfig.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/SessionSidebar.tsx": {
+      "inlineTransitions": 24,
+      "reducedMotionHook": true,
+      "smil": {
+        "animate": 2,
+        "animateTransform": 0
+      }
+    },
+    "components/SettingsConfig.tsx": {
+      "inlineTransitions": 5
+    },
+    "components/SettingsTabs.tsx": {
+      "inlineTransitions": 1
+    },
+    "components/SkillsConfig.tsx": {
+      "inlineTransitions": 5
+    },
+    "components/TabBar.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/TerminalPanel.tsx": {
+      "inlineTransitions": 1
+    },
+    "components/ThemePicker.tsx": {
+      "inlineTransitions": 8
+    },
+    "components/TodoList.tsx": {
+      "inlineTransitions": 1
+    },
+    "components/UsageSidebarPanel.tsx": {
+      "inlineTransitions": 1
+    },
+    "components/ui/field.tsx": {
+      "inlineTransitions": 2
+    },
+    "hooks/useAgentSession.ts": {
+      "inlineTransitions": 0,
+      "reducedMotionHook": true
+    },
+    "hooks/usePrefersReducedMotion.ts": {
+      "inlineTransitions": 0,
+      "reducedMotionHook": true
+    }
+  },
+  "desktop": {
+    "keyframes": {
+      "slide": "9053e43c6741eaa7"
+    }
+  },
+  "theme": {
+    "startViewTransition": true,
+    "clipPathCircle": true,
+    "timings": [],
+    "reducedMotion": true
+  },
+  "splash": {
+    "transitionDurations": [
+      "0.3s",
+      "0.55s"
+    ],
+    "animationDurations": [
+      "1.1s"
+    ],
+    "keyframes": [
+      "slide"
+    ]
+  }
+}

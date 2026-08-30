@@ -140,6 +140,7 @@ export function RemoteAccessSetting() {
       <div>
         <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{t("settingsConfig.remoteAccess")}</h3>
         <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.remoteAccessDesc")}</p>
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.lanSecurityWarning")}</p>
       </div>
 
       {/* Pairing state / QR */}
@@ -244,17 +245,20 @@ export function RemoteAccessSetting() {
         )}
 
         {tunnelUrl && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
-            <span style={{ color: "var(--text-muted)" }}>{t("settingsConfig.tunnelUrl")}</span>
-            <code style={{ fontFamily: "var(--font-mono)", color: "var(--accent)", wordBreak: "break-all" }}>{tunnelUrl}</code>
-            <button
-              type="button"
-              onClick={() => navigator.clipboard?.writeText(tunnelUrl).catch(() => undefined)}
-              aria-label={t("appShell.copyLink")}
-              style={{ border: "none", background: "none", color: "var(--accent)", cursor: "pointer", display: "inline-flex" }}
-            >
-              <Copy size={14} aria-hidden="true" />
-            </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
+              <span style={{ color: "var(--text-muted)" }}>{t("settingsConfig.tunnelUrl")}</span>
+              <code style={{ fontFamily: "var(--font-mono)", color: "var(--accent)", wordBreak: "break-all" }}>{tunnelUrl}</code>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(tunnelUrl).catch(() => undefined)}
+                aria-label={t("appShell.copyLink")}
+                style={{ border: "none", background: "none", color: "var(--accent)", cursor: "pointer", display: "inline-flex" }}
+              >
+                <Copy size={14} aria-hidden="true" />
+              </button>
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.tunnelDevWarning")}</p>
           </div>
         )}
 

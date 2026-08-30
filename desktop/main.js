@@ -75,6 +75,34 @@ let tray = null;
 let serverProcess = null;
 let quitting = false;
 
+/** Terminate the spawned server and its whole child tree, and WAIT until it
+ *  is really gone. kill() alone terminates only the node process and returns
+ *  immediately — its orphaned children (and, on Windows, the terminating
+ *  process's file handles) can outlive it and lock files the updater must
+ *  replace, which makes the NSIS installer ask the user to close the app by
+ *  hand. */
+function stopServerTree() {
+  if (!serverProcess) return Promise.resolve();
+  const child = serverProcess;
+  serverProcess = null;
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+    child.once("exit", done);
+    if (process.platform === "win32") {
+      try {
+        spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+      } catch {
+        try { child.kill("SIGKILL"); } catch { /* already dead */ }
+      }
+    } else {
+      try { child.kill("SIGTERM"); } catch { /* already dead */ }
+    }
+    // Safety net: never hang the quit/install flow on a stuck child.
+    setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* already dead */ } done(); }, 3000);
+  });
+}
+
 /** Locate a real node binary so the hosted server never shows up as a
  *  second app instance in the Dock (spawning the Electron binary, even with
  *  ELECTRON_RUN_AS_NODE, makes macOS treat it as another OmpWeb). */
@@ -383,10 +411,10 @@ if (!gotLock) {
   });
 
   app.on("will-quit", () => {
-    if (serverProcess) {
-      try { serverProcess.kill("SIGTERM"); } catch { /* already dead */ }
-      serverProcess = null;
-    }
+    // Fire-and-forget: normal quits do not race an installer (updates never
+    // auto-install on quit), but the server tree should still not outlive
+    // the app as orphans.
+    void stopServerTree();
   });
 }
 
@@ -469,9 +497,15 @@ if (app.isPackaged) {
       autoUpdater.downloadUpdate().catch((error) => appLog("updater download: " + error.message));
       return true;
     });
-    ipcMain.handle("desktop-update-apply", () => {
+    ipcMain.handle("desktop-update-apply", async () => {
       // quitAndInstall restarts the app into the new version — the user sees
       // the app close and reopen with the update applied.
+      // The spawned server child must be fully dead FIRST: on Windows the
+      // NSIS installer prompts "cannot close the application, close it
+      // manually" when the server still holds file handles inside the
+      // install directory, because kill() terminates only node.exe itself
+      // and quitAndInstall races its shutdown.
+      await stopServerTree();
       autoUpdater.quitAndInstall(false, true);
       return true;
     });

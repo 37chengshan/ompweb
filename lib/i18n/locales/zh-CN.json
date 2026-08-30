@@ -1464,6 +1464,8 @@
   "chatInput.abortFailed": "停止失败 — 请重试。",
   "settingsConfig.pairDiagnostics": "可达性检查",
   "settingsConfig.pairListenOn": "手机应访问:",
+  "settingsConfig.pairLoopbackWarning": "服务当前只监听 127.0.0.1，手机无法访问！请改用 ompweb --hostname 0.0.0.0 --password <密码>（或 npm run dev:lan）重启",
+  "settingsConfig.pairLanHint": "手机需与本机在同一局域网，点击链接可复制；无法打开时确认服务以 0.0.0.0 启动且防火墙已放行该端口",
   "settingsConfig.pairNoLanIp": "(未找到局域网地址 — 请检查网络适配器)",
   "settingsConfig.firewallRuleOk": "防火墙规则已存在(OmpWeb-<port>)",
   "settingsConfig.firewallRuleMissing": "尚无防火墙规则 — 请以管理员执行下方命令",

@@ -1464,6 +1464,8 @@
   "chatInput.abortFailed": "停止に失敗しました — 再試行してください。",
   "settingsConfig.pairDiagnostics": "到達性チェック",
   "settingsConfig.pairListenOn": "スマホが開くべきURL:",
+  "settingsConfig.pairLoopbackWarning": "サーバーは現在 127.0.0.1 のみで待機しており、スマホからアクセスできません！ompweb --hostname 0.0.0.0 --password <パスワード>（または npm run dev:lan）で再起動してください",
+  "settingsConfig.pairLanHint": "スマホは同じ LAN に接続してください。クリックでコピーできます。開けない場合はサーバーを 0.0.0.0 で待機させ、ファイアウォールでポートを許可してください",
   "settingsConfig.pairNoLanIp": "(LANアドレスが見つかりません — ネットワークアダプターを確認してください)",
   "settingsConfig.firewallRuleOk": "ファイアウォール規則あり(OmpWeb-<port>)",
   "settingsConfig.firewallRuleMissing": "ファイアウォール規則がありません — 管理者で下のコマンドを実行してください",

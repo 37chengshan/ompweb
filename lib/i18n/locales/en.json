@@ -1464,6 +1464,8 @@
   "chatInput.abortFailed": "Failed to stop the agent — please retry.",
   "settingsConfig.pairDiagnostics": "Reachability check",
   "settingsConfig.pairListenOn": "Phone should open:",
+  "settingsConfig.pairLoopbackWarning": "The server currently listens on 127.0.0.1 only — phones cannot reach it! Restart with ompweb --hostname 0.0.0.0 --password <password> (or npm run dev:lan)",
+  "settingsConfig.pairLanHint": "Phone must be on the same LAN; click a link to copy. If it won't open, make sure the server is bound to 0.0.0.0 and the port is allowed through the firewall",
   "settingsConfig.pairNoLanIp": "(no LAN address found — check your network adapter)",
   "settingsConfig.firewallRuleOk": "Firewall rule exists (OmpWeb-<port>)",
   "settingsConfig.firewallRuleMissing": "No firewall rule yet — run the command below as admin",

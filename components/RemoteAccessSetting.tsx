@@ -38,7 +38,14 @@ export function RemoteAccessSetting() {
   const [busy, setBusy] = useState(false);
   const [qr, setQr] = useState<TokenResponse | null>(null);
   const [tunnelUrl, setTunnelUrl] = useState<string | null>(null);
-  const [diagnostics, setDiagnostics] = useState<{ port: string; physicalAddresses: Array<{ name: string; address: string }>; platform: string; firewallRuleExists: boolean | null } | null>(null);
+  const [diagnostics, setDiagnostics] = useState<{
+    port: string;
+    hostname: string | null;
+    physicalAddresses: Array<{ name: string; address: string }>;
+    virtualAddresses: Array<{ name: string; address: string }>;
+    platform: string;
+    firewallRuleExists: boolean | null;
+  } | null>(null);
 
   // Fetch reachability diagnostics alongside the QR so the user can see at a
   // glance which address the phone must reach and whether Windows needs a
@@ -180,20 +187,42 @@ export function RemoteAccessSetting() {
 
             {/* Reachability diagnostics: which address/port the phone must
                 reach, and (Windows) whether a firewall rule exists. */}
-            {diagnostics && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-subtle)", fontSize: 11, color: "var(--text-muted)" }}>
-                <span>{t("settingsConfig.pairDiagnostics")}</span>
-                <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>
-                  {t("settingsConfig.pairListenOn")} :{diagnostics.port}{" "}
-                  {diagnostics.physicalAddresses.map((a) => a.address).join(", ") || t("settingsConfig.pairNoLanIp")}
-                </span>
-                {diagnostics.platform === "win32" && (
-                  <span style={{ color: diagnostics.firewallRuleExists ? "var(--status-ok, #2e9e5b)" : "var(--status-error)" }}>
-                    {diagnostics.firewallRuleExists ? t("settingsConfig.firewallRuleOk") : t("settingsConfig.firewallRuleMissing")}
-                  </span>
-                )}
-              </div>
-            )}
+            {diagnostics && (() => {
+              const lanIps = diagnostics.physicalAddresses.length > 0
+                ? diagnostics.physicalAddresses
+                : diagnostics.virtualAddresses;
+              const loopbackBound = Boolean(diagnostics.hostname && /^(127\.|localhost|::1)/i.test(diagnostics.hostname));
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-subtle)", fontSize: 11, color: "var(--text-muted)" }}>
+                  <span>{t("settingsConfig.pairDiagnostics")}</span>
+                  {loopbackBound && (
+                    <span style={{ color: "var(--status-error)" }}>{t("settingsConfig.pairLoopbackWarning")}</span>
+                  )}
+                  {lanIps.length === 0 ? (
+                    <span style={{ color: "var(--status-warning)" }}>{t("settingsConfig.pairNoLanIp")}</span>
+                  ) : (
+                    <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {lanIps.map(({ address }) => (
+                        <code
+                          key={address}
+                          style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "2px 6px", cursor: "pointer" }}
+                          onClick={() => navigator.clipboard?.writeText(`http://${address}:${diagnostics.port}`).catch(() => undefined)}
+                          title={t("appShell.copyLink")}
+                        >
+                          http://{address}:{diagnostics.port}
+                        </code>
+                      ))}
+                    </span>
+                  )}
+                  <span>{t("settingsConfig.pairLanHint")}</span>
+                  {diagnostics.platform === "win32" && (
+                    <span style={{ color: diagnostics.firewallRuleExists ? "var(--status-ok, #2e9e5b)" : "var(--status-error)" }}>
+                      {diagnostics.firewallRuleExists ? t("settingsConfig.firewallRuleOk") : t("settingsConfig.firewallRuleMissing")}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             {isWindows && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-subtle)", fontSize: 11, color: "var(--text-muted)" }}>

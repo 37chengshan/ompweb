@@ -46,7 +46,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "diagnostics are loopback-only", code: "loopback_only" }, { status: 403 });
   }
 
-  const port = process.env.PORT ?? "30178";
+  // The launcher injects OMP_WEB_PORT (bin/omp-web.js); next dev/start get
+  // the port via -p, so PORT is only set when the host exported it. Prefer
+  // OMP_WEB_PORT or the port would be wrong for CLI installs (30177).
+  const port = process.env.OMP_WEB_PORT ?? process.env.PORT ?? "30178";
+  // The bind hostname is only known when the ompweb launcher set it; a null
+  // hostname (plain next dev/start) means the UI cannot infer the binding.
+  const hostname = process.env.OMP_WEB_HOSTNAME ?? null;
   const lanAddresses = allLanAddresses();
   const virtualAddresses = lanAddresses.filter(({ name }) => VIRTUAL_IFACE_RE.test(name));
   const physicalAddresses = lanAddresses.filter(({ name }) => !VIRTUAL_IFACE_RE.test(name));
@@ -54,6 +60,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     port,
+    hostname,
     serverListening: true, // this handler only runs when the server is up
     lanAddresses,
     physicalAddresses,

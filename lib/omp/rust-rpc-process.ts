@@ -153,7 +153,7 @@ class RustHostManager {
     return this.bootPromise;
   }
 
-  private async controlRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+  async controlRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
     await this.ensure();
     if (!this.control || this.control.destroyed) {
       this.control = createConnection({ host: "127.0.0.1", port: this.port });
@@ -408,6 +408,24 @@ export class RustRpcProcess {
     hostManager.release();
     this.onExit?.({ stderrTail: "" });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Session-domain mutations (doc 15 R10): title-slot rewrite and session file
+// deletion go through the Rust host when the Rust backend is active. The
+// Node file operations remain the explicit fallback (OMPWEB_BACKEND=node).
+// ---------------------------------------------------------------------------
+
+export async function rustSessionRename(root: string, path: string, title: string): Promise<void> {
+  await hostManager.controlRequest("session.rename", { root, path, title });
+}
+
+export async function rustSessionDelete(root: string, path: string): Promise<void> {
+  await hostManager.controlRequest("session.delete", { root, path });
+}
+
+export function rustBackendActive(): boolean {
+  return process.env.OMPWEB_BACKEND !== "node";
 }
 
 /** Factory used by rpc-manager: Rust backend when the flag is set. */

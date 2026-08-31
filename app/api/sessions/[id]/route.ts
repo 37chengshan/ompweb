@@ -23,6 +23,8 @@ import {
 } from "@/lib/session-reader";
 import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
 import { sessionPathKey } from "@/lib/paths";
+import { rustSessionRename, rustSessionDelete, rustBackendActive } from "@/lib/omp/rust-rpc-process";
+import { getAgentDir } from "@/lib/omp/paths";
 import { getRpcSession } from "@/lib/rpc-manager";
 
 // BranchNavigator still traverses recursively, so keep the response tree shallow.
@@ -261,7 +263,16 @@ export async function PATCH(
       const resolved = await resolveSessionPathOr404(id);
       if ("response" in resolved) return resolved.response;
       const filePath = resolved.filePath;
-      setSessionTitle(filePath, name.trim(), "user");
+      if (rustBackendActive()) {
+        try {
+          await rustSessionRename(join(getAgentDir(), "sessions"), filePath, name.trim());
+        } catch {
+          // Rust path unavailable — fall back to the Node title slot write.
+          setSessionTitle(filePath, name.trim(), "user");
+        }
+      } else {
+        setSessionTitle(filePath, name.trim(), "user");
+      }
     }
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
@@ -393,7 +404,15 @@ export async function DELETE(
     // Await the child's exit before unlinking: omp flushes session state on
     // shutdown and would recreate the file if it were still running.
     await getRpcSession(id)?.destroyAndWait?.();
-    deleteSessionFileWithArtifacts(filePath);
+    if (rustBackendActive()) {
+      try {
+        await rustSessionDelete(join(getAgentDir(), "sessions"), filePath);
+      } catch {
+        deleteSessionFileWithArtifacts(filePath);
+      }
+    } else {
+      deleteSessionFileWithArtifacts(filePath);
+    }
     invalidateSessionPathCache(id);
     invalidateSessionListCache();
     return NextResponse.json({

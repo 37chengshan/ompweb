@@ -264,3 +264,14 @@
 **根因**：Rust `session_scan::project_file` 全量 `read_to_string`（真实 sessions 目录 4097 文件/995MB → scan 8s+ 挂起）→ /api/sessions、会话 context 全部超时 → 前端连锁（列表 loading 卡、点击会话报错、文件面板无数据=右侧栏乱）。
 **修复**：`LIST_PREFIX_BYTES=4096` 头窗读取（对齐 Node SESSION_LIST_PREFIX_BYTES；title slot/会话头/首条消息都在头部）；bytes 用 metadata 而非全读。**效果**：/api/sessions 8s+ → **15ms**（546 会话）。Node/项目分组数据完整性 0 缺失（546 会话 cwd/projectRoot/id/date 全非空）。
 **附带**：浏览器工具（ego-browser/browser）主机级不可用（残留进程/资源）——真实验证改走 computer AX + 截图；dev server 重启（热重载状态清理）。
+
+## 最终审查 + 归档（2026-08-31 晚）
+
+**子代理终审**：3 次派发（reviewer×2+task×1）全部因执行环境失败（与历史 8 次一致）——按既定方案主 agent 自审（证据全实测），报告见 `final-review.md`。
+**本阶段新增修复**：
+- 列表加载挂起：Rust scan 全读→4KB 头窗（真实 995MB 目录 8s+→15ms）
+- host 句柄 unref（child/control/stdout——测试进程可退出）
+- omp 缺失引导 UI 增强：三步动画引导、依赖探测提示、win32 策略替代命令、i18n 3 语言
+- 顶部横幅外部链接清理（setup 按钮替代）
+**验证**：npm test 595/593/0/2 skip；最终 dmg 打包并安装 ~/Applications/OmpWeb.app；API 层全链路通过。
+**工具环境备注**：浏览器/窗口枚举工具主机级不可用（残留进程/资源），GUI 视觉验证待用户实测。

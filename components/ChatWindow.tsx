@@ -305,10 +305,18 @@ const CommittedTranscript = memo(function CommittedTranscript({
   const onLayoutChangedRef = useRef(onLayoutChanged);
   onLayoutChangedRef.current = onLayoutChanged;
 
+  // 会话/布局切换（新 key）后的首批测量不补偿视口：新布局的滚动位置由
+  // 恢复/follow 逻辑决定，此时逐批补偿会与滚动恢复竞争造成抖动。首批只
+  // 写入真实高度；之后批次的测量才恢复视口平移补偿。
+  const compensatedLayoutRef = useRef<GroupHeightCache | null>(null);
+
   const flushMeasurements = useCallback(() => {
     measureRafRef.current = null;
     const container = scrollElRef.current;
     let changed = false;
+    const firstBatch = compensatedLayoutRef.current !== layoutRef.current;
+    if (firstBatch) compensatedLayoutRef.current = layoutRef.current;
+    let compensation = 0;
     for (const [groupIdx, el] of measuredGroupsRef.current) {
       const height = el.offsetHeight;
       const oldTop = layoutRef.current.offsetOf(groupIdx);
@@ -316,11 +324,14 @@ const CommittedTranscript = memo(function CommittedTranscript({
       if (delta !== 0) {
         changed = true;
         // 组顶（测量前位置）在视口上方且高度变化：平移视口保持内容稳定，
-        // 否则视口指向的内容会随前缀和偏移。
-        if (container && oldTop < container.scrollTop) {
-          container.scrollTop += delta;
+        // 否则视口指向的内容会随前缀和偏移。同批累计一次赋值，减少重排。
+        if (!firstBatch && container && oldTop < container.scrollTop) {
+          compensation += delta;
         }
       }
+    }
+    if (compensation !== 0 && container) {
+      container.scrollTop += compensation;
     }
     if (changed) onLayoutChangedRef.current?.();
   }, []);

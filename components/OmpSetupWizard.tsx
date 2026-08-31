@@ -11,8 +11,10 @@ type Platform = "darwin" | "linux" | "win32";
 
 type Diagnostics = {
   omp: { installed: boolean; path: string | null; version: string | null };
-  server: { platform: string; arch: string };
+  server: { platform: string; arch: string; tools?: { curl?: boolean; wget?: boolean; powershell?: boolean; bun?: boolean; node?: boolean } };
 };
+
+type SetupStep = "install" | "verify" | "done";
 
 type DesktopBridge = {
   isDesktop?: boolean;
@@ -36,6 +38,7 @@ const INSTALL_COMMANDS: Record<Platform, { command: string; alternative?: string
   },
   win32: {
     command: "irm https://omp.sh/install.ps1 | iex",
+    alternative: "Set-ExecutionPolicy -Scope Process Bypass; irm https://omp.sh/install.ps1 | iex",
   },
 };
 
@@ -97,6 +100,15 @@ export function OmpSetupWizard({ open, onOpenChange, onDetected }: {
 
   const command = useMemo(() => INSTALL_COMMANDS[selectedPlatform], [selectedPlatform]);
   const isInstalled = Boolean(diagnostics?.omp.installed);
+  const tools = diagnostics?.server.tools;
+  // Guided step: install -> verify -> done. `verify` is active while a check
+  // is in flight; `done` when the runtime was detected.
+  const step: SetupStep = isInstalled ? "done" : checking ? "verify" : "install";
+  const STEP_LABELS: Array<{ id: SetupStep; label: string }> = [
+    { id: "install", label: text("ompSetup.stepInstall", "Install") },
+    { id: "verify", label: text("ompSetup.stepVerify", "Verify") },
+    { id: "done", label: text("ompSetup.stepDone", "Done") },
+  ];
 
   const copyCommand = useCallback((value: string) => {
     void copyText(value).then(() => {
@@ -138,7 +150,7 @@ export function OmpSetupWizard({ open, onOpenChange, onDetected }: {
 
         <div style={{ padding: "18px 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", borderRadius: "var(--radius-control)", background: isInstalled ? "color-mix(in srgb, var(--status-success) 12%, var(--bg-subtle))" : "color-mix(in srgb, var(--status-warning) 12%, var(--bg-subtle))", border: `1px solid ${isInstalled ? "color-mix(in srgb, var(--status-success) 35%, var(--border))" : "color-mix(in srgb, var(--status-warning) 35%, var(--border))"}` }}>
-            {isInstalled ? <Check size={16} color="var(--status-success)" aria-hidden="true" /> : <CircleAlert size={16} color="var(--status-warning)" aria-hidden="true" />}
+            {isInstalled ? <span style={{ display: "inline-flex", animation: "ui-scale-in var(--dur-med) var(--ease-out-warm) both" }}><Check size={16} color="var(--status-success)" aria-hidden="true" /></span> : <CircleAlert size={16} color="var(--status-warning)" aria-hidden="true" />}
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 12.5, fontWeight: 650 }}>{isInstalled ? text("ompSetup.detected", "Runtime detected") : text("ompSetup.missing", "Runtime not detected")}</div>
               <div style={{ marginTop: 2, fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>{isInstalled ? `${diagnostics?.omp.version ?? "omp"} · ${diagnostics?.omp.path ?? ""}` : text("ompSetup.refreshHint", "Install it, reopen your terminal, then verify here.")}</div>
@@ -149,6 +161,19 @@ export function OmpSetupWizard({ open, onOpenChange, onDetected }: {
           </div>
 
           {!isInstalled && <>
+            <div role="list" aria-label={text("ompSetup.steps", "Setup steps")} style={{ display: "flex", gap: 6 }}>
+              {STEP_LABELS.map(({ id, label }, idx) => {
+                const state = idx < STEP_LABELS.findIndex((x) => x.id === step) || step === "done" && id === "done" ? "past" : id === step ? "current" : "future";
+                return (
+                  <div key={id} role="listitem" style={{ flex: 1, display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 8, background: state === "future" ? "var(--bg-subtle)" : state === "current" ? "color-mix(in srgb, var(--accent) 12%, var(--bg-panel))" : "color-mix(in srgb, var(--status-success) 10%, var(--bg-panel))", border: `1px solid ${state === "future" ? "var(--border)" : state === "current" ? "color-mix(in srgb, var(--accent) 45%, var(--border))" : "color-mix(in srgb, var(--status-success) 35%, var(--border))"}`, animation: state === "current" ? "ui-fade-in var(--dur-fast) var(--ease-out-warm) both" : undefined }}>
+                    <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", fontSize: 10.5, fontWeight: 700, flexShrink: 0, color: state === "future" ? "var(--text-dim)" : state === "current" ? "var(--accent)" : "var(--status-success)", background: state === "future" ? "var(--bg)" : state === "current" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "color-mix(in srgb, var(--status-success) 12%, transparent)" }}>
+                      {state === "current" && checking ? <LoaderCircle size={11} className="spin" aria-hidden="true" /> : state === "past" ? <Check size={11} aria-hidden="true" /> : idx + 1}
+                    </span>
+                    <span style={{ fontSize: 11.5, fontWeight: state === "future" ? 500 : 650, color: state === "future" ? "var(--text-dim)" : "var(--text)" }}>{label}</span>
+                  </div>
+                );
+              })}
+            </div>
             <div>
               <div style={{ fontSize: 12, fontWeight: 650, marginBottom: 8 }}>{text("ompSetup.choosePlatform", "Choose your platform")}</div>
               <div role="tablist" aria-label={text("ompSetup.choosePlatform", "Choose your platform")} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -160,13 +185,25 @@ export function OmpSetupWizard({ open, onOpenChange, onDetected }: {
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div key={selectedPlatform} style={{ display: "flex", flexDirection: "column", gap: 8, animation: "ui-scale-in var(--dur-fast) var(--ease-out-warm) both" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 650 }}><Terminal size={14} aria-hidden="true" /> {selectedPlatform === "win32" ? text("ompSetup.powershell", "Run in PowerShell") : text("ompSetup.terminal", "Run in Terminal")}</div>
               <div style={{ display: "flex", alignItems: "stretch", overflow: "hidden", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)" }}>
                 <code style={{ flex: 1, padding: "10px 12px", fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.5, overflowX: "auto", color: "var(--text)", whiteSpace: "nowrap" }}>{command.command}</code>
                 <button type="button" onClick={() => copyCommand(command.command)} title={text("ompSetup.copy", "Copy command")} aria-label={text("ompSetup.copy", "Copy command")} style={{ width: 42, border: "none", borderLeft: "1px solid var(--border)", background: "var(--bg)", color: copied ? "var(--status-success)" : "var(--accent)", cursor: "pointer" }}>{copied ? <Check size={15} aria-hidden="true" /> : <Clipboard size={15} aria-hidden="true" />}</button>
               </div>
               <div style={{ display: "flex", gap: 7, alignItems: "flex-start", color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.5 }}><ShieldCheck size={14} aria-hidden="true" style={{ marginTop: 1, flexShrink: 0, color: "var(--accent)" }} />{text("ompSetup.noDeps", "No Node, Bun, or administrator setup is required for the recommended installer. It uses a standalone binary when Bun is unavailable.")}</div>
+              {selectedPlatform !== "win32" && tools && !tools.curl && !tools.wget && (
+                <div style={{ display: "flex", gap: 7, alignItems: "flex-start", padding: "8px 10px", borderRadius: 7, background: "color-mix(in srgb, var(--status-warning) 10%, var(--bg-subtle))", border: "1px solid color-mix(in srgb, var(--status-warning) 30%, var(--border))", color: "var(--text)", fontSize: 11.5, lineHeight: 1.5 }}>
+                  <CircleAlert size={14} aria-hidden="true" style={{ marginTop: 1, flexShrink: 0, color: "var(--status-warning)" }} />
+                  <span>{text("ompSetup.noDownloader", "Neither curl nor wget was found on this system. Install one of them (e.g. via your package manager), or download the OMP binary from the release page and place it on your PATH.")}</span>
+                </div>
+              )}
+              {selectedPlatform === "win32" && tools && !tools.powershell && (
+                <div style={{ display: "flex", gap: 7, alignItems: "flex-start", padding: "8px 10px", borderRadius: 7, background: "color-mix(in srgb, var(--status-warning) 10%, var(--bg-subtle))", border: "1px solid color-mix(in srgb, var(--status-warning) 30%, var(--border))", color: "var(--text)", fontSize: 11.5, lineHeight: 1.5 }}>
+                  <CircleAlert size={14} aria-hidden="true" style={{ marginTop: 1, flexShrink: 0, color: "var(--status-warning)" }} />
+                  <span>{text("ompSetup.noPowershell", "PowerShell was not detected. Windows 10/11 ships with Windows PowerShell 5.1 — open it from the Start menu and run the command there.")}</span>
+                </div>
+              )}
               {command.alternative && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{text("ompSetup.alternative", "Alternative")}: <code style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{command.alternative}</code></div>}
             </div>
 

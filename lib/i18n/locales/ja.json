@@ -1490,5 +1490,11 @@
   "settingsConfig.pairNoLanIp": "(LANアドレスが見つかりません — ネットワークアダプターを確認してください)",
   "settingsConfig.firewallRuleOk": "ファイアウォール規則あり(OmpWeb-<port>)",
   "settingsConfig.firewallRuleMissing": "ファイアウォール規則がありません — 管理者で下のコマンドを実行してください",
-  "appShell.commandPalette": "コマンドパレット"
+  "appShell.commandPalette": "コマンドパレット",
+  "ompSetup.stepInstall": "インストール",
+  "ompSetup.stepVerify": "確認",
+  "ompSetup.stepDone": "完了",
+  "ompSetup.steps": "セットアップ手順",
+  "ompSetup.noDownloader": "curl と wget のどちらも見つかりませんでした。パッケージマネージャ等でインストールするか、リリースページから OMP バイナリをダウンロードして PATH に配置してください。",
+  "ompSetup.noPowershell": "PowerShell が見つかりません。Windows 10/11 には Windows PowerShell 5.1 が同梱されています——スタートメニューから開いてコマンドを実行してください。"
 }

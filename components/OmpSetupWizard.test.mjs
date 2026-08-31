@@ -13,6 +13,19 @@ test("missing OMP recovery offers official commands for macOS, Windows, and Linu
   assert.match(source, /No Node, Bun, or administrator setup/);
 });
 
+test("setup wizard guides install -> verify -> done and warns about missing downloaders", () => {
+  const source = read("./OmpSetupWizard.tsx");
+  assert.match(source, /stepInstall/);
+  assert.match(source, /stepVerify/);
+  assert.match(source, /stepDone/);
+  assert.match(source, /noDownloader/);
+  assert.match(source, /noPowershell/);
+  // Windows powershell path keeps an execution-policy bypass alternative.
+  assert.match(source, /Set-ExecutionPolicy -Scope Process Bypass/);
+  // Platform switch animates via the design-system motion tokens.
+  assert.match(source, /ui-scale-in var\(--dur-fast\)/);
+});
+
 test("missing OMP banner opens local setup rather than an external repository", () => {
   const source = read("./AppShell.tsx");
   const banner = source.slice(source.indexOf("{ompMissing &&"), source.indexOf("{/* Top bar"));

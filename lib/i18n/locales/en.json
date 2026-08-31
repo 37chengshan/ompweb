@@ -1490,5 +1490,11 @@
   "settingsConfig.pairNoLanIp": "(no LAN address found — check your network adapter)",
   "settingsConfig.firewallRuleOk": "Firewall rule exists (OmpWeb-<port>)",
   "settingsConfig.firewallRuleMissing": "No firewall rule yet — run the command below as admin",
-  "appShell.commandPalette": "Command palette"
+  "appShell.commandPalette": "Command palette",
+  "ompSetup.stepInstall": "Install",
+  "ompSetup.stepVerify": "Verify",
+  "ompSetup.stepDone": "Done",
+  "ompSetup.steps": "Setup steps",
+  "ompSetup.noDownloader": "Neither curl nor wget was found on this system. Install one of them (e.g. via your package manager), or download the OMP binary from the release page and place it on your PATH.",
+  "ompSetup.noPowershell": "PowerShell was not detected. Windows 10/11 ships with Windows PowerShell 5.1 — open it from the Start menu and run the command there."
 }

@@ -151,6 +151,12 @@
         "omp-solo-jump-p": "ae3157ed0772b229"
       }
     },
+    "components/OmpSetupWizard.tsx": {
+      "inlineTransitions": 0,
+      "inlineAnimations": [
+        "state"
+      ]
+    },
     "components/PluginsConfig.tsx": {
       "inlineTransitions": 2
     },

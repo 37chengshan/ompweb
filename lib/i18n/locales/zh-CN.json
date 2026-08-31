@@ -1490,5 +1490,11 @@
   "settingsConfig.pairNoLanIp": "(未找到局域网地址 — 请检查网络适配器)",
   "settingsConfig.firewallRuleOk": "防火墙规则已存在(OmpWeb-<port>)",
   "settingsConfig.firewallRuleMissing": "尚无防火墙规则 — 请以管理员执行下方命令",
-  "appShell.commandPalette": "命令面板"
+  "appShell.commandPalette": "命令面板",
+  "ompSetup.stepInstall": "安装",
+  "ompSetup.stepVerify": "验证",
+  "ompSetup.stepDone": "完成",
+  "ompSetup.steps": "安装步骤",
+  "ompSetup.noDownloader": "系统未检测到 curl 或 wget。请先安装其一（如通过包管理器），或从发布页下载 OMP 二进制并放入 PATH。",
+  "ompSetup.noPowershell": "未检测到 PowerShell。Windows 10/11 自带 Windows PowerShell 5.1——从开始菜单打开后运行命令。"
 }

@@ -114,6 +114,10 @@ class RustHostManager {
     this.bootBuffer = "";
     this.bootPromise = new Promise<void>((resolve, reject) => {
       const child = spawn(HOST_BIN, ["--ipc"], { stdio: ["ignore", "pipe", "inherit"] });
+      // The host is a workhorse for this process: it must never keep the
+      // process alive (tests, short-lived scripts). teardown() owns its
+      // lifecycle while the process runs.
+      child.unref();
       this.host = child;
       child.on("error", (err) => {
         this.bootPromise = null;
@@ -132,6 +136,9 @@ class RustHostManager {
         this.bootPromise = null;
         reject(new Error("ompweb-host boot timeout"));
       }, 5000);
+      // The boot stream must not keep the process alive either; events still
+      // fire normally while unref'd.
+      child.stdout.unref();
       child.stdout.on("data", (chunk) => {
         this.bootBuffer += chunk.toString();
         const idx = this.bootBuffer.indexOf("\n");
@@ -157,6 +164,7 @@ class RustHostManager {
     await this.ensure();
     if (!this.control || this.control.destroyed) {
       this.control = createConnection({ host: "127.0.0.1", port: this.port });
+      this.control.unref();
       this.control.on("data", (chunk: Buffer) => this.handleControlData(chunk));
       await new Promise<void>((resolve, reject) => {
         this.control!.once("connect", () => resolve());

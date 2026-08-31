@@ -4,6 +4,7 @@ import { readProxyConfig, resolveEffectiveProxy } from "@/lib/proxy-config";
 import { getRpcSession } from "@/lib/rpc-manager";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import YAML from "yaml";
 
 export const dynamic = "force-dynamic";
@@ -23,12 +24,24 @@ export async function GET() {
     ?? process.env.PORT
     ?? (process.env.NODE_ENV === "production" ? "30177" : "30178");
 
+  // Installer dependency probes (ompSetup): which download/exec tools exist on
+  // this host. The wizard uses these to suggest alternatives when e.g. curl
+  // is absent. Never blocks: a probe failure simply marks the tool missing.
+  const tools = {
+    curl: hasTool("curl"),
+    wget: hasTool("wget"),
+    powershell: hasTool("powershell") || hasTool("pwsh"),
+    bun: hasTool("bun"),
+    node: hasTool("node"),
+  };
+
   return NextResponse.json({
     server: {
       node: process.version,
       platform: process.platform,
       arch: process.arch,
       uptimeSeconds: Math.round(process.uptime()),
+      tools,
     },
     omp: {
       installed: Boolean(ompBin),
@@ -50,6 +63,16 @@ export async function GET() {
     // development/testing can see at a glance what has migrated to Rust.
     backendOwnership: getBackendOwnership(),
   });
+}
+
+function hasTool(name: string): boolean {
+  const cmd = process.platform === "win32" ? "where" : "which";
+  try {
+    execFileSync(cmd, [name], { stdio: "ignore", timeout: 1500 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getBackendOwnership(): Record<string, string> {

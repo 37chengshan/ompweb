@@ -90,3 +90,6 @@ dist-desktop/
 
 # security scanner workspace (never commit)
 .mimosa/
+
+# rust build artifacts
+crates/target/

@@ -13,6 +13,7 @@
 | UI/动画 fixture 矩阵（状态×主题×语言×视口×reduced-motion） | `ui-fixture-matrix.md` | 文档；截图 runner 待工具决策 |
 | 会话 fixture 生成器（Chat-S/L/XL 确定性生成 + sha256） | `scripts/lib/session-fixture-gen.mjs` + `scripts/gen-session-fixtures.mjs` | hash 冻结于 `lib/session-fixture.test.mjs` |
 | 4.x 服务端性能基线 | `perf-baseline.json` + `.md` | `npm run bench:session` |
+| 桌面启动基线（doc 14 T1.9：窗口出现/就绪/首帧/会话恢复 p50/p95） | `startup-baseline.json` + `.md` | 桌面实测（`npx electron .` + `desktop/startup.js` 日志阶段时间戳） |
 | 错误码 contract golden（107 codes） | `lib/contracts/fixtures/error-codes.json` | `node scripts/audit-error-codes.mjs`（`--check` 校验） |
 | Agent/Session contract fixtures（SSE 帧、SessionInfo、envelope、toolCall 归一） | `lib/contracts/fixtures/*` + `lib/contracts/agent-envelope.ts` | `lib/contracts/agent-contract.test.mjs` |
 | ADR 草案 001–007 | `../adr/` | 状态见 `../adr/README.md` |

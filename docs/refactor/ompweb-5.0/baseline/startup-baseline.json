@@ -1,0 +1,54 @@
+{
+  "generated": "2026-08-31T03:00:00Z",
+  "environment": {
+    "os": "macOS darwin 25.6.0",
+    "arch": "arm64",
+    "cpu": "Apple M1 Pro",
+    "app": "4.0.15 (desktop dev electron .)",
+    "server": "next standalone (.next/standalone)",
+    "omp": "18.0.10",
+    "source": "~/Library/Application Support/@37chengshan/ompweb/omp-app.log (startup[+Nms] stage lines)"
+  },
+  "methodology": {
+    "cold": "kill all electron + standalone processes, clear port 30179, truncate log, launch `npx electron .`, poll log for stages",
+    "splash": "same, plus remove splash-shown-* marker so the launch animation runs (video 8s at 1.6x ~ 5s)",
+    "stages": "spawning/listening/assets_warmed/shell_mounted/session_interactive/failed stamped by desktop/startup.js",
+    "window": "window loaded: data:text/html (STARTUP_PAGE) timestamp minus spawning",
+    "note": "shell_mounted/session_interactive come from the Web UI via the preload bridge; a leftover-electron contamination bug was found and eliminated (process cleanup + port-based teardown) before the final runs"
+  },
+  "cold_start_no_splash": {
+    "listening_ms": [1127, 1447, 1507, 1600, 2051, 2188],
+    "listening_p50_ms": 1553.5,
+    "listening_p95_ms": 2188,
+    "window_loaded_ms": [371, 379],
+    "window_loaded_p95_ms": 379,
+    "shell_mounted_ms": [1752, 1815],
+    "session_interactive_ms": [6969, 6985],
+    "shell_to_listening_gap_ms": [305, 308]
+  },
+  "splash_path": {
+    "assets_warmed_ms": [365, 376, 379, 406, 430],
+    "assets_warmed_p95_ms": 430,
+    "listening_ms": [1463, 1488, 1496, 1542],
+    "listening_p50_ms": 1492,
+    "listening_p95_ms": 1542,
+    "shell_mounted_ms": [9204, 9219, 9221],
+    "shell_mounted_p95_ms": 9221,
+    "session_interactive_ms": [11537, 11617, 11821],
+    "session_interactive_p95_ms": 11821
+  },
+  "gates": {
+    "window_appearance_p95_lt_400ms": { "target": 400, "measured_p95": 379, "pass": true },
+    "fade_to_first_frame_p95_lt_100ms": {
+      "target": 100,
+      "measured": null,
+      "pass": "not-directly-measurable",
+      "note": "fade→首帧指 boot skeleton 首帧（HTML 已由 warmUp force-cache 预取，13 assets）；App 完整帧（shell_mounted）含视频期，不作为该指标度量对象"
+    },
+    "listening_p95_lt_2500ms": { "target": 2500, "measured_p95": 2188, "pass": true },
+    "no_white_flash_dark_theme": {
+      "pass": "static-verified",
+      "note": "layout.tsx 预加载脚本同步 data-theme/.dark + boot-skeleton 使用 var(--bg)/var(--text-dim)"
+    }
+  }
+}

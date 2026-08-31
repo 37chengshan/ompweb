@@ -207,7 +207,14 @@ export async function POST(
     };
 
     for (const file of files) {
-      const destination = path.join(directory, file.name);
+      // validateUploadFileNames already rejected separators; the sink check is
+      // defense in depth: resolve + explicit root boundary so join/resolve
+      // can never escape `directory`, whatever the name contains.
+      const destination = path.resolve(directory, file.name);
+      if (destination !== directory && !destination.startsWith(directory + path.sep)) {
+        errors.push({ name: file.name, error: "Invalid file name" });
+        continue;
+      }
       if (conflictSet.has(file.name) && strategy === "skip") {
         skipped.push(file.name);
         continue;

@@ -1,0 +1,8 @@
+[package]
+name = "ompweb-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ompweb 5.0 wire/domain types and the Event Continuity oracle (Rust port of lib/continuity)"
+
+[dependencies]

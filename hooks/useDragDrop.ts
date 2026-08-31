@@ -2,8 +2,13 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 
-function isAttachableDragItem(item: DataTransferItem): boolean {
-  return item.type.startsWith("image/") || item.type === "text/plain" || item.type === "text/markdown";
+export function isAttachableDragItem(item: Pick<DataTransferItem, "kind">): boolean {
+  // Finder and Windows Explorer assign platform-specific (and occasionally
+  // misleading) MIME types during a drag: .json can be application/json and
+  // .ts can be video/mp2t. The composer already validates each File after the
+  // drop, so the drag affordance must key off the reliable file-vs-text signal
+  // rather than a MIME allow-list.
+  return item.kind === "file";
 }
 
 export function useDragDrop(onDrop: (files: File[]) => void) {

@@ -9,7 +9,7 @@ import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ExtensionDialog } from "./ExtensionDialog";
 import { SubagentTranscriptDialog } from "./SubagentTranscriptDialog";
-import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { ChatMinimap } from "./ChatMinimap";
 import { ComposerPanels } from "./ComposerPanels";
 import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
 import { EmptyChatHero } from "./EmptyChatHero";
@@ -23,11 +23,14 @@ import { resolveAvailableThinkingLevels } from "@/lib/thinking-levels";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { OmpBouncingLetter } from "./OmpBouncingLetter";
 import {
-  captureScrollDistance,
-  getNextVisibleCount,
-  restoreScrollTop,
-  VISIBLE_PAGE_SIZE,
-} from "@/lib/chat-lazy-load";
+  buildChatGroups,
+  computeWindow,
+  estimateGroupHeight,
+  GroupHeightCache,
+  VIRTUAL_OVERSCAN,
+  type ChatGroup,
+  type VirtualWindow,
+} from "@/lib/chat-groups";
 
 interface Props {
   session: SessionInfo | null;
@@ -72,24 +75,6 @@ const CHAT_COLUMN_PADDING = 16;
 // loaded messages. Triggering only at the very top made the load invisible:
 // the restore anchored the viewport to the old content, so the user parked on
 // the banner and the load looked like a no-op.
-const LOAD_MORE_ROOT_MARGIN = "400px 0px 0px 0px";
-
-function hasFinalAssistantAnswer(message: AgentMessage): boolean {
-  if (message.role !== "assistant") return false;
-  return splitFinalAssistantBlocks(message as AssistantMessage).answerBlocks.some((block) => (
-    block.type === "image" || (block.type === "text" && block.text.trim().length > 0)
-  ));
-}
-
-function findFinalAssistantIndex(messages: AgentMessage[], userIdx: number, endIdx: number): number {
-  for (let candidateIdx = endIdx - 1; candidateIdx > userIdx; candidateIdx--) {
-    if (hasFinalAssistantAnswer(messages[candidateIdx])) return candidateIdx;
-  }
-  for (let candidateIdx = endIdx - 1; candidateIdx > userIdx; candidateIdx--) {
-    if (messages[candidateIdx]?.role === "assistant") return candidateIdx;
-  }
-  return -1;
-}
 
 function getUserInputText(message: AgentMessage): string | null {
   if (message.role !== "user") return null;
@@ -224,14 +209,15 @@ interface CommittedTranscriptProps {
   sessionId: string | undefined;
   toolCallsDefaultCollapsed: boolean;
   thinkingDisplayMode?: "auto" | "collapsed" | "expanded";
-  visibleCount: number;
-  /** True while the viewport is near the bottom of the conversation. When
-   *  false (user is reading history), the render window anchors its top so
-   *  messages appended by a running agent cannot slide the viewed messages
-   *  out of the window. */
-  nearBottom: boolean;
-  sentinelRef: React.RefObject<HTMLButtonElement | null>;
-  handleLoadMoreClick: () => void;
+  /** Message-group index (doc 14 T2.1): O(n) pass, no JSX. */
+  groups: ChatGroup[];
+  /** Group height cache: measured heights replace estimates (T2.2). */
+  layout: GroupHeightCache;
+  /** Scroll window over groups, computed from scrollTop + viewport. */
+  window: VirtualWindow;
+  scrollContainer: React.RefObject<HTMLDivElement | null>;
+  /** Fired when measured group heights change the layout (window re-derive). */
+  onLayoutChanged?: () => void;
 }
 
 /**
@@ -243,7 +229,7 @@ interface CommittedTranscriptProps {
 const CommittedTranscript = memo(function CommittedTranscript({
   messages, entryIds, conversationMeta, messageRefs, isStreaming, sessionBusy, isNew, forkingEntryId,
   handleFork, handleNavigate, handleEditContent, modelNames, messageCwd, onOpenFile, sessionId,
-  toolCallsDefaultCollapsed, thinkingDisplayMode, visibleCount, nearBottom, sentinelRef, handleLoadMoreClick,
+  toolCallsDefaultCollapsed, thinkingDisplayMode, groups, layout, window: win, scrollContainer, onLayoutChanged,
 }: CommittedTranscriptProps) {
   const { t } = useI18n();
   const { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
@@ -304,45 +290,71 @@ const CommittedTranscript = memo(function CommittedTranscript({
     );
   };
 
-  const rendered: ReactNode[] = [];
-  for (let idx = 0; idx < messages.length;) {
-    const msg = messages[idx];
-    if (!isGroupAnchor(msg)) {
-      rendered.push(renderMessage(idx));
-      idx += 1;
-      continue;
-    }
+  // --- 组高度测量（T2.2）---
+  // 窗口内已挂载组由 ResizeObserver 观察；rAF 合并测量并写回高度缓存。
+  // 窗口上方组的高度变化（测量替换估算）补偿 scrollTop，消除滚动跳动。
+  const measuredGroupsRef = useRef(new Map<number, HTMLDivElement>());
+  const measureRafRef = useRef<number | null>(null);
+  const winRef = useRef(win);
+  winRef.current = win;
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const scrollElRef = useRef<HTMLDivElement | null>(null);
+  scrollElRef.current = scrollContainer.current;
+  const groupRoRef = useRef<ResizeObserver | null>(null);
+  const onLayoutChangedRef = useRef(onLayoutChanged);
+  onLayoutChangedRef.current = onLayoutChanged;
 
-    const userIdx = idx;
-    let endIdx = userIdx + 1;
-    while (endIdx < messages.length && !isGroupAnchor(messages[endIdx])) endIdx += 1;
-
-    const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
-
-    if (finalAssistantIdx === -1) {
-      for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-        rendered.push(renderMessage(renderIdx));
+  const flushMeasurements = useCallback(() => {
+    measureRafRef.current = null;
+    const container = scrollElRef.current;
+    let changed = false;
+    for (const [groupIdx, el] of measuredGroupsRef.current) {
+      const height = el.offsetHeight;
+      const oldTop = layoutRef.current.offsetOf(groupIdx);
+      const delta = layoutRef.current.measure(groupIdx, height);
+      if (delta !== 0) {
+        changed = true;
+        // 组顶（测量前位置）在视口上方且高度变化：平移视口保持内容稳定，
+        // 否则视口指向的内容会随前缀和偏移。
+        if (container && oldTop < container.scrollTop) {
+          container.scrollTop += delta;
+        }
       }
-      idx = endIdx;
-      continue;
     }
+    if (changed) onLayoutChangedRef.current?.();
+  }, []);
 
+  const attachGroupRef = useCallback((groupIdx: number) => (el: HTMLDivElement | null) => {
+    if (!el) return;
+    if (measuredGroupsRef.current.get(groupIdx) === el) return;
+    measuredGroupsRef.current.set(groupIdx, el);
+    const ro = groupRoRef.current ?? (groupRoRef.current = new ResizeObserver(() => {
+      if (measureRafRef.current === null) {
+        measureRafRef.current = requestAnimationFrame(flushMeasurements);
+      }
+    }));
+    ro.observe(el);
+  }, [flushMeasurements]);
+
+  useEffect(() => () => {
+    groupRoRef.current?.disconnect();
+    if (measureRafRef.current !== null) cancelAnimationFrame(measureRafRef.current);
+  }, []);
+
+  // --- 组渲染计划（T2.1：只为窗口内组构造 JSX）---
+  const renderGroup = (group: ChatGroup): ReactNode => {
+    const { userIdx, finalAssistantIdx, processIndices, tailIndices, endIdx } = group;
     const isLiveTail = (sessionBusy || isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
-    if (isLiveTail) {
-      for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-        rendered.push(renderMessage(renderIdx));
-      }
-      idx = endIdx;
-      continue;
+    if (finalAssistantIdx === -1 || isLiveTail) {
+      return (
+        <Fragment key={"g-" + userIdx}>
+          {[userIdx, ...processIndices, ...tailIndices].map((i) => renderMessage(i))}
+        </Fragment>
+      );
     }
-
-    rendered.push(renderMessage(userIdx));
-
-    const processIndices: number[] = [];
-    for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
-      processIndices.push(processIdx);
-    }
-    const visibleProcessIndices = processIndices.filter((processIdx) => hasDisplayableProcessMessage(messages[processIdx]));
+    const nodes: ReactNode[] = [renderMessage(userIdx)];
+    const visibleProcessIndices = processIndices.filter((i) => hasDisplayableProcessMessage(messages[i]));
     const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
     const finalSplit = splitFinalAssistantBlocks(finalAssistant);
     const finalProcessMessage = finalSplit.processBlocks.length > 0
@@ -351,75 +363,50 @@ const CommittedTranscript = memo(function CommittedTranscript({
     const finalAnswerMessage = finalSplit.answerBlocks.length > 0
       ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
       : null;
-
     const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
     if (processCount > 0) {
       const processRefIdx = visibleProcessIndices
-        .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
+        .map((i) => visibleRefIndexByMessage.get(i))
         .find((value): value is number => typeof value === "number")
         ?? (finalAnswerMessage ? undefined : visibleRefIndexByMessage.get(finalAssistantIdx));
-      const processGroup = (
-        <ProcessDetailsGroup
-          messageCount={processCount}
-          toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
-        >
-          {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }))}
-          {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false })}
-        </ProcessDetailsGroup>
-      );
-      rendered.push(
+      nodes.push(
         <div
-          key={`process-group-${userIdx}-${finalAssistantIdx}`}
+          key={"process-group-" + userIdx + "-" + finalAssistantIdx}
           ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
         >
-          {processGroup}
+          <ProcessDetailsGroup
+            messageCount={processCount}
+            toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
+          >
+            {visibleProcessIndices.map((i) => renderMessage(i, { attachRef: false, keyPrefix: "process" }))}
+            {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false })}
+          </ProcessDetailsGroup>
         </div>,
       );
     }
+    if (finalAnswerMessage) nodes.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }));
+    for (const i of tailIndices) nodes.push(renderMessage(i));
+    return <Fragment key={"g-" + userIdx}>{nodes}</Fragment>;
+  };
 
-    if (finalAnswerMessage) {
-      rendered.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }));
-    }
-    for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
-      rendered.push(renderMessage(renderIdx));
-    }
-    idx = endIdx;
+  // 窗口内组 → JSX；上下 spacer 撑起完整滚动条（双向回收 DOM）。
+  const windowGroups: ReactNode[] = [];
+  for (let g = win.startGroup; g < win.endGroup; g++) {
+    windowGroups.push(
+      <div key={"vg-" + g} data-vg={g} ref={attachGroupRef(g)}>
+        {renderGroup(groups[g])}
+      </div>,
+    );
   }
-  // Anchor the render window while the user is reading history: the plain
-  // end-anchored window (total - visibleCount) slides forward as a running
-  // agent appends messages, silently pushing the viewed messages out of the
-  // window with no scroll correction. While not near the bottom, keep the
-  // window's top at the last end-anchored position and let the appended tail
-  // grow into the window; returning to the bottom re-engages the end anchor.
-  const anchorStartIndexRef = useRef<number | null>(null);
-  const { startIndex, hasMore } = useMemo(() => {
-    const total = rendered.length;
-    const endAnchored = Math.max(0, total - visibleCount);
-    if (nearBottom || anchorStartIndexRef.current === null) {
-      anchorStartIndexRef.current = endAnchored;
-      return { startIndex: endAnchored, hasMore: endAnchored > 0 };
-    }
-    const anchored = Math.min(anchorStartIndexRef.current, endAnchored);
-    anchorStartIndexRef.current = anchored;
-    return { startIndex: anchored, hasMore: anchored > 0 };
-  }, [rendered.length, visibleCount, nearBottom]);
+
   return (
     <>
-      {hasMore && (
-        <button
-          ref={sentinelRef}
-          type="button"
-          onClick={handleLoadMoreClick}
-          className="py-3 w-full text-center text-xs text-text-muted hover:text-text transition-colors cursor-pointer"
-        >
-          {t("chatWindow.scrollUpToLoad", { count: startIndex })}
-        </button>
-      )}
-      {rendered.slice(startIndex)}
+      <div aria-hidden style={{ height: win.topPad }} />
+      {windowGroups}
+      <div aria-hidden style={{ height: win.bottomPad }} />
     </>
   );
 });
-
 export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile, terminalOpen = false, onCloseTerminal, onOpenPlan }: Props) {
   const { t, tn } = useI18n();
   const isMobile = useIsMobile();
@@ -573,115 +560,58 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     return () => window.removeEventListener("keydown", handler);
   }, [session, handleCycleModel, handleCycleThinkingLevel]);
 
-  // --- Lazy-load historical messages ---
-  // Only render the last N messages initially. When the user scrolls to the
-  // top, load another page while keeping the scroll position stable.
-  const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
-  const prevSessionKeyForPagingRef = useRef<string | null>(null);
-  const sessionKeyForPaging = session?.id ?? (newSessionCwd ? `new:${newSessionCwd}` : "empty");
-  useEffect(() => {
-    if (prevSessionKeyForPagingRef.current !== sessionKeyForPaging) {
-      prevSessionKeyForPagingRef.current = sessionKeyForPaging;
-      setVisibleCount(VISIBLE_PAGE_SIZE);
-    }
-  }, [sessionKeyForPaging]);
-  const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
-  // True while the viewport is at/near the conversation bottom. Drives the
-  // anchored render window in CommittedTranscript.
-  const [nearBottom, setNearBottom] = useState(true);
+  // --- 虚拟化（doc 14 T2.1/T2.2）---
+  // 消息全量在内存（session-reader 全量解析）；组索引只依赖消息结构，
+  // 流式 token 帧（length/id 不变）复用缓存，不重建。
+  const groupsKey = messages.length + ":" + (messages.length > 0 ? String((messages[messages.length - 1] as { id?: unknown }).id ?? "") : "");
+  const groupsRef = useRef<{ key: string; groups: ChatGroup[] } | null>(null);
+  const groups = useMemo(() => {
+    if (groupsRef.current?.key === groupsKey) return groupsRef.current.groups;
+    const built = buildChatGroups(messages, (m: unknown) => isGroupAnchor(m as AgentMessage));
+    groupsRef.current = { key: groupsKey, groups: built };
+    return built;
+  }, [messages, groupsKey]);
+  // 高度缓存随组索引重建（估算值；窗口内组挂载后立即测量替换）。
+  const layoutRef = useRef<{ key: string; layout: GroupHeightCache } | null>(null);
+  const layout = useMemo(() => {
+    if (layoutRef.current?.key === groupsKey) return layoutRef.current.layout;
+    const built = new GroupHeightCache(groups, messages, estimateGroupHeight);
+    layoutRef.current = { key: groupsKey, layout: built };
+    return built;
+  }, [groups, messages, groupsKey]);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  // Measured heights shift which group sits at any scroll offset; the window
+  // must re-derive when a measurement lands (plain `revision` on the cache
+  // would not re-render React, so this is state).
+  const [layoutRevision, setLayoutRevision] = useState(0);
+  // 滚动位置 → 可见组窗口（O(log n) 二分；双向回收由窗口移动自然完成）。
+  const win = useMemo(() => computeWindow(layout, scrollTop, viewportHeight, VIRTUAL_OVERSCAN), [layout, layoutRevision, scrollTop, viewportHeight]);
+  const scrollRafRef = useRef<number | null>(null);
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      setScrollTop((prev) => (prev === el.scrollTop ? prev : el.scrollTop));
+      setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
+    });
+  }, [scrollContainerRef]);
+  // ResizeObserver 兜底：无滚动时（初始布局/窗口缩放）也同步视口高度。
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    let raf: number | null = null;
-    const update = () => {
-      raf = null;
-      const next = el.scrollTop + el.clientHeight >= el.scrollHeight - 96;
-      setNearBottom((prev) => (prev === next ? prev : next));
-    };
-    const onScroll = () => {
-      if (raf === null) raf = requestAnimationFrame(update);
-    };
+    const update = () => setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
     update();
-    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
     return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (raf !== null) cancelAnimationFrame(raf);
+      ro.disconnect();
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
     };
   }, [scrollContainerRef]);
-  const sentinelRef = useRef<HTMLButtonElement>(null);
-  const prevScrollDistanceRef = useRef<number | null>(null);
-  // "auto" (observer fired while scrolling) anchors the viewport to the old
-  // content; "click" (user pressed the banner) reveals the loaded messages at
-  // the top of the viewport instead.
-  const loadMoreModeRef = useRef<"auto" | "click">("auto");
-
-  // IntersectionObserver on the sentinel banner at the top of the message
-  // list. When the user scrolls near the top, load the next page of older
-  // messages.
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    const container = scrollContainerRef.current;
-    if (!sentinel || !container) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Only auto-load on a genuine upward scroll. On fresh open the
-        // sentinel sits at the top of the rendered window and is visible at
-        // scrollTop = 0 — auto-loading then races the initial scroll-to-bottom
-        // (the capture happens before the scroll, and the restore pins the
-        // viewport to the top of the last page until every page is loaded).
-        if (entries[0]?.isIntersecting && container.scrollTop > 0) {
-          // Save distance from top before prepending to restore scroll later
-          prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
-          loadMoreModeRef.current = "auto";
-          setVisibleCount((prev) => getNextVisibleCount(prev));
-        }
-      },
-      // Expand the root upward so the page loads while the banner is still
-      // below the top edge — by the time the user reaches the top, the loaded
-      // messages are already there and the scroll continues into them.
-      { root: container, rootMargin: LOAD_MORE_ROOT_MARGIN, threshold: 0 }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [visibleCount, messages.length, scrollContainerRef]);
-
-  // After visibleCount increases (more messages prepended), restore the
-  // scroll position so the viewport doesn't jump.
-  useEffect(() => {
-    if (prevScrollDistanceRef.current == null) return;
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    if (loadMoreModeRef.current === "click") {
-      // Explicit request: reveal the loaded page. The browser's scroll
-      // anchoring already kept the previous content in view, so move the
-      // viewport up to the loaded messages.
-      const sentinel = sentinelRef.current;
-      if (sentinel) {
-        // More pages remain: place the banner's bottom edge just above the
-        // viewport so the newest loaded message is at the top.
-        const containerRect = container.getBoundingClientRect();
-        const sentinelRect = sentinel.getBoundingClientRect();
-        container.scrollTop = container.scrollTop + (sentinelRect.bottom - containerRect.top) + 1;
-      } else {
-        // Everything loaded — the banner unmounted; show the top of the session.
-        container.scrollTop = 0;
-      }
-    } else {
-      container.scrollTop = restoreScrollTop(container.scrollHeight, prevScrollDistanceRef.current);
-    }
-    loadMoreModeRef.current = "auto";
-    prevScrollDistanceRef.current = null;
-  }, [visibleCount, scrollContainerRef]);
-
-  const handleLoadMoreClick = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (container) {
-      // Sentinel value so the restore effect above runs and reveals the loaded messages.
-      prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
-    }
-    loadMoreModeRef.current = "click";
-    setVisibleCount((prev) => getNextVisibleCount(prev));
-  }, [scrollContainerRef]);
+  const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
 
   const generationSpeedKey = generationSpeed
     ? `${generationSpeed.current ?? "null"}|${generationSpeed.average ?? "null"}`
@@ -767,7 +697,15 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   // The ref array is sized by the count of user/assistant messages — exactly
   // what conversationMeta's visibleRefIndexByMessage already tallies, so no
   // separate filter pass (which would re-run on every streaming frame).
-  const messageRefs = useMessageRefs(conversationMeta.visibleRefIndexByMessage.size);
+  // Reuses the same array object while the count is unchanged so streaming
+  // token batches do not allocate a fresh Array per render.
+  const messageRefsRef = useRef<(HTMLDivElement | null)[]>([]);
+  const prevRefCount = useRef(0);
+  if (prevRefCount.current !== conversationMeta.visibleRefIndexByMessage.size) {
+    prevRefCount.current = conversationMeta.visibleRefIndexByMessage.size;
+    messageRefsRef.current = new Array<(HTMLDivElement | null)>(conversationMeta.visibleRefIndexByMessage.size).fill(null);
+  }
+  const messageRefs = messageRefsRef;
   // Tool-call ids already rendered by COMMITTED messages — memoized away from
   // the streaming path so a per-token update only re-scans the live bubble.
   const committedToolCallIds = useMemo(() => {
@@ -994,7 +932,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
         {/* Hide the Firefox scrollbar on desktop only: ChatMinimap provides the
             position indicator there, but on mobile there is no minimap and
             users need the scrollbar (Chrome's overlay scrollbar still shows). */}
-        <div ref={scrollContainerRef} className={`flex-1 overflow-y-auto pt-6` + (isMobile ? "" : " [scrollbar-width:none]")}>
+        <div ref={scrollContainerRef} onScroll={handleScroll} className={`flex-1 overflow-y-auto pt-6` + (isMobile ? "" : " [scrollbar-width:none]")}>
           <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH, margin: "0 auto" }}>
               <ExtensionStatusBar statuses={extensionStatuses} />
@@ -1041,10 +979,11 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               sessionId={session?.id ?? sessionIdRef.current ?? undefined}
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
               thinkingDisplayMode={thinkingDisplayMode}
-              visibleCount={visibleCount}
-              nearBottom={nearBottom}
-              sentinelRef={sentinelRef}
-              handleLoadMoreClick={handleLoadMoreClick}
+              groups={groups}
+              layout={layout}
+              window={win}
+              scrollContainer={scrollContainerRef}
+              onLayoutChanged={() => setLayoutRevision((v) => v + 1)}
             />
             {streamState.isStreaming && streamState.streamingMessage && (
               <MessageView
@@ -1129,7 +1068,8 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
             <ChatMinimap
               messages={messages}
               scrollContainer={scrollContainerRef}
-              messageRefs={messageRefs}
+              groups={groups}
+              layout={layout}
             />
           </div>
         )}

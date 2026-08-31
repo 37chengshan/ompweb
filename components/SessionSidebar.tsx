@@ -11,7 +11,7 @@ import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { Tooltip } from "./ui/primitives";
 import { toast } from "./ui/toast";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
+import { clearLastOpenSession, getLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
 import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Smartphone, Trash2, Upload, Wrench } from "lucide-react";
@@ -245,7 +245,10 @@ function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPat
       const res = await fetch("/api/scripts/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: projectPath, command: s.command, mode: "wait" }),
+        // Only the script NAME travels on the wire — the server reads the
+        // command from the local registry, so the body never carries
+        // executable text.
+        body: JSON.stringify({ cwd: projectPath, name: s.name, mode: "wait" }),
       });
       const data = await res.json() as { output?: string; exitCode?: number | null; timedOut?: boolean; error?: string };
       if (!res.ok) {
@@ -1293,14 +1296,17 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     }
   }, []);
 
-  // Auto-select cwd and restore session from URL on first load
+  // Restore URL state first, then the remembered session for the default
+  // workspace. Only after that decision may the parent expose an empty chat.
   useEffect(() => {
     if (skipInitialProjectSelection) return;
+    if (restoredRef.current || loading || !projectsLoadedRef.current) return;
 
-    // If restoring a session, set cwd to match that session
-    if (initialSessionId && !restoredRef.current) {
-      if (allSessions.length === 0) return; // wait for sessions to load
-      const target = allSessions.find((s) => s.id === initialSessionId);
+    const defaultWorkspace = sortedProjects[0]?.path ?? null;
+    const rememberedSessionId = initialSessionId || (defaultWorkspace ? getLastOpenSession(defaultWorkspace) : null);
+
+    if (rememberedSessionId) {
+      const target = allSessions.find((s) => s.id === rememberedSessionId);
       if (target) {
         restoreRetryRef.current = 0;
         restoredRef.current = true;
@@ -1309,7 +1315,9 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         onSelectSession(target, true);
         return;
       }
-      if (restoreRetryRef.current < INITIAL_RESTORE_MAX_ATTEMPTS) {
+      // A URL may identify a just-started session whose JSONL has not flushed
+      // yet. A stale remembered id is discarded immediately instead.
+      if (initialSessionId && restoreRetryRef.current < INITIAL_RESTORE_MAX_ATTEMPTS) {
         restoreRetryRef.current += 1;
         if (restoreRetryTimerRef.current) {
           clearTimeout(restoreRetryTimerRef.current);
@@ -1321,22 +1329,24 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         }, INITIAL_RESTORE_RETRY_MS);
         return;
       }
+      if (!initialSessionId && defaultWorkspace) clearLastOpenSession(defaultWorkspace);
       restoreRetryRef.current = 0;
       restoredRef.current = true;
-      // Session not found — notify parent so it can show the placeholder
       onInitialRestoreDone?.();
     }
-    // No restore target: activate the top project (most recently added) so New
-    // Session and Explorer have a context. When projects have not loaded yet
-    // the ordering is provisional — re-pick once they arrive, unless the user
-    // already activated a project by hand.
+    if (!rememberedSessionId) {
+      restoredRef.current = true;
+      onInitialRestoreDone?.();
+    }
+    // No restored session: activate the top project for browsing, without
+    // implicitly opening a blank conversation.
     if (selectedCwd !== null && !provisionalSelectionRef.current) return;
     const top = sortedProjects[0];
     if (!top) return;
     setSelectedCwd(top.path);
     expandProject(top.path);
     provisionalSelectionRef.current = allSessions.length === 0;
-  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone, sortedProjects, expandProject, loadSessions]);
+  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, loading, onSelectSession, onInitialRestoreDone, sortedProjects, expandProject, loadSessions]);
 
   // Default expansion: when the user has never stored an expansion choice,
   // expand only the active project.

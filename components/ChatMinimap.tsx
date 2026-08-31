@@ -1,41 +1,38 @@
 "use client";
 
 import { memo, useEffect, useRef, useState, useCallback, useMemo, RefObject } from "react";
-import type { AgentMessage, AssistantMessage, TextContent } from "@/lib/types";
+import type { AgentMessage } from "@/lib/types";
+import type { ChatGroup } from "@/lib/chat-groups";
+import type { GroupHeightCache } from "@/lib/chat-groups";
 
 interface Props {
   messages: AgentMessage[];
   scrollContainer: RefObject<HTMLDivElement | null>;
-  messageRefs: RefObject<(HTMLDivElement | null)[]>;
+  /** Message-group index (doc 14 T2.3): node positions come from the height
+   *  cache, not DOM measurement — the transcript is virtualized, so only
+   *  window-visible messages have DOM nodes. */
+  groups: ChatGroup[];
+  layout: GroupHeightCache;
 }
 
 const MINIMAP_WIDTH = 36;
+/** Render cap (doc 14 T2.3): sample when the group count exceeds this. */
+const MAX_NODES = 200;
 
 function getMessagePreview(msg: AgentMessage | Partial<AgentMessage>): string {
   if (msg.role === "user") {
-    const content = msg.content;
-    if (typeof content === "string") return content.slice(0, 200);
-    if (Array.isArray(content)) {
-      return (content as { type: string; text?: string }[])
-        .filter((b) => b.type === "text" && b.text)
-        .map((b) => b.text!)
-        .join("\n")
-        .slice(0, 200);
-    }
-    return "";
+    if (typeof msg.content === "string") return msg.content.trim();
+    const text = (msg.content as Array<{ type?: string; text?: string }>)
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
+      .join(" ")
+      .trim();
+    return text;
   }
   if (msg.role === "assistant") {
-    const blocks = (msg as Partial<AssistantMessage>).content ?? [];
-    const text = blocks
-      .filter((b): b is TextContent => b.type === "text")
-      .map((b) => b.text)
-      .join(" ");
-    if (text) return text.slice(0, 200);
-    const toolNames = blocks
-      .filter((b) => b.type === "toolCall")
-      .map((b) => (b as { type: string; toolName: string }).toolName);
-    if (toolNames.length) return toolNames.join(", ");
-    return "";
+    const blocks = (msg.content as Array<{ type?: string; text?: string }>).filter((b) => b.type === "text");
+    if (blocks.length === 0) return "";
+    return blocks.map((b) => b.text ?? "").join(" ").trim();
   }
   return "";
 }
@@ -50,8 +47,8 @@ function getNodeColor(msg: AgentMessage | Partial<AgentMessage>): { bg: string; 
 function hasTextContent(msg: AgentMessage | Partial<AgentMessage>): boolean {
   if (msg.role === "user") return true;
   if (msg.role === "assistant") {
-    const blocks = (msg as Partial<AssistantMessage>).content ?? [];
-    return blocks.some((b) => b.type === "text");
+    const blocks = (msg.content as Array<{ type?: string; text?: string }>).filter((b) => b.type === "text");
+    return blocks.some((b) => (b.text ?? "").trim().length > 0);
   }
   return false;
 }
@@ -63,29 +60,56 @@ interface NodeInfo {
   index: number;
 }
 
-export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer, messageRefs }: Props) {
+export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer, groups, layout }: Props) {
+  const [visible, setVisible] = useState(false);
   const [scrollRatio, setScrollRatio] = useState(0);
   const [viewportRatio, setViewportRatio] = useState(1);
-  const [visible, setVisible] = useState(false);
-  const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [minimapHovered, setMinimapHovered] = useState(false);
   const [mouseYRatio, setMouseYRatio] = useState<number | null>(null);
   const draggingRef = useRef(false);
   const dragListenersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // RAF gate for mousemove so a pixel-level pointer event doesn't re-render
-  // the whole minimap (every node + tooltip) on every frame.
   const mouseMoveRafRef = useRef<number | null>(null);
   const pendingMouseYRef = useRef<number | null>(null);
 
-  // Historical nodes only: the live streaming bubble is rendered outside the
-  // ref'd message list, so it has no DOM entry to measure — excluding it here
-  // also keeps the minimap from re-rendering on every token frame.
-  const allMessages = messages as (AgentMessage | Partial<AgentMessage>)[];
-  const allMessagesRef = useRef(allMessages);
-  allMessagesRef.current = allMessages;
+  // --- 节点 = 组（每组取首个可展示 user/assistant 消息），位置来自高度
+  // 缓存（T2.3）：O(groups) 派生，无 DOM 读取；超过上限按像素均匀抽样。---
+  const nodes = useMemo<NodeInfo[]>(() => {
+    const total = layout.totalHeight;
+    if (total <= 0) return [];
+    const raw: NodeInfo[] = [];
+    for (let g = 0; g < groups.length; g++) {
+      const group = groups[g];
+      let msg: AgentMessage | null = null;
+      for (let i = group.startIdx; i < group.endIdx; i++) {
+        const candidate = messages[i];
+        if ((candidate.role === "user" || candidate.role === "assistant") && hasTextContent(candidate)) {
+          msg = candidate;
+          break;
+        }
+      }
+      if (!msg) continue;
+      raw.push({
+        topRatio: layout.offsetOf(g) / total,
+        heightRatio: Math.max(layout.height(g) / total, 0.001),
+        msg,
+        index: raw.length,
+      });
+    }
+    if (raw.length <= MAX_NODES) return raw;
+    const step = raw.length / MAX_NODES;
+    const sampled: NodeInfo[] = [];
+    for (let i = 0; i < raw.length; i += step) {
+      const node = raw[Math.floor(i)];
+      sampled.push({ ...node, index: sampled.length });
+    }
+    return sampled;
+  }, [groups, layout, messages]);
 
-  // --- 仅更新视口比例，不读取 DOM ---
+  const nodeColors = useMemo(() => nodes.map((node) => getNodeColor(node.msg)), [nodes]);
+  const nodePreviews = useMemo(() => nodes.map((node) => getMessagePreview(node.msg)), [nodes]);
+
+  // --- 视口比例（无 DOM 节点读取）---
   const updateScroll = useCallback(() => {
     const scrollEl = scrollContainer.current;
     if (!scrollEl) return;
@@ -102,51 +126,6 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     }
   }, [scrollContainer]);
 
-  // --- 节流 DOM 测量（仅消息变化/尺寸变化时触发，最多 150ms 一次）---
-  const measureThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const measureNodes = useCallback(() => {
-    // 节流：150ms 内忽略重复调用
-    if (measureThrottleRef.current) return;
-    measureThrottleRef.current = setTimeout(() => {
-      measureThrottleRef.current = null;
-      const scrollEl = scrollContainer.current;
-      if (!scrollEl) return;
-      const totalH = scrollEl.scrollHeight;
-      if (totalH <= 0) return;
-
-      const refs = messageRefs.current;
-      const newNodes: NodeInfo[] = [];
-      let refIndex = 0;
-      const allMessages = allMessagesRef.current;
-      // Same scroll container for every node — read its geometry once instead
-      // of per message (the loop scales with transcript length).
-      const containerRect = scrollEl.getBoundingClientRect();
-
-      for (let i = 0; i < allMessages.length; i++) {
-        const msg = allMessages[i];
-        if (msg.role !== "user" && msg.role !== "assistant") continue;
-        const el = refs?.[refIndex];
-        refIndex++;
-        if (!hasTextContent(msg)) continue;
-        if (el) {
-          const elRect = el.getBoundingClientRect();
-          const top = elRect.top - containerRect.top + scrollEl.scrollTop;
-          const h = elRect.height;
-          newNodes.push({
-            topRatio: top / totalH,
-            heightRatio: h / totalH,
-            msg,
-            index: newNodes.length,
-          });
-        }
-      }
-      setNodes(newNodes);
-    }, 150);
-  }, [scrollContainer, messageRefs]);
-
-  // scroll 事件 → 只更新视口，不碰 DOM。rAF-coalesce like the mousemove
-  // handler: writing three state values on every scroll event re-renders all
-  // nodes + tooltips dozens of times per second.
   const scrollRafRef = useRef<number | null>(null);
   const flushScroll = useCallback(() => {
     scrollRafRef.current = null;
@@ -170,45 +149,28 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     };
   }, [scrollContainer, flushScroll]);
 
-  // Keep both node positions and viewport ratios in sync with layout changes.
   useEffect(() => {
     const el = scrollContainer.current;
     if (!el) return;
-    const syncLayout = () => {
-      updateScroll();
-      measureNodes();
-    };
+    const syncLayout = () => updateScroll();
     const ro = new ResizeObserver(syncLayout);
     ro.observe(el);
-    // Also observe the scroll content for height changes
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     syncLayout();
-    return () => {
-      ro.disconnect();
-      if (measureThrottleRef.current) {
-        clearTimeout(measureThrottleRef.current);
-        measureThrottleRef.current = null;
-      }
-    };
-  }, [scrollContainer, measureNodes, updateScroll]);
+    return () => ro.disconnect();
+  }, [scrollContainer, updateScroll]);
 
-  // Wait briefly for new message DOM before syncing layout.
+  // New messages / measured group heights shift the layout — resync ratios.
   useEffect(() => {
-    const t = setTimeout(() => {
-      updateScroll();
-      measureNodes();
-    }, 50);
+    const t = setTimeout(updateScroll, 50);
     return () => clearTimeout(t);
-  }, [messages.length, measureNodes, updateScroll]);
+  }, [nodes, updateScroll]);
 
-  // Cancel any pending mousemove flush when the component unmounts.
-  useEffect(() => {
-    return () => {
-      if (mouseMoveRafRef.current !== null) {
-        cancelAnimationFrame(mouseMoveRafRef.current);
-        mouseMoveRafRef.current = null;
-      }
-    };
+  useEffect(() => () => {
+    if (mouseMoveRafRef.current !== null) {
+      cancelAnimationFrame(mouseMoveRafRef.current);
+      mouseMoveRafRef.current = null;
+    }
   }, []);
 
   const scrollToMinimapRatio = useCallback((viewportTopRatio: number) => {
@@ -220,9 +182,6 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     el.scrollTop = (clamped / (1 - viewportRatio)) * scrollable;
   }, [scrollContainer, viewportRatio]);
 
-  // Coalesce mousemove updates to one per animation frame: writing state on
-  // every pointermove event re-renders all nodes + tooltips dozens of times
-  // per second while the cursor is inside the minimap.
   const flushMouseMove = useCallback(() => {
     mouseMoveRafRef.current = null;
     if (pendingMouseYRef.current !== null) {
@@ -266,8 +225,6 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     dragListenersRef.current = { onMove, onUp };
   }, [visible, viewportRatio, scrollRatio, scrollToMinimapRatio]);
 
-  // An interrupted drag (unmount before mouseup) must not leak the window
-  // listeners.
   useEffect(() => () => {
     const listeners = dragListenersRef.current;
     if (listeners) {
@@ -278,48 +235,12 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     draggingRef.current = false;
   }, []);
 
-
-
-  // Compute collision-free tooltip positions for all nodes
-  const TOOLTIP_HEIGHT = 22;
-  const TOOLTIP_GAP = 2;
-  const minimapHeightPx = containerRef.current?.clientHeight ?? 600;
-
-  // Per-node colors and previews are pure functions of each node's message;
-  // memoize so they aren't recomputed on every scroll/mousemove re-render.
-  const nodeColors = useMemo(() => nodes.map((node) => getNodeColor(node.msg)), [nodes]);
-  const nodePreviews = useMemo(() => nodes.map((node) => getMessagePreview(node.msg)), [nodes]);
-
-  const tooltipPositions = useMemo(() => {
-    if (!minimapHovered || nodes.length === 0) return [];
-    // Initial positions: centered on the dot
-    const positions = nodes.map((node) =>
-      Math.round(node.topRatio * minimapHeightPx - TOOLTIP_HEIGHT / 2)
-    );
-    // Iterative push-apart to resolve overlaps (top-to-bottom pass, then bottom-to-top)
-    for (let pass = 0; pass < 10; pass++) {
-      for (let i = 1; i < positions.length; i++) {
-        const minTop = positions[i - 1] + TOOLTIP_HEIGHT + TOOLTIP_GAP;
-        if (positions[i] < minTop) positions[i] = minTop;
-      }
-      for (let i = positions.length - 2; i >= 0; i--) {
-        const maxTop = positions[i + 1] - TOOLTIP_HEIGHT - TOOLTIP_GAP;
-        if (positions[i] > maxTop) positions[i] = maxTop;
-      }
-    }
-    // Clamp all to minimap bounds
-    for (let i = 0; i < positions.length; i++) {
-      positions[i] = Math.max(0, Math.min(minimapHeightPx - TOOLTIP_HEIGHT, positions[i]));
-    }
-    return positions;
-  }, [minimapHovered, nodes, minimapHeightPx]);
-
   if (!visible) return null;
 
   const viewportBoxTop = scrollRatio * (1 - viewportRatio) * 100;
   const viewportBoxHeight = viewportRatio * 100;
 
-  // Find the node closest to the current mouse position
+  // 最近节点（悬停时只渲染这一个 tooltip——T2.3，删除全节点碰撞处理）。
   const nearestIndex = mouseYRatio !== null && nodes.length > 0
     ? nodes.reduce((best, node) => {
         return Math.abs(node.topRatio - mouseYRatio) < Math.abs(nodes[best].topRatio - mouseYRatio) ? node.index : best;
@@ -360,7 +281,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         }}
       />
 
-      {/* Message nodes */}
+      {/* Message nodes (sampled ≤ MAX_NODES) */}
       {nodes.map((node) => {
         const color = nodeColors[node.index] ?? getNodeColor(node.msg);
         const isNearest = minimapHovered && nearestIndex === node.index;
@@ -370,7 +291,6 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         return (
           <div
             key={node.index}
-
             style={{
               position: "absolute",
               top: `${dotTop}%`,
@@ -398,8 +318,6 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
                 transform: isNearest ? "scale(1.6)" : "scale(1)",
               }}
             />
-
-
           </div>
         );
       })}
@@ -418,65 +336,49 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         }}
       />
 
-      {/* Tooltips for all nodes, collision-free positions */}
-      {minimapHovered && nodes.map((node, i) => {
-        const preview = nodePreviews[i] ?? getMessagePreview(node.msg);
-        const color = nodeColors[i] ?? getNodeColor(node.msg);
-        const isNearest = nearestIndex === node.index;
-        if (!preview || tooltipPositions.length === 0) return null;
+      {/* Tooltip: only the node nearest the cursor (T2.3) */}
+      {minimapHovered && nearestIndex !== null && nodes[nearestIndex] && (() => {
+        const node = nodes[nearestIndex];
+        const preview = nodePreviews[nearestIndex] ?? getMessagePreview(node.msg);
+        if (!preview) return null;
+        const color = nodeColors[nearestIndex] ?? getNodeColor(node.msg);
+        const tooltipTop = Math.max(2, Math.min(
+          containerRef.current ? containerRef.current.clientHeight - 30 : 200,
+          node.topRatio * (containerRef.current?.clientHeight ?? 600) - 11,
+        ));
         return (
           <div
-            key={node.index}
+            key={`tt-${node.index}`}
             style={{
               position: "absolute",
-              top: tooltipPositions[i],
-              right: "100%",
-              marginRight: 6,
-              background: "var(--bg)",
-              borderTop: `1px solid ${isNearest ? color.border : "var(--border)"}`,
-              borderRight: `1px solid ${isNearest ? color.border : "var(--border)"}`,
-              borderBottom: `1px solid ${isNearest ? color.border : "var(--border)"}`,
-              borderLeft: `2px solid ${color.border}`,
-              borderRadius: 4,
-              padding: "2px 7px",
-              width: 200,
-              zIndex: 100,
-              pointerEvents: "none",
-              opacity: isNearest ? 1 : 0.45,
+              left: 40,
+              top: tooltipTop,
+              zIndex: 5,
+              maxWidth: 280,
+              padding: "6px 10px",
+              borderRadius: "var(--radius-control)",
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow-pop)",
               transition: "top var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
+              fontSize: 11,
+              lineHeight: 1.45,
+              color: "var(--text-muted)",
+              whiteSpace: "pre-wrap",
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: 4,
+              WebkitBoxOrient: "vertical",
+              pointerEvents: "none",
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                color: isNearest ? "var(--text)" : "var(--text-muted)",
-                lineHeight: 1.4,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {preview}
-            </div>
+            <span style={{ color: color.border, fontWeight: 600, marginRight: 6 }}>
+              {node.msg.role === "user" ? "Q" : "A"}
+            </span>
+            {preview}
           </div>
         );
-      })}
+      })()}
     </div>
   );
 });
-
-// Hook to create a stable array of refs for messages
-export function useMessageRefs(count: number): RefObject<(HTMLDivElement | null)[]> {
-  const refs = useRef<(HTMLDivElement | null)[]>([]);
-  // Reuse the same array object while the count is unchanged: ChatWindow
-  // renders (incl. every streaming token batch) otherwise allocate a fresh
-  // Array per render even though no slot changes.
-  const prevCount = useRef(0);
-  if (prevCount.current !== count) {
-    prevCount.current = count;
-    const next = Array(count);
-    for (let i = 0; i < count; i += 1) next[i] = refs.current[i] ?? null;
-    refs.current = next;
-  }
-  return refs;
-}

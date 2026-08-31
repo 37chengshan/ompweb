@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { resolveOmpBin, getOmpVersion } from "@/lib/omp/omp-cli";
 import { readProxyConfig, resolveEffectiveProxy } from "@/lib/proxy-config";
 import { getRpcSession } from "@/lib/rpc-manager";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import YAML from "yaml";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +46,31 @@ export async function GET() {
       port: webPort,
       url: `http://127.0.0.1:${webPort}`,
     },
+    // Backend Ownership dashboard (doc 15 / v4 P40): per-domain authority so
+    // development/testing can see at a glance what has migrated to Rust.
+    backendOwnership: getBackendOwnership(),
   });
+}
+
+function getBackendOwnership(): Record<string, string> {
+  try {
+    const raw = readFileSync(join(process.cwd(), "backend-ownership.yaml"), "utf8");
+    const doc = YAML.parse(raw);
+    const domains: Record<string, string> = {};
+    if (doc && typeof doc === "object" && "domains" in doc && doc.domains && typeof doc.domains === "object") {
+      for (const [name, entry] of Object.entries(doc.domains)) {
+        if (entry && typeof entry === "object" && "authority" in entry) {
+          const authority = entry.authority;
+          domains[name] = typeof authority === "string" ? authority : "unknown";
+        } else {
+          domains[name] = "unknown";
+        }
+      }
+    }
+    return domains;
+  } catch {
+    return {};
+  }
 }
 
 function getRpcSessionIds(): string[] {

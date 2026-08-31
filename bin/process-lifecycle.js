@@ -15,15 +15,20 @@ function getSignalExitCode(signal) {
 
 function killChildTree(child, force, platform = process.platform) {
   if (platform === "win32" && child.pid) {
-    const reaper = spawn("taskkill", ["/pid", String(child.pid), "/t", ...(force ? ["/f"] : [])], {
-      windowsHide: true,
-      stdio: "ignore",
-    });
-    reaper.once("error", () => {
-      try { child.kill(force ? "SIGKILL" : "SIGTERM"); } catch {}
-    });
-    reaper.unref?.();
-    return;
+    // The pid is OS-assigned at spawn time (numeric), never attacker data; the
+    // integer guard keeps the taskkill argv provably numeric-only.
+    const pid = child.pid;
+    if (Number.isInteger(pid) && pid > 0) {
+      const reaper = spawn("taskkill", ["/pid", String(pid), "/t", ...(force ? ["/f"] : [])], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+      reaper.once("error", () => {
+        try { child.kill(force ? "SIGKILL" : "SIGTERM"); } catch {}
+      });
+      reaper.unref?.();
+      return;
+    }
   }
 
   try { child.kill(force ? "SIGKILL" : "SIGTERM"); } catch {}

@@ -1,0 +1,102 @@
+# ompweb 5.0 Event Continuity conformance script (doc 02 Slice 1 / doc 06 slice 1)
+# Consumed by BOTH implementations; assertions must pass identically:
+#   - TypeScript oracle: lib/continuity.test.mjs  (MemoryJournal / MutationLedger)
+#   - Rust port:         crates/ompweb-protocol/tests/conformance.rs
+# Grammar (space-separated tokens; lines starting with # are comments):
+#   scenario <name>
+#   append <stream> <type> <reliable|coalesced|ephemeral> <payloadToken>
+#   snapshot <stream> <stateVersion>
+#   begin_resume <stream>
+#   drain_tail <stream> <expectBufferedAfter:0>
+#   resume <clientEpoch> <stream:seq,...>   -> assert plans in order
+#   expect_plan <KIND> <stream> <seqs|->    (REPLAY/SNAPSHOT_THEN_REPLAY seqs are replay seqs)
+#   view <stream> <seq,...>                 (journal view after ops)
+#   accept <device> <msgId> <hash> <accepted|duplicate|conflict|retention_expired>
+#   settle <device> <msgId> <committed|failed|unknown>
+#   expire <nowTicks>
+
+scenario normal_replay
+append session:s1 e1 reliable p1
+append session:s1 e2 reliable p2
+append session:s1 e3 reliable p3
+append session:s1 e4 reliable p4
+append session:s1 e5 reliable p5
+resume epoch-1 session:s1:2
+expect_plan REPLAY session:s1 3,4,5
+view session:s1 1,2,3,4,5
+
+scenario no_change_and_cursor_ahead
+append session:s1 e1 reliable p1
+resume epoch-1 session:s1:1
+expect_plan NO_CHANGE session:s1 -
+resume epoch-1 session:s1:9
+expect_plan PROTOCOL_ERROR session:s1 -
+
+scenario epoch_mismatch_full_snapshot
+append session:s1 e1 reliable p1
+resume epoch-old session:s1:1
+expect_plan FULL_SNAPSHOT -
+
+scenario snapshot_fallback
+append session:s1 e1 reliable p1
+append session:s1 e2 reliable p2
+append session:s1 e3 reliable p3
+append session:s1 e4 reliable p4
+snapshot session:s1 1
+append session:s1 e5 reliable p5
+append session:s1 e6 reliable p6
+resume epoch-1 session:s1:1
+expect_plan SNAPSHOT_THEN_REPLAY session:s1 5,6
+view session:s1 5,6
+
+scenario coalesced_keeps_latest
+append session:s1 message_start reliable p1
+append session:s1 message_update coalesced u1
+append session:s1 message_update coalesced u2
+append session:s1 message_update coalesced u3
+append session:s1 message_end reliable p2
+# replacing coalesced values keeps the family slot; the latest event carries
+# the newest seq, so the view shows 1,4,5 (update slot + end).
+view session:s1 1,4,5
+resume epoch-1 session:s1:0
+expect_plan REPLAY session:s1 1,4,5
+
+scenario live_tail_merge
+append session:s1 e1 reliable p1
+append session:s1 e2 reliable p2
+append session:s1 e3 reliable p3
+begin_resume session:s1
+resume epoch-1 session:s1:1
+expect_plan REPLAY session:s1 2,3
+append session:s1 message_update coalesced live1
+append session:s1 presence ephemeral typ1
+append session:s1 agent_end reliable p4
+drain_tail session:s1 0
+view session:s1 1,2,3,4,6
+
+scenario tail_overflow_drops_oldest
+tail_max 3
+begin_resume session:s1
+append session:s1 e1 reliable p1
+append session:s1 e2 reliable p2
+append session:s1 e3 reliable p3
+append session:s1 e4 reliable p4
+append session:s1 e5 reliable p5
+drain_tail session:s1 0
+view session:s1 3,4,5
+
+scenario mutation_lifecycle
+append session:s1 e1 reliable p1
+accept d1 m1 hash-a accepted
+accept d1 m1 hash-a duplicate
+accept d1 m1 hash-b conflict
+settle d1 m1 committed
+accept d1 m1 hash-a duplicate
+accept d1 m2 hash-x accepted
+settle d1 m2 unknown
+reaccept d1 m2 hash-x accepted
+reaccept d1 m2 hash-z conflict
+accept d1 m3 hash-c accepted
+expire 2000
+accept d1 m4 hash-d accepted
+accept d1 m3 hash-c retention_expired

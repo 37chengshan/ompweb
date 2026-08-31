@@ -84,11 +84,14 @@ export default function RootLayout({
             position: "fixed",
             inset: 0,
             zIndex: 9999,
-            background: "#faf9f6",
+            // T1.5: the pre-hydration theme script already applied
+            // data-theme/.dark, so CSS variables match the user's theme —
+            // dark-theme cold starts no longer flash white.
+            background: "var(--bg, #faf9f6)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "#8a867e",
+            color: "var(--text-dim, #8a867e)",
             fontSize: 13,
             fontFamily: "system-ui, sans-serif",
           }}

@@ -1,0 +1,10 @@
+[package]
+name = "ompweb-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ompweb 5.0 persistent journal + projection storage (doc 02/06)"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+ompweb-protocol = { path = "../ompweb-protocol" }

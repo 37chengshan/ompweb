@@ -30,6 +30,23 @@ contextBridge.exposeInMainWorld("ompWebDesktop", {
     ipcRenderer.on("server-ready", listener);
     return () => ipcRenderer.removeListener("server-ready", listener);
   },
+  // `server-ready` can arrive before splash.html installs its listener. Read
+  // the latched state once after subscribing so a fast server never leaves
+  // the splash waiting for an event it missed.
+  isServerReady: () => ipcRenderer.invoke("desktop-server-ready-state"),
+  // Terminal startup failure (doc 14 T1.4): splash shows an in-page panel
+  // with the reason, log location, retry and quit.
+  onServerError: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("server-error", listener);
+    return () => ipcRenderer.removeListener("server-error", listener);
+  },
+  // Re-run the standalone server after a failure (max 3 retries).
+  retryStartup: () => ipcRenderer.invoke("startup-retry"),
+  // Renderer-reported startup stages (T1.3): assets_warmed (splash),
+  // shell_mounted / session_interactive (Web UI).
+  startupStage: (stage) => ipcRenderer.send("startup-stage", stage),
+  getStartupReport: () => ipcRenderer.invoke("get-startup-report"),
 });
 
 // Native folder picker bridge (SessionSidebar's DirectoryPicker prefers it

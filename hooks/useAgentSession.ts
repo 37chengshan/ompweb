@@ -13,6 +13,7 @@ import type {
 import { normalizeToolCalls } from "@/lib/normalize";
 import type { ThinkingModelMeta } from "@/lib/thinking-levels";
 import { sendAgentCommand, setSessionAdvisorSpawn } from "@/lib/agent-client";
+import { createHttpSseClient, type OmpwebClient, type EventSubscription } from "@/lib/client";
 import { translate } from "@/lib/i18n";
 import { toast } from "@/components/ui/toast";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
@@ -23,7 +24,9 @@ import { expandWebSlashCommand } from "@/lib/web-slash-commands";
 import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } from "@/lib/web-mode-state";
 import type { HostToolDefinition, HostUriSchemeDefinition, RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 import { isRecord } from "@/lib/type-guards";
-import { subscribeSessionsChanged } from "@/lib/session-change-bus";
+
+// Stable across renders and HMR: the default transport for every hook instance.
+const defaultHttpClient: OmpwebClient = createHttpSseClient();
 import {
   parseSubagentActivityEvent,
   parseSubagentLifecycle,
@@ -311,7 +314,8 @@ export interface CompactResultInfo {
 export interface SlashCommandInfo {
   name: string;
   description?: string;
-  source: "extension" | "prompt" | "skill";
+  /** ompBuiltin = full OMP registry surfaced (5.0 doc 08 Slice 1). */
+  source: "extension" | "prompt" | "skill" | "ompBuiltin";
   sourceInfo?: {
     path: string;
     source: string;
@@ -342,6 +346,8 @@ export interface UseAgentSessionOptions {
   setToolPreset?: (preset: "none" | "default" | "full") => void;
   /** Opens a file in the web UI's file viewer (used by the open_file host tool). */
   onOpenFile?: (filePath: string, name: string, sessionId?: string) => void;
+  /** Transport override (tests / future LocalHost adapter). Defaults to HTTP+SSE. */
+  client?: OmpwebClient;
 }
 
 export type ThinkingLevelOption = string;
@@ -369,7 +375,7 @@ type EventStreamConnectionStatus = "connected" | "timeout" | "closed";
 
 type EventStreamConnectionResult = {
   status: EventStreamConnectionStatus;
-  source: EventSource;
+  source: EventSubscription;
 };
 
 class EventStreamConnectionError extends Error {
@@ -567,16 +573,18 @@ type SlashCommandsResponse = {
   commands?: RpcAvailableSlashCommand[];
 };
 
-// Map omp's slash-command sources onto the palette's grouping. Builtins are
-// skipped: the client intercepts its own builtin set, and other omp builtins
-// still work when typed (omp executes them via the prompt command).
+// Map omp's slash-command sources onto the palette's grouping. 5.0 doc 08
+// Slice 1: the full OMP registry is surfaced — builtins land in the
+// ompBuiltin group (ChatInput remaps + dedups names the client intercepts),
+// so newly installed OMP commands appear without an ompweb release.
 function toSlashCommandInfo(command: RpcAvailableSlashCommand): SlashCommandInfo | null {
-  if (command.source === "builtin") return null;
   const source: SlashCommandInfo["source"] = command.source === "extension"
     ? "extension"
     : command.source === "skill"
       ? "skill"
-      : "prompt";
+      : command.source === "builtin"
+        ? "ompBuiltin"
+        : "prompt";
   return { name: command.name, description: command.description, source };
 }
 
@@ -586,6 +594,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
     onOpenFile,
   } = opts;
+  // 5.0 doc 01 Slice 2: the hook consumes the transport-agnostic client
+  // interface; HttpSseAdapter is the default so behavior is unchanged.
+  const client = useMemo(() => opts.client ?? defaultHttpClient, [opts.client]);
   const reducedMotion = usePrefersReducedMotion();
   const isNew = session === null && newSessionCwd !== null;
 
@@ -663,7 +674,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const activeSubagentCount = subagents.filter((subagent) => subagent.source !== "history" && subagent.status === "started").length;
 
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<EventSubscription | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
   // Guards stale branch/leaf context responses: two rapid navigate clicks must
@@ -1281,13 +1292,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // its turns, so reload the transcript when the watcher reports that this
   // session's file grew. Skipped while an event stream is attached: that
   // stream is already the authority and a reload would fight it.
+  // 5.0 W1: the channel is reached through the client interface so adapters
+  // own the transport (the HTTP adapter delegates to the local bus).
   useEffect(() => {
-    return subscribeSessionsChanged((sessionIds) => {
+    return client.system.subscribeSessionsChanged((sessionIds) => {
       const sid = sessionIdRef.current;
       if (!sid || eventSourceRef.current || !sessionIds.includes(sid)) return;
       void loadSession(sid);
     });
-  }, [loadSession]);
+  }, [client, loadSession]);
 
   // Reconnect actions captured after their definitions (host-tool and URI
   // registrations are per-wrapper and are not persisted by omp, and the
@@ -1302,64 +1315,63 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     // A pending coalesced update belongs to the stream being replaced.
     eventCoalescer.reset();
-    const es = new EventSource(`/api/agent/${encodeURIComponent(sid)}/events`);
-    eventSourceRef.current = es;
-
-    return new Promise((resolve) => {
-      let settled = false;
-      const settle = (status: EventStreamConnectionStatus) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        resolve({ status, source: es });
-      };
-      const timeout = setTimeout(() => settle("timeout"), EVENT_STREAM_CONNECT_TIMEOUT_MS);
-
-      // The stream is live as soon as the response headers land, whether or not
-      // the server also sends an explicit `connected` frame.
-      es.onopen = () => settle("connected");
-
-      es.onmessage = (e) => {
-        try {
-          const event = JSON.parse(e.data) as AgentEvent;
-          if (event.type === "connected") settle("connected");
-          // message_update frames arrive at network rate (often 30-100+/s);
-          // the coalescer buffers the latest one and dispatches at display
-          // rate, flushing synchronously before any other event type.
-          eventCoalescer.push(event);
-        } catch {
-          // ignore
+    const { promise, resolve } = Promise.withResolvers<EventStreamConnectionResult>();
+    let settled = false;
+    const timeout: ReturnType<typeof setTimeout> | undefined = setTimeout(
+      () => settle("timeout"),
+      EVENT_STREAM_CONNECT_TIMEOUT_MS,
+    );
+    const settle = (status: EventStreamConnectionStatus) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve({ status, source: subscription });
+    };
+    const subscription = client.agent.subscribeSessionEvents(sid, {
+      // The stream is live as soon as the response headers land, whether or
+      // not the server also sends an explicit `connected` frame.
+      onOpen: () => settle("connected"),
+      onConnected: (frame) => {
+        settle("connected");
+        eventCoalescer.push(frame as unknown as AgentEvent);
+      },
+      onEvent: (frame) => {
+        // message_update frames arrive at network rate (often 30-100+/s);
+        // the coalescer buffers the latest one and dispatches at display
+        // rate, flushing synchronously before any other event type.
+        eventCoalescer.push(frame as unknown as AgentEvent);
+      },
+      onDestroyed: (frame) => eventCoalescer.push(frame as unknown as AgentEvent),
+      onDown: ({ fatal }) => {
+        if (!fatal) return;
+        // Fatal error (404/500/content-type mismatch): browser won't
+        // auto-reconnect. Settle the Promise and manually reconnect for
+        // already-running sessions. Keep the timer in a ref so unmount or a
+        // session switch cancels it — otherwise an orphaned stream respawns
+        // (and can 404-loop) after the hook is torn down.
+        settle("closed");
+        if (eventSourceRef.current === subscription && agentRunningRef.current) {
+          eventSourceRef.current = null;
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            if (agentRunningRef.current && sessionIdRef.current === sid) {
+              void connectEvents(sid);
+              // The reconnect restores the event stream, but host tools, URI
+              // schemes, and the subagent roster were registered on the old
+              // connection — re-register them so the agent keeps working.
+              reconnectActionsRef.current?.(sid);
+            }
+          }, 1000);
         }
-      };
-      es.onerror = () => {
-        if (es.readyState === EventSource.CLOSED) {
-          // Fatal error (404/500/content-type mismatch): browser won't
-          // auto-reconnect. Settle the Promise and manually reconnect for
-          // already-running sessions. Keep the timer in a ref so unmount or a
-          // session switch cancels it — otherwise an orphaned stream respawns
-          // (and can 404-loop) after the hook is torn down.
-          settle("closed");
-          if (eventSourceRef.current === es && agentRunningRef.current) {
-            eventSourceRef.current = null;
-            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-            reconnectTimerRef.current = setTimeout(() => {
-              reconnectTimerRef.current = null;
-              if (agentRunningRef.current && sessionIdRef.current === sid) {
-                void connectEvents(sid);
-                // The reconnect restores the event stream, but host tools, URI
-                // schemes, and the subagent roster were registered on the old
-                // connection — re-register them so the agent keeps working.
-                reconnectActionsRef.current?.(sid);
-              }
-            }, 1000);
-          }
-        }
-        // Recoverable errors (CONNECTING): let EventSource auto-reconnect.
+        // Recoverable errors (CONNECTING): let the adapter auto-reconnect.
         // The timeout above resolves only to let callers decide whether this
         // connection must be ready before they continue.
-      };
+      },
     });
-  }, [eventCoalescer]);
+    eventSourceRef.current = subscription;
+    return promise;
+  }, [client, eventCoalescer]);
 
   const respondToExtensionUi = useCallback(async (
     request: ExtensionUiDialogRequest,
@@ -1628,7 +1640,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       clearTimeout(slowNotice);
     }
-    if (result.status === "connected" || result.source.readyState === EventSource.OPEN) return;
+    if (result.status === "connected" || result.source.isOpen) return;
     if (eventSourceRef.current === result.source) eventSourceRef.current = null;
     result.source.close();
     throw new EventStreamConnectionError(result.status);

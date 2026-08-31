@@ -2141,6 +2141,19 @@ html.dark .dropdown-surface :is(select, option) {
   box-shadow: var(--shadow-modal) !important;
   transform: translateY(-2px);
 }
+.toast-card[data-ending-style] {
+  opacity: 0;
+  transform: translate3d(14px, 4px, 0) scale(0.98);
+}
+@keyframes update-toast-in {
+  from { opacity: 0; transform: translate3d(24px, 10px, 0) scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  65% { box-shadow: 0 10px 28px -12px color-mix(in srgb, var(--accent) 42%, transparent); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); box-shadow: var(--shadow-pop); }
+}
+.toast-card.toast-update {
+  animation: update-toast-in var(--dur-slow) var(--ease-out-warm) both;
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border)) !important;
+}
 
 .live-status-dot {
   position: relative;
@@ -2808,6 +2821,5 @@ html[data-animation-thinking="false"] .thinking-icon-active {
   animation: none !important;
   transform: none !important;
 }
-
 
 

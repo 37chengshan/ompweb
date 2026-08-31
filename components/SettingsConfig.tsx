@@ -574,11 +574,23 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   }, [onOmpUpdateAvailabilityChange]);
 
   const checkForAppUpdate = useCallback(async (force = false) => {
-    // Desktop app: ask the native updater (GitHub releases feed) instead of
-    // the npm registry; its status events drive the card and the badge.
+    // Desktop app: the native updater (GitHub releases feed) drives the
+    // download/apply flow, but GitHub is unreachable on some networks — the
+    // card must never hang on "version unavailable" waiting for it. Always
+    // populate from the embedded server's registry check first, then let the
+    // native check refine it (its status events still drive download state).
     const desktop = (window as { ompWebDesktop?: { updateCheck?: () => Promise<unknown> } }).ompWebDesktop;
     if (desktop?.updateCheck) {
       setCheckingAppUpdate(true);
+      try {
+        const registry = await fetch(force ? "/api/app-update?force=1" : "/api/app-update");
+        const data = (await registry.json()) as UpdateState & { error?: string };
+        if (registry.ok && !data.error) {
+          setAppUpdate((prev) => (prev?.updateAvailable ? prev : data));
+        }
+      } catch {
+        // Registry unreachable: keep whatever the native events provided.
+      }
       try {
         await desktop.updateCheck();
       } catch {

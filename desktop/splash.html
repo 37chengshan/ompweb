@@ -22,6 +22,22 @@
   #overlay .bar i { display: block; height: 100%; width: 40%; background: #c98a1b; border-radius: 2px; animation: slide 1.1s ease-in-out infinite; }
   @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(450%); } }
   #overlay .hint { font-size: 12px; color: #8a867e; }
+  /* Terminal failure panel (doc 14 T1.4): reason, log location, retry/quit.
+     Shown only after the main process reports a server error. */
+  #error-panel {
+    position: fixed; inset: 0; z-index: 3;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: #000; color: #f5f2ec;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  #error-panel[hidden] { display: none; }
+  #error-panel h1 { font-size: 19px; margin: 0; }
+  #error-panel p { font-size: 12px; color: #a39b8e; margin: 0; max-width: 420px; text-align: center; line-height: 1.6; word-break: break-word; }
+  #error-panel code { font-size: 11px; color: #c98a1b; word-break: break-all; }
+  #error-panel .err-row { display: flex; gap: 10px; margin-top: 8px; }
+  #error-panel button { padding: 9px 22px; border-radius: 8px; border: 1px solid #3a342e; background: #2c2622; color: #f5f2ec; cursor: pointer; font-size: 13px; }
+  #error-panel button.primary { background: #c98a1b; border-color: #c98a1b; color: #1b1916; font-weight: 600; }
+  #error-panel button:disabled { opacity: 0.5; cursor: default; }
   /* Fade-out transition into the app UI */
   body.fade { opacity: 0; transition: opacity 0.55s ease-in-out; }
 </style>
@@ -33,6 +49,16 @@
   <div class="bar"><i></i></div>
   <div class="hint">正在启动…</div>
 </div>
+<div id="error-panel" hidden>
+  <div class="logo">Omp<span>Web</span></div>
+  <h1>启动失败</h1>
+  <p id="error-msg"></p>
+  <p>日志位置：<code id="error-log"></code></p>
+  <div class="err-row">
+    <button id="error-retry" class="primary">重试</button>
+    <button id="error-quit">退出</button>
+  </div>
+</div>
 <script>
   const video = document.getElementById("splash");
   const overlay = document.getElementById("overlay");
@@ -43,13 +69,12 @@
 
   // Navigation happens ONLY when the standalone server answers (the main
   // process polls it and broadcasts "server-ready"); until then the overlay
-  // (logo + progress bar) stays up after the video ends. A hard 8s deadline
-  // forces navigation anyway — a cold server is then handled by the main
-  // process's did-fail-load backoff retry.
+  // (logo + progress bar) stays up after the video ends or is skipped.
   let serverReady = false;
   let videoEnded = false;
   let faded = false;
-  let forced = false;
+  let skipRequested = false;
+  let overlayShownAt = 0;
 
   function go() {
     if (faded) return;
@@ -61,19 +86,26 @@
     }, 560);
   }
 
-  function showOverlay() {
+  function showOverlay(immediate = false) {
     if (videoEnded) return;
     videoEnded = true;
+    video.pause();
+    video.style.visibility = "hidden";
+    if (immediate) overlay.style.transition = "none";
     overlay.classList.add("show");
+    overlayShownAt = performance.now();
+    if (immediate) requestAnimationFrame(() => { overlay.style.transition = ""; });
   }
 
   function tryGo() {
-    // Only navigate when both the video is done (or forced) and the server
-    // answered — never onto a blank page.
+    // Never navigate onto a cold server. A skip only changes the splash
+    // presentation; it cannot bypass readiness.
     if (faded) return;
     if (!serverReady) return;
-    if (!videoEnded && !forced) return;
-    go();
+    if (!videoEnded && !skipRequested) return;
+    // Let the logo layer become fully visible before fading the splash away.
+    const remainingOverlayMs = Math.max(0, 80 - (performance.now() - overlayShownAt));
+    setTimeout(go, remainingOverlayMs);
   }
 
   // Desktop app: the main process tells us when the server is listening.
@@ -82,7 +114,46 @@
       serverReady = true;
       tryGo();
     });
+    void window.ompWebDesktop.isServerReady?.()
+      .then((ready) => { if (ready) { serverReady = true; tryGo(); } })
+      .catch(() => {});
   }
+  // Terminal failure (T1.4): stop the animation and show the error panel.
+  const errorPanel = document.getElementById("error-panel");
+  const bridge = window.ompWebDesktop;
+  if (bridge && typeof bridge.onServerError === "function") {
+    bridge.onServerError((payload) => {
+      serverReady = false;
+      // The body may be mid-fade (opacity 0) from a failed navigation —
+      // undo it so the error panel is actually visible.
+      document.body.classList.remove("fade");
+      video.pause();
+      video.style.visibility = "hidden";
+      overlay.classList.remove("show");
+      document.getElementById("error-msg").textContent = (payload && (payload.detail || payload.reason)) || "内部服务未能就绪";
+      document.getElementById("error-log").textContent = (payload && payload.logPath) || "应用日志目录";
+      errorPanel.hidden = false;
+    });
+    document.getElementById("error-retry").onclick = () => {
+      const btn = document.getElementById("error-retry");
+      btn.disabled = true;
+      btn.textContent = "正在重试…";
+      bridge.retryStartup().then((r) => {
+        btn.disabled = false;
+        btn.textContent = "重试";
+        if (r && r.ok) {
+          // Wait for the server-ready event; tryGo() fades into the app.
+          errorPanel.hidden = true;
+          showOverlay();
+        }
+      }).catch(() => {
+        btn.disabled = false;
+        btn.textContent = "重试";
+      });
+    };
+    document.getElementById("error-quit").onclick = () => { if (bridge.close) bridge.close(); else window.close(); };
+  }
+
 
   // Trimmed to 8s (first/last second cut), played at 1.6x -> ~5s launch.
   video.playbackRate = 1.6;
@@ -112,6 +183,8 @@
             fetch(new URL(a, appUrl).toString(), { cache: "force-cache" }).catch(() => {});
           }
           console.log("splash warm: " + assets.length + " assets");
+          // T1.3 stage: splash finished pre-warming the app assets.
+          bridge?.startupStage?.("assets_warmed");
           return;
         }
       } catch { /* server not up yet */ }
@@ -121,22 +194,23 @@
   void warmUp();
   video.play().catch((e) => console.log("splash play rejected: " + e));
 
-  // Hard fallbacks: never leave the launch animation hanging.
+  // Hard fallbacks end the video but still wait for the server: the loading
+  // layer must remain visible rather than navigating to a blank/error page.
   setTimeout(() => {
-    forced = true;
+    skipRequested = true;
     showOverlay();
-    go();
+    tryGo();
   }, 8000);
   document.body.addEventListener("click", () => {
-    forced = true;
-    showOverlay();
-    go();
+    skipRequested = true;
+    showOverlay(true);
+    tryGo();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
-      forced = true;
-      showOverlay();
-      go();
+      skipRequested = true;
+      showOverlay(true);
+      tryGo();
     }
   });
 </script>

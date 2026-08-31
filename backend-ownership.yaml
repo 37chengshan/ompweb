@@ -1,0 +1,75 @@
+# Backend Ownership Manifest (doc 15 / v4 PR-C02, P38)
+#
+# 每个 Domain 的权威实现归属。`authority` 只允许 node | rust。
+# 迁移规则（v4 P9 Cutover State Machine）：
+#   - 每域从 node → rust 必须经历 shadow → canary → cutover → legacy adapter → delete；
+#   - 迁移期用 feature flag backend.<domain>=rust 单模块切换（P38）；
+#   - Stable 5.0 要求全部 rust 并移除用户可见 fallback switch；
+#   - Node 实现只允许作为 Compatibility Adapter（无 Domain Authority）。
+# `evidence` 指向当前权威实现的关键代码位置；`migrate` 指向落地计划中的 R 步骤。
+# 校验：node scripts/audit-backend-ownership.mjs --check（npm test 已接入）。
+
+domains:
+  agent:
+    authority: node
+    evidence:
+      - lib/rpc-manager.ts
+      - lib/omp/rpc-process.ts
+    migrate: R8
+  event:
+    authority: node
+    evidence:
+      - app/api/agent/[id]/events/route.ts
+      - lib/session-change-bus.ts
+    migrate: R9
+  session:
+    authority: node
+    evidence:
+      - lib/session-reader.ts
+      - lib/omp/session-files.ts
+    migrate: R7/R10
+  pty:
+    authority: node
+    evidence:
+      - lib/terminal-shell.ts
+      - lib/terminal-session-manager.ts
+    migrate: R11
+  files:
+    authority: node
+    evidence:
+      - app/api/files/[...path]/route.ts
+      - lib/file-access.ts
+    migrate: R12
+  git:
+    authority: node
+    evidence:
+      - app/api/git/*
+      - app/api/worktrees
+      - lib/worktree.ts
+    migrate: R12
+  settings:
+    authority: node
+    evidence:
+      - lib/omp/settings-service.ts
+      - app/api/omp-settings
+    migrate: R13
+  commands:
+    authority: node
+    evidence:
+      - hooks/useAgentSession.ts
+      - app/api/scripts/run
+    migrate: R14
+  remote:
+    authority: node
+    evidence:
+      - app/api/pair/*
+      - lib/remote-pairing.ts
+      - lib/remote-protocol/*
+    migrate: R15/R16
+
+meta:
+  version: 1
+  updated: 2026-08-31
+  gates:
+    - production_node_domain_request_count = 0 (Stable 5.0)
+    - No Hidden Fallback: 迁移域禁止静默回退 Node 权威实现

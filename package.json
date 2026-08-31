@@ -1,6 +1,6 @@
 {
   "name": "@37chengshan/ompweb",
-  "version": "4.0.12",
+  "version": "4.0.15",
   "description": "Web UI for the oh-my-pi (omp) coding agent",
   "homepage": "https://github.com/kahme247/ompweb#readme",
   "repository": {
@@ -36,10 +36,10 @@
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 30178",
     "dev:lan": "next dev -H 0.0.0.0 -p 30178",
-    "build": "next build --webpack",
+    "build": "next build --webpack && node scripts/postbuild-static.mjs",
     "start": "next start -H 127.0.0.1 -p 30177",
     "start:lan": "next start -H 0.0.0.0 -p 30177",
-    "test": "node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs lib/contracts/*.test.mjs components/*.test.mjs components/ui/*.test.mjs hooks/*.test.mjs bin/*.test.mjs",
+    "test": "node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs lib/contracts/*.test.mjs components/*.test.mjs components/ui/*.test.mjs hooks/*.test.mjs bin/*.test.mjs desktop/*.test.mjs",
     "bench:session": "node scripts/perf-session-bench.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -65,6 +65,7 @@
     "react-dom": "^19.2.4",
     "react-syntax-highlighter": "^16.1.1",
     "undici": "8.10.0",
+    "ws": "^8.21.3",
     "yaml": "^2"
   },
   "devDependencies": {
@@ -73,6 +74,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/ws": "^8.18.1",
     "electron": "^44.0.0",
     "electron-builder": "^26.15.3",
     "eslint": "^9",

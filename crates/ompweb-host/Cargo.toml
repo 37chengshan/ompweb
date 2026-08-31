@@ -1,0 +1,10 @@
+[package]
+name = "ompweb-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ompweb 5.0 user-scoped host binary (doc 06 slice 1: health/version only; supervisor lands with storage)"
+
+[dependencies]
+ompweb-protocol = { path = "../ompweb-protocol" }
+ompweb-storage = { path = "../ompweb-storage" }

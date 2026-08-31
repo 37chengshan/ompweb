@@ -17,7 +17,7 @@ import { DesktopUpdateBanner } from "./DesktopUpdateBanner";
 import { TerminalPanel } from "./TerminalPanel";
 import { useTheme } from "@/hooks/useTheme";
 import { formatCompactNumber, formatPercent, getCacheHitRate } from "@/lib/format";
-import { translate, useI18n } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
@@ -36,6 +36,7 @@ import { GitHubStatusPanel } from "./GitHubStatusPanel";
 import { UpdateNoticeDialog } from "./UpdateNoticeDialog";
 import { recordCurrentVersion, isUpdateNoticeEnabled } from "@/lib/update-notice";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
+import { removeBootSkeleton } from "@/lib/boot-skeleton";
 // The settings shell is part of the app bundle so opening it does not fetch or compile a modal chunk. The file viewer remains on demand.
 const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer), {
   ssr: false,
@@ -79,6 +80,40 @@ function PanelLoadingFallback() {
       {t("appShell.loading")}
     </div>
   );
+}
+
+function UpdateToast({ currentVersion, availableVersion, command }: {
+  currentVersion: string | null | undefined;
+  availableVersion: string;
+  command: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <>
+      <div>{t("appShell.updateVersion", { current: currentVersion ?? "?", available: availableVersion })}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+          {command}
+        </code>
+        <button
+          type="button"
+          onClick={() => {
+            void copyText(command)
+              .then(() => toast.success(t("appShell.commandCopied")))
+              .catch(() => toast.error(t("appShell.commandCopyFailed")));
+          }}
+          style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
+        >
+          {t("appShell.copyCommand")}
+        </button>
+      </div>
+    </>
+  );
+}
+
+function UpdateToastTitle({ product }: { product: "app" | "omp" }) {
+  const { t } = useI18n();
+  return t(product === "app" ? "appShell.appUpdateAvailable" : "appShell.ompUpdateAvailable");
 }
 
 
@@ -160,11 +195,10 @@ export function AppShell() {
   const sidebarContainerRef = useRef<HTMLDivElement>(null);
   const pendingSidebarWidthRef = useRef<number>(SIDEBAR_DEFAULT_WIDTH);
   useEffect(() => {
-    // Remove the pre-hydration skeleton (app/layout.tsx) once the app shell
-    // is mounted; until this effect runs the body would otherwise show the
-    // static boot text even after the UI is interactive.
-    document.getElementById("boot-skeleton")?.remove();
     setSidebarWidth(loadSidebarWidth());
+    // T1.3: first interactive frame mounted → shell_mounted stage for the
+    // desktop startup timeline (no-op in plain browsers).
+    (window as { ompWebDesktop?: { startupStage?: (stage: string) => void } }).ompWebDesktop?.startupStage?.("shell_mounted");
     try {
       setToolCallsDefaultCollapsed(window.localStorage.getItem(TOOL_CALLS_COLLAPSED_STORAGE_KEY) !== "false");
     } catch {
@@ -249,26 +283,9 @@ export function AppShell() {
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "omp update";
         toast.info(
-          translate("appShell.ompUpdateAvailable"),
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-            <div>{translate("appShell.updateVersion", { current: data.currentVersion ?? "?", available: data.availableVersion })}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-                {cmd}
-              </code>
-              <button
-                type="button"
-                onClick={() => {
-                  void copyText(cmd)
-                    .then(() => toast.success(translate("appShell.commandCopied")))
-                    .catch(() => toast.error(translate("appShell.commandCopyFailed")));
-                }}
-                style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
-              >
-                {translate("appShell.copyCommand")}
-              </button>
-            </div>
-          </div>
+          <UpdateToastTitle product="omp" />,
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}><UpdateToast currentVersion={data.currentVersion} availableVersion={data.availableVersion} command={cmd} /></div>,
+          { variant: "update" },
         );
       })
       .catch(() => {});
@@ -299,26 +316,9 @@ export function AppShell() {
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "npm install -g @37chengshan/ompweb";
         toast.info(
-          translate("appShell.appUpdateAvailable"),
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-            <div>{translate("appShell.updateVersion", { current: data.currentVersion ?? "?", available: data.availableVersion })}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-                {cmd}
-              </code>
-              <button
-                type="button"
-                onClick={() => {
-                  void copyText(cmd)
-                    .then(() => toast.success(translate("appShell.commandCopied")))
-                    .catch(() => toast.error(translate("appShell.commandCopyFailed")));
-                }}
-                style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
-              >
-                {translate("appShell.copyCommand")}
-              </button>
-            </div>
-          </div>
+          <UpdateToastTitle product="app" />,
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}><UpdateToast currentVersion={data.currentVersion} availableVersion={data.availableVersion} command={cmd} /></div>,
+          { variant: "update" },
         );
       })
       .catch(() => {});
@@ -584,8 +584,9 @@ export function AppShell() {
 
   const initialSessionId = initialNavigation.sessionId;
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
-  // True once the initial ?session= URL param has been resolved (or confirmed absent)
-  const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
+  // The boot gate stays closed until the sidebar has either restored a URL /
+  // remembered session or conclusively found no session to restore.
+  const [initialSessionRestored, setInitialSessionRestored] = useState(false);
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
   const suppressCwdBumpRef = useRef(false);
 
@@ -614,11 +615,13 @@ export function AppShell() {
         suppressCwdBumpRef.current = true;
         setNewSessionCwd(data.cwd);
         setInitialCwdStatus("ready");
+        setInitialSessionRestored(true);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setInitialCwdError(error instanceof Error ? error.message : String(error));
         setInitialCwdStatus("error");
+        setInitialSessionRestored(true);
       });
 
     return () => controller.abort();
@@ -702,6 +705,7 @@ export function AppShell() {
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
+    setInitialSessionRestored(true);
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -735,8 +739,8 @@ export function AppShell() {
     const targetSession = selectedSession;
     const notify = () => {
       showCompletionNotification(
-        targetSession?.name ?? translate("appShell.sessionComplete"),
-        translate("appShell.taskFinished"),
+        targetSession?.name ?? t("appShell.sessionComplete"),
+        t("appShell.taskFinished"),
         () => {
           window.focus();
           if (targetSession) handleSelectSession(targetSession);
@@ -747,7 +751,7 @@ export function AppShell() {
     else if (Notification.permission === "default") {
       void Notification.requestPermission().then((permission) => { if (permission === "granted") notify(); });
     }
-  }, [handleSelectSession, selectedSession]);
+  }, [handleSelectSession, selectedSession, t]);
 
   const handleAutoName = useCallback(async () => {
     const sessionId = selectedSession?.id;
@@ -914,11 +918,33 @@ export function AppShell() {
     );
   }, [selectedSession]);
 
-  // Show chat area if a session is selected, or if we have a cwd to start a new session in
-  const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
+  // A project selection is not an intent to start a conversation. Only an
+  // explicit user action (or a validated ?cwd= launch request) sets this.
+  const effectiveNewSessionCwd = newSessionCwd;
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
+
+  useEffect(() => {
+    if (initialSessionRestored) removeBootSkeleton({ fade: true });
+  }, [initialSessionRestored]);
+  // T1.6: session-ready is the second overlay gate — the skeleton fades only
+  // after restoration finishes. A stalled restoration must never leave an
+  // opaque overlay forever, so a 10s watchdog force-removes it.
+  useEffect(() => {
+    if (initialSessionRestored) return;
+    const timer = window.setTimeout(() => {
+      if (!document.getElementById("boot-skeleton")) return;
+      removeBootSkeleton({ fade: true });
+      console.warn("boot skeleton force-removed after 10s (session restore timeout)");
+    }, 10000);
+    return () => window.clearTimeout(timer);
+  }, [initialSessionRestored]);
+
+  useEffect(() => {
+    if (!initialSessionRestored) return;
+    (window as { ompWebDesktop?: { startupStage?: (stage: string) => void } }).ompWebDesktop?.startupStage?.("session_interactive");
+  }, [initialSessionRestored]);
 
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
   const windowTitle = activeCwdName ? `${activeCwdName} - omp web` : "omp web";

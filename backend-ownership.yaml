@@ -11,10 +11,12 @@
 
 domains:
   agent:
-    authority: node
+    authority: rust
+    fallback: node
     evidence:
+      - crates/ompweb-host/src/supervisor.rs
+      - lib/omp/rust-rpc-process.ts
       - lib/rpc-manager.ts
-      - lib/omp/rpc-process.ts
     migrate: R8
   event:
     authority: node

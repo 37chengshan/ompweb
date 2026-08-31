@@ -225,3 +225,13 @@
 4. 补偿条件放宽：任何「组顶（测量前）在视口上方」的高度变化都平移 scrollTop（原仅窗口外上方组）。
 
 **验证**（真实安装 app + Chat-XL 6000 entries）：点击 minimap 20%/30%/60%/70%/90% 位置，top/bottom 覆盖全部 true（修复前 bottomGap +699px 空白 → 修复后 -656px 内容溢出覆盖）；真实会话同样通过。npm 585/583/0、tsc、lint 63w/0e。已重新打包安装（~/Applications/OmpWeb.app 4.0.15 含修复）。
+
+## R8 生产切流 — 完成（2026-08-31，agent 域 0/9 → 1/9）
+
+**R8.3 Go/No-Go**：等价（get_state 双路径）+ 性能对照（Node spawn+ready 944ms；Rust agent.spawn 1ms，omp 启动成本同源）→ **GO**。
+**R8.4** `lib/omp/rust-rpc-process.ts`：RustHostManager（单例 host、延迟 idle teardown 30s、hostDying 等待）+ RustRpcProcess（RpcProcess 兼容：waitReady/onFrame/sendCommand/sendFrame/negotiateProtocol/dispose 等 omp 实际退出）；`createRpcProcess` 工厂（默认 rust，`OMPWEB_BACKEND=node` 显式回滚，host bin 缺失大声降级）。
+**R8.5** 双路径等价测试（契约字段一致）；实现中修复 5 个真实 bug：attach 帧对象处理、bootBuffer 跨 boot 污染、teardown host 引用误判、连续 spawn 的 agent.db 锁窗口（dispose 等 exit）、**attach 订阅晚于 ready 帧（supervisor 帧 ring 回放——本轮最深的根因）**。
+**R8.6 Canary**：`OMPWEB_BACKEND=rust` 启动真实 standalone → 会话浏览正常 + **omp 进程 PPID=ompweb-host**（Node 不再 spawn）✓。
+**R8.7 Rust primary**：默认 backend=rust；`backend-ownership.yaml` agent=node→**rust**（fallback: node）；audit 支持显式 fallback 语义；**audit 输出 agent=rust**。
+**R8.8 观察期**：真实使用观察待用户（默认 rust 生效）；Node 回滚路径保留（显式 flag，符合 No Hidden Fallback）；删除评估=stable 后。
+全量验证：587/585/0/2 skip、tsc、lint 68w/0e。**agent 域 Cutover 完成（1/9）。**

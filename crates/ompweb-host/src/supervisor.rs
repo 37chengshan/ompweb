@@ -38,6 +38,11 @@ struct Session {
     subscribers: Vec<Sender<SessionEvent>>,
     restarts: u32,
     killed: bool,
+    /// Bounded replay ring: frames emitted before a subscriber attaches are
+    /// replayed so late attach (fast omp startup) still sees ready/init
+    /// frames. Keeps the ring tight (64 x up-to-1MiB is bounded by the frame
+    /// cap; normal frames are far smaller).
+    ring: std::collections::VecDeque<String>,
 }
 
 pub struct Supervisor {
@@ -80,6 +85,7 @@ impl Supervisor {
             subscribers: vec![reader_tx],
             restarts: 0,
             killed: false,
+            ring: std::collections::VecDeque::new(),
         };
         guard.insert(session_id.to_string(), session);
         drop(guard);
@@ -248,6 +254,21 @@ impl Supervisor {
         let mut guard = self.sessions.lock().unwrap();
         if let Some(session) = guard.get_mut(session_id) {
             session.subscribers.retain(|sub| sub.send(event.clone()).is_ok());
+            if let SessionEvent::Frame(frame) = &event {
+                if session.ring.len() >= 64 {
+                    session.ring.pop_front();
+                }
+                session.ring.push_back(frame.clone());
+            }
+        }
+    }
+
+    /// Frames recorded before this subscriber attached (bounded replay).
+    pub fn recent_frames(&self, session_id: &str) -> Vec<String> {
+        let guard = self.sessions.lock().unwrap();
+        match guard.get(session_id) {
+            Some(session) => session.ring.iter().cloned().collect(),
+            None => Vec::new(),
         }
     }
 

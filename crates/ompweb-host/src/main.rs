@@ -247,6 +247,12 @@ fn main() {
                             Ok(rx) => rx,
                             Err(err) => return Err(ipc_server::IpcError::new("no_such_session", err)),
                         };
+                        // Replay frames emitted before this subscriber attached
+                        // (fast omp startup may have already produced ready/init
+                        // frames — an attach that misses them would hang).
+                        for frame in supervisor.recent_frames(&session_id) {
+                            emit(&format!("{{\"type\":\"frame\",\"frame\":{}}}", frame));
+                        }
                         // Streaming: block this request, emitting child frames.
                         for event in rx.iter() {
                             match event {

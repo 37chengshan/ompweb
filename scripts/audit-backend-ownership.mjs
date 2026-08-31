@@ -68,8 +68,10 @@ export function auditManifest({ manifest = loadManifest(), productionRoot = root
         problems.push(`${domain}: evidence "${ev}" not found`);
       }
     }
-    // rust domains must not have the production Node authority markers.
-    if (entry.authority === "rust") {
+    // rust domains must not have the production Node authority markers —
+    // UNLESS the manifest declares an explicit fallback backend (No Hidden
+    // Fallback: the rollback must be a visible switch, not silent).
+    if (entry.authority === "rust" && entry.fallback !== "node") {
       const markers = RUST_GATE_SCANS[domain] ?? [];
       for (const marker of markers) {
         if (findMarker(productionRoot, marker)) {

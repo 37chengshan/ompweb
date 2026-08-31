@@ -3,6 +3,7 @@ import { homedir } from "os";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { RpcCommandError, RpcProcess, type RpcFrame } from "./omp/rpc-process";
+import { createRpcProcess, type RpcProcessLike } from "./omp/rust-rpc-process";
 import { readNativeSettings } from "./omp/settings-config";
 import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
 import { PRESET_FULL } from "./tool-presets";
@@ -232,7 +233,7 @@ export class AgentSessionWrapper {
   private _sessionId = "";
   private _sessionFile = "";
   private _sessionName: string | undefined;
-  private proc: RpcProcess;
+  private proc: RpcProcessLike;
   readonly cwd: string;
   /** Whether the child was spawned with --advisor. The flag is spawn-time
    * only (no runtime RPC toggles it), so applying a changed advisor setting
@@ -245,7 +246,7 @@ export class AgentSessionWrapper {
 
   // Plain field assignments (not TS parameter properties) keep this module
   // runnable under Node's strip-only TypeScript mode for probes/tests.
-  constructor(proc: RpcProcess, cwd: string, recordedCwd?: string | null, advisorSpawned = false) {
+  constructor(proc: RpcProcessLike, cwd: string, recordedCwd?: string | null, advisorSpawned = false) {
     this.proc = proc;
     this.cwd = cwd;
     this.recordedCwd = recordedCwd ?? null;
@@ -824,8 +825,9 @@ export class AgentSessionWrapper {
       this.streaming = false;
       this.compacting = false;
 
-      const proc = new RpcProcess({
+      const proc = await createRpcProcess({
         cwd: this.cwd,
+        sessionId: this.sessionId,
         extraArgs: buildSessionSpawnArgs(resumable ? sessionFile : ""),
         onExit: ({ stderrTail }) => {
           if (this.proc === proc) this.handleProcessExit(stderrTail);
@@ -1276,8 +1278,9 @@ export async function startRpcSession(
     // The wrapper needs the process and the process's onExit needs the wrapper;
     // the holder breaks that cycle (onExit only fires once the child dies).
     const holder: { wrapper?: AgentSessionWrapper } = {};
-    const proc = new RpcProcess({
+    const proc = await createRpcProcess({
       cwd,
+      sessionId: sessionId ?? `session-${Math.random().toString(36).slice(2, 10)}`,
       extraArgs: buildSessionSpawnArgs(sessionFile, toolNames, advisor === true),
       onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
     });

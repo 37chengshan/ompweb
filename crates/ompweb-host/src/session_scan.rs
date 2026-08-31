@@ -13,7 +13,12 @@ use std::time::UNIX_EPOCH;
 
 pub struct SessionProjection {
     pub path: String,
+    pub id: String,
+    pub cwd: String,
+    pub parent_session: String,
+    pub created: String,
     pub title: String,
+    pub first_message: String,
     pub lines: usize,
     pub messages: usize,
     pub bytes: u64,
@@ -68,23 +73,52 @@ pub fn project_file(path: &Path) -> Result<SessionProjection, String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let mut lines = 0usize;
     let mut messages = 0usize;
+    let mut session_id = String::new();
+    let mut cwd = String::new();
+    let mut parent_session = String::new();
+    let mut created = String::new();
+    let mut first_message = String::new();
     for line in raw.lines() {
         if line.trim().is_empty() {
             continue;
         }
         lines += 1;
-        // Parse-confirm: a truncated or malformed message line must not be
-        // counted (prefix matching alone would over-count).
         if let Ok(value) = JsonValue::parse(line) {
-            if value.get(&["type"]).and_then(|t| t.as_str()) == Some("message") {
+            let kind = value.get(&["type"]).and_then(|t| t.as_str()).unwrap_or("");
+            if kind == "message" {
                 messages += 1;
+                if first_message.is_empty() {
+                    first_message = value
+                        .get(&["message", "content"])
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("")
+                        .chars()
+                        .take(240)
+                        .collect();
+                }
+            } else if kind == "session" {
+                session_id = value.get(&["id"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                cwd = value.get(&["cwd"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                parent_session = value.get(&["parentSession"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                created = value.get(&["timestamp"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
             }
+        }
+    }
+    if session_id.is_empty() {
+        // Fallback: derive the id from the file name (<ts>_<uuid>.jsonl).
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            session_id = stem.rsplit('_').next().unwrap_or(stem).to_string();
         }
     }
     let metadata = fs::metadata(path).map_err(|e| format!("stat {}: {e}", path.display()))?;
     Ok(SessionProjection {
         path: path.to_string_lossy().to_string(),
+        id: session_id,
+        cwd,
+        parent_session,
+        created,
         title: read_title_slot(&raw),
+        first_message,
         lines,
         messages,
         bytes: metadata.len(),
@@ -110,9 +144,14 @@ pub fn projections_to_json(items: &[SessionProjection]) -> String {
             out.push(',');
         }
         out.push_str(&format!(
-            "{{\"path\":{},\"title\":{},\"lines\":{},\"messages\":{},\"bytes\":{},\"mtime_ms\":{}}}",
+            "{{\"path\":{},\"id\":{},\"cwd\":{},\"parentSession\":{},\"created\":{},\"title\":{},\"firstMessage\":{},\"lines\":{},\"messages\":{},\"bytes\":{},\"mtime_ms\":{}}}",
             json_string(&p.path),
+            json_string(&p.id),
+            json_string(&p.cwd),
+            json_string(&p.parent_session),
+            json_string(&p.created),
             json_string(&p.title),
+            json_string(&p.first_message),
             p.lines,
             p.messages,
             p.bytes,
@@ -139,4 +178,36 @@ fn json_string(value: &str) -> String {
     }
     out.push('"');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn fixture_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("ompweb-scan-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn projection_includes_r10_fields() {
+        let dir = fixture_dir();
+        let file = dir.join("20260115T120000_0000test00000000000000000000abcd.jsonl");
+        fs::write(
+            &file,
+            "{\"type\":\"session\",\"version\":3,\"id\":\"0000test00000000000000000000abcd\",\"timestamp\":\"2026-01-15T12:00:00Z\",\"cwd\":\"/work/proj\",\"parentSession\":\"/work/proj/20260101T000000_0000parent0000000000000000000000.jsonl\"}\n\
+             {\"type\":\"message\",\"id\":\"m1\",\"parentId\":null,\"message\":{\"role\":\"user\",\"content\":\"first hello\"}}\n",
+        )
+        .unwrap();
+        let p = project_file(&file).unwrap();
+        assert_eq!(p.id, "0000test00000000000000000000abcd");
+        assert_eq!(p.cwd, "/work/proj");
+        assert_eq!(p.created, "2026-01-15T12:00:00Z");
+        assert_eq!(p.first_message, "first hello");
+        assert_eq!(p.messages, 1);
+        assert!(p.parent_session.contains("0000parent"));
+        fs::remove_file(&file).ok();
+    }
 }

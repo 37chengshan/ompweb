@@ -416,6 +416,25 @@ export class RustRpcProcess {
 // Node file operations remain the explicit fallback (OMPWEB_BACKEND=node).
 // ---------------------------------------------------------------------------
 
+export interface RustSessionProjection {
+  path: string;
+  id: string;
+  cwd: string;
+  parentSession?: string;
+  created?: string;
+  title: string;
+  firstMessage: string;
+  lines: number;
+  messages: number;
+  bytes: number;
+  mtime_ms: number;
+}
+
+export async function rustScanSessions(root: string): Promise<RustSessionProjection[]> {
+  const raw = await hostManager.controlRequest("session.scan", { root });
+  return Array.isArray(raw) ? (raw as RustSessionProjection[]) : [];
+}
+
 export async function rustSessionRename(root: string, path: string, title: string): Promise<void> {
   await hostManager.controlRequest("session.rename", { root, path, title });
 }

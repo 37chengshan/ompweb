@@ -996,6 +996,33 @@ function scanSessionInfoCached(filePath: string): OmpSessionInfo | undefined {
  */
 export async function listAllSessionInfos(): Promise<OmpSessionInfo[]> {
   const sessionsRoot = getSessionsDir();
+  // R10 read path: the Rust host is the session-projection authority when the
+  // Rust backend is active (default). The Node scanner remains the explicit
+  // fallback — visible via OMPWEB_BACKEND=node, never silent.
+  if (process.env.OMPWEB_BACKEND !== "node") {
+    try {
+      const { rustScanSessions } = await import("./rust-rpc-process");
+      const projections = await rustScanSessions(sessionsRoot);
+      const sessions: OmpSessionInfo[] = projections.map((p) => ({
+        path: p.path,
+        id: p.id,
+        cwd: p.cwd,
+        title: p.title || undefined,
+        parentSessionPath: p.parentSession || undefined,
+        created: p.created ? new Date(p.created) : new Date(p.mtime_ms),
+        modified: new Date(p.mtime_ms),
+        messageCount: p.messages,
+        size: p.bytes,
+        firstMessage: p.firstMessage,
+      }));
+      sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+      return sessions;
+    } catch (error) {
+      // Rust projection unavailable (host crash, IPC failure): degrade to the
+      // Node scanner loudly, never silently.
+      console.warn("[ompweb] Rust session scan failed, falling back to Node scanner:", error);
+    }
+  }
   const files = await listSessionFiles(sessionsRoot);
 
   const sessions: OmpSessionInfo[] = [];

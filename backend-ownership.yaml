@@ -19,15 +19,19 @@ domains:
       - lib/rpc-manager.ts
     migrate: R8
   event:
-    authority: node
+    authority: rust
+    fallback: node
     evidence:
-      - app/api/agent/[id]/events/route.ts
+      - lib/omp/rust-rpc-process.ts
+      - lib/rpc-manager.ts
       - lib/session-change-bus.ts
     migrate: R9
   session:
-    authority: node
+    authority: rust
+    fallback: node
     evidence:
-      - lib/session-reader.ts
+      - crates/ompweb-host/src/session_scan.rs
+      - lib/omp/rust-rpc-process.ts
       - lib/omp/session-files.ts
     migrate: R7/R10
   pty:

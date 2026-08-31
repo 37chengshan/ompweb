@@ -241,3 +241,10 @@
 **R9（EventBus 权威）**：事件权威已随 R8 达成——RustRpcProcess 的 attach 流 → rpc-manager handleFrame（Node 无 authoritative RpcSession events，默认 rust 下 RpcProcess 仅显式回滚）；SSE 路由读 rpc-manager 状态 = adapter 形态。journal 端点（append/view）就绪（host-ipc 测试）。
 **R10（Session 权威，mutation 域）**：`rustSessionRename/rustSessionDelete` 暴露 host 方法；PATCH（title slot 重写）与 DELETE（文件删除）在默认 rust 下经 host（失败显式回退 Node 文件操作）；**实测**：standalone flag=rust → PATCH 改名 → title slot 变为目标值（经 host）✓。**读路径（listAllSessions/context）保持 Node**（R7 shadow parity 已过；Rust scan 字段扩展（id/created/firstMessage）待续——如实记录，非完成）。
 **切流累计**：agent=rust（R8）、event=rust（R9）、session mutation=rust（R10 部分）；ownership manifest agent=rust，event/session 按读权威如实保持 node（文档注明 mutation 已切）。
+
+## R10 读路径切流 — 完成（2026-08-31，session 域完整切流 3/9）
+
+**Rust scan 扩展**（session_scan.rs）：投影补齐 id/cwd/parentSession/created/firstMessage（解析 session 头条目 + 首条 message，240 字符截断）；序列化含全部字段。
+**接线**：`listAllSessionInfos` 默认（非 node）经 host `session.scan` → 映射 OmpSessionInfo（created 非法时回退 mtime）；失败大声回退 Node scanner（try/catch + console.warn）。
+**修复真实 bug**：投影序列化旧格式漏新字段（首次接线输出空对象——DBG 定位）；bare parentSession id 语义测试通过。
+**ownership**：session=rust、event=rust（fallback: node）；**累计 agent/event/session 3/9 域切流**。全量 590/585/0/2 skip；Rust 1 个新投影测试。

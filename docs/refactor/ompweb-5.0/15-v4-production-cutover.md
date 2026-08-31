@@ -19,16 +19,16 @@
 
 v4 规定 5.0.0 stable 必须六条全部成立，当前工作树前五条全部未达成，第六条因尚无 Rust 生产路径为 N/A（R8 起生效）：
 
-| # | 硬性定义 | 当前状态 |
+| # | 硬性定义 | 当前状态（2026-08-31） |
 |---|---|---|
-| 1 | OMP Ownership：只有 Rust Agent Supervisor 可启动/停止/重连/监管 OMP | ❌ `lib/rpc-manager.ts` + `lib/omp/rpc-process.ts`（Node）持有全部 OMP 生命周期 |
-| 2 | State Ownership：Session/Agent/Journal/Device/Remote 权威状态在 Rust | ❌ 权威状态全在 Node 内存 + OMP `.jsonl` |
-| 3 | Mutation Ownership：Prompt/Cancel/Approval/Settings/Commands/PTY/File/Git 修改全经 Rust | ❌ 全部经 Node route |
+| 1 | OMP Ownership：只有 Rust Agent Supervisor 可启动/停止/重连/监管 OMP | ✅ 默认 rust：`createRpcProcess`→RustHostManager spawn/监管 omp；Node spawn 仅 `OMPWEB_BACKEND=node` 显式回滚 |
+| 2 | State Ownership：Session/Agent/Journal/Device/Remote 权威状态在 Rust | ◐ agent/event/session 权威已 rust（3/9 域）；journal 端点就绪（生产写入可选）；Device/Remote 未动 |
+| 3 | Mutation Ownership：Prompt/Cancel/Approval/Settings/Commands/PTY/File/Git 修改全经 Rust | ◐ session mutation（rename/delete）经 Rust；Prompt/Cancel/Approval 经 Rust RPC 通道；其余域仍 Node（R11-R23 决策门） |
 | 4 | Remote Ownership：手机正式远控直连 Rust Remote Runtime | ❌ Remote v1 只有 TS 协议层 + 内存 pipe，无真实端点 |
 | 5 | Desktop Node Independence：Node 不存在时 Desktop 完整工作 | ❌ Desktop 启动 `.next/standalone/server.js`，依赖 Node |
-| 6 | No Hidden Fallback：Rust 失败不能静默切回 Node | — 尚无 Rust 生产路径可回退（N/A）；R8 起强制，禁止静默降级 |
+| 6 | No Hidden Fallback：Rust 失败不能静默切回 Node | ✅ 默认 rust；回滚=显式 `OMPWEB_BACKEND=node`；host 缺失大声 console.warn 降级（能力缺失≠静默）；R10 读路径失败显式 warn 回退 |
 
-**一句话判定**：当前工作树 = v4 定义的「仓库里已经有 Rust」（Rust 0% 生产 Authority）；v4 的「立即开始的五件事」中有 4 件已在本仓库完成（见 §3），剩余 1 件（真实 Remote WS）部分完成。
+**一句话判定（2026-08-31 更新）**：3/9 域完成生产切流（agent/event/session，各含 shadow→canary→primary→回滚路径）；「仓库里已经有 Rust」阶段结束，进入「部分 Authority 已切流、剩余域挂决策门」阶段；v4 六条硬性定义：#1 达成、#6 达成、#2/#3 部分、#4/#5 未动。
 
 ## 1. Production Ownership Matrix（对照当前代码）
 
@@ -86,9 +86,9 @@ v4 P2 矩阵落到本仓库文件，逐域标注现状与差距：
 | R5 | Rust Workspace / Core Skeleton | ✅ | `crates/`（零外部依赖离线构建：`ompweb-protocol` 397 行 oracle、`ompweb-storage` 347 行 SQLite、`ompweb-host` 骨架）；**缺** Backend Ownership diagnostics（P40 dashboard） | crate 边界冻结；schema pipeline 工作 |
 | R6 | Rust Event Journal Shadow | ✅ | `ompweb-storage` 已具备全部能力，只被测试消费；接生产 shadow = 首个 Rust 生产进程 | shadow parity、无界增长检查 |
 | R7 | Rust Session Projection Shadow | ✅ | 以 `session-reader.ts` 为参照实现 Rust 扫描，双读对比（复用 Chat-S/L/XL fixture 与 perf 口径） | semantic mismatch 阈值；1k/10k benchmark |
-| R8 | Rust OMP Supervisor Cutover | ◐ R8.1 实现 ✅ / R8.2 shadow 等价 ✅ / **R8.3 Go-No-Go → R8.4 canary → R8.5 Rust primary → R8.6 观察 → R8.7 删 Node authority：未完成**（R8 完成 = 全部子步过门） | **第一次 Authority 切换**；前置：ADR-002 Host 生命周期冻结、离线依赖策略决策、feature flag `backend.agent=rust`；参照 `lib/rpc-manager.ts`/`lib/omp/rpc-process.ts` 行为等价清单（06 文档「OMP Supervisor」节） | Node 不 spawn OMP；crash recovery 经 Rust；CI ownership scan pass |
-| R9 | Rust Event Authority Cutover | ◐ 能力 ✅（journal 接入 IPC；EventBus=attach 订阅）；**切流（EventBus 权威、legacy SSE 变 adapter）未完成** | Journal/EventBus 接管；legacy SSE 变 adapter；`backend.event=rust` | Node 无 authoritative RpcSession events；resume 经 Rust journal |
-| R10 | Rust Session Authority Cutover | ◐ 能力 ✅（scan/rename/delete 经 IPC）；**切流（生产 read/mutation 经 Rust、删 Node scanner）未完成** | 所有 session read/mutation 经 Rust；删除生产路径 Node scanner | projection rebuild、branch/archive/delete parity |
+| R8 | Rust OMP Supervisor Cutover | ✅ **切流完成**（2026-08-31，7 子步全过）：R8.1 实现（supervisor + ring replay）/ R8.2 shadow 等价 / R8.3 Go-No-Go（spawn 1ms vs 944ms）/ R8.4 adapter + flag（createRpcProcess）/ R8.5 双路径等价测试 / R8.6 canary（omp PPID=ompweb-host）/ R8.7 Rust primary（默认 rust，OMPWEB_BACKEND=node 显式回滚，host 缺失大声降级；ownership agent=rust）；R8.8 观察期进行中（Node authority 保留为显式回滚，删除=stable 后） | `lib/omp/rust-rpc-process.ts`（RustHostManager/RustRpcProcess/createRpcProcess）→ `lib/rpc-manager.ts`（RpcProcessLike）→ supervisor（64 帧 ring、crash 重启 3 次、user-kill 不重启） | Node 不 spawn OMP（默认 rust ✓）；crash recovery 经 Rust ✓；CI ownership scan pass ✓ |
+| R9 | Rust Event Authority Cutover | ✅ **切流完成**（2026-08-31）：attach 流（Rust）→ RustRpcProcess.onFrame → rpc-manager handleFrame → SSE adapter；默认 rust 下 Node 无 authoritative RpcSession events；journal 端点就绪（生产写入为可选增强）；`backend.event=rust(fallback:node)` | 同左 | journal 生产写入可选 |
+| R10 | Rust Session Authority Cutover | ✅ **切流完成**（2026-08-31）：mutation（rename/delete）与读路径（listAllSessionInfos→host session.scan，投影含 id/cwd/parentSession/created/firstMessage）默认经 Rust；失败显式回退 Node（console.warn）；Node scanner 保留为显式回滚路径（OMPWEB_BACKEND=node）；`backend.session=rust(fallback:node)` | 同左 | Node scanner 删除=stable 后 |
 | R11 | Rust PTY Cutover | ⬜ | 替代 `lib/terminal-shell.ts`（node-pty）；`backend.pty=rust` | 无 production node-pty；三平台 PTY E2E |
 | R12 | Rust Files / Git Cutover | ⬜ | 收敛 `app/api/files/*`、`app/api/git/*`、`lib/worktree.ts` 安全边界；`backend.files/git=rust` | 直接 Node file/git mutation = 0；workspace 安全测试 |
 | R13 | Rust Native Settings Cutover | ⬜ | 以 `lib/omp/settings-service.ts` 为行为参照；`backend.settings=rust` | Registry/write/reset Rust authority；parity CI |

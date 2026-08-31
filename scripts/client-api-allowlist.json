@@ -19,6 +19,7 @@
     "components/ModelCatalogPicker.tsx": 1,
     "components/ModelsConfig.tsx": 18,
     "components/NetworkProxyConfig.tsx": 2,
+    "components/OmpSetupWizard.tsx": 1,
     "components/PluginsConfig.tsx": 3,
     "components/RemoteAccessSetting.tsx": 7,
     "components/SessionSidebar.tsx": 20,

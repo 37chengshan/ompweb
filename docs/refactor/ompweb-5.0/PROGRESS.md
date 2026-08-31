@@ -257,3 +257,10 @@
 **真实验证**：重装 dmg（含修复）→ 60 消息 fixture 会话 → AX 点击 → 8 帧连拍（120ms 间隔）→ 像素 diff 34-117/60000（0.06-0.2%）→ 无滚动级抖动 ✓。
 **附带发现**：app 启动早期列表卡"加载中"是前端 fetch 无重试的瞬态（host 懒启动前），host 就绪后自动恢复——非阻塞。
 **R8-R10 真实 app 验证累计**：安装版 app 下 host 自动拉起（ensure）、会话列表/重命名/删除经 Rust、omphp 会话浏览正常。
+
+## 列表加载挂起修复（真实用户数据发现，2026-08-31 晚）
+
+**用户报告**：进去加载非常非常久；右侧栏乱/点击不对；点击会话报错。
+**根因**：Rust `session_scan::project_file` 全量 `read_to_string`（真实 sessions 目录 4097 文件/995MB → scan 8s+ 挂起）→ /api/sessions、会话 context 全部超时 → 前端连锁（列表 loading 卡、点击会话报错、文件面板无数据=右侧栏乱）。
+**修复**：`LIST_PREFIX_BYTES=4096` 头窗读取（对齐 Node SESSION_LIST_PREFIX_BYTES；title slot/会话头/首条消息都在头部）；bytes 用 metadata 而非全读。**效果**：/api/sessions 8s+ → **15ms**（546 会话）。Node/项目分组数据完整性 0 缺失（546 会话 cwd/projectRoot/id/date 全非空）。
+**附带**：浏览器工具（ego-browser/browser）主机级不可用（残留进程/资源）——真实验证改走 computer AX + 截图；dev server 重启（热重载状态清理）。

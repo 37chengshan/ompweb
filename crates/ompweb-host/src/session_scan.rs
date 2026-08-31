@@ -68,9 +68,25 @@ fn mtime_ms(path: &Path) -> i64 {
         .unwrap_or(0)
 }
 
-/// Scan one file into a projection.
+/// List-scan prefix window (bytes) — mirrors the Node scanner's
+/// SESSION_LIST_PREFIX_BYTES. Session metadata (title slot, session header,
+/// first message, prefix message count) all live at the head of the file;
+/// reading only this window keeps the scan O(total-head-bytes) instead of
+/// O(total-file-bytes) — a 1 GiB session directory must not stall the list.
+const LIST_PREFIX_BYTES: u64 = 4096;
+
+/// Scan one file into a projection (head-window read, Node-parity).
 pub fn project_file(path: &Path) -> Result<SessionProjection, String> {
-    let raw = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let file = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let size = file.metadata().map_err(|e| format!("stat {}: {e}", path.display()))?.len();
+    let head = size.min(LIST_PREFIX_BYTES) as usize;
+    let mut buf = vec![0u8; head];
+    if head > 0 {
+        use std::io::Read;
+        let mut file = file;
+        file.read_exact(&mut buf).map_err(|e| format!("read {}: {e}", path.display()))?;
+    }
+    let raw = String::from_utf8_lossy(&buf);
     let mut lines = 0usize;
     let mut messages = 0usize;
     let mut session_id = String::new();
@@ -110,7 +126,6 @@ pub fn project_file(path: &Path) -> Result<SessionProjection, String> {
             session_id = stem.rsplit('_').next().unwrap_or(stem).to_string();
         }
     }
-    let metadata = fs::metadata(path).map_err(|e| format!("stat {}: {e}", path.display()))?;
     Ok(SessionProjection {
         path: path.to_string_lossy().to_string(),
         id: session_id,
@@ -121,7 +136,7 @@ pub fn project_file(path: &Path) -> Result<SessionProjection, String> {
         first_message,
         lines,
         messages,
-        bytes: metadata.len(),
+        bytes: size,
         mtime_ms: mtime_ms(path),
     })
 }

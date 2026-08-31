@@ -292,64 +292,80 @@ const CommittedTranscript = memo(function CommittedTranscript({
 
   // --- 组高度测量（T2.2）---
   // 窗口内已挂载组由 ResizeObserver 观察；rAF 合并测量并写回高度缓存。
-  // 窗口上方组的高度变化（测量替换估算）补偿 scrollTop，消除滚动跳动。
+  // 这里绝不能在测量回调里改写 scrollTop：虚拟窗口每次回收/挂载都会
+  // 触发测量，补偿 scrollTop 又会触发新的窗口和测量，形成上下滚动的
+  // 反馈环。会话恢复/跟随逻辑是滚动位置的唯一权威，测量只重算窗口。
   const measuredGroupsRef = useRef(new Map<number, HTMLDivElement>());
+  const groupRefCallbacksRef = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
   const measureRafRef = useRef<number | null>(null);
   const winRef = useRef(win);
   winRef.current = win;
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
-  const scrollElRef = useRef<HTMLDivElement | null>(null);
-  scrollElRef.current = scrollContainer.current;
   const groupRoRef = useRef<ResizeObserver | null>(null);
   const onLayoutChangedRef = useRef(onLayoutChanged);
   onLayoutChangedRef.current = onLayoutChanged;
 
-  // 会话/布局切换（新 key）后的首批测量不补偿视口：新布局的滚动位置由
-  // 恢复/follow 逻辑决定，此时逐批补偿会与滚动恢复竞争造成抖动。首批只
-  // 写入真实高度；之后批次的测量才恢复视口平移补偿。
-  const compensatedLayoutRef = useRef<GroupHeightCache | null>(null);
-
   const flushMeasurements = useCallback(() => {
     measureRafRef.current = null;
-    const container = scrollElRef.current;
     let changed = false;
-    const firstBatch = compensatedLayoutRef.current !== layoutRef.current;
-    if (firstBatch) compensatedLayoutRef.current = layoutRef.current;
-    let compensation = 0;
     for (const [groupIdx, el] of measuredGroupsRef.current) {
+      // Callback refs normally remove recycled nodes. isConnected is a
+      // defensive final guard for a React/ResizeObserver ordering race.
+      if (!el.isConnected) {
+        groupRoRef.current?.unobserve(el);
+        measuredGroupsRef.current.delete(groupIdx);
+        continue;
+      }
       const height = el.offsetHeight;
-      const oldTop = layoutRef.current.offsetOf(groupIdx);
       const delta = layoutRef.current.measure(groupIdx, height);
       if (delta !== 0) {
         changed = true;
-        // 组顶（测量前位置）在视口上方且高度变化：平移视口保持内容稳定，
-        // 否则视口指向的内容会随前缀和偏移。同批累计一次赋值，减少重排。
-        if (!firstBatch && container && oldTop < container.scrollTop) {
-          compensation += delta;
-        }
       }
-    }
-    if (compensation !== 0 && container) {
-      container.scrollTop += compensation;
     }
     if (changed) onLayoutChangedRef.current?.();
   }, []);
 
-  const attachGroupRef = useCallback((groupIdx: number) => (el: HTMLDivElement | null) => {
-    if (!el) return;
-    if (measuredGroupsRef.current.get(groupIdx) === el) return;
-    measuredGroupsRef.current.set(groupIdx, el);
-    const ro = groupRoRef.current ?? (groupRoRef.current = new ResizeObserver(() => {
-      if (measureRafRef.current === null) {
-        measureRafRef.current = requestAnimationFrame(flushMeasurements);
-      }
-    }));
-    ro.observe(el);
+  const scheduleMeasurement = useCallback(() => {
+    if (measureRafRef.current === null) {
+      measureRafRef.current = requestAnimationFrame(flushMeasurements);
+    }
   }, [flushMeasurements]);
+
+  // Keep one callback per group index. A newly-created callback every render
+  // makes React detach and re-attach every visible group, which turns a simple
+  // scroll into a ResizeObserver storm.
+  const attachGroupRef = useCallback((groupIdx: number) => {
+    const cached = groupRefCallbacksRef.current.get(groupIdx);
+    if (cached) return cached;
+    const callback = (el: HTMLDivElement | null) => {
+      const previous = measuredGroupsRef.current.get(groupIdx);
+      if (previous === el) return;
+      if (previous) groupRoRef.current?.unobserve(previous);
+      if (!el) {
+        measuredGroupsRef.current.delete(groupIdx);
+        return;
+      }
+      measuredGroupsRef.current.set(groupIdx, el);
+      const ro = groupRoRef.current ?? (groupRoRef.current = new ResizeObserver(scheduleMeasurement));
+      ro.observe(el);
+      scheduleMeasurement();
+    };
+    groupRefCallbacksRef.current.set(groupIdx, callback);
+    return callback;
+  }, [scheduleMeasurement]);
+
+  // A session switch can reuse an existing group wrapper at the same index.
+  // Ensure its new layout receives one measurement even if its box size is
+  // coincidentally unchanged and ResizeObserver does not emit a record.
+  useEffect(() => {
+    if (measuredGroupsRef.current.size > 0) scheduleMeasurement();
+  }, [layout, scheduleMeasurement]);
 
   useEffect(() => () => {
     groupRoRef.current?.disconnect();
+    measuredGroupsRef.current.clear();
+    groupRefCallbacksRef.current.clear();
     if (measureRafRef.current !== null) cancelAnimationFrame(measureRafRef.current);
   }, []);
 
@@ -401,10 +417,15 @@ const CommittedTranscript = memo(function CommittedTranscript({
   };
 
   // 窗口内组 → JSX；上下 spacer 撑起完整滚动条（双向回收 DOM）。
+  // Group indices restart at zero for every session. Include the session id in
+  // the host key so React never reconciles a turn layout from one session into
+  // a structurally different turn at the same index (that produced an
+  // insertBefore NotFoundError during rapid sidebar switches).
+  const virtualKeyPrefix = sessionId ?? "new-session";
   const windowGroups: ReactNode[] = [];
   for (let g = win.startGroup; g < win.endGroup; g++) {
     windowGroups.push(
-      <div key={"vg-" + g} data-vg={g} ref={attachGroupRef(g)}>
+      <div key={virtualKeyPrefix + "-vg-" + g} data-vg={g} ref={attachGroupRef(g)}>
         {renderGroup(groups[g])}
       </div>,
     );
@@ -973,6 +994,12 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               </div>
             )}
             <CommittedTranscript
+              // A session switch replaces the entire message tree. Key the
+              // transcript itself (not only its virtual rows) so React cannot
+              // reconcile ProcessDetails fragments from one session against
+              // another session's rows; that reconciliation produced
+              // insertBefore NotFoundError under rapid sidebar clicks.
+              key={session?.id ?? sessionIdRef.current ?? "new-session"}
               messages={messages}
               entryIds={entryIds}
               conversationMeta={conversationMeta}

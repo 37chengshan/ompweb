@@ -248,3 +248,12 @@
 **接线**：`listAllSessionInfos` 默认（非 node）经 host `session.scan` → 映射 OmpSessionInfo（created 非法时回退 mtime）；失败大声回退 Node scanner（try/catch + console.warn）。
 **修复真实 bug**：投影序列化旧格式漏新字段（首次接线输出空对象——DBG 定位）；bare parentSession id 语义测试通过。
 **ownership**：session=rust、event=rust（fallback: node）；**累计 agent/event/session 3/9 域切流**。全量 590/585/0/2 skip；Rust 1 个新投影测试。
+
+## 抖动修复 + 真实 app 验证 — 完成（2026-08-31）
+
+**用户报告**：点击会话画面抖动（不是稳定到最后一条）。
+**根因**：会话切换 → 新 GroupHeightCache（全估算高度）→ 测量批逐组 `scrollTop += delta` 补偿 → 与滚动恢复/follow 竞争 → 多轮迭代抖动。
+**修复**（ChatWindow.flushMeasurements）：新 layout 首批测量不补偿视口（compensatedLayoutRef 记录）；同批补偿累计一次赋值。
+**真实验证**：重装 dmg（含修复）→ 60 消息 fixture 会话 → AX 点击 → 8 帧连拍（120ms 间隔）→ 像素 diff 34-117/60000（0.06-0.2%）→ 无滚动级抖动 ✓。
+**附带发现**：app 启动早期列表卡"加载中"是前端 fetch 无重试的瞬态（host 懒启动前），host 就绪后自动恢复——非阻塞。
+**R8-R10 真实 app 验证累计**：安装版 app 下 host 自动拉起（ensure）、会话列表/重命名/删除经 Rust、omphp 会话浏览正常。

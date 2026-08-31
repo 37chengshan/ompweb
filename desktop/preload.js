@@ -56,4 +56,6 @@ contextBridge.exposeInMainWorld("piDesktop", {
   selectDirectory: () => ipcRenderer.invoke("select-directory"),
   getSplashPref: () => ipcRenderer.invoke("get-splash-pref"),
   setSplashPref: (mode) => ipcRenderer.invoke("set-splash-pref", mode),
+  getAutoLaunch: () => ipcRenderer.invoke("get-auto-launch"),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke("set-auto-launch", enabled),
 });

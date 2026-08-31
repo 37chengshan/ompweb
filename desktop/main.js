@@ -603,6 +603,19 @@ ipcMain.handle("select-directory", async () => {
   return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
 });
 
+// Windows first-run preference: NSIS creates the requested Desktop/Start Menu
+// shortcuts; this lets the in-app setup flow optionally register launch at
+// sign-in without exposing arbitrary shell execution to the renderer.
+ipcMain.handle("get-auto-launch", () => {
+  if (process.platform !== "win32") return { supported: false, enabled: false };
+  return { supported: true, enabled: app.getLoginItemSettings().openAtLogin };
+});
+ipcMain.handle("set-auto-launch", (_event, enabled) => {
+  if (process.platform !== "win32") return { supported: false, enabled: false };
+  app.setLoginItemSettings({ openAtLogin: Boolean(enabled), openAsHidden: false });
+  return { supported: true, enabled: app.getLoginItemSettings().openAtLogin };
+});
+
 // Splash animation preference (used by the Settings UI).
 ipcMain.handle("get-splash-pref", () => readSplashPref());
 ipcMain.handle("set-splash-pref", (_event, mode) => {

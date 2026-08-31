@@ -58,8 +58,11 @@ if (compensation !== 0 && container) container.scrollTop += compensation;
 
 - `tsc --noEmit`：通过。
 - 全量 `npm test`（590 用例）+ 重新打包 dmg：**后台运行中**（bg 任务，结果未出）。
-- 真实 UI 验证：**未完成**（计划：重装 app → computer AX 点击会话 → 连拍截图
-  → inspect_image 对比滚动位置）。
+- 真实 UI 验证：**已完成**（2026-08-31）：重装含修复的 dmg → 生成 60 条消息
+  fixture 会话 → AX 点击会话 → 点击后立即 8 帧连拍（120ms 间隔）→ 像素 diff
+  **34-117/60000 px（0.06%-0.2%）**，无滚动级差异（滚动抖动会 >30%）→ 修复有效。
+  （另发现并定位：app 启动早期列表卡"加载中"是前端 fetch 无重试的瞬态问题，
+  与抖动无关；host 懒启动后自动恢复。）
 - 注意：测试套件不覆盖组件内滚动逻辑（无 React 组件测试），真实 app 验证是唯一手段。
 
 ## 6. 相关文件

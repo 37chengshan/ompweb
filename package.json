@@ -127,6 +127,7 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "runAfterFinish": true,
       "shortcutName": "OmpWeb",
       "artifactName": "OmpWeb-Setup-${version}.${ext}"
     },

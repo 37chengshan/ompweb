@@ -72,11 +72,11 @@ test("fast server: ready on the first probe, no retries", async () => {
   let calls = 0;
   const probe = createHealthProbe({
     appUrl: "http://127.0.0.1:9999",
-    expectedAppVersion: "4.0.15",
+    expectedAppVersion: "5.0.0",
     fetchFn: stubFetch(async (url) => {
       calls += 1;
       assert.match(url, /\/api\/health$/);
-      return { ok: true, status: 200, body: { ok: true, app: "4.0.15", ompReady: true, ompVersion: "18.0.10" } };
+      return { ok: true, status: 200, body: { ok: true, app: "5.0.0", ompReady: true, ompVersion: "18.0.10" } };
     }),
     maxAttempts: 3,
     backoffMs: 1,
@@ -92,11 +92,11 @@ test("slow server: retries until healthy, reports attempt count", async () => {
   let calls = 0;
   const probe = createHealthProbe({
     appUrl: "http://127.0.0.1:9999",
-    expectedAppVersion: "4.0.15",
+    expectedAppVersion: "5.0.0",
     fetchFn: stubFetch(async () => {
       calls += 1;
       if (calls < 3) return { ok: false, status: 503, body: {} };
-      return { ok: true, status: 200, body: { ok: true, app: "4.0.15" } };
+      return { ok: true, status: 200, body: { ok: true, app: "5.0.0" } };
     }),
     maxAttempts: 5,
     backoffMs: 1,
@@ -111,7 +111,7 @@ test("any HTTP status (404/500) is NOT ready", async () => {
   for (const status of [404, 500, 200]) {
     const probe = createHealthProbe({
       appUrl: "http://127.0.0.1:9999",
-      expectedAppVersion: "4.0.15",
+      expectedAppVersion: "5.0.0",
       fetchFn: stubFetch(async () => {
         if (status === 200) return { ok: true, status: 200, body: { ok: false } };
         return { ok: status < 400, status, body: {} };
@@ -129,7 +129,7 @@ test("any HTTP status (404/500) is NOT ready", async () => {
 test("version mismatch stays not-ready (doc 14 S-4 target)", async () => {
   const probe = createHealthProbe({
     appUrl: "http://127.0.0.1:9999",
-    expectedAppVersion: "4.0.15",
+      expectedAppVersion: "5.0.0",
     fetchFn: stubFetch(async () => ({ ok: true, status: 200, body: { ok: true, app: "3.9.0" } })),
     maxAttempts: 1,
   });
@@ -142,7 +142,7 @@ test("version mismatch stays not-ready (doc 14 S-4 target)", async () => {
 test("unreachable server aborts per-attempt and exhausts with server-timeout", async () => {
   const probe = createHealthProbe({
     appUrl: "http://127.0.0.1:9999",
-    expectedAppVersion: "4.0.15",
+      expectedAppVersion: "5.0.0",
     fetchFn: stubFetch(async () => { throw new Error("ECONNREFUSED"); }),
     maxAttempts: 3,
     backoffMs: 1,
@@ -159,7 +159,7 @@ test("unreachable server aborts per-attempt and exhausts with server-timeout", a
 test("aborting fetch mid-attempt counts as unreachable, not stuck", async () => {
   const probe = createHealthProbe({
     appUrl: "http://127.0.0.1:9999",
-    expectedAppVersion: "4.0.15",
+      expectedAppVersion: "5.0.0",
     fetchFn: stubFetch(async () => "abort"),
     maxAttempts: 2,
     backoffMs: 1,
@@ -174,7 +174,7 @@ test("onFail fires once when attempts are exhausted", async () => {
   let fails = 0;
   const probe = createHealthProbe({
     appUrl: "http://127.0.0.1:9999",
-    expectedAppVersion: "4.0.15",
+      expectedAppVersion: "5.0.0",
     fetchFn: stubFetch(async () => ({ ok: false, status: 500, body: {} })),
     maxAttempts: 2,
     backoffMs: 1,

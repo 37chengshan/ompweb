@@ -659,6 +659,20 @@ body {
   scrollbar-color: color-mix(in srgb, var(--text-dim) 45%, transparent) transparent;
 }
 
+/* Desktop chat transcript: the ChatMinimap is the only scrollbar there.
+   scrollbar-width:none covers Firefox; WebKit/WKWebView (Chrome + the desktop
+   app) needs the pseudo-element rule or an 8px semi-transparent scrollbar
+   keeps overlapping the minimap rail. Mobile keeps the native scrollbar. */
+.chat-scroll-view {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+.chat-scroll-view::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Keyboard focus ring that only shows for keyboard navigation, not mouse clicks.
    Components set their own :focus-visible where a tighter ring is wanted. */
 :focus-visible {
@@ -2821,5 +2835,3 @@ html[data-animation-thinking="false"] .thinking-icon-active {
   animation: none !important;
   transform: none !important;
 }
-
-

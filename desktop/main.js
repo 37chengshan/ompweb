@@ -188,10 +188,19 @@ function stopServerTree() {
         try { child.kill("SIGKILL"); } catch { /* already dead */ }
       }
     } else {
+      // macOS/Linux: the server was spawned detached into its own process
+      // group; killing the group (negative pid) takes the omp RPC children
+      // with it. A plain child.kill() would orphan them — they keep session
+      // locks and break --resume for the next app launch.
+      try { process.kill(-child.pid, "SIGTERM"); } catch { /* not a group leader / already gone */ }
       try { child.kill("SIGTERM"); } catch { /* already dead */ }
     }
     // Safety net: never hang the quit/install flow on a stuck child.
-    setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* already dead */ } done(); }, 3000);
+    setTimeout(() => {
+      try { process.kill(-child.pid, "SIGKILL"); } catch { /* already gone */ }
+      try { child.kill("SIGKILL"); } catch { /* already dead */ }
+      done();
+    }, 3000);
   });
 }
 
@@ -269,6 +278,10 @@ async function startServer() {
   ].filter(Boolean).join(path.delimiter);
   serverProcess = spawn(nodeBin, [serverJs], {
     cwd: standaloneDir,
+    // 独立进程组：退出时按组击杀，否则 omp RPC 子进程（孙进程）会变成
+    // 孤儿并继续持有会话文件锁——正是"旧实例扰乱新实例"（--resume 被
+    // 占用 → 每次新建会话 → 消息发不出去）的根因。
+    detached: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
@@ -592,25 +605,19 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     createAppMenu();
-    const splashFirst = isFirstLaunchSplash();
     // Show the window BEFORE awaiting the server (T1.9): createWindow and the
-    // startup page/splash render immediately; the standalone server cold-
+    // startup page renders immediately; the standalone server cold-
     // starts in the background and the health probe gates navigation. This
     // keeps window appearance independent of isPortFree/spawn latency.
     createWindow();
     createTray();
-    if (splashFirst) {
-      // Full-window launch animation: splash page plays the video, fades,
-      // then navigates to APP_URL by itself.
-      waitForServer(false);
-      void mainWindow?.loadFile(splashFile_, { query: { video: splashVideo_, app: APP_URL } });
-    } else {
-      // No animation: show the startup page immediately so the window is
-      // never blank while the standalone server cold-starts, then load the
-      // app once it answers.
-      void mainWindow?.loadURL(STARTUP_PAGE);
-      waitForServer();
-    }
+    // Keep one startup visual for every launch. The former first-run video
+    // introduced a third screen between Electron's startup page and React's
+    // restore skeleton, making a healthy backend look like a stalled frontend.
+    // The startup preference remains readable for compatibility, but launch
+    // readiness is now always represented by this single warm-paper surface.
+    void mainWindow?.loadURL(STARTUP_PAGE);
+    waitForServer();
     await startServer();
     if (quitting) return;
     if (!serverProcess) {

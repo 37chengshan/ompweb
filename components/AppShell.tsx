@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
+import { BackendHealthBanner } from "./BackendDiagnostics";
 import { ToastProvider } from "./ui/toast";
 import { toast } from "./ui/toast";
 import { ChatWindow } from "./ChatWindow";
@@ -932,18 +933,6 @@ export function AppShell() {
   useEffect(() => {
     if (initialSessionRestored) removeBootSkeleton({ fade: true });
   }, [initialSessionRestored]);
-  // T1.6: session-ready is the second overlay gate — the skeleton fades only
-  // after restoration finishes. A stalled restoration must never leave an
-  // opaque overlay forever, so a 10s watchdog force-removes it.
-  useEffect(() => {
-    if (initialSessionRestored) return;
-    const timer = window.setTimeout(() => {
-      if (!document.getElementById("boot-skeleton")) return;
-      removeBootSkeleton({ fade: true });
-      console.warn("boot skeleton force-removed after 10s (session restore timeout)");
-    }, 10000);
-    return () => window.clearTimeout(timer);
-  }, [initialSessionRestored]);
 
   useEffect(() => {
     if (!initialSessionRestored) return;
@@ -1643,6 +1632,10 @@ export function AppShell() {
           )}
 
         </div>
+
+        {/* Backend health banner: appears only when the omp backend is
+            abnormal, with refresh/restart actions + inline diagnostics. */}
+        <BackendHealthBanner />
 
         {/* Chat content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>

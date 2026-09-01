@@ -8,15 +8,24 @@ export interface DiagnosticsData {
   server: { node: string; platform: string; arch: string; uptimeSeconds: number };
   omp: { installed: boolean; path: string | null; version: string | null };
   proxy: { config: { mode: string; url?: string }; effective: string | null };
-  rpc: { activeSessions: number };
+  rpc: { activeSessions: number; recentFailures?: string[] };
+  instances?: { selfPort: number; others: number[] };
   web: { port: string; url: string };
 }
 
 export type BackendHealth = "ok" | "warn" | "error";
 
-/** Overall health: everything green unless omp is missing or unreachable. */
+/**
+ * Overall health. Beyond omp installation, recent RPC failures (unexpected
+ * child exits / session splits caused by other instances holding the session
+ * file) mean messages cannot actually be sent — that must flip the indicator,
+ * otherwise the UI lies ("服务正常" while sends fail).
+ */
 export function healthOf(d: DiagnosticsData): BackendHealth {
   if (!d.omp.installed) return "error";
+  const failures = d.rpc.recentFailures?.length ?? 0;
+  if (failures >= 2) return "error";
+  if (failures >= 1) return "warn";
   if (!d.proxy.effective && d.proxy.config.mode === "auto") return "warn";
   return "ok";
 }
@@ -67,8 +76,10 @@ export function BackendDiagnosticsBody() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "restart" }),
       });
-      const data = await res.json() as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) {
+      const data = await res.json() as { ok?: boolean; success?: boolean; error?: string };
+      // 路由返回 { success: true, sessionsRestarted }——检查 success，旧的
+      // ok 检查会让"重启成功"永远显示为失败。
+      if (!res.ok || !(data.success ?? data.ok)) {
         setError(data.error ?? "restart failed");
       } else {
         setTimeout(refresh, 1500);
@@ -105,8 +116,39 @@ export function BackendDiagnosticsBody() {
         <>
           <Row label={t("diagnostics.omp")} ok={diag.omp.installed} detail={diag.omp.installed ? `${diag.omp.version ?? "?"} · ${diag.omp.path ?? ""}` : t("diagnostics.ompMissing")} />
           <Row label={t("diagnostics.proxy")} ok={Boolean(diag.proxy.effective)} detail={diag.proxy.effective ?? t("diagnostics.proxyOff")} />
-          <Row label={t("diagnostics.rpc")} ok={diag.rpc.activeSessions > 0} detail={`${diag.rpc.activeSessions} ${t("diagnostics.sessions")}`} />
+          <Row label={t("diagnostics.rpc")} ok={(diag.rpc.recentFailures?.length ?? 0) === 0} detail={diag.rpc.recentFailures?.length ? `${diag.rpc.recentFailures.length} ${t("diagnostics.recentFailures")}` : `${diag.rpc.activeSessions} ${t("diagnostics.sessions")}`} />
           <Row label={t("diagnostics.server")} ok detail={`${diag.server.platform}/${diag.server.arch} · node ${diag.server.node}`} />
+          {(diag.instances?.others.length ?? 0) > 0 && diag.instances!.others.map((port) => (
+            <Row
+              key={port}
+              label={t("diagnostics.otherInstance")}
+              ok={false}
+              detail={`127.0.0.1:${port}`}
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    void fetch("/api/omp-update", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "stop-instance", port }),
+                    })
+                      .then((res) => res.json())
+                      .then((data) => {
+                        if (data && !data.success && data.error) setError(data.error);
+                        else setTimeout(refresh, 1500);
+                      })
+                      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+                  }}
+                  aria-label={`${t("diagnostics.stopInstance")} :${port}`}
+                  title={`${t("diagnostics.stopInstance")} :${port}`}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, padding: 0, border: "none", borderRadius: 4, background: "transparent", color: "var(--status-error)", cursor: "pointer", flexShrink: 0 }}
+                >
+                  <RotateCcw size={11} aria-hidden="true" />
+                </button>
+              }
+            />
+          ))}
           {diag.web && (
             <Row
               label={t("diagnostics.webPort")}
@@ -125,7 +167,7 @@ export function BackendDiagnosticsBody() {
               }
             />
           )}
-          {(!diag.omp.installed || diag.rpc.activeSessions === 0) && (
+          {(health === "error" || !diag.omp.installed || diag.rpc.activeSessions === 0) && (
             <button
               type="button"
               onClick={() => void restartRpc()}
@@ -143,35 +185,52 @@ export function BackendDiagnosticsBody() {
 }
 
 /**
+ * Shared backend health polling (every 30s). Both the status button and the
+ * error banner consume this so the abnormal state surfaces consistently.
+ */
+export function useBackendHealth(): { health: BackendHealth; refresh: () => void } {
+  const [health, setHealth] = useState<BackendHealth>("ok");
+  const refresh = useCallback(() => {
+    void fetch("/api/diagnostics")
+      .then((res) => (res.ok ? res.json() as Promise<DiagnosticsData> : null))
+      .then((data) => {
+        if (data) setHealth(healthOf(data));
+      })
+      .catch(() => setHealth("error"));
+  }, []);
+  useEffect(() => {
+    refresh();
+    const timer = setInterval(refresh, 30_000);
+    return () => clearInterval(timer);
+  }, [refresh]);
+  return { health, refresh };
+}
+
+/**
  * Top-left status button (next to the logo): a colored health dot that opens
- * the diagnostics panel on click. Polls /api/diagnostics every 30s.
+ * the diagnostics panel on click. When health turns abnormal the panel
+ * auto-opens once so the recovery actions are immediately visible.
  */
 export function BackendStatusButton() {
   const { t } = useI18n();
-  const [health, setHealth] = useState<BackendHealth>("ok");
+  const { health } = useBackendHealth();
   const [open, setOpen] = useState(false);
+  const prevHealthRef = useRef<BackendHealth>("ok");
+  const autoOpenedRef = useRef(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
+  // 健康状态从正常转为异常时自动弹出诊断面板（用户手动关闭后不再强制弹）。
   useEffect(() => {
-    let cancelled = false;
-    const check = () => {
-      void fetch("/api/diagnostics")
-        .then((res) => (res.ok ? res.json() as Promise<DiagnosticsData> : null))
-        .then((data) => {
-          if (!cancelled && data) setHealth(healthOf(data));
-        })
-        .catch(() => {
-          if (!cancelled) setHealth("error");
-        });
-    };
-    check();
-    const timer = setInterval(check, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, []);
+    const abnormal = health === "error" || health === "warn";
+    const wasNormal = prevHealthRef.current === "ok";
+    prevHealthRef.current = health;
+    if (abnormal && wasNormal && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      setOpen(true);
+    }
+    if (health === "ok") autoOpenedRef.current = false;
+  }, [health]);
 
   // Close on any pointer press outside the panel/button, or on Escape.
   useEffect(() => {
@@ -205,10 +264,13 @@ export function BackendStatusButton() {
         aria-expanded={open}
         aria-haspopup="menu"
         title={t("diagnostics.status")}
-        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, border: "none", borderRadius: "var(--radius-control)", background: open ? "var(--bg-selected)" : "transparent", color: "var(--text-dim)", cursor: "pointer", position: "relative" }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 6px", border: "none", borderRadius: "var(--radius-control)", background: open ? "var(--bg-selected)" : "transparent", color: "var(--text-dim)", cursor: "pointer", position: "relative" }}
       >
         <Activity size={13} strokeWidth={2} aria-hidden="true" />
-        <span aria-hidden="true" style={{ position: "absolute", right: 3, bottom: 3, width: 6, height: 6, borderRadius: "50%", background: color, border: "1.5px solid var(--bg-panel)" }} />
+        <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: color, border: "1.5px solid var(--bg-panel)" }} />
+        {health === "error" && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--status-error)" }}>{t("diagnostics.error")}</span>
+        )}
       </button>
       {open && (
         <div
@@ -221,5 +283,85 @@ export function BackendStatusButton() {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Persistent recovery banner shown when backend health is abnormal: status
+ * text + refresh/restart actions + inline diagnostics body. Rendered under
+ * the app top bar; hidden when healthy.
+ */
+export function BackendHealthBanner() {
+  const { t } = useI18n();
+  const { health, refresh } = useBackendHealth();
+  const [showDetails, setShowDetails] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+
+  if (health === "ok") return null;
+
+  const restart = async () => {
+    setRestarting(true);
+    setRestartError(null);
+    try {
+      const res = await fetch("/api/omp-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restart" }),
+      });
+      const data = await res.json() as { ok?: boolean; success?: boolean; sessionsRestarted?: number; error?: string };
+      if (!res.ok || !(data.success ?? data.ok) || data.error) {
+        setRestartError(data.error ?? "restart failed");
+      } else {
+        setTimeout(refresh, 1500);
+        setTimeout(() => setShowDetails(false), 1200);
+      }
+    } catch (e) {
+      setRestartError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  return (
+    <div
+      role="alert"
+      style={{
+        display: "flex", alignItems: "center", gap: 8, flexShrink: 0, position: "relative",
+        padding: "5px 10px", borderBottom: "1px solid var(--border)",
+        background: "color-mix(in srgb, var(--status-error) 8%, var(--bg-panel))",
+        fontSize: 11.5, color: "var(--text)",
+      }}
+    >
+      <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-error)", flexShrink: 0 }} />
+      <span style={{ fontWeight: 600, color: "var(--status-error)" }}>{t("diagnostics.error")}</span>
+      <span style={{ color: "var(--text-muted)" }}>{t("diagnostics.bannerHint")}</span>
+      <button type="button" onClick={refresh} style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto", padding: "3px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, cursor: "pointer" }}>
+        <RefreshCw size={10} aria-hidden="true" />
+        {t("diagnostics.refresh")}
+      </button>
+      <button
+        type="button"
+        onClick={() => void restart()}
+        disabled={restarting}
+        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, border: "none", background: "var(--accent)", color: "var(--on-accent)", fontSize: 11, fontWeight: 600, cursor: restarting ? "default" : "pointer", opacity: restarting ? 0.6 : 1 }}
+      >
+        <RotateCcw size={10} aria-hidden="true" />
+        {restarting ? t("diagnostics.restarting") : t("diagnostics.restartRpc")}
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowDetails((v) => !v)}
+        style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 11, cursor: "pointer" }}
+      >
+        {showDetails ? t("diagnostics.hideDetails") : t("diagnostics.showDetails")}
+      </button>
+      {restartError && <span style={{ color: "var(--status-error)" }}>{restartError}</span>}
+      {showDetails && (
+        <div style={{ position: "absolute", top: "100%", right: 10, zIndex: 1100, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-card)", boxShadow: "var(--shadow-pop)" }}>
+          <BackendDiagnosticsBody />
+        </div>
+      )}
+    </div>
   );
 }

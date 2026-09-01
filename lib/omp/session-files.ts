@@ -1109,6 +1109,10 @@ async function listSessionFiles(sessionsRoot: string): Promise<string[]> {
   let subMaxMtimeMs = 0;
   try {
     for (const dirent of readDirectorySyncRuntime(sessionsRoot, { withFileTypes: true })) {
+      if (dirent.isFile() && dirent.name.endsWith(".jsonl")) {
+        files.push(path.join(sessionsRoot, dirent.name));
+        continue;
+      }
       if (!dirent.isDirectory()) continue;
       subMaxMtimeMs = Math.max(subMaxMtimeMs, statSync(path.join(sessionsRoot, dirent.name)).mtimeMs);
     }
@@ -1137,7 +1141,7 @@ function collectSessionFiles(sessionsRoot: string): string[] {
         continue;
       }
       for (const file of inner) {
-        if (file.isFile() && isOmpSessionFileName(file.name)) {
+        if (file.isFile() && (isOmpSessionFileName(file.name) || isSessionHeaderFile(path.join(dirPath, file.name)))) {
           files.push(path.join(dirPath, file.name));
         }
       }
@@ -1146,6 +1150,32 @@ function collectSessionFiles(sessionsRoot: string): string[] {
     return [];
   }
   return files;
+}
+
+/** Accept legacy/imported session files with non-standard names only when
+ * their bounded prefix proves they contain a session header. */
+function isSessionHeaderFile(filePath: string): boolean {
+  try {
+    const fd = openSync(filePath, "r");
+    try {
+      const buffer = Buffer.allocUnsafe(8192);
+      const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+      for (const line of buffer.subarray(0, bytes).toString("utf8").split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        try {
+          const value = JSON.parse(line) as Record<string, unknown>;
+          return value.type === "session" && typeof value.id === "string" && value.id.length > 0;
+        } catch {
+          return false;
+        }
+      }
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 /**

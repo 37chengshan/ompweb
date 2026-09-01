@@ -10,8 +10,8 @@
  * session gets its own attach connection for the frame stream, while
  * request/response commands share the manager's control connection.
  *
- * Enable with OMPWEB_BACKEND=rust. Node path (RpcProcess) remains the
- * explicit fallback via OMPWEB_BACKEND=node / unset.
+ * Rust is the default backend. Node path (RpcProcess) remains the explicit
+ * rollback via OMPWEB_BACKEND=node.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -24,7 +24,7 @@ import type { RpcProcessOptions } from "./rpc-process";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const HOST_BIN = process.env.OMPWEB_HOST_BIN
-  ?? join(ROOT, "crates", "target", "debug", "ompweb-host");
+  ?? join(ROOT, "crates", "target", "debug", `ompweb-host${process.platform === "win32" ? ".exe" : ""}`);
 const READY_TIMEOUT_MS = 30_000;
 
 export interface RustRpcProcessOptions {
@@ -457,7 +457,7 @@ export function rustBackendActive(): boolean {
   return process.env.OMPWEB_BACKEND !== "node";
 }
 
-/** Factory used by rpc-manager: Rust backend when the flag is set. */
+/** Factory used by rpc-manager: Rust backend by default. */
 export async function createRpcProcess(options: {
   cwd: string;
   sessionId: string;

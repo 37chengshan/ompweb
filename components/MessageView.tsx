@@ -149,6 +149,13 @@ function haveSameRelevantToolResults(
   return true;
 }
 
+function isAssistantErrorMessage(message: AssistantMessage): boolean {
+  return message.stopReason === "error"
+    || message.errorMessage !== undefined
+    || message.errorStatus !== undefined
+    || message.errorCode !== undefined;
+}
+
 export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", liveTokensPerSecond }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
@@ -427,6 +434,9 @@ function AssistantMessageView({
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming }));
   const blocks = blockItems.map(({ block }) => block);
   const hasActivityBlocks = blocks.some((block) => block.type === "thinking" || block.type === "toolCall");
+  // 消息内最新内容块的原始索引：思考块只有在"流式输出且是最新块"时才自动
+  // 展开，下一轮工具调用/文本到达后自动收起。
+  const latestBlockIndex = blockItems.length > 0 ? blockItems[blockItems.length - 1].originalIndex : -1;
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
 
@@ -501,7 +511,32 @@ function AssistantMessageView({
     return () => clearInterval(id);
   }, [isStreaming]);
 
-  if (blocks.length === 0 && !isStreaming) return null;
+  if (blocks.length === 0 && !isStreaming) {
+    if (!isAssistantErrorMessage(message)) return null;
+    const status = message.errorStatus !== undefined ? String(message.errorStatus) : "error";
+    const detail = message.errorMessage?.trim() || "The model request failed.";
+    return (
+      <div className="chat-message" role="alert" style={{ marginBottom: 10 }}>
+        <div
+          data-message-error="true"
+          style={{
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            borderLeft: "3px solid var(--status-error)",
+            padding: "7px 10px",
+            background: "color-mix(in srgb, var(--status-error) 7%, var(--bg-panel))",
+            color: "var(--status-error)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 13,
+            lineHeight: 1.45,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 3 }}>Error: {status}</div>
+          <div>{detail}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -565,7 +600,7 @@ function AssistantMessageView({
             otherwise ThinkingBlock remounts on commit and loses the expanded
             state (the "thinking flash" bug). */}
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} thinkingDisplayMode={thinkingDisplayMode} />
+          <BlockView key={`${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} isLatestBlock={originalIndex === latestBlockIndex} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} thinkingDisplayMode={thinkingDisplayMode} />
         ))}
       </div>
 
@@ -578,12 +613,12 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex, toolCallsDefaultCollapsed, thinkingDisplayMode }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number; toolCallsDefaultCollapsed: boolean; thinkingDisplayMode?: "auto" | "collapsed" | "expanded" }) {
+function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex, isLatestBlock, toolCallsDefaultCollapsed, thinkingDisplayMode }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number; isLatestBlock?: boolean; toolCallsDefaultCollapsed: boolean; thinkingDisplayMode?: "auto" | "collapsed" | "expanded" }) {
   if (block.type === "text") {
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} isStreaming={isStreaming} thinkingDisplayMode={thinkingDisplayMode} />;
+    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} isStreaming={isStreaming} isLatestBlock={isLatestBlock} thinkingDisplayMode={thinkingDisplayMode} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
@@ -608,13 +643,15 @@ const TextBlock = memo(function TextBlock({ block, isStreaming, cwd, onOpenFile 
   && prev.onOpenFile === next.onOpenFile
 ));
 
-const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex, isStreaming, thinkingDisplayMode = "auto" }: {
+const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex, isStreaming, isLatestBlock = false, thinkingDisplayMode = "auto" }: {
   block: ThinkingContent;
   duration?: number;
   sessionId?: string;
   entryId?: string;
   blockIndex: number;
   isStreaming?: boolean;
+  /** Whether this block is the newest content block of the message. */
+  isLatestBlock?: boolean;
   thinkingDisplayMode?: "auto" | "collapsed" | "expanded";
 }) {
   const { t } = useI18n();
@@ -622,30 +659,44 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const prefetchStartedRef = useRef(false);
 
-  // Auto-expansion latches on the FIRST streaming frame and never un-expands
-  // when streaming ends — previously isStreaming flipping to false collapsed
-  // the block right after it appeared (the "thinking flash").
-  const autoExpandedOnce = useRef(false);
-
-  // Compute auto/default expansion based on thinkingDisplayMode
+  // 自动展开规则（用户手动切换优先）：
+  // 只有在「流式输出中 且 这是消息内最新内容块」时思考块才自动展开；
+  // 下一轮工具调用或文本输出到达（块不再是最新）、或流式结束（提交/重试
+  // 重置）后自动收起。旧实现用 latch 永久展开，重试/多轮思考时出现一排
+  // 半截「思考」块无法收起。
   const isAutoExpanded = useMemo(() => {
     if (thinkingDisplayMode === "expanded") return true;
     if (thinkingDisplayMode === "collapsed") return false;
-    if (isStreaming && !block.deferred) autoExpandedOnce.current = true;
-    return autoExpandedOnce.current;
-  }, [thinkingDisplayMode, isStreaming, block.deferred]);
+    return Boolean(isStreaming && isLatestBlock && !block.deferred);
+  }, [thinkingDisplayMode, isStreaming, isLatestBlock, block.deferred]);
 
   const expanded = userToggled !== null ? userToggled : isAutoExpanded;
 
+  // Deferred thinking keeps the first session payload light, but an empty
+  // expanded shell is misleading and makes the user click twice (open, then
+  // wait for the body). Prefetch once when the row mounts so a later click is
+  // instant while preserving the default-collapsed presentation.
+  useEffect(() => {
+    if (!block.deferred || content !== null || prefetchStartedRef.current || !sessionId || !entryId) return;
+    prefetchStartedRef.current = true;
+    setLoading(true);
+    void loadThinkingContent(sessionId, entryId, blockIndex)
+      .then((text) => setContent(text))
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false));
+  }, [block.deferred, blockIndex, content, entryId, sessionId]);
+
   const handleOpenChange = (nextOpen: boolean) => {
     setUserToggled(nextOpen);
-    if (!nextOpen || !block.deferred || content !== null) return;
+    if (!nextOpen || !block.deferred || content !== null || loading) return;
     if (!sessionId || !entryId) {
       setError(t("messageView.thinkingUnavailable"));
       return;
     }
 
+    prefetchStartedRef.current = true;
     setLoading(true);
     setError(null);
     void loadThinkingContent(sessionId, entryId, blockIndex)
@@ -718,13 +769,39 @@ const ThinkingBlock = memo(function ThinkingBlock({ block, duration, sessionId, 
   && prev.entryId === next.entryId
   && prev.blockIndex === next.blockIndex
   && prev.isStreaming === next.isStreaming
+  && prev.isLatestBlock === next.isLatestBlock
   && prev.thinkingDisplayMode === next.thinkingDisplayMode
 ));
 
 
+/** 工具调用是否携带 skill 内容（skill 工具本身，或读取 skill 目录/SKILL.md
+ *  的 read/grep/bash）：这类结果又长又高频，无论全局"工具默认展开"设置
+ *  如何都强制默认收起，只保留一行摘要。 */
+function isSkillResultText(text: string): boolean {
+  // omp commonly reads skills through a generic read/grep/bash call. In that
+  // shape the tool input is just a file/query/command and the only reliable
+  // signal is the returned content (for example "# .agents/skills/" followed
+  // by "### SKILL.md"). Keep the matcher conservative so ordinary markdown
+  // files are not unexpectedly collapsed.
+  return /(?:^|[\s/#])(?:.agents|.claude|.omp|.codex)\/skills(?:[\s/#]|$)/i.test(text)
+    || /(?:^|[\s/])SKILL\.md(?:$|[\s:#])/i.test(text)
+    || /(?:^|\n)---\s*\n(?=[\s\S]{0,600}?(?:^|\n)(?:name|description):)/i.test(text);
+}
+
+function isSkillContentTool(block: ToolCallContent, resultText?: string | null): boolean {
+  if (block.toolName === "skill" || block.toolName === "Skill" || block.toolName === "skills") return true;
+  if (resultText && isSkillResultText(resultText)) return true;
+  if (block.toolName !== "read" && block.toolName !== "grep" && block.toolName !== "bash") return false;
+  const input = block.input as Record<string, unknown> | undefined;
+  const path = typeof input?.path === "string" ? input.path
+    : typeof input?.file_path === "string" ? input.file_path
+    : typeof input?.query === "string" ? input.query
+    : typeof input?.command === "string" ? input.command : "";
+  return /(^|\/)(\.agents|\.claude|\.omp|\.codex)\/skills\/|(^|\/)skills\/|SKILL\.md$/i.test(path);
+}
+
 const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isStreaming, defaultCollapsed = true, onOpenFile, cwd }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean; defaultCollapsed?: boolean; onOpenFile?: (filePath: string) => void; cwd?: string }) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(Boolean(isStreaming) && !defaultCollapsed);
   const resultText = result
     ? (typeof result.content === "string"
         ? result.content
@@ -733,6 +810,15 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
             .map((b) => b.text)
             .join("\n"))
     : null;
+  const skillContentTool = isSkillContentTool(block, resultText);
+  // skill 内容行强制收起（即使全局默认展开）；其余按 defaultCollapsed。
+  // A nullable override lets a late-arriving tool result change a generic
+  // read/grep/bash row to collapsed without taking control away from a user
+  // who already explicitly opened or closed it.
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const expanded = userToggled !== null
+    ? userToggled
+    : skillContentTool ? false : Boolean(isStreaming) && !defaultCollapsed;
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
   const resultDiff = expanded && result && !isError ? getResultDiff(result) : null;
@@ -741,7 +827,7 @@ const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration, isS
 
   return (
     <div className="activity-row" data-activity-operation="true">
-      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <Collapsible open={expanded} onOpenChange={setUserToggled}>
         <CollapsibleTrigger className="activity-row-trigger">
           <span className={`activity-row-indicator${isError ? " activity-row-indicator-error" : ""}`} aria-hidden>
             {isError ? <CircleAlert size={12} strokeWidth={1.8} /> : result ? <Check size={12} strokeWidth={2} /> : <LoaderCircle size={12} strokeWidth={1.8} className="activity-row-spinner" />}

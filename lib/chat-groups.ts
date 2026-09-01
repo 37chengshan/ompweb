@@ -94,13 +94,9 @@ export function buildChatGroups(
   return groups;
 }
 
-/**
- * Height cache over groups: measured values replace estimates, prefix sums
- * keep scroll positioning O(log n). Rebuilds the prefix table on change
- * (O(groups) — microseconds for thousands of groups).
- */
 export class GroupHeightCache {
   private _heights: number[];
+  private _measured: boolean[];
   private _prefix: number[];
   private _estimator: GroupEstimator;
   private _messages: unknown[];
@@ -113,6 +109,7 @@ export class GroupHeightCache {
     this._estimator = estimator;
     this._messages = messages;
     this._heights = groups.map((g) => estimator(g, messages));
+    this._measured = new Array<boolean>(groups.length).fill(false);
     this._prefix = new Array<number>(groups.length + 1).fill(0);
     this._rebuildPrefix();
   }
@@ -129,6 +126,13 @@ export class GroupHeightCache {
     return this._heights[groupIdx];
   }
 
+  /** Whether the height for a group came from a real measurement (or seed),
+   *  not an estimate. Consumers use this to persist measured heights across
+   *  cache rebuilds (seeding) instead of falling back to estimates. */
+  isMeasured(groupIdx: number): boolean {
+    return this._measured[groupIdx] === true;
+  }
+
   /** Offset of a group's top edge (sum of heights before it). */
   offsetOf(groupIdx: number): number {
     return this._prefix[groupIdx];
@@ -140,9 +144,27 @@ export class GroupHeightCache {
     const delta = height - this._heights[groupIdx];
     if (Math.abs(delta) < 0.5) return 0;
     this._heights[groupIdx] = height;
+    this._measured[groupIdx] = true;
     this._rebuildPrefix();
     this.revision += 1;
     return delta;
+  }
+
+  /** Bulk-write measured heights (e.g. seeded from a previous cache instance).
+   *  Invalid values are skipped. Single prefix rebuild + one revision bump,
+   *  unlike N individual measure() calls (O(N×G) prefix rebuilds). */
+  seedMeasured(heights: ReadonlyMap<number, number>): void {
+    if (heights.size === 0) return;
+    let wrote = false;
+    for (const [groupIdx, height] of heights) {
+      if (!Number.isFinite(height) || height < 0) continue;
+      this._heights[groupIdx] = height;
+      this._measured[groupIdx] = true;
+      wrote = true;
+    }
+    if (!wrote) return;
+    this._rebuildPrefix();
+    this.revision += 1;
   }
 
   /** Group containing the given scroll offset (binary search). */

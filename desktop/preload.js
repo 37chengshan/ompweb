@@ -5,7 +5,7 @@
  * renderer. The web UI itself is the same omp-web app (no bridge API
  * needed for its existing features).
  */
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("ompWebDesktop", {
   isDesktop: true,
@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("ompWebDesktop", {
   minimize: () => ipcRenderer.send("window-control", "minimize"),
   maximize: () => ipcRenderer.send("window-control", "maximize"),
   close: () => ipcRenderer.send("window-control", "close"),
+  // Real filesystem path of a dropped/picked File (drag-to-insert-path).
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   // Self-update bridge (packaged builds only; dev resolves to no-ops via
   // invoke rejection, which the renderer treats as "not supported").
   updateCheck: () => ipcRenderer.invoke("desktop-update-check"),

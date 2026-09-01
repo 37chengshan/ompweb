@@ -67,17 +67,24 @@ export function BootSkeleton() {
         zIndex: 9999,
         background: "var(--bg, #faf9f6)",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        color: "var(--text-dim, #8a867e)",
-        fontSize: 13,
-        fontFamily: "system-ui, sans-serif",
+        gap: 18,
+        color: "var(--text, #2b2b2b)",
+        fontFamily: '-apple-system, "Segoe UI", system-ui, sans-serif',
         opacity: fading ? 0 : 1,
         pointerEvents: fading ? "none" : "auto",
         transition: "opacity var(--dur-fast, 150ms) var(--ease-out-warm, ease-out)",
       }}
     >
-      正在启动…
+      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 0.5 }}>
+        Omp<span style={{ color: "var(--accent, #c98a1b)" }}>Web</span>
+      </div>
+      <div style={{ width: 180, height: 3, borderRadius: 2, background: "var(--border, #e8e4dc)", overflow: "hidden" }}>
+        <i style={{ display: "block", width: "40%", height: "100%", borderRadius: 2, background: "var(--accent, #c98a1b)", margin: "0 auto" }} />
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-muted, #8a867e)" }}>正在启动…</div>
     </div>
   );
 }

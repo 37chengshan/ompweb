@@ -93,8 +93,12 @@ function normalizeProjectKey(value: string): string {
 // Bounded retry window for restoring a brand-new session from its URL before
 // omp flushes the JSONL (typically appears within a second or two of the
 // first prompt, so 8 × 1s covers it without hanging a dead link forever).
-const INITIAL_RESTORE_RETRY_MS = 1000;
-const INITIAL_RESTORE_MAX_ATTEMPTS = 8;
+// A just-created URL session may need a brief moment before its JSONL appears,
+// but keeping the whole desktop shell behind the boot overlay for eight
+// seconds makes a stale URL look like a hung frontend. Four short retries
+// still cover the flush race without turning normal startup into a long wait.
+const INITIAL_RESTORE_RETRY_MS = 350;
+const INITIAL_RESTORE_MAX_ATTEMPTS = 4;
 
 const UNREAD_SESSIONS_STORAGE_KEY = "omp-web:unread-session-ids";
 
@@ -632,6 +636,13 @@ function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
   return roots;
 }
 
+function mostRecentSessionForWorkspace(sessions: SessionInfo[], workspace: string): SessionInfo | undefined {
+  const comparableWorkspace = comparableProjectPath(workspace);
+  return sessions
+    .filter((session) => comparableProjectPath(workspaceKeyOf(session)) === comparableWorkspace)
+    .sort((a, b) => b.modified.localeCompare(a.modified))[0];
+}
+
 const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
 
 function useScramble(target: string, running: boolean, reducedMotion: boolean): string {
@@ -846,9 +857,14 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
       const data = await res.json() as { projects?: ManagedProject[] };
       setProjects(data.projects ?? []);
       setProjectsError(null);
-      projectsLoadedRef.current = true;
     } catch (e) {
       setProjectsError(t("projects.loadFailed", { detail: e instanceof Error ? e.message : String(e) }));
+    } finally {
+      // Project discovery enriches grouping but must not be a permanent gate
+      // for session restoration. On failure the sidebar can still restore a
+      // session from /api/sessions (which already includes cwd/projectRoot)
+      // and show the project error in its normal surface.
+      projectsLoadedRef.current = true;
     }
   }, [t]);
 
@@ -1305,8 +1321,13 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     if (skipInitialProjectSelection) return;
     if (restoredRef.current || loading || !projectsLoadedRef.current) return;
 
-    const defaultWorkspace = sortedProjects[0]?.path ?? null;
+    // Prefer a project that actually has sessions. A recently-added empty
+    // project must not hide the user's existing workspace during startup.
+    const defaultWorkspace = sortedProjects.find((project) =>
+      allSessions.some((session) => comparableProjectPath(workspaceKeyOf(session)) === comparableProjectPath(project.path)),
+    )?.path ?? sortedProjects[0]?.path ?? null;
     const rememberedSessionId = initialSessionId || (defaultWorkspace ? getLastOpenSession(defaultWorkspace) : null);
+    const rememberedTargetExists = Boolean(rememberedSessionId && allSessions.some((session) => session.id === rememberedSessionId));
 
     if (rememberedSessionId) {
       const target = allSessions.find((s) => s.id === rememberedSessionId);
@@ -1333,11 +1354,31 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         return;
       }
       if (!initialSessionId && defaultWorkspace) clearLastOpenSession(defaultWorkspace);
+      // A stale remembered id must fall through to the workspace fallback;
+      // otherwise the app incorrectly exposes the empty “开始使用” state.
       restoreRetryRef.current = 0;
+    }
+    if (!rememberedSessionId || (!initialSessionId && !rememberedTargetExists)) {
+      // A fresh desktop install (or cleared localStorage) still has a useful
+      // session list. Leaving the main pane on the empty "开始使用" screen
+      // while the first project already contains sessions makes startup look
+      // broken. Restore the most recent session in the default workspace as a
+      // deterministic fallback; explicit URL/remembered-session choices above
+      // still take precedence.
+      const fallback = defaultWorkspace ? mostRecentSessionForWorkspace(allSessions, defaultWorkspace) : undefined;
+      if (fallback) {
+        restoredRef.current = true;
+        setSelectedCwd(fallback.cwd);
+        expandProject(workspaceKeyOf(fallback));
+        onSelectSession(fallback, true);
+        return;
+      }
       restoredRef.current = true;
       onInitialRestoreDone?.();
     }
-    if (!rememberedSessionId) {
+    // An explicit deep link to a deleted/missing session is allowed to settle
+    // without opening an unrelated conversation from the workspace fallback.
+    if (initialSessionId && rememberedSessionId && !rememberedTargetExists) {
       restoredRef.current = true;
       onInitialRestoreDone?.();
     }

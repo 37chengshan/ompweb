@@ -26,6 +26,10 @@ pub struct SessionProjection {
 }
 
 pub fn collect_session_files(root: &Path) -> Vec<PathBuf> {
+    collect_session_files_inner(root, true)
+}
+
+fn collect_session_files_inner(root: &Path, allow_loose_files: bool) -> Vec<PathBuf> {
     let mut files = Vec::new();
     if let Ok(entries) = fs::read_dir(root) {
         for entry in entries.flatten() {
@@ -38,11 +42,11 @@ pub fn collect_session_files(root: &Path) -> Vec<PathBuf> {
                 // project dirs (cwd slugs) never match the session pattern.
                 if let Some(name) = entry.file_name().to_str() {
                     if !is_session_file_name(&format!("{name}.jsonl")) {
-                        files.extend(collect_session_files(&path));
+                        files.extend(collect_session_files_inner(&path, false));
                     }
                 }
             } else if let Some(name) = entry.file_name().to_str() {
-                if is_session_file_name(name) {
+                if name.ends_with(".jsonl") && (allow_loose_files || is_session_file_name(name) || is_session_header_file(&path)) {
                     files.push(path);
                 }
             }
@@ -50,6 +54,19 @@ pub fn collect_session_files(root: &Path) -> Vec<PathBuf> {
     }
     files.sort();
     files
+}
+
+/// Accept legacy/imported session files with non-standard names only when
+/// their bounded prefix proves they contain a session header.
+fn is_session_header_file(path: &Path) -> bool {
+    let Ok(raw) = fs::read_to_string(path) else { return false; };
+    for line in raw.lines().take(32) {
+        if line.trim().is_empty() { continue; }
+        let Ok(value) = JsonValue::parse(line) else { return false; };
+        return value.get(&["type"]).and_then(|v| v.as_str()) == Some("session")
+            && value.get(&["id"]).and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
+    }
+    false
 }
 
 /// Mirror of the Node `isOmpSessionFileName`: true only for omp session files

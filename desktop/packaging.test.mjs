@@ -5,6 +5,7 @@ import test from "node:test";
 
 const root = path.resolve(import.meta.dirname, "..");
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const desktopWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "build-desktop.yml"), "utf8");
 
 test("desktop packaging explicitly preserves Next's hidden runtime directory", () => {
   assert.ok(packageJson.build.extraResources.some((resource) => (
@@ -19,4 +20,10 @@ test("desktop packaging explicitly preserves Next's hidden runtime directory", (
     resource.from === ".next/standalone/crates"
     && resource.to === "standalone/crates"
   )));
+});
+
+test("desktop CI builds the Rust host before tracing and packaging", () => {
+  assert.match(desktopWorkflow, /dtolnay\/rust-toolchain@stable/);
+  assert.match(desktopWorkflow, /cargo build --locked --manifest-path crates\/Cargo\.toml --bin ompweb-host/);
+  assert.ok(desktopWorkflow.indexOf("cargo build --locked") < desktopWorkflow.indexOf("npm run build"));
 });

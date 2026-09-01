@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo, useReducer } from "react";
 import type {
   AgentMessage,
+  AssistantMessage,
   CustomMessage,
   ExtensionStatusItem,
   ExtensionUiRequest,
@@ -265,6 +266,21 @@ function normalizeThinkingLevel(level: string | undefined): ThinkingLevelOption 
   // omp's "inherit" sentinel means "no explicit selection" — show as auto.
   if (!level || level === "inherit") return "auto";
   return level as ThinkingLevelOption;
+}
+
+function parseErrorStatus(message: string): number | undefined {
+  const match = message.match(/\b(?:HTTP\s*)?([45]\d{2})\b/i);
+  return match ? Number(match[1]) : undefined;
+}
+
+function createAssistantErrorMessage(message: string, fields: { status?: number | string; code?: string } = {}): AssistantMessage {
+  const status = fields.status ?? parseErrorStatus(message);
+  return {
+    role: "assistant", content: [], provider: "", model: "", stopReason: "error",
+    ...(status !== undefined ? { errorStatus: status } : {}),
+    ...(fields.code ? { errorCode: fields.code } : {}),
+    errorMessage: message, timestamp: Date.now(),
+  };
 }
 
 /** Narrow the live state's model (OmpModel: id-based) to the composer's shape. */
@@ -636,6 +652,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [steeringMode, setSteeringMode] = useState<"all" | "one-at-a-time">("all");
   const [followUpMode, setFollowUpMode] = useState<"all" | "one-at-a-time">("all");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
+  const retryInfoRef = useRef(retryInfo);
+  retryInfoRef.current = retryInfo;
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [forkingEntryId, setForkingEntryId] = useState<string | null>(null);
@@ -737,6 +755,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // invalidated on terminal.
   const subagentRosterGenerationRef = useRef(0);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
+  // A provider can acknowledge `prompt` and then reject it asynchronously.
+  // Keep that failure until the authoritative session reload completes; some
+  // omp versions persist the failed assistant turn, while older ones do not.
+  const pendingPromptErrorRef = useRef<{ sid: string | null; runId: number; message: string } | null>(null);
   // True once this mount has persisted a non-empty queue: gates removal so a
   // just-mounted empty state cannot wipe a stored queue before restore runs.
   const queuePersistDirtyRef = useRef(false);
@@ -1259,10 +1281,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const loadSystemPrompt = useCallback(async () => {
     const sid = sessionIdRef.current ?? await ensureNewSession();
     if (!sid) return;
-
-    const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
-    if (!hookAliveRef.current || sessionIdRef.current !== sid) return;
-    setSystemPrompt(state.systemPrompt ?? "");
+    try {
+      const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
+      if (!hookAliveRef.current || sessionIdRef.current !== sid) return;
+      setSystemPrompt(state.systemPrompt ?? "");
+    } catch (e) {
+      // 会话被其他实例占用等 RPC 失败不能静默：系统提示读取失败要告知用户。
+      console.error("Failed to load system prompt:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
+    }
   }, [ensureNewSession]);
 
   const loadSlashCommands = useCallback(async () => {
@@ -1281,6 +1308,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return commands;
     } catch (e) {
       console.error("Failed to load slash commands:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
       setSlashCommands([]);
       return [] as SlashCommandInfo[];
     } finally {
@@ -1390,6 +1418,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     } catch (e) {
       console.error("Failed to send extension UI response:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
     } finally {
       // OMP commonly emits the next Ask select immediately after this response.
       // Keep the current panel mounted for a short hand-off window so the composer
@@ -1489,6 +1518,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     } catch (e) {
       console.error("Failed to send host tool result:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
     }
   }, []);
 
@@ -1551,6 +1581,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       await sendAgentCommand(sid, { type: "host_uri_result", id, ...frame });
     } catch (e) {
       console.error("Failed to send host URI result:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
     }
   }, []);
 
@@ -1600,6 +1631,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     } catch (e) {
       console.error("Failed to send extension custom UI input:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
     }
   }, []);
 
@@ -1733,6 +1765,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // start — a next prompt that begins while the reload is in flight must
       // not be overwritten by the finished run's snapshot.
       if (sid) await loadSession(sid, false, true, runId);
+      const pending = pendingPromptErrorRef.current;
+      if (pending && pending.sid === sid && (runId === undefined || pending.runId === runId)) {
+        setMessages((prev) => {
+          const hasError = prev.some((message) => message.role === "assistant"
+            && (message as AssistantMessage).stopReason === "error"
+            && (message as AssistantMessage).errorMessage === pending.message);
+          return hasError ? prev : [...prev, createAssistantErrorMessage(pending.message)];
+        });
+        pendingPromptErrorRef.current = null;
+      }
     } finally {
       if (runId !== undefined && promptRunIdRef.current !== runId) return;
       optimisticUserMessageKeyRef.current = null;
@@ -2028,7 +2070,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         agentRunningRef.current = false;
         setAgentRunning(false);
         setAgentPhase(null);
+        // 运行在自动重试进行中结束（重试耗尽或中止）——正常完成路径会先收
+        // 到 auto_retry_end 清空 retryInfo；这里仍非空说明回合失败，明确提示
+        // 用户，避免"输出一半就停了但没有报错"的困惑。
+        const endedWhileRetrying = retryInfoRef.current;
         setRetryInfo(null);
+        if (endedWhileRetrying) {
+          addNotice({
+            type: "error",
+            message: translate("agentSession.runEndedAfterRetries", { attempts: endedWhileRetrying.attempt })
+              + (endedWhileRetrying.errorMessage ? ` — ${endedWhileRetrying.errorMessage}` : ""),
+          });
+        }
         setSubagents([]);
         setAdvisorActiveAt(0);
         subagentRosterGenerationRef.current += 1;
@@ -2075,7 +2128,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         void finishPromptWithoutStream(sessionIdRef.current, promptRunIdRef.current);
         break;
       case "prompt_error":
-        addNotice({ type: "error", message: (event.errorMessage as string | undefined) ?? translate("agentSession.commandFailed") });
+        {
+          const errorMessage = (event.errorMessage as string | undefined)?.trim() || translate("agentSession.commandFailed");
+          pendingPromptErrorRef.current = { sid: sessionIdRef.current, runId: promptRunIdRef.current, message: errorMessage };
+          const errorEntry = createAssistantErrorMessage(errorMessage, {
+            status: typeof event.errorStatus === "number" || typeof event.errorStatus === "string" ? event.errorStatus : undefined,
+            code: typeof event.errorCode === "string" ? event.errorCode : undefined,
+          });
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant" && (last as AssistantMessage).stopReason === "error" && (last as AssistantMessage).errorMessage === errorMessage) return prev;
+            return [...prev, errorEntry];
+          });
+          addNotice({ type: "error", message: errorMessage });
+        }
         // A failed prompt is terminal: no agent_end follows it. Without this the
         // spinner and the locked input wait for the 15s reconcile poll. Fenced
         // with the run id for the same reason as prompt_result above.
@@ -2476,22 +2542,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return true;
     } catch (e) {
       console.error("Failed to send message:", e);
-      // Every failure here (stream connect, startup, set_model, or the prompt
-      // POST itself) means the prompt never started, so roll back the optimistic bubble.
-      const optimisticKey = optimisticUserMessageKeyRef.current;
-      if (optimisticKey) {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          return last?.role === "user" && userMessageKey(last) === optimisticKey
-            ? prev.slice(0, -1)
-            : prev;
-        });
-      }
+      // Keep the prompt and add an assistant error row, matching ompcli.
+      // Removing the optimistic user bubble made failed turns look as if the
+      // app had silently ignored them and left no retry context.
+      const errorMessage = e instanceof EventStreamConnectionError
+        ? e.message
+        : translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) });
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && (last as AssistantMessage).stopReason === "error" && (last as AssistantMessage).errorMessage === errorMessage) return prev;
+        return [...prev, createAssistantErrorMessage(errorMessage)];
+      });
       addNotice({
         type: "error",
-        message: e instanceof EventStreamConnectionError
-          ? e.message
-          : translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }),
+        message: errorMessage,
       });
       // Restore the user's text into the input instead of losing it. Mirrors the
       // shell-command recovery in executeBash; insertIfEmpty avoids clobbering
@@ -3063,6 +3127,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       await sendAgentCommand(sid, { type: "abort_compaction" });
     } catch (e) {
       console.error("Failed to abort compaction:", e);
+      toast.error(translate("chatInput.abortFailed"));
     }
   }, []);
 

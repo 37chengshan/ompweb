@@ -44,28 +44,28 @@
     "transitionDeclarations": 29,
     "reducedMotionBlocks": [
       {
-        "line": 1670,
+        "line": 1684,
         "rules": 1,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2407,
+        "line": 2421,
         "rules": 1,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2510,
+        "line": 2524,
         "rules": 2,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2613,
+        "line": 2627,
         "rules": 4,
         "disables": [
           "none"
@@ -89,11 +89,14 @@
     "components/ArchiveBrowser.tsx": {
       "inlineTransitions": 4
     },
+    "components/BootSkeleton.tsx": {
+      "inlineTransitions": 1
+    },
     "components/BranchNavigator.tsx": {
       "inlineTransitions": 2
     },
     "components/ChatInput.tsx": {
-      "inlineTransitions": 18
+      "inlineTransitions": 17
     },
     "components/ChatMinimap.tsx": {
       "inlineTransitions": 2

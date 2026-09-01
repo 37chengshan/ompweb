@@ -40,6 +40,24 @@ const IDLE_DESTROY_MS = 10 * 60 * 1000;
 const READY_TIMEOUT_MS = 120_000;
 const MCP_LIST_TIMEOUT_MS = 15_000;
 
+// ── RPC 健康信号 ──────────────────────────────────────────────────────────
+// 记录 omp 子进程异常退出与"会话分裂"（--resume 后 omp 返回了不同的会话，
+// 说明会话文件正被其他 omp/ompweb 实例占用——旧实例扰乱新实例的典型症状）。
+// /api/diagnostics 与顶栏健康指示据此反映"消息能否真正发出"。
+const rpcFailures: Array<{ at: number; detail: string }> = [];
+
+export function recordRpcFailure(detail: string): void {
+  const now = Date.now();
+  rpcFailures.push({ at: now, detail });
+  while (rpcFailures.length > 0 && now - rpcFailures[0].at > 10 * 60_000) rpcFailures.shift();
+}
+
+/** 最近 windowMs 内的 RPC 失败（默认 60s，供健康指示使用）。 */
+export function recentRpcFailures(windowMs = 60_000): Array<{ at: number; detail: string }> {
+  const now = Date.now();
+  return rpcFailures.filter((failure) => now - failure.at <= windowMs);
+}
+
 const RESTARTING_MESSAGE = "This session is restarting — retry in a moment.";
 const BASH_EXCLUDE_MESSAGE =
   "omp cannot run a shell command with its output excluded from the model context (`!!`): the RPC bash command has no exclusion option, so the output would silently enter the context anyway. Run it with a single `!` to share the output with the model, or use a terminal outside omp web.";
@@ -319,6 +337,7 @@ export class AgentSessionWrapper {
     // A restart disposes the old child on purpose — not a crash.
     if (!this._alive || this.restarting) return;
     const detail = stderrTail.trim().split("\n").pop() ?? "";
+    recordRpcFailure(`omp process exited unexpectedly${detail ? `: ${detail}` : ""}`);
     this.emit({
       type: "notice",
       level: "error",
@@ -397,7 +416,12 @@ export class AgentSessionWrapper {
         // reuses the original command id after the immediate ack).
         if (event.success === false && event.command === "prompt") {
           this.promptRunning = false;
-          this.emit({ type: "prompt_error", errorMessage: (event.error as string) ?? "Prompt failed" });
+          this.emit({
+            type: "prompt_error",
+            errorMessage: (event.error as string) ?? "Prompt failed",
+            ...(typeof event.code === "string" ? { errorCode: event.code } : {}),
+            ...(typeof event.status === "number" || typeof event.status === "string" ? { errorStatus: event.status } : {}),
+          });
           notifyRunningChange();
           return;
         }
@@ -1299,6 +1323,19 @@ export async function startRpcSession(
     }
 
     const realSessionId = created.sessionId;
+    // 会话分裂检测：--resume <file> 后 omp 返回了不同的会话 id，说明该会话
+    // 文件正被另一个 omp/ompweb 实例占用（旧实例的孤儿进程持有锁/待定工具
+    // 调用）——继续发消息会落到新会话里，UI 看不到任何响应。此时明确报错，
+    // 并计入 RPC 健康信号，让顶栏横幅提示用户清理旧实例。
+    if (sessionId && realSessionId && realSessionId !== sessionId) {
+      const detail = `session split: requested ${sessionId}, omp resumed as ${realSessionId}`;
+      recordRpcFailure(detail);
+      await created.destroyAndWait();
+      throw new WebRpcError(
+        "该会话正被另一个 omp 实例占用，无法恢复。请先关闭其他 ompweb/omp 实例（顶部「服务异常」横幅可一键清理），再重试。",
+        "session_split",
+      );
+    }
     created.onDestroy(() => {
       if (registry.get(created.sessionId) === created) registry.delete(created.sessionId);
       if (registry.get(realSessionId) === created) registry.delete(realSessionId);

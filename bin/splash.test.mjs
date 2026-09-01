@@ -51,7 +51,8 @@ test("health readiness requires the dedicated endpoint with the app version (T1.
 });
 
 test("skeleton follows the theme variables, no hardcoded light flash (T1.5)", async () => {
-  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
-  assert.match(layout, /background: "var\(--bg/);
-  assert.match(layout, /color: "var\(--text-dim/);
+  const skeleton = await readFile(new URL("../components/BootSkeleton.tsx", import.meta.url), "utf8");
+  assert.match(skeleton, /background: "var\(--bg/);
+  assert.match(skeleton, /color: "var\(--text/);
+  assert.match(skeleton, /color: "var\(--text-muted/);
 });

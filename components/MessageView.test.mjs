@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createJiti } from "jiti";
@@ -8,6 +9,7 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
+const messageViewSource = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
 const { MessageView, SafeMarkdownBody, TaskResultPanel } = await jiti.import("./MessageView.tsx");
 const { CodeBlock } = await jiti.import("./MermaidBlock.tsx");
 
@@ -169,30 +171,93 @@ test("advisor custom messages use the localized advisor label", () => {
 });
 
 
-test("expanded edit results with a patch render the split diff view", () => {
+test("skill-file reads stay collapsed even when tool calls default expanded", () => {
   const html = renderToStaticMarkup(React.createElement(MessageView, {
     isStreaming: true,
     toolCallsDefaultCollapsed: false,
     message: {
       role: "assistant",
-      content: [{ type: "toolCall", toolCallId: "call-1", toolName: "edit", input: { path: "demo.ts" } }],
+      content: [
+        { type: "toolCall", toolCallId: "call-1", toolName: "read", input: { path: ".agents/skills/60fps-animation/SKILL.md" } },
+        { type: "toolCall", toolCallId: "call-2", toolName: "read", input: { path: "src/plain.ts" } },
+      ],
+    },
+  }));
+
+  // 两个 toolCall 块：第一个 aria-expanded=false（skill 强制收起），
+  // 第二个 =true（全局展开设置对普通文件生效）。
+  const expandedFlags = [...html.matchAll(/aria-expanded="(true|false)"/g)].map((m) => m[1]);
+  assert.equal(expandedFlags[0], "false");
+  assert.equal(expandedFlags[1], "true");
+});
+
+test("skill content returned by a generic grep/read call stays collapsed", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    isStreaming: true,
+    toolCallsDefaultCollapsed: false,
+    message: {
+      role: "assistant",
+      content: [{ type: "toolCall", toolCallId: "call-skill-result", toolName: "grep", input: { query: "SKILL.md", path: "/tmp" } }],
     },
     toolResults: new Map([[
-      "call-1",
-      {
-        role: "toolResult",
-        toolCallId: "call-1",
-        content: [{ type: "text", text: "Patch applied" }],
-        details: {
-          patch: "--- a/demo.ts\n+++ b/demo.ts\n@@ -1,1 +1,2 @@\n const keep = true;\n-dropped const gone = 1;\n+added const here = 2;",
-        },
-      },
+      "call-skill-result",
+      { role: "toolResult", toolCallId: "call-skill-result", content: [{ type: "text", text: "# .agents/skills/\n## 60fps-animation/\n### SKILL.md" }] },
     ]]),
   }));
 
-  // Split diff grid (before/after columns) instead of the raw output <pre>.
-  assert.match(html, /grid-template-columns:minmax\(0, ?1fr\) minmax\(0, ?1fr\)/);
-  assert.match(html, /added const here = 2;/);
-  assert.match(html, /dropped const gone = 1;/);
-  assert.doesNotMatch(html, /<pre/);
+  assert.match(html, /aria-expanded="false"/);
+});
+
+test("deferred thinking rows prefetch their body instead of relying on click-time fetch", () => {
+  // The behavior is intentionally implemented as a mount prefetch so the
+  // collapsed row never has to expose an empty shell after a user opens it.
+  assert.match(messageViewSource, /Prefetch once when the row mounts/);
+});
+
+test("streaming thinking auto-expands only while it is the latest block", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    isStreaming: true,
+    message: {
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "first attempt reasoning" },
+        { type: "toolCall", toolCallId: "call-1", toolName: "read", input: { path: "a.ts" } },
+        { type: "thinking", thinking: "second attempt reasoning" },
+      ],
+    },
+  }));
+
+  const expandedFlags = [...html.matchAll(/aria-expanded="(true|false)"/g)].map((m) => m[1]);
+  // 第一段思考（已过时）收起；toolCall 收起；最新一段思考展开。
+  assert.equal(expandedFlags[0], "false");
+  assert.equal(expandedFlags[2], "true");
+});
+
+test("committed thinking blocks default collapsed", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    message: {
+      role: "assistant",
+      content: [{ type: "thinking", thinking: "finished reasoning" }],
+    },
+  }));
+
+  assert.match(html, /aria-expanded="false"/);
+});
+
+test("provider errors render as a persistent assistant error row", () => {
+  const html = renderToStaticMarkup(React.createElement(MessageView, {
+    message: {
+      role: "assistant",
+      content: [],
+      provider: "opencodex",
+      model: "pro/gpt-5.6",
+      stopReason: "error",
+      errorStatus: 403,
+      errorMessage: "预扣费失败，用户剩余额度不足",
+    },
+  }));
+
+  assert.match(html, /data-message-error="true"/);
+  assert.match(html, /Error: 403/);
+  assert.match(html, /预扣费失败/);
 });

@@ -102,7 +102,12 @@ function countToolCalls(messages: AgentMessage[], indices: number[]): number {
 
 function hasDisplayableProcessMessage(message: AgentMessage): boolean {
   if (message.role === "assistant") {
-    return getDisplayableAssistantBlocks(message as AssistantMessage).length > 0;
+    const assistant = message as AssistantMessage;
+    return getDisplayableAssistantBlocks(assistant).length > 0
+      || assistant.stopReason === "error"
+      || assistant.errorMessage !== undefined
+      || assistant.errorStatus !== undefined
+      || assistant.errorCode !== undefined;
   }
   return message.role === "custom";
 }
@@ -383,6 +388,10 @@ const CommittedTranscript = memo(function CommittedTranscript({
     const nodes: ReactNode[] = [renderMessage(userIdx)];
     const visibleProcessIndices = processIndices.filter((i) => hasDisplayableProcessMessage(messages[i]));
     const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
+    const finalAssistantError = finalAssistant.stopReason === "error"
+      || finalAssistant.errorMessage !== undefined
+      || finalAssistant.errorStatus !== undefined
+      || finalAssistant.errorCode !== undefined;
     const finalSplit = splitFinalAssistantBlocks(finalAssistant);
     const finalProcessMessage = finalSplit.processBlocks.length > 0
       ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, { omitUsage: true })
@@ -412,6 +421,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
       );
     }
     if (finalAnswerMessage) nodes.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }));
+    else if (finalAssistantError) nodes.push(renderMessage(finalAssistantIdx));
     for (const i of tailIndices) nodes.push(renderMessage(i));
     return <Fragment key={"g-" + userIdx}>{nodes}</Fragment>;
   };
@@ -603,12 +613,33 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     groupsRef.current = { key: groupsKey, groups: built };
     return built;
   }, [messages, groupsKey]);
-  // 高度缓存随组索引重建（估算值；窗口内组挂载后立即测量替换）。
-  const layoutRef = useRef<{ key: string; layout: GroupHeightCache } | null>(null);
+  // 重建时把旧缓存中已实测的高度按锚点 id（user/compaction 消息）播种到
+  // 新缓存：会话内流式增长/工具结果提交不再把全部高度打回估算，节点与
+  // 滚动位置不跳变。会话切换因锚点 id 不同天然不播种。
+  const layoutRef = useRef<{ key: string; layout: GroupHeightCache; groups: ChatGroup[]; messages: AgentMessage[] } | null>(null);
   const layout = useMemo(() => {
     if (layoutRef.current?.key === groupsKey) return layoutRef.current.layout;
     const built = new GroupHeightCache(groups, messages, estimateGroupHeight);
-    layoutRef.current = { key: groupsKey, layout: built };
+    const prev = layoutRef.current;
+    if (prev) {
+      // 旧缓存实测高度 → 锚点 id 索引（只保留 isMeasured 的真实值）。
+      const measuredByAnchor = new Map<string, number>();
+      for (let g = 0; g < prev.groups.length; g++) {
+        if (!prev.layout.isMeasured(g)) continue;
+        const anchor = String((prev.messages[prev.groups[g].userIdx] as { id?: unknown } | undefined)?.id ?? "");
+        if (anchor !== "") measuredByAnchor.set(anchor, prev.layout.height(g));
+      }
+      if (measuredByAnchor.size > 0) {
+        const seed = new Map<number, number>();
+        for (let g = 0; g < groups.length; g++) {
+          const anchor = String((messages[groups[g].userIdx] as { id?: unknown } | undefined)?.id ?? "");
+          const h = anchor !== "" ? measuredByAnchor.get(anchor) : undefined;
+          if (h !== undefined) seed.set(g, h);
+        }
+        built.seedMeasured(seed);
+      }
+    }
+    layoutRef.current = { key: groupsKey, layout: built, groups, messages };
     return built;
   }, [groups, messages, groupsKey]);
   const [scrollTop, setScrollTop] = useState(0);
@@ -630,19 +661,154 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
       setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
     });
   }, [scrollContainerRef]);
-  // ResizeObserver 兜底：无滚动时（初始布局/窗口缩放）也同步视口高度。
-  useEffect(() => {
+  // 测量落定后按意图校正滚动位置：打开会话时锚定到底部、minimap 节点
+  // 跳转时锚定到目标组。测量在多次 rAF 批次中逐批落定（每次滚动暴露的
+  // 新组才被实测），因此锚定保持存活、每次 layoutRevision 都用最新缓存
+  // 重新应用，直到目标位置稳定（收敛）或用户输入取消。另设一次性 300ms
+  // 兜底重试，覆盖测量 revision 迟迟不到的极端环境。
+  // 流式跟随由 useAgentSession 驱动，不经过这里。
+  const pendingAnchorRef = useRef<{ kind: "bottom" } | { kind: "group"; groupIndex: number } | null>(null);
+  const lastAppliedAnchorTargetRef = useRef<number | null>(null);
+  const lastDomTopRef = useRef<number | null>(null);
+  const lastBottomScrollHeightRef = useRef<number | null>(null);
+  const anchorRetryTimerRef = useRef<number | null>(null);
+  const applyPendingAnchor = useCallback(() => {
+    const anchor = pendingAnchorRef.current;
+    if (!anchor) return;
     const el = scrollContainerRef.current;
-    if (!el) return;
-    const update = () => setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    if (anchor.kind === "bottom") {
+      const end = messagesEndRef.current;
+      if (!el || !end) return;
+      // 真实底部 = messagesEnd 可见；落定后仍差 >4px 就再拉一次。
+      const gap = end.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom;
+      const scrollHeight = el.scrollHeight;
+      // 程序化滚动不一定触发 scroll 事件（部分环境/动画路径）；滚动可能由
+      // useAgentSession 的 scrollToBottom 或上一次应用完成，因此这里无条件
+      // 同步 state——否则虚拟窗口停留在旧滚动位置（视口显示空白 spacer）。
+      setScrollTop((prev) => (prev === el.scrollTop ? prev : el.scrollTop));
+      setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
+      // 必须同时满足：gap 已归零 且 内容高度在两次应用间不再变化
+      // （尾部组实测高度分批落定会让 scrollHeight 继续增长——锚定过早
+      // 消费正是"打开会话停在最后一条上方一点"的根因）。
+      if (Math.abs(gap) <= 4 && lastBottomScrollHeightRef.current !== null
+        && Math.abs(scrollHeight - lastBottomScrollHeightRef.current) < 2) {
+        pendingAnchorRef.current = null;
+        lastBottomScrollHeightRef.current = null;
+        return;
+      }
+      lastBottomScrollHeightRef.current = scrollHeight;
+      if (Math.abs(gap) > 4) {
+        end.scrollIntoView({ block: "nearest", behavior: "instant" });
+      }
+      return;
+    }
+    if (!el || anchor.groupIndex >= layout.count) return;
+    // 目标组已挂载 → 用真实渲染位置重居中（与 minimap 节点同一坐标空间，
+    // 不受上方未实测组估算误差影响）；未挂载时退回缓存偏移（首次跳转）。
+    const mounted = el.querySelector(`[data-vg="${anchor.groupIndex}"]`) as HTMLElement | null;
+    const elRect = el.getBoundingClientRect();
+    let target: number;
+    if (mounted) {
+      const mRect = mounted.getBoundingClientRect();
+      const realTop = mRect.top - elRect.top + el.scrollTop;
+      // 组自身位置也必须在两次应用间稳定（上方组测量落定会移动它），
+      // 否则继续重应用直到上方测量收敛。
+      if (lastDomTopRef.current !== null && Math.abs(realTop - lastDomTopRef.current) < 2) {
+        pendingAnchorRef.current = null;
+        lastAppliedAnchorTargetRef.current = null;
+        lastDomTopRef.current = null;
+        return;
+      }
+      lastDomTopRef.current = realTop;
+      target = realTop - Math.max(0, (el.clientHeight - mounted.offsetHeight) / 2);
+    } else {
+      lastDomTopRef.current = null;
+      const groupTop = layout.offsetOf(anchor.groupIndex);
+      const groupHeight = layout.height(anchor.groupIndex);
+      target = groupTop - Math.max(0, (el.clientHeight - groupHeight) / 2);
+    }
+    const clamped = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, target));
+    // 连续两次应用的目标差 <2px → 收敛，锚定消费。
+    if (lastAppliedAnchorTargetRef.current !== null && Math.abs(clamped - lastAppliedAnchorTargetRef.current) < 2) {
+      pendingAnchorRef.current = null;
+      lastAppliedAnchorTargetRef.current = null;
+      lastDomTopRef.current = null;
+      return;
+    }
+    lastAppliedAnchorTargetRef.current = clamped;
+    el.scrollTop = clamped;
+    // 程序化滚动同步 state（见 bottom 分支注释）。
+    setScrollTop((prev) => (prev === el.scrollTop ? prev : el.scrollTop));
+    setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
+  }, [layout, scrollContainerRef, messagesEndRef]);
+  // 打开会话：锚定底部 + 300ms 兜底重试（测量 revision 迟迟不到时按当时
+  // DOM 校正一次；用户滚动/点击会取消，重试时锚定已空则无操作）。
+  useEffect(() => {
+    pendingAnchorRef.current = { kind: "bottom" };
+    if (anchorRetryTimerRef.current !== null) clearTimeout(anchorRetryTimerRef.current);
+    anchorRetryTimerRef.current = window.setTimeout(() => {
+      anchorRetryTimerRef.current = null;
+      applyPendingAnchor();
+    }, 300);
+  }, [session?.id, applyPendingAnchor]);
+  useEffect(() => {
+    applyPendingAnchor();
+  }, [layoutRevision, applyPendingAnchor]);
+  const scrollToGroupForIndex = useCallback((groupIndex: number) => {
+    const el = scrollContainerRef.current;
+    if (!el || groupIndex < 0 || groupIndex >= layout.count) return;
+    // 组已挂载（点击可见节点）→ 直接按真实位置跳转；否则按缓存估算跳转，
+    // 挂载后由 applyPendingAnchor 用 DOM 位置收敛。
+    const mounted = el.querySelector(`[data-vg="${groupIndex}"]`) as HTMLElement | null;
+    const elRect = el.getBoundingClientRect();
+    let target: number;
+    if (mounted) {
+      const mRect = mounted.getBoundingClientRect();
+      const realTop = mRect.top - elRect.top + el.scrollTop;
+      target = realTop - Math.max(0, (el.clientHeight - mounted.offsetHeight) / 2);
+    } else {
+      const groupTop = layout.offsetOf(groupIndex);
+      const groupHeight = layout.height(groupIndex);
+      target = groupTop - Math.max(0, (el.clientHeight - groupHeight) / 2);
+    }
+    el.scrollTop = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, target));
+    // 程序化滚动同步 state（见 bottom 分支注释）。
+    setScrollTop((prev) => (prev === el.scrollTop ? prev : el.scrollTop));
+    setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
+    pendingAnchorRef.current = { kind: "group", groupIndex };
+    lastAppliedAnchorTargetRef.current = null;
+    // 兜底：测量 revision 迟迟不到时，300ms 后按当时缓存再校正一次。
+    if (anchorRetryTimerRef.current !== null) clearTimeout(anchorRetryTimerRef.current);
+    anchorRetryTimerRef.current = window.setTimeout(() => {
+      anchorRetryTimerRef.current = null;
+      applyPendingAnchor();
+    }, 300);
+  }, [layout, scrollContainerRef, applyPendingAnchor]);
+  useEffect(() => () => {
+    if (anchorRetryTimerRef.current !== null) clearTimeout(anchorRetryTimerRef.current);
+  }, []);
+  // 取消锚定监听在 window 级：用户任何滚动/点击/触摸/键盘滚动都取消待定
+  // 锚定，防止测量校正与用户意图打架。minimap 拖拽的 pointerdown 在容器
+  // 之外（rail 上），必须 window 级才能覆盖；节点点击的 pointerdown 会先
+  // 清掉旧锚定，随后 onMouseDown 再设新锚定，顺序安全。
+  useEffect(() => {
+    const cancelAnchor = () => { pendingAnchorRef.current = null; };
+    const cancelOnKey = (ev: KeyboardEvent) => {
+      if ([" ", "PageUp", "PageDown", "ArrowUp", "ArrowDown", "Home", "End"].includes(ev.key)) {
+        pendingAnchorRef.current = null;
+      }
     };
-  }, [scrollContainerRef]);
+    window.addEventListener("wheel", cancelAnchor, { passive: true });
+    window.addEventListener("pointerdown", cancelAnchor, { passive: true });
+    window.addEventListener("touchstart", cancelAnchor, { passive: true });
+    window.addEventListener("keydown", cancelOnKey);
+    return () => {
+      window.removeEventListener("wheel", cancelAnchor);
+      window.removeEventListener("pointerdown", cancelAnchor);
+      window.removeEventListener("touchstart", cancelAnchor);
+      window.removeEventListener("keydown", cancelOnKey);
+    };
+  }, []);
   const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
 
   const generationSpeedKey = generationSpeed
@@ -961,10 +1127,12 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
             <NoticeShelf notices={notices} floating align="right" />
           </div>
         </div>
-        {/* Hide the Firefox scrollbar on desktop only: ChatMinimap provides the
-            position indicator there, but on mobile there is no minimap and
-            users need the scrollbar (Chrome's overlay scrollbar still shows). */}
-        <div ref={scrollContainerRef} onScroll={handleScroll} className={`flex-1 overflow-y-auto pt-6` + (isMobile ? "" : " [scrollbar-width:none]")}>
+        {/* Hide the native scrollbar on desktop only: ChatMinimap provides the
+            position indicator + drag scrolling there, but on mobile there is
+            no minimap and users need the scrollbar. `scrollbar-width:none` is
+            Firefox-only; .chat-scroll-view also kills the WebKit/WKWebView
+            scrollbar that otherwise overlaps the minimap. */}
+        <div ref={scrollContainerRef} onScroll={handleScroll} className={`flex-1 overflow-y-auto pt-6` + (isMobile ? "" : " chat-scroll-view")}>
           <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH, margin: "0 auto" }}>
               <ExtensionStatusBar statuses={extensionStatuses} />
@@ -1108,6 +1276,8 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               scrollContainer={scrollContainerRef}
               groups={groups}
               layout={layout}
+              layoutRevision={layoutRevision}
+              onNavigateGroup={scrollToGroupForIndex}
             />
           </div>
         )}

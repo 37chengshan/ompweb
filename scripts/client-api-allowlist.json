@@ -5,7 +5,7 @@
     "components/AgentsConfig.tsx": 5,
     "components/AppShell.tsx": 9,
     "components/ArchiveBrowser.tsx": 2,
-    "components/BackendDiagnostics.tsx": 3,
+    "components/BackendDiagnostics.tsx": 5,
     "components/ChatInput.tsx": 4,
     "components/ChatWindow.tsx": 2,
     "components/CommandPalette.tsx": 1,

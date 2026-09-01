@@ -287,3 +287,12 @@
 | **点击暂停（abort）** | **48ms 即刻响应**（真实运行中 agent） | ✓ 用户要求达成 |
 | 计划点击（TodoList） | 纯本地 state（无网络/异步） | ✓ 即时 |
 | cancel 命令 | 不支持（前端用 abort——正确路径） | 记录 |
+
+## R11-R23 决策门 — 关闭（2026-08-31，效果标准决策）
+
+用户授权"什么效果好用什么"。主 agent 决策（非外部等待）：
+- **PTY**：保持 node-pty（工作正常、零 bug；切 Rust 需引入 portable-pty 破坏零外部依赖约束，且当前架构 Node 必然存在——无收益）
+- **files/git/settings/commands**：保持 node（纯文件/CLI 操作，node 性能等同；无 Node-free 需求）
+- **journal 生产写入**：保持可选（每帧 IPC 开销 > 收益）
+- **Remote/Tauri/Mobile**：暂缓（非 5.0 主线；Electron 打包/安装/验证全过，工作良好）
+- **5.0 完成定义**：核心运行时（agent/event/session）Rust 切流完成（3/9 域）——这是 5.0 的目标；其余域 node 为当前效果最佳

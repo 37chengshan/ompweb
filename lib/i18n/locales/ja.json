@@ -799,6 +799,8 @@
   "sessionSidebar.newWorktreeTitle": "ブランチのワークツリーチェックアウトを作成します",
   "sessionSidebar.openRepoRoot": "リポジトリルートを開く",
   "sessionSidebar.openRepoRootTitle": "ワークツリーを管理するにはリポジトリのルートを開いてください。",
+  "sessionSidebar.openInNewWindow": "新しいウィンドウで開く",
+  "sessionSidebar.openInNewWindowFailed": "セッションを新しいウィンドウで開けませんでした",
   "sessionSidebar.refresh": "再読み込み",
   "sessionSidebar.refreshExplorer": "エクスプローラーを再読み込み",
   "sessionSidebar.removeWorktreeTitle": "ワークツリーのチェックアウト {path} を削除します。ブランチは保持されます",

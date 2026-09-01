@@ -41,6 +41,17 @@ const nextConfig = (phase: string): NextConfig => {
     // node-pty is a native addon (prebuilds per platform) and must never be
     // bundled by the server compiler.
     serverExternalPackages: ["undici", "node-pty"],
+    // node-pty loads pty.node through a runtime-computed path. The tracer sees
+    // its JavaScript entrypoint but not that native binary, which produced a
+    // packaged desktop app whose terminal stayed permanently DISCONNECTED.
+    // Keep this narrow to the terminal routes instead of copying all native
+    // assets into every standalone trace.
+    outputFileTracingIncludes: {
+      "/api/terminal/*": [
+        "node_modules/node-pty/build/Release/**/*",
+        "node_modules/node-pty/prebuilds/**/*",
+      ],
+    },
     webpack(config: Parameters<NonNullable<NextConfig["webpack"]>>[0]) {
       // Next's entrypoint tracer does not automatically reject dynamic paths
       // outside the project root. Add parent/profile patterns to its ignore list

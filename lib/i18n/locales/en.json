@@ -799,6 +799,8 @@
   "sessionSidebar.newWorktreeTitle": "Create a worktree checkout for a branch",
   "sessionSidebar.openRepoRoot": "Open repo root",
   "sessionSidebar.openRepoRootTitle": "Open the repository root to manage worktrees.",
+  "sessionSidebar.openInNewWindow": "Open in new window",
+  "sessionSidebar.openInNewWindowFailed": "Could not open the session in a new window",
   "sessionSidebar.refresh": "Refresh",
   "sessionSidebar.refreshExplorer": "Refresh explorer",
   "sessionSidebar.removeWorktreeTitle": "Remove worktree checkout {path}; the branch is kept",

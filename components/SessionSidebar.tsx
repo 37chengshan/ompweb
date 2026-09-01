@@ -14,12 +14,15 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, getLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
-import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Smartphone, Trash2, Upload, Wrench } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, PanelsTopLeft, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Smartphone, Trash2, Upload, Wrench } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 import { UsageSidebarPanel } from "./UsageSidebarPanel";
 
 declare global {
   interface Window {
+    ompWebDesktop?: {
+      openSessionWindow?: (sessionId: string) => Promise<{ ok: boolean; reason?: string }>;
+    };
     piDesktop?: {
       selectDirectory: () => Promise<string | null>;
     };
@@ -3144,6 +3147,19 @@ const SessionItem = memo(function SessionItem({
     }
   }, [session.id, onDeleted, t]);
 
+  const handleOpenInNewWindow = useCallback(async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setActionMenuOpen(false);
+    try {
+      const result = await window.ompWebDesktop?.openSessionWindow?.(session.id);
+      if (!result?.ok) throw new Error(result?.reason ?? "desktop bridge unavailable");
+    } catch {
+      toast.error(t("sessionSidebar.openInNewWindowFailed"));
+    }
+  }, [session.id, t]);
+
+  const canOpenInNewWindow = typeof window !== "undefined" && typeof window.ompWebDesktop?.openSessionWindow === "function";
+
  const closeConfirmation = useCallback(() => {
  setConfirmArchive(false);
  setConfirmDelete(false);
@@ -3236,6 +3252,7 @@ const SessionItem = memo(function SessionItem({
                   <MoreHorizontal size={14} strokeWidth={2} aria-hidden="true" />
                 </button>
                 <SidebarPortalMenu anchor={menuButtonRef} open={actionMenuOpen} onClose={() => setActionMenuOpen(false)} placement="above" minWidth={128}>
+                  {canOpenInNewWindow && <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { void handleOpenInNewWindow(event); }} style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}><PanelsTopLeft size={12} strokeWidth={1.9} aria-hidden="true" />{t("sessionSidebar.openInNewWindow")}</button>}
  <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmArchive(true); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: hasChildren ? "var(--text-dim)" : "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", textAlign: "left", fontSize: 11, opacity: hasChildren ? 0.55 : 1 }}>{t("sessionSidebar.archive")}</button>
                   <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { startRename(event); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.rename")}</button>
                   <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmDelete(true); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.delete")}</button>

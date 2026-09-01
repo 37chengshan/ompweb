@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Mono, Noto_Serif_SC, Source_Serif_4 } from "next/font/google";
+import { BootSkeleton } from "@/components/BootSkeleton";
 import "./globals.css";
 
 const notoSansMono = Noto_Sans_Mono({
@@ -77,27 +78,9 @@ export default function RootLayout({
       <body translate="no" className="notranslate" style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
         {/* Pre-hydration skeleton: page.tsx mounts AppShell via dynamic(ssr:false),
             so before hydration the body is empty and cold starts show pure
-            white. AppShell removes this node on mount. */}
-        <div
-          id="boot-skeleton"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            // T1.5: the pre-hydration theme script already applied
-            // data-theme/.dark, so CSS variables match the user's theme —
-            // dark-theme cold starts no longer flash white.
-            background: "var(--bg, #faf9f6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text-dim, #8a867e)",
-            fontSize: 13,
-            fontFamily: "system-ui, sans-serif",
-          }}
-        >
-          正在启动…
-        </div>
+            white. BootSkeleton removes itself through React after AppShell
+            confirms restoration is ready. */}
+        <BootSkeleton />
         {children}
       </body>
     </html>

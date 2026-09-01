@@ -7,6 +7,7 @@ import { comparableProjectPath } from "@/lib/comparable-path";
 import { allowFileRoot } from "@/lib/file-access";
 import {
   hideProject,
+  existingDiscoveredProjectPaths,
   loadProjectRegistry,
   mergeProjects,
   ProjectPathError,
@@ -28,9 +29,11 @@ export async function GET() {
   try {
     const registry = loadProjectRegistry();
     const sessions = await listAllSessions();
-    const discovered = sessions
-      .map((s) => s.projectRoot ?? s.cwd)
-      .filter((path): path is string => Boolean(path));
+    const discovered = existingDiscoveredProjectPaths(
+      sessions
+        .map((s) => s.projectRoot ?? s.cwd)
+        .filter((path): path is string => Boolean(path)),
+    );
     const projects = mergeProjects(registry, discovered);
     // Keep the in-memory browse allowlist warm for registered projects that
     // have no sessions (the in-memory list does not survive restarts, and an

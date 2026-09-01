@@ -114,6 +114,9 @@ process.on("unhandledRejection", (reason) => {
   appLog("unhandledRejection: " + String(reason));
 });
 
+// The hosted Next process is deliberately a singleton. Every Electron window
+// (and the browser URL opened from the tray) talks to this same port, so a
+// terminal/RPC session created in one window stays available in the others.
 let mainWindow = null;
 let tray = null;
 let serverProcess = null;
@@ -411,9 +414,25 @@ function isFirstLaunchSplash() {
 let splashFile_ = null;
 let splashVideo_ = null;
 
-function createWindow() {
+function appUrlForSession(sessionId) {
+  if (!sessionId) return APP_URL;
+  const url = new URL(APP_URL);
+  url.searchParams.set("session", sessionId);
+  return url.toString();
+}
+
+function firstLiveWindow() {
+  return BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) ?? null;
+}
+
+/**
+ * Create a renderer window without starting another web server. `primary`
+ * identifies the startup/tray window only; secondary session windows use the
+ * same APP_URL and therefore the same in-memory RPC and terminal registries.
+ */
+function createWindow({ primary = true, sessionId = null } = {}) {
   const icon = nativeImage.createFromPath(path.join(__dirname, "..", "public", "icon.png"));
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1360,
     height: 860,
     minWidth: 800,
@@ -430,20 +449,21 @@ function createWindow() {
     },
   });
 
-  mainWindow.setIcon?.(icon);
+  if (primary) mainWindow = window;
+  window.setIcon?.(icon);
 
   // Open external links (github, npm, ...) in the system browser, never in-app.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
-  mainWindow.webContents.on("will-navigate", (event, url) => {
+  window.webContents.on("will-navigate", (event, url) => {
     if (url.startsWith(APP_URL)) return;
     event.preventDefault();
     if (/^https?:/i.test(url)) shell.openExternal(url);
   });
-  mainWindow.webContents.on("console-message", (_e, _lvl, message) => appLog("window console: " + String(message).slice(0, 200)));
-  mainWindow.webContents.on("did-finish-load", () => appLog("window loaded: " + mainWindow.webContents.getURL()));
+  window.webContents.on("console-message", (_e, _lvl, message) => appLog("window console: " + String(message).slice(0, 200)));
+  window.webContents.on("did-finish-load", () => appLog("window loaded: " + window.webContents.getURL()));
   // Cold-start race: the splash page navigates to APP_URL on its own timer,
   // but on slow machines (first run, Windows Defender scanning the freshly
   // installed standalone) the server may not be listening yet — the app then
@@ -454,7 +474,7 @@ function createWindow() {
   // freshly installed standalone) can take longer than 9.6s and previously
   // exhausted the retries into a permanent blank window.
   let splashReloads = 0;
-  mainWindow.webContents.on("did-fail-load", (_event, code, desc, url) => {
+  window.webContents.on("did-fail-load", (_event, code, desc, url) => {
     appLog(`did-fail-load ${code} ${desc} ${url}`);
     if (!url.startsWith(APP_URL)) return;
     if (splashReloads >= 10) {
@@ -466,15 +486,34 @@ function createWindow() {
     const attempt = splashReloads;
     splashReloads += 1;
     setTimeout(() => {
-      if (!mainWindow || mainWindow.isDestroyed()) return;
-      if (!quitting) mainWindow.loadURL(APP_URL);
+      if (window.isDestroyed()) return;
+      if (!quitting) void window.loadURL(appUrlForSession(sessionId));
     }, Math.min(1200 * Math.pow(2, attempt), 30000));
   });
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = null;
     splashReloads = 0;
   });
+  return window;
 }
+
+/** Open a session in a second native window on the already-running server. */
+ipcMain.handle("open-session-window", (event, rawSessionId) => {
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!senderWindow || senderWindow.isDestroyed() || !event.sender.getURL().startsWith(APP_URL)) {
+    return { ok: false, reason: "untrusted-renderer" };
+  }
+  const sessionId = typeof rawSessionId === "string" ? rawSessionId.trim() : "";
+  if (!sessionId || sessionId.length > 160 || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+    return { ok: false, reason: "invalid-session" };
+  }
+  if (!serverReady) return { ok: false, reason: "server-not-ready" };
+
+  const window = createWindow({ primary: false, sessionId });
+  appLog(`opened session window id=${sessionId} window=${window.id}`);
+  void window.loadURL(appUrlForSession(sessionId));
+  return { ok: true, windowId: window.id };
+});
 
 function createTray() {
   // macOS: logo as a template image (auto black on light / white on dark).
@@ -486,21 +525,22 @@ function createTray() {
   tray = new Tray(image);
   tray.setToolTip("OmpWeb");
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "打开 OmpWeb", click: () => { if (!mainWindow || mainWindow.isDestroyed()) { createWindow(); waitForServer(); } else { mainWindow.show(); mainWindow.focus(); } } },
+    { label: "打开 OmpWeb", click: () => { const window = firstLiveWindow(); if (!window) { createWindow(); waitForServer(); } else { window.show(); window.focus(); } } },
     { type: "separator" },
     { label: "在浏览器中打开", click: () => shell.openExternal(APP_URL) },
     { type: "separator" },
     { label: "退出", click: () => { quitting = true; app.quit(); } },
   ]));
   tray.on("click", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
+    const window = firstLiveWindow();
+    if (!window) {
       createWindow();
       waitForServer();
-    } else if (mainWindow.isVisible()) {
-      mainWindow.hide();
+    } else if (window.isVisible()) {
+      window.hide();
     } else {
-      mainWindow.show();
-      mainWindow.focus();
+      window.show();
+      window.focus();
     }
   });
 }
@@ -517,7 +557,21 @@ function createAppMenu() {
     ] }] : []),
     { label: "编辑", role: "editMenu" },
     { label: "视图", role: "viewMenu" },
-    { label: "窗口", role: "windowMenu" },
+    { label: "窗口", submenu: [
+      { label: "新建会话窗口", accelerator: "CmdOrCtrl+Shift+N", click: () => {
+        if (!serverReady) {
+          const currentWindow = firstLiveWindow();
+          if (currentWindow) currentWindow.focus();
+          return;
+        }
+        const window = createWindow({ primary: false });
+        void window.loadURL(APP_URL);
+      } },
+      { type: "separator" },
+      { role: "minimize" },
+      { role: "zoom" },
+      ...(isMac ? [{ type: "separator" }, { role: "front" }] : []),
+    ] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -527,7 +581,8 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
+    const window = firstLiveWindow();
+    if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); }
   });
 
   app.whenReady().then(async () => {
@@ -624,11 +679,12 @@ ipcMain.handle("set-splash-pref", (_event, mode) => {
 });
 
 // Renderer -> main helpers (window controls, open external).
-ipcMain.on("window-control", (_event, action) => {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (action === "minimize") mainWindow.minimize();
-  else if (action === "maximize") mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
-  else if (action === "close") mainWindow.close();
+ipcMain.on("window-control", (event, action) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window || window.isDestroyed()) return;
+  if (action === "minimize") window.minimize();
+  else if (action === "maximize") window.isMaximized() ? window.unmaximize() : window.maximize();
+  else if (action === "close") window.close();
 });
 
 // ---------------------------------------------------------------------------

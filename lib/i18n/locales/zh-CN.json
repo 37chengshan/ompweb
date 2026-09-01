@@ -799,6 +799,8 @@
   "sessionSidebar.newWorktreeTitle": "为某个分支创建工作树检出",
   "sessionSidebar.openRepoRoot": "打开仓库根目录",
   "sessionSidebar.openRepoRootTitle": "打开仓库根目录以管理工作树。",
+  "sessionSidebar.openInNewWindow": "在新窗口打开",
+  "sessionSidebar.openInNewWindowFailed": "无法在新窗口打开会话",
   "sessionSidebar.refresh": "刷新",
   "sessionSidebar.refreshExplorer": "刷新资源管理器",
   "sessionSidebar.removeWorktreeTitle": "移除工作树检出 {path}；分支会被保留",

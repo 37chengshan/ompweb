@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld("ompWebDesktop", {
   // shell_mounted / session_interactive (Web UI).
   startupStage: (stage) => ipcRenderer.send("startup-stage", stage),
   getStartupReport: () => ipcRenderer.invoke("get-startup-report"),
+  // Opens another Electron renderer on the same hosted Next service. The
+  // server is never spawned per window, so active RPC/terminal state is
+  // shared with the originating session window.
+  openSessionWindow: (sessionId) => ipcRenderer.invoke("open-session-window", sessionId),
 });
 
 // Native folder picker bridge (SessionSidebar's DirectoryPicker prefers it

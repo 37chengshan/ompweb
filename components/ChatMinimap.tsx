@@ -58,6 +58,7 @@ interface NodeInfo {
   heightRatio: number;
   msg: AgentMessage | Partial<AgentMessage>;
   index: number;
+  groupIndex: number;
 }
 
 export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer, groups, layout }: Props) {
@@ -94,6 +95,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         heightRatio: Math.max(layout.height(g) / total, 0.001),
         msg,
         index: raw.length,
+        groupIndex: g,
       });
     }
     if (raw.length <= MAX_NODES) return raw;
@@ -181,6 +183,19 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     const clamped = Math.max(0, Math.min(1 - viewportRatio, viewportTopRatio));
     el.scrollTop = (clamped / (1 - viewportRatio)) * scrollable;
   }, [scrollContainer, viewportRatio]);
+
+  // Nodes are semantic targets, unlike an empty spot on the minimap rail.
+  // Use the cached group offset directly so clicking a dot always centers its
+  // own message group. Routing it through the rail's viewport math made dots
+  // near a small viewport appear to flash without landing on their message.
+  const scrollToGroup = useCallback((groupIndex: number) => {
+    const el = scrollContainer.current;
+    if (!el) return;
+    const groupTop = layout.offsetOf(groupIndex);
+    const groupHeight = layout.height(groupIndex);
+    const target = groupTop - Math.max(0, (el.clientHeight - groupHeight) / 2);
+    el.scrollTop = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, target));
+  }, [layout, scrollContainer]);
 
   const flushMouseMove = useCallback(() => {
     mouseMoveRafRef.current = null;
@@ -291,6 +306,12 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         return (
           <div
             key={node.index}
+            data-minimap-node={node.groupIndex}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              scrollToGroup(node.groupIndex);
+            }}
             style={{
               position: "absolute",
               top: `${dotTop}%`,

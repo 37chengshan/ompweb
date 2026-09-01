@@ -208,6 +208,17 @@ export function mergeProjects(registry: ProjectRegistryFile, discovered: Iterabl
   return [...registered, ...extra];
 }
 
+/**
+ * Session files outlive their working directories. Only existing paths become
+ * automatically discovered sidebar workspaces; otherwise an old temporary
+ * directory or removed worktree would create a permanent, misleading project
+ * row. Explicitly registered projects are deliberately not filtered here, so
+ * a user-managed workspace remains visible even while its disk is offline.
+ */
+export function existingDiscoveredProjectPaths(discovered: Iterable<string>): string[] {
+  return [...new Set([...discovered].filter((path) => Boolean(path) && existsSync(path)))];
+}
+
 /** Normalize a user-supplied path: ~ and ~/ expand to the home directory,
  *  relative paths resolve against the server cwd (mirrors /api/cwd/validate). */
 function normalizeCwd(cwd: string): string {

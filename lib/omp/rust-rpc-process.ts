@@ -137,8 +137,10 @@ class RustHostManager {
         reject(new Error("ompweb-host boot timeout"));
       }, 5000);
       // The boot stream must not keep the process alive either; events still
-      // fire normally while unref'd.
-      child.stdout.unref();
+      // fire normally while unref'd. Node's public Readable type does not
+      // declare unref(), although pipe handles expose it on supported
+      // runtimes, so retain a guarded optional call.
+      (child.stdout as typeof child.stdout & { unref?: () => void }).unref?.();
       child.stdout.on("data", (chunk) => {
         this.bootBuffer += chunk.toString();
         const idx = this.bootBuffer.indexOf("\n");

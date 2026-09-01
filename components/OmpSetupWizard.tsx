@@ -156,7 +156,7 @@ export function OmpSetupWizard({ open, onOpenChange, onDetected }: {
               <div style={{ marginTop: 2, fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>{isInstalled ? `${diagnostics?.omp.version ?? "omp"} · ${diagnostics?.omp.path ?? ""}` : text("ompSetup.refreshHint", "Install it, reopen your terminal, then verify here.")}</div>
             </div>
             <button type="button" onClick={() => void refresh()} disabled={checking} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg)", color: "var(--text)", fontSize: 11, cursor: checking ? "wait" : "pointer" }}>
-              {checking ? <LoaderCircle size={12} className="spin" aria-hidden="true" /> : <RefreshCw size={12} aria-hidden="true" />} {text("ompSetup.verify", "Verify")}
+              {checking ? <LoaderCircle size={12} className="icon-spin" aria-hidden="true" /> : <RefreshCw size={12} aria-hidden="true" />} {text("ompSetup.verify", "Verify")}
             </button>
           </div>
 
@@ -167,7 +167,7 @@ export function OmpSetupWizard({ open, onOpenChange, onDetected }: {
                 return (
                   <div key={id} role="listitem" style={{ flex: 1, display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 8, background: state === "future" ? "var(--bg-subtle)" : state === "current" ? "color-mix(in srgb, var(--accent) 12%, var(--bg-panel))" : "color-mix(in srgb, var(--status-success) 10%, var(--bg-panel))", border: `1px solid ${state === "future" ? "var(--border)" : state === "current" ? "color-mix(in srgb, var(--accent) 45%, var(--border))" : "color-mix(in srgb, var(--status-success) 35%, var(--border))"}`, animation: state === "current" ? "ui-fade-in var(--dur-fast) var(--ease-out-warm) both" : undefined }}>
                     <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", fontSize: 10.5, fontWeight: 700, flexShrink: 0, color: state === "future" ? "var(--text-dim)" : state === "current" ? "var(--accent)" : "var(--status-success)", background: state === "future" ? "var(--bg)" : state === "current" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "color-mix(in srgb, var(--status-success) 12%, transparent)" }}>
-                      {state === "current" && checking ? <LoaderCircle size={11} className="spin" aria-hidden="true" /> : state === "past" ? <Check size={11} aria-hidden="true" /> : idx + 1}
+                      {state === "current" && checking ? <LoaderCircle size={11} className="icon-spin" aria-hidden="true" /> : state === "past" ? <Check size={11} aria-hidden="true" /> : idx + 1}
                     </span>
                     <span style={{ fontSize: 11.5, fontWeight: state === "future" ? 500 : 650, color: state === "future" ? "var(--text-dim)" : "var(--text)" }}>{label}</span>
                   </div>

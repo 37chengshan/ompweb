@@ -385,6 +385,11 @@ ipcMain.on("startup-stage", (_event, stage) => {
   }
 });
 ipcMain.handle("get-startup-report", () => startup.report());
+// Synchronous version lookup for the preload bridge (packaged builds have no
+// npm_package_version env; app.getVersion() is always the real installed one).
+ipcMain.on("desktop-app-version", (event) => {
+  event.returnValue = app.getVersion();
+});
 
 /** First-launch: the MAIN window plays the logo video full-screen, then
  *  fades into the app UI. Returns true when the launch animation runs. */
@@ -703,8 +708,9 @@ if (app.isPackaged) {
     autoUpdater.autoRunAppAfterInstall = true;
 
     const broadcast = (status, detail) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("desktop-update-status", { status, ...(detail ?? {}) });
+      // Every renderer window (multi-window mode) must see update status.
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send("desktop-update-status", { status, ...(detail ?? {}) });
       }
     };
     autoUpdater.on("checking-for-update", () => broadcast("checking"));
@@ -714,23 +720,115 @@ if (app.isPackaged) {
     autoUpdater.on("update-downloaded", (info) => broadcast("downloaded", { version: info.version }));
     autoUpdater.on("error", (error) => {
       appLog("updater: " + (error instanceof Error ? error.message : String(error)));
-      broadcast("error", { message: error instanceof Error ? error.message : String(error) });
+      // Only user-initiated check errors reach the renderer; the launch-time
+      // auto-check stays silent so it can never flash over a good state.
+      if (userInitiatedCheckRef.current) {
+        broadcast("error", { message: error instanceof Error ? error.message : String(error) });
+      }
     });
 
+    /** A packaged build without its generated app-update.yml has no update
+     *  feed. Report it as up-to-date instead of error-flashing: a local/
+     *  unsigned build must never look broken just because it cannot reach
+     *  a release channel that does not exist. */
+    function hasUpdateChannel() {
+      return app.isPackaged && fs.existsSync(path.join(process.resourcesPath, "app-update.yml"));
+    }
+    // Resolve the same effective proxy the web server uses (~/.omp/agent/
+    // proxy.json, then env, then common local proxy ports) and route the
+    // updater's GitHub feed through it. Without this, a FlClash-style proxy
+    // user's update dies with a closed-socket error because open-launched
+    // apps do not inherit the shell's proxy env.
+    let updaterProxyApplied = false;
+    async function applyUpdaterProxy() {
+      if (!autoUpdater || updaterProxyApplied) return;
+      updaterProxyApplied = true;
+      try {
+        let proxyUrl = null;
+        try {
+          const raw = JSON.parse(fs.readFileSync(path.join(require("os").homedir(), ".omp", "agent", "proxy.json"), "utf8"));
+          if (raw && raw.mode === "off") return;
+          if (raw && raw.mode === "manual" && typeof raw.url === "string") proxyUrl = raw.url;
+        } catch {
+          /* missing config -> auto-detect below */
+        }
+        if (!proxyUrl) {
+          for (const key of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"]) {
+            if (process.env[key]) { proxyUrl = process.env[key]; break; }
+          }
+        }
+        if (!proxyUrl) {
+          const net = require("net");
+          const probe = (port) => new Promise((resolve) => {
+            const socket = new net.Socket();
+            const done = (ok) => { socket.destroy(); resolve(ok); };
+            socket.setTimeout(300);
+            socket.once("connect", () => done(true));
+            socket.once("timeout", () => done(false));
+            socket.once("error", () => done(false));
+            socket.connect(port, "127.0.0.1");
+          });
+          for (const port of [7890, 7897, 1087, 1080]) {
+            if (await probe(port)) { proxyUrl = "http://127.0.0.1:" + port; break; }
+          }
+        }
+        if (!proxyUrl) { appLog("updater: no proxy detected"); return; }
+        const { session } = require("electron");
+        const updaterSession = session.fromPartition("omp-updater-proxy");
+        await updaterSession.setProxy({
+          proxyRules: proxyUrl,
+          proxyBypassRules: "127.0.0.1,localhost,<local>",
+        });
+        autoUpdater.netSession = updaterSession;
+        // Also visible to any fetch inside the updater path.
+        process.env.HTTPS_PROXY = proxyUrl;
+        process.env.HTTP_PROXY = proxyUrl;
+        appLog("updater: proxy " + proxyUrl);
+      } catch (error) {
+        appLog("updater proxy: " + (error instanceof Error ? error.message : String(error)));
+      }
+    }
+    let updateCheckInFlight = null;
+    const userInitiatedCheckRef = { current: false };
+    function runUpdateCheck(userInitiated) {
+      if (updateCheckInFlight) return updateCheckInFlight;
+      if (!hasUpdateChannel()) {
+        broadcast("up-to-date");
+        return Promise.resolve({ status: "up-to-date" });
+      }
+      userInitiatedCheckRef.current = userInitiated;
+      updateCheckInFlight = autoUpdater.checkForUpdates()
+        .catch((error) => {
+          appLog("updater check: " + (error instanceof Error ? error.message : String(error)));
+          if (userInitiated) broadcast("error", { message: error instanceof Error ? error.message : String(error) });
+        })
+        .finally(() => { updateCheckInFlight = null; userInitiatedCheckRef.current = false; });
+      return updateCheckInFlight;
+    }
+
     ipcMain.handle("desktop-update-check", () => {
-      autoUpdater.checkForUpdates().catch((error) => appLog("updater check: " + error.message));
+      void applyUpdaterProxy().then(() => runUpdateCheck(true));
       return true;
     });
     // Auto-check shortly after launch (quietly — only "available" and
-    // "downloaded" reach the renderer, so the user is prompted when an
-    // update exists instead of having to open Settings).
-    const autoCheckTimer = setTimeout(() => {
-      autoUpdater.checkForUpdates().catch((error) => appLog("updater auto-check: " + error.message));
-    }, 8000);
-    autoUpdater.on("checking-for-update", () => clearTimeout(autoCheckTimer));
-    ipcMain.handle("desktop-update-download", () => {
-      autoUpdater.downloadUpdate().catch((error) => appLog("updater download: " + error.message));
-      return true;
+    // "downloaded" reach the renderer, and failures stay silent).
+    if (hasUpdateChannel()) {
+      const autoCheckTimer = setTimeout(() => { void runUpdateCheck(false); }, 8000);
+      autoUpdater.on("checking-for-update", () => clearTimeout(autoCheckTimer));
+    }
+    ipcMain.handle("desktop-update-download", async () => {
+      try {
+        await autoUpdater.downloadUpdate();
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        appLog("updater download: " + message);
+        // Surface download failures to the renderer so its fallback path
+        // (manual GitHub download) can take over instead of hanging on
+        // "downloading".
+        broadcast("error", { message });
+        return false;
+      }
     });
     ipcMain.handle("desktop-update-apply", async () => {
       // quitAndInstall restarts the app into the new version — the user sees

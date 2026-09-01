@@ -9,7 +9,10 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("ompWebDesktop", {
   isDesktop: true,
-  version: process.env.npm_package_version || "",
+  // In packaged builds process.env.npm_package_version is NOT set (the
+  // renderer then shows "version unavailable"); ask the main process for
+  // app.getVersion() instead. sendSync is fine for this one immutable value.
+  version: ipcRenderer.sendSync("desktop-app-version") || "",
   minimize: () => ipcRenderer.send("window-control", "minimize"),
   maximize: () => ipcRenderer.send("window-control", "maximize"),
   close: () => ipcRenderer.send("window-control", "close"),

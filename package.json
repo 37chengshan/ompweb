@@ -144,8 +144,22 @@
         "to": "standalone",
         "filter": [
           "**/*",
-          "!**/node_modules/**"
+          "!**/node_modules/**",
+          "!**/dist-desktop/**",
+          "!**/win-arm64-unpacked/**"
         ]
+      },
+      {
+        "from": ".next/standalone/.next",
+        "to": "standalone/.next"
+      },
+      {
+        "from": ".next/standalone/.omp",
+        "to": "standalone/.omp"
+      },
+      {
+        "from": ".next/standalone/crates",
+        "to": "standalone/crates"
       },
       {
         "from": ".next/standalone/node_modules",

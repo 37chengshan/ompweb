@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Gauge } from "lucide-react";
+import { Gauge, LoaderCircle, RefreshCw } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { formatCompactNumber } from "@/lib/format";
 import type { ProviderUsageReport, ProviderUsageWindow } from "@/lib/provider-usage-types";
@@ -52,10 +52,14 @@ export function UsageSidebarPanel() {
   const [reports, setReports] = useState<ProviderUsageReport[] | null>(null);
   const [error, setError] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const loadedRef = useRef(false);
 
   const load = useCallback(() => {
     setError(false);
+    setRefreshing(true);
+    const startedAt = Date.now();
     void Promise.all([
       fetch("/api/usage-summary").then((res) => (res.ok ? res.json() as Promise<UsageSummary> : null)),
       fetch("/api/provider-usage").then((res) => (res.ok ? res.json() as Promise<{ reports: ProviderUsageReport[] }> : null)),
@@ -64,8 +68,15 @@ export function UsageSidebarPanel() {
         setSummary(sum);
         setReports(usage?.reports ?? null);
         if (sum || usage) setError(false);
+        setUpdatedAt(Date.now());
       })
-      .catch(() => setError(true));
+      .catch(() => setError(true))
+      .finally(() => {
+        // Keep the spinner visible long enough to be perceivable, so a manual
+        // refresh feels acknowledged instead of silently finishing.
+        const remaining = 350 - (Date.now() - startedAt);
+        window.setTimeout(() => setRefreshing(false), Math.max(0, remaining));
+      });
   }, []);
 
   useEffect(() => {
@@ -182,13 +193,18 @@ export function UsageSidebarPanel() {
             </div>
           ))}
           {hasAny && (
-            <button
-              type="button"
-              onClick={load}
-              style={{ alignSelf: "flex-start", border: "none", background: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: 11, padding: 0 }}
-            >
-              {t("sidebar.usageRefresh")}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                type="button"
+                onClick={load}
+                disabled={refreshing}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "none", color: "var(--text-dim)", cursor: refreshing ? "default" : "pointer", fontSize: 11, padding: 0 }}
+              >
+                {refreshing ? <LoaderCircle size={12} strokeWidth={2} className="icon-spin" aria-hidden="true" /> : <RefreshCw size={12} strokeWidth={2} aria-hidden="true" />}
+                {refreshing ? t("sidebar.usageUpdating") : t("sidebar.usageRefresh")}
+              </button>
+              {updatedAt && (<span style={{ fontSize: 10, color: "var(--text-dim)" }}>{t("sidebar.usageUpdated", { time: new Date(updatedAt).toLocaleTimeString(locale) })}</span>)}
+            </div>
           )}
         </div>
       )}

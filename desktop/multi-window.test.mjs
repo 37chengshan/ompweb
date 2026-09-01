@@ -18,3 +18,12 @@ test("desktop session windows reuse the singleton hosted service", () => {
 test("preload exposes the bounded new-session-window bridge", () => {
   assert.match(preload, /openSessionWindow: \(sessionId\) => ipcRenderer\.invoke\("open-session-window", sessionId\)/);
 });
+
+test("desktop bridges the real app version synchronously", () => {
+  // Packaged builds have no npm_package_version env, so the renderer must
+  // get the version from app.getVersion() via the main process — otherwise
+  // the update card would show "version unavailable" forever.
+  assert.match(preload, /version: ipcRenderer\.sendSync\("desktop-app-version"\) \|\| ""/);
+  assert.match(main, /ipcMain\.on\("desktop-app-version"/);
+  assert.match(main, /event\.returnValue = app\.getVersion\(\)/);
+});

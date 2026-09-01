@@ -294,7 +294,7 @@ handled or safely ignored.
 
 ### Update notifications (`/api/omp-update`, `/api/app-update`)
 - Automatic in-app self-updating has been removed in favor of explicit user notifications and manual terminal commands.
-- `GET /api/app-update` queries the npm registry for `@kahme247/ompweb` updates, detects the install manager (`bun` vs `npm` via `detectInstallMethod`), and returns `updateAvailable` plus the exact terminal command (e.g. `npm install -g @kahme247/ompweb` or `bun add -g @kahme247/ompweb`).
+- `GET /api/app-update` queries the npm registry for `@37chengshan/ompweb` updates, detects the install manager (`bun` vs `npm` via `detectInstallMethod`), and returns `updateAvailable` plus the exact terminal command (e.g. `npm install -g @37chengshan/ompweb` or `bun add -g @37chengshan/ompweb`).
 - `POST /api/omp-update` (`action: "check"`) runs `omp update --check` and returns `updateAvailable` plus `updateCommand: "omp update"`.
 - `POST /api/omp-update` (`action: "restart"`) restarts active OMP sessions after a manual CLI update.
 - Notifications in `AppShell` and settings cards in `SettingsConfig` present the update notification alongside copyable terminal update commands.

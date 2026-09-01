@@ -2,37 +2,33 @@
 
 Each release publishes two artifacts:
 
-- npm package: `@kahme247/ompweb`
-- GitHub Release: [kahme247/ompweb](https://github.com/kahme247/ompweb)
+- npm package: `@37chengshan/ompweb`
+- GitHub Release: [37chengshan/ompweb](https://github.com/37chengshan/ompweb)
 
 After the initial bootstrap release, publishing is performed by GitHub Actions
 with npm trusted publishing. No npm access token is stored in this repository
 or in GitHub secrets.
 
-## Bootstrap the first release
+## Release preflight
 
-`@kahme247/ompweb` is not registered on npm yet. npm exposes trusted-publisher settings
-only for an existing package, so version `0.2.0` must be published once from a
-reviewed local checkout using the authenticated npm account:
+`@37chengshan/ompweb` already exists on npm. Every new version must be published
+by the configured GitHub Actions trusted publisher. Before creating a tag, verify
+that the package name, GitHub repository, workflow filename, and npm environment
+match the trusted-publisher configuration below:
 
 ```bash
 npm ci
 npm test
 npm run build
 npm pack --dry-run
-npm publish --access public
+npm view @37chengshan/ompweb version --registry=https://registry.npmjs.org/
 ```
-
-Do not create a tag or GitHub Release for this bootstrap version: npm will
-reject a duplicate version.
-After this succeeds, configure trusted publishing before publishing any later
-version.
 
 ## One-time trusted-publisher setup
 
-1. In npm, open the `@kahme247/ompweb` package settings and add a **GitHub Actions**
+1. In npm, open the `@37chengshan/ompweb` package settings and add a **GitHub Actions**
    trusted publisher with:
-   - Owner: `kahme247`
+   - Owner: `37chengshan`
    - Repository: `ompweb`
    - Workflow filename: `publish.yml`
    - Environment: `npm`
@@ -72,10 +68,15 @@ version.
 ## Verify
 
 ```bash
-gh run list --repo kahme247/ompweb --workflow publish.yml --limit 1
-npm view @kahme247/ompweb@<version> version --registry https://registry.npmjs.org/
-npm view @kahme247/ompweb@<version> --json --registry https://registry.npmjs.org/
+gh run list --repo 37chengshan/ompweb --workflow publish.yml --limit 1
+npm view @37chengshan/ompweb@<version> version --registry https://registry.npmjs.org/
+npm view @37chengshan/ompweb@<version> --json --registry https://registry.npmjs.org/
 ```
 
 Confirm the workflow succeeded, the exact package version resolves, and npm
 shows the expected provenance link.
+
+If a local `npm publish` fails with `EPIPE`, first verify `npm whoami` and
+`npm ping` against `https://registry.npmjs.org/`, then retry with the explicit
+registry flag. An `EPIPE` is a registry connection interruption; it is different
+from a trusted-publisher permission error in GitHub Actions.

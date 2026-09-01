@@ -2,13 +2,13 @@
   "name": "@37chengshan/ompweb",
   "version": "5.0.0",
   "description": "Web UI for the oh-my-pi (omp) coding agent",
-  "homepage": "https://github.com/kahme247/ompweb#readme",
+  "homepage": "https://github.com/37chengshan/ompweb#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/37chengshan/ompweb.git"
   },
   "bugs": {
-    "url": "https://github.com/kahme247/ompweb/issues"
+    "url": "https://github.com/37chengshan/ompweb/issues"
   },
   "license": "MIT",
   "engines": {

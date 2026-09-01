@@ -47,6 +47,14 @@ export type OmpConfigListRunner = (file: string, args: string[]) => Promise<{ st
 export const defaultConfigListRunner: OmpConfigListRunner = async (file, args) =>
   execFileAsync(file, args, { timeout: 10_000, maxBuffer: 4 * 1024 * 1024 });
 
+/** Test/integration adapters supply their own runner and therefore do not
+ * need an omp executable on the current machine. Keep the production runner
+ * strict so a missing binary remains a visible capability state. */
+function resolveRunnerBin(runner: OmpConfigListRunner): string | null {
+  if (runner !== defaultConfigListRunner) return process.env.OMP_WEB_OMP_BIN || "omp";
+  return resolveOmpBin();
+}
+
 /**
  * Parse `omp config list --json` output. Upstream entries look like
  * `{ "<key>": { "value": ..., "type": "...", "description": "..." , "redacted": true } }`
@@ -106,7 +114,7 @@ function normalizeType(raw: unknown): SettingDefinition["type"] {
 
 /** Probe the CLI adapter; falls back to the legacy YAML source on failure. */
 export async function probeSettingsCapability(runner: OmpConfigListRunner = defaultConfigListRunner): Promise<SettingsCapability> {
-  const bin = resolveOmpBin();
+  const bin = resolveRunnerBin(runner);
   if (!bin) {
     return { schemaSource: "legacy-yaml", readable: true, writable: true, reset: "none", detail: "omp binary not found — legacy YAML adapter active" };
   }
@@ -128,7 +136,7 @@ export async function probeSettingsCapability(runner: OmpConfigListRunner = defa
 export async function listSettings(runner: OmpConfigListRunner = defaultConfigListRunner): Promise<{ capability: SettingsCapability; definitions: SettingDefinition[] }> {
   const capability = await probeSettingsCapability(runner);
   if (capability.schemaSource === "cli") {
-    const bin = resolveOmpBin()!;
+    const bin = resolveRunnerBin(runner)!;
     try {
       const { stdout } = await runner(bin, ["config", "list", "--json"]);
       const { definitions } = parseOmpConfigList(stdout);
@@ -155,14 +163,14 @@ function legacyDefinitions(settings: NativeSettings): SettingDefinition[] {
  * reset). Returns the argv used — call sites must not shell-wrap it.
  */
 export async function setOmpSetting(key: string, value: string, runner: OmpConfigListRunner = defaultConfigListRunner): Promise<void> {
-  const bin = resolveOmpBin();
+  const bin = resolveRunnerBin(runner);
   if (!bin) throw new Error("omp binary not found");
   await runner(bin, ["config", "set", key, value]);
 }
 
 export async function resetOmpSetting(key: string, runner: OmpConfigListRunner = defaultConfigListRunner): Promise<void> {
   // OMP `reset` writes the schema default — UI must label "Reset to OMP Default".
-  const bin = resolveOmpBin();
+  const bin = resolveRunnerBin(runner);
   if (!bin) throw new Error("omp binary not found");
   await runner(bin, ["config", "reset", key]);
 }

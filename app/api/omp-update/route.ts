@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { execFileSync } from "node:child_process";
 import { checkOmpUpdate, runOmpUpdateNow, runOmpUpdateStream } from "@/lib/omp/updates";
-import { restartAllRpcSessions } from "@/lib/rpc-manager";
-import { repairRustRuntime } from "@/lib/omp/rust-rpc-process";
+import { clearRpcFailures, restartAllRpcSessions } from "@/lib/rpc-manager";
+import { hostClient } from "@/lib/omp/host-client";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +43,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, output: output.slice(-2000), sessionsRestarted });
     }
     if (body.action === "restart") {
-      const repair = repairRustRuntime();
+      const repair = hostClient.host.repair();
       const stoppedInstances = await stopOtherOmpWebInstances();
       const sessionsRestarted = await restartAllRpcSessions();
+      clearRpcFailures();
       return NextResponse.json({
         success: true,
         sessionsRestarted,

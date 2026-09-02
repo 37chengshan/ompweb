@@ -318,3 +318,16 @@
 **验证（全实测）**：host-bin.test.mjs 9 测试（阶梯各态/win32 exe/fail-closed/remediation）；packaging.test 新增 1 项（extraResources bin + CI host:stage + main.js 注入）；**electron-builder --dir 实测打包**：`Resources/bin/ompweb-host` 3782240B 就位 ✓；npm test 全量 **642/640/0/2 skip**（runner 完成后挂起为已知句柄类问题，测试全绿）；lib/omp 组 55/56（1 预置 skip）；cargo 12+1+2 全绿；tsc 0 err；lint 0 err（新增文件 0 error，主警告为既有）。
 
 **多维自审（8 维）**：产品（打包布局实测、fail-closed 语义对齐 doc16）✅；架构（单一 resolution 模块、可注入纯函数、无循环依赖）✅；协议（无协议变更；diagnostics 只增字段）✅；安全（explicit 缺失文件不再跌落到下层候选——显式路径权威；孤儿清理路径一致）✅；OMP Parity（无 omp 行为变更）✅；落地（测试/tsc/lint/cargo/打包实证全过）✅；兼容（dev cwd/module 双候选保留现有 dev 体验；OMPWEB_BACKEND=node 显式回滚保持）✅；遗留（standalone trace 中的空 crates 目录 + extraResources crates 条目为历史残留，待路线 17/21 清理；npm 全局发行版不含 host → agent 域 fail-closed + OMPWEB_HOST_BIN 显式安装路径，记入路线 3 文档）。
+## 路线 2 — HostClient / Domain Backend 边界 — 完成（2026-09-02，doc 16）
+
+**差距**：rust 域能力散落在 rust-rpc-process 导出函数；无正式 Node↔Rust 边界模块；auth/login route 直接 `new RpcProcess`（route 直接 spawn OMP）；无静态门禁。
+
+**落地**：
+- `lib/omp/host-client.ts`（新）：类型化 HostClient 边界——`sessions{scan/rename/delete}`、`journal{append/view}`（seq 响应解析、class 映射）、`host{status/repair/orphans}` + `rustBackendActive`。Node 业务层只经此访问 host；进程层（RustHostManager/RustRpcProcess/createRpcProcess）留在 rust-rpc-process.ts，host-client 单向依赖。
+- 干净 cutover：rustScanSessions/rustSessionRename/rustSessionDelete/rustHostStatus/repairRustRuntime/RustSessionProjection 从 rust-rpc-process 迁出（caller 全改：session-files、sessions/[id]、diagnostics、omp-update）；rust-rpc-process 只留 `hostRequest` 低层 seam + 新 `shutdownRustHost()`（测试/headless 生命周期显式关停，manager.shutdown 等进程树退出）。
+- **Route boundary gate**（scripts/audit-backend-ownership.mjs）：`auditRouteBoundary()`——app/api/**/route.ts 禁止 `new RpcProcess(` / `node-pty` 直接 authority；auth/login 交互式流为唯一 allowlisted 例外（pending 路线 4）；CLI --check 输出 boundary 行。
+- **实证发现**：auth login 是 extension_ui_request 双向交互流，无法走共享 utility 进程 → 收口 Rust 依赖 supervisor utility/login 模式（路线 4 记录）；node --test 在 macOS/node24 上测试全绿后进程挂起（pre-existing，rust-rpc-process.test 同样复现）——host-client 测试新增显式 shutdown 收敛自身 host。
+
+**验证**：host-client.test 5/5（真实 host：session scan/rename/delete 往返、journal seq 1/2、status/repair/orphans、env 回滚语义、显式 shutdown 后进程正常退出）；route-boundary.test 3/3（仓库净空 + 负例 + allowlist 语义）；regression 41/41（api-contract/session-files/session-reader）；tsc 0 err；lint 0 err（新增文件）；cargo 不动。
+
+**多维自审（8 维）**：产品（边界语义：路由禁直接 spawn OMP）✅；架构（单向依赖 host-client→process 层、无循环；类型化 surface 为路线 8–14 扩展点）✅；协议（journal seq 解析对齐 host {"seq":N} 实测）✅；安全（route gate 防未来回归；hostRequest seam 文档化唯一调用方）✅；OMP Parity（无行为变更）✅；落地（测试全绿含真实 host 往返）✅；兼容（全部 caller 已迁，无遗留别名；OMPWEB_BACKEND=node 回滚路径不变）✅；遗留（auth login allowlist → 路线 4；suite 挂起为 pre-existing 环境问题记录在案）。

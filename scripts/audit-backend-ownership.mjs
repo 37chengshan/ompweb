@@ -134,6 +134,73 @@ function walkContains(dir, marker, depth) {
 
 import { readdirSync } from "node:fs";
 
+// ---------------------------------------------------------------------------
+// Route boundary gate (doc 16 route 2): production API routes must not reach
+// domain authorities directly — no OMP process construction, no node-pty, no
+// host IPC bypass. Allowed exceptions are registered with the pending route
+// that retires them (they flip to hard failures when that route lands).
+// ---------------------------------------------------------------------------
+
+const ROUTE_AUTHORITY_MARKERS = [
+  {
+    marker: "new RpcProcess(",
+    description: "route 直接 spawn OMP（Node process authority）",
+    pending: "doc16 路线 4（auth login 收口 Rust supervisor utility/login mode）",
+  },
+  {
+    marker: "node-pty",
+    description: "route 直接创建 PTY（Node pty authority）",
+    pending: "doc16 路线 8",
+  },
+];
+
+/** Files that may contain the markers above, with the reason (pending route). */
+const ROUTE_ALLOWLIST = [
+  {
+    file: "app/api/auth/login/[provider]/route.ts",
+    reasons: ["auth login 是交互式流（extension_ui_request 双向 UI），需要 supervisor utility/login 模式落地后才能收口 Rust —— doc16 路线 4"],
+  },
+];
+
+/** Scan app/api route files for direct authority markers. */
+export function auditRouteBoundary({ productionRoot = root } = {}) {
+  const problems = [];
+  const apiDir = join(productionRoot, "app", "api");
+  const routeFiles = [];
+  collectRouteFiles(apiDir, routeFiles);
+  for (const file of routeFiles) {
+    let text = "";
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    const rel = file.slice(productionRoot.length + 1);
+    const allowlisted = ROUTE_ALLOWLIST.find((entry) => entry.file === rel);
+    for (const { marker, description, pending } of ROUTE_AUTHORITY_MARKERS) {
+      if (!text.includes(marker)) continue;
+      if (allowlisted) {
+        problems.push(`(allowlisted) ${rel}: contains "${marker}" — ${allowlisted.reasons.join("; ")}`);
+        continue;
+      }
+      problems.push(`${rel}: contains "${marker}" — ${description}（禁止直接触达 Domain Authority；应经 HostClient/lib 边界。待 ${pending}）`);
+    }
+  }
+  return {
+    ok: problems.every((p) => p.startsWith("(allowlisted)")),
+    problems,
+  };
+}
+
+function collectRouteFiles(dir, out) {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) collectRouteFiles(full, out);
+    else if (entry.name === "route.ts") out.push(full);
+  }
+}
+
 // CLI
 const isCheck = process.argv.includes("--check");
 if (process.argv[1] && process.argv[1].endsWith("audit-backend-ownership.mjs")) {
@@ -146,6 +213,19 @@ if (process.argv[1] && process.argv[1].endsWith("audit-backend-ownership.mjs")) 
   }
   console.log(result.ok ? "ownership: OK" : "ownership: FAIL");
   if (!isCheck && !result.ok) process.exit(1);
+}
+
+// Route boundary gate (doc 16 route 2): separate line — allowlisted findings
+// are informational until the pending route retires them.
+const boundary = auditRouteBoundary();
+for (const p of boundary.problems) {
+  if (p.startsWith("(allowlisted)")) console.log("boundary: " + p);
+  else console.error("boundary: " + p);
+}
+console.log(boundary.ok ? "boundary: OK" : "boundary: FAIL");
+if (isCheck && !boundary.ok) {
+  console.error("boundary: FAIL");
+  process.exit(1);
 }
 
 export default auditManifest;

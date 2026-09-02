@@ -152,6 +152,22 @@ class RustHostManager {
     this.pending.clear();
   }
 
+  /** Explicit full shutdown: teardown + wait for the process tree exit. */
+  async shutdown(): Promise<void> {
+    const host = this.host;
+    this.teardown();
+    if (host && host.exitCode === null) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 3000);
+        timer.unref?.();
+        host.once("exit", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
+  }
+
   private async ensure(): Promise<void> {
     if (this.host && !this.hostDying && this.host.exitCode === null) return;
     if (this.bootPromise) return this.bootPromise;
@@ -481,52 +497,24 @@ export class RustRpcProcess {
 }
 
 // ---------------------------------------------------------------------------
-// Session-domain mutations (doc 15 R10): title-slot rewrite and session file
-// deletion go through the Rust host when the Rust backend is active. The
-// Node file operations remain the explicit fallback (OMPWEB_BACKEND=node).
+// HostClient seam (doc 16 route 2): typed domain surfaces (sessions/journal/
+// host) live in host-client.ts and reach the host exclusively through
+// hostRequest; this process layer only exposes the low-level request
+// primitive. Direct consumers of host IPC must not bypass host-client.
 // ---------------------------------------------------------------------------
 
-export interface RustSessionProjection {
-  path: string;
-  id: string;
-  cwd: string;
-  parentSession?: string;
-  created?: string;
-  title: string;
-  firstMessage: string;
-  lines: number;
-  messages: number;
-  bytes: number;
-  mtime_ms: number;
+/** Low-level request over the shared host control connection (ensures the
+ * host is running). Used by lib/omp/host-client.ts — the only sanctioned
+ * caller for production domain access. */
+export async function hostRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+  return hostManager.controlRequest(method, params);
 }
 
-export async function rustScanSessions(root: string): Promise<RustSessionProjection[]> {
-  const raw = await hostManager.controlRequest("session.scan", { root });
-  return Array.isArray(raw) ? (raw as RustSessionProjection[]) : [];
-}
-
-export async function rustSessionRename(root: string, path: string, title: string): Promise<void> {
-  await hostManager.controlRequest("session.rename", { root, path, title });
-}
-
-export async function rustSessionDelete(root: string, path: string): Promise<void> {
-  await hostManager.controlRequest("session.delete", { root, path });
-}
-
-export function rustBackendActive(): boolean {
-  return process.env.OMPWEB_BACKEND !== "node";
-}
-
-/** Best-effort repair used by the desktop diagnostics action. */
-export function repairRustRuntime(): { stoppedOrphanHosts: number; orphanHostPids: number[] } {
-  const result = hostManager.cleanupOrphans();
-  return { stoppedOrphanHosts: result.stopped, orphanHostPids: result.pids };
-}
-
-/** Host binary resolution snapshot for diagnostics (doc 16 route 3). */
-export function rustHostStatus(): { mode: string; path: string; available: boolean } {
-  const resolution = resolveHostBin({ moduleDir: MODULE_DIR });
-  return { mode: resolution.mode, path: resolution.path, available: resolution.exists };
+/** Shut the shared host down now (kills the supervisor + its omp children).
+ * Idle hosts already self-terminate after a grace period; this is the
+ * explicit path for clean process shutdown (tests, headless lifecycle). */
+export async function shutdownRustHost(): Promise<void> {
+  await hostManager.shutdown();
 }
 
 /** Factory used by rpc-manager: Rust backend by default. */

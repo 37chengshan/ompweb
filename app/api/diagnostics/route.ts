@@ -5,7 +5,7 @@ import { recentRpcFailures } from "@/lib/rpc-manager";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { listOrphanRustHosts, rustHostStatus } from "@/lib/omp/rust-rpc-process";
+import { hostClient } from "@/lib/omp/host-client";
 import YAML from "yaml";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export async function GET() {
   // RPC 健康信号：最近 60s 内的 omp 子进程异常退出 / 会话分裂——这些直接
   // 导致"消息发不出去"，必须纳入健康判断（仅看 omp 是否安装是不够的）。
   const recentFailures = recentRpcFailures(60_000);
-  const orphanRustHostPids = listOrphanRustHosts();
+  const orphanRustHostPids = hostClient.host.orphans();
 
   // 其他 ompweb 实例探测：旧实例（残留的开发服务/旧 app）会持有会话锁、
   // 扰乱 --resume，是"服务异常但健康显示正常"的主要来源。扫描本机常见端口。
@@ -89,7 +89,7 @@ export async function GET() {
     // Rust host runtime resolution (doc 16 route 3): production binary
     // location mode + availability. Absent = Runtime unavailable (agent
     // commands fail closed; no silent Node fallback).
-    rustHost: rustHostStatus(),
+    rustHost: hostClient.host.status(),
   });
 }
 

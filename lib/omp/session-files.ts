@@ -1024,8 +1024,10 @@ export async function listAllSessionInfos(): Promise<OmpSessionInfo[]> {
   // fallback — visible via OMPWEB_BACKEND=node, never silent.
   if (process.env.OMPWEB_BACKEND !== "node") {
     try {
-      const { rustScanSessions } = await import("./rust-rpc-process");
-      const projections = await rustScanSessions(sessionsRoot);
+      // Route 2 (doc 16): the host is reachable only through the typed
+      // HostClient boundary (host-client.ts).
+      const { hostClient } = await import("./host-client");
+      const projections = await hostClient.sessions.scan(sessionsRoot);
       const sessions: OmpSessionInfo[] = projections.map((p) => ({
         path: p.path,
         id: p.id,

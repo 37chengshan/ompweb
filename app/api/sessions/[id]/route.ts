@@ -23,7 +23,7 @@ import {
 } from "@/lib/session-reader";
 import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
 import { sessionPathKey } from "@/lib/paths";
-import { rustSessionRename, rustSessionDelete, rustBackendActive } from "@/lib/omp/rust-rpc-process";
+import { hostClient, rustBackendActive } from "@/lib/omp/host-client";
 import { getAgentDir } from "@/lib/omp/paths";
 import { getRpcSession } from "@/lib/rpc-manager";
 
@@ -265,7 +265,7 @@ export async function PATCH(
       const filePath = resolved.filePath;
       if (rustBackendActive()) {
         try {
-          await rustSessionRename(join(getAgentDir(), "sessions"), filePath, name.trim());
+          await hostClient.sessions.rename(join(getAgentDir(), "sessions"), filePath, name.trim());
         } catch {
           // Rust path unavailable — fall back to the Node title slot write.
           setSessionTitle(filePath, name.trim(), "user");
@@ -406,7 +406,7 @@ export async function DELETE(
     await getRpcSession(id)?.destroyAndWait?.();
     if (rustBackendActive()) {
       try {
-        await rustSessionDelete(join(getAgentDir(), "sessions"), filePath);
+        await hostClient.sessions.delete(join(getAgentDir(), "sessions"), filePath);
       } catch {
         deleteSessionFileWithArtifacts(filePath);
       }

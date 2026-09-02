@@ -392,3 +392,4 @@
 - 测试 +3（git 路由契约/URL 编码/错误映射 ClientError code http_500 retryable、fixture 脚本化）；19/19（adapters+facade+inventory+gates）；tsc 0 err；lint 0 err。
 
 **自审**：产品（status/commit/push 行为逐字等价：URL、body、refresh、no-store、错误文案）✅；架构（domain surface 单向扩展、fixture 无网络）✅；协议（无后端变更）✅；安全（无新暴露）✅；落地（测试/门禁/库存全绿）✅；遗留（sessions-subagent/usage/models/terminal/files/settings/remote 等域 surface + 余下 ~27 文件 = 路线 1 主体，随各域契约落地推进）。
+**路线 1 迁移项收口注记（2026-09-02）**：余下 ~27 文件/141 处直接调用所属域（files/settings/models/terminal/remote/subagents/usage）恰为 doc16 路线 8–14 将重构为 Rust 服务的域——现在为它们建 facade HTTP surface 等于先冻结一套过渡契约、再由 Rust 服务换底时二次改面。按 doc16 依赖主线（Client SDK facade 随域 cutover 生长），迁移主体改由各域路线落地时随域收口（路线 8–14 切片内逐文件迁移 + allowlist 收缩，门禁与 W0 baseline 已就位）；路线 1 头切片（契约/三 adapter/fail-closed）+ 模式证明（CommandPalette、GitHubStatusPanel 两例全迁）为本阶段交付，状态表 row 1 保持 ◐。

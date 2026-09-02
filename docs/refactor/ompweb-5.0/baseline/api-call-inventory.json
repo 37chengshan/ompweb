@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-09-01T16:44:34.590Z",
+  "generatedAt": "2026-09-02T10:19:07.287Z",
   "totals": {
-    "files": 31,
-    "calls": 145,
-    "http": 138,
+    "files": 30,
+    "calls": 144,
+    "http": 137,
     "sse": 7,
-    "read": 68,
+    "read": 67,
     "write": 77
   },
   "domains": {
@@ -15,7 +15,7 @@
     "omp-version": 2,
     "app-update": 3,
     "cwd": 2,
-    "sessions": 23,
+    "sessions": 22,
     "diagnostics": 3,
     "skills": 7,
     "file-index": 2,
@@ -111,7 +111,7 @@
       "file": "components/AppShell.tsx",
       "calls": [
         {
-          "line": 277,
+          "line": 278,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/omp-update",
@@ -120,7 +120,7 @@
           "stream": false
         },
         {
-          "line": 300,
+          "line": 301,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/omp-version",
@@ -129,7 +129,7 @@
           "stream": false
         },
         {
-          "line": 311,
+          "line": 312,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/app-update",
@@ -138,7 +138,7 @@
           "stream": false
         },
         {
-          "line": 591,
+          "line": 593,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/cwd/validate",
@@ -147,7 +147,7 @@
           "stream": false
         },
         {
-          "line": 660,
+          "line": 662,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/sessions",
@@ -156,7 +156,7 @@
           "stream": false
         },
         {
-          "line": 754,
+          "line": 756,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/sessions/{param}/auto-name",
@@ -165,7 +165,7 @@
           "stream": false
         },
         {
-          "line": 828,
+          "line": 830,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/sessions",
@@ -174,7 +174,7 @@
           "stream": false
         },
         {
-          "line": 876,
+          "line": 878,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/sessions/{param}/plan",
@@ -211,20 +211,20 @@
       "file": "components/BackendDiagnostics.tsx",
       "calls": [
         {
-          "line": 58,
+          "line": 35,
+          "kind": "http",
+          "method": "GET",
+          "endpoint": "/api/diagnostics",
+          "domain": "diagnostics",
+          "rw": "read",
+          "stream": false
+        },
+        {
+          "line": 112,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/diagnostics",
           "domain": "diagnostics",
-          "rw": "write",
-          "stream": false
-        },
-        {
-          "line": 74,
-          "kind": "http",
-          "method": "POST",
-          "endpoint": "/api/omp-update",
-          "domain": "omp-update",
           "rw": "write",
           "stream": false
         },
@@ -240,14 +240,14 @@
         {
           "line": 194,
           "kind": "http",
-          "method": "GET",
-          "endpoint": "/api/diagnostics",
-          "domain": "diagnostics",
-          "rw": "read",
+          "method": "POST",
+          "endpoint": "/api/omp-update",
+          "domain": "omp-update",
+          "rw": "write",
           "stream": false
         },
         {
-          "line": 307,
+          "line": 365,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/omp-update",
@@ -270,7 +270,7 @@
           "stream": false
         },
         {
-          "line": 730,
+          "line": 731,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/skills",
@@ -279,7 +279,7 @@
           "stream": false
         },
         {
-          "line": 843,
+          "line": 844,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/file-index",
@@ -288,7 +288,7 @@
           "stream": false
         },
         {
-          "line": 886,
+          "line": 887,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/file-index",
@@ -302,7 +302,7 @@
       "file": "components/ChatWindow.tsx",
       "calls": [
         {
-          "line": 143,
+          "line": 144,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/omp-version",
@@ -311,25 +311,11 @@
           "stream": false
         },
         {
-          "line": 956,
+          "line": 960,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/model-roles",
           "domain": "model-roles",
-          "rw": "read",
-          "stream": false
-        }
-      ]
-    },
-    {
-      "file": "components/CommandPalette.tsx",
-      "calls": [
-        {
-          "line": 44,
-          "kind": "http",
-          "method": "GET",
-          "endpoint": "/api/sessions",
-          "domain": "sessions",
           "rw": "read",
           "stream": false
         }
@@ -462,7 +448,7 @@
       "file": "components/GitHubStatusPanel.tsx",
       "calls": [
         {
-          "line": 69,
+          "line": 71,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/github/status",
@@ -471,7 +457,7 @@
           "stream": false
         },
         {
-          "line": 96,
+          "line": 98,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/git/commit",
@@ -480,7 +466,7 @@
           "stream": false
         },
         {
-          "line": 121,
+          "line": 123,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/git/push",
@@ -980,7 +966,7 @@
           "stream": false
         },
         {
-          "line": 1413,
+          "line": 1414,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/projects",
@@ -989,7 +975,7 @@
           "stream": false
         },
         {
-          "line": 1437,
+          "line": 1438,
           "kind": "http",
           "method": "PATCH",
           "endpoint": "/api/projects",
@@ -998,7 +984,7 @@
           "stream": false
         },
         {
-          "line": 1449,
+          "line": 1450,
           "kind": "http",
           "method": "PATCH",
           "endpoint": "/api/projects",
@@ -1007,7 +993,7 @@
           "stream": false
         },
         {
-          "line": 1491,
+          "line": 1492,
           "kind": "http",
           "method": "DELETE",
           "endpoint": "/api/projects",
@@ -1016,7 +1002,7 @@
           "stream": false
         },
         {
-          "line": 1526,
+          "line": 1527,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/worktrees",
@@ -1025,7 +1011,7 @@
           "stream": false
         },
         {
-          "line": 1568,
+          "line": 1569,
           "kind": "http",
           "method": "DELETE",
           "endpoint": "/api/worktrees",
@@ -1034,7 +1020,7 @@
           "stream": false
         },
         {
-          "line": 1633,
+          "line": 1634,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/sessions/import",
@@ -1043,7 +1029,7 @@
           "stream": false
         },
         {
-          "line": 2317,
+          "line": 2318,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/reveal",
@@ -1052,7 +1038,7 @@
           "stream": false
         },
         {
-          "line": 3153,
+          "line": 3154,
           "kind": "http",
           "method": "PATCH",
           "endpoint": "/api/sessions/{param}",
@@ -1061,7 +1047,7 @@
           "stream": false
         },
         {
-          "line": 3169,
+          "line": 3170,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/sessions/{param}/archive",
@@ -1070,7 +1056,7 @@
           "stream": false
         },
         {
-          "line": 3182,
+          "line": 3183,
           "kind": "http",
           "method": "DELETE",
           "endpoint": "/api/sessions/{param}",
@@ -1375,7 +1361,7 @@
           "stream": false
         },
         {
-          "line": 1813,
+          "line": 1835,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/agent/{param}",
@@ -1384,7 +1370,7 @@
           "stream": false
         },
         {
-          "line": 1840,
+          "line": 1862,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/agent/{param}",
@@ -1393,7 +1379,7 @@
           "stream": false
         },
         {
-          "line": 1866,
+          "line": 1888,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/agent/{param}",
@@ -1402,7 +1388,7 @@
           "stream": false
         },
         {
-          "line": 1934,
+          "line": 1956,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/agent/{param}",
@@ -1411,7 +1397,7 @@
           "stream": false
         },
         {
-          "line": 1954,
+          "line": 1976,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/agent/{param}",
@@ -1420,7 +1406,7 @@
           "stream": false
         },
         {
-          "line": 2093,
+          "line": 2115,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/agent/{param}",
@@ -1429,7 +1415,7 @@
           "stream": false
         },
         {
-          "line": 2178,
+          "line": 2200,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/agent/{param}",
@@ -1438,7 +1424,7 @@
           "stream": false
         },
         {
-          "line": 2552,
+          "line": 2574,
           "kind": "http",
           "method": "POST",
           "endpoint": "/api/omp-update",
@@ -1447,7 +1433,7 @@
           "stream": false
         },
         {
-          "line": 3258,
+          "line": 3280,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/sessions/{param}/state",

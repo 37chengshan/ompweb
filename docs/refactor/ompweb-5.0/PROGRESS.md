@@ -373,3 +373,15 @@
 **CodeQualityReview（code-reviewer/reviewer ×5 次派发）— provider 环境失败（No model selected ×1 / socket closed ×4，与历史一致）**：按既定方案由主 agent 自审覆盖其 8 个指定焦点（read_line_capped EOF/边界语义、token fallback、is_path_within 边界、args-replay ps 时序、mini_json 深度、seq 窄化、env copy 安全、restart 双锁）——逐一核对无缺陷（见终审安全修复提交内实现细节）。
 
 **收尾核验**：cargo 15+1+2 全绿；node 相关测试组全绿（host-ipc 8/8、supervisor 3/3、resume-parity 2/2、boundary 15/15、host-client 5/5）；tsc 0 err；lint 0 err（新增文件）。**子代理多维审查：2 维完整执行并全量处置，1 维（代码质量）因环境 5 次失败按预案主 agent 自审替代**。
+## 路线 1 头切片 — Client SDK 适配器契约 + 首例迁移 — 完成（2026-09-02，doc 16）
+
+**差距**：lib/client 已有 agent/sessions/system 域（HttpSse/Fixture adapter），但无适配器契约/构造入口；~31 文件 145 处直接调用仍被 allowlist 记录（多数属 facade 未覆盖域）。
+
+**落地**：
+- `lib/client/adapters.ts`：`ClientAdapterKind = "legacy-http" | "tauri-core" | "remote"` + 唯一构造点 `createOmpwebClient(kind)`；tauri-core/remote 未落地 → `AdapterUnavailableError`（code=client_runtime_unavailable，message 指明路线 18 / 14+20）——与 host fail-closed 同一纪律；unknown kind 显式拒绝。barrel 导出。
+- **首例真实迁移（pattern proof）**：CommandPalette `/api/sessions` 直 fetch → `client.sessions.list()`；直接调用 145→144 / 31→30 文件；allowlist + W0 baseline inventory 重生成（audit-client-api.mjs，测试门同步）。
+- 测试 `lib/client-adapters.test.mjs` 4 例（surface 完整性 / tauri-core fail-closed / remote fail-closed / unknown reject）。
+
+**验证**：client-adapters + api-inventory + client-facade 11/11；tsc 0 err；lint 0 err。
+
+**多维自审（8 维）**：产品（palette 行为等价，list 走 no-store 更新鲜）✅；架构（单构造点、kind 枚举穷尽、无循环依赖）✅；协议（无协议变更）✅；安全（未落地 adapter 显式不可用，无半成品路径）✅；OMP Parity（无 omp 面）✅；落地（测试/tsc/lint/库存门全绿）✅；兼容（legacy-http 与既有 createHttpSseClient 等价——工厂即其调用）✅；遗留（terminal/files/git/settings/commands/remote 域 surface + 其余 ~29 文件迁移 = 路线 1 主体，随域 cutover 推进）。

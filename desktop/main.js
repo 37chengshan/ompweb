@@ -270,6 +270,14 @@ async function startServer() {
   const nodeBin = resolveNodeBin();
   const nodeIsElectron = nodeBin === process.execPath;
   const ompBin = resolveOmpBin();
+  // Route 3 (doc 16): packaged apps ship the Rust host at
+  // <Resources>/bin/ompweb-host (electron-builder extraResources from
+  // build-resources/host). Point the standalone server at it explicitly — the
+  // server runs under a system node whose execPath cannot derive the bundle
+  // layout. Dev runs omit the env var and resolve the workspace build.
+  const packagedHostBin = app.isPackaged
+    ? path.join(process.resourcesPath, "bin", process.platform === "win32" ? "ompweb-host.exe" : "ompweb-host")
+    : null;
   const runtimePath = [
     process.env.PATH,
     process.env.HOME ? `${process.env.HOME}/.bun/bin` : null,
@@ -295,6 +303,7 @@ async function startServer() {
       OMP_WEB_PACKAGE_DIR: pkgDir,
       PATH: runtimePath,
       ...(ompBin ? { OMP_WEB_OMP_BIN: ompBin } : {}),
+      ...(packagedHostBin && fs.existsSync(packagedHostBin) ? { OMPWEB_HOST_BIN: packagedHostBin } : {}),
     },
   });
   serverProcess.stderr?.on("data", (chunk) => {

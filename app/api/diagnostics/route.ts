@@ -5,7 +5,7 @@ import { recentRpcFailures } from "@/lib/rpc-manager";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { listOrphanRustHosts } from "@/lib/omp/rust-rpc-process";
+import { listOrphanRustHosts, rustHostStatus } from "@/lib/omp/rust-rpc-process";
 import YAML from "yaml";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +86,10 @@ export async function GET() {
     // Backend Ownership dashboard (doc 15 / v4 P40): per-domain authority so
     // development/testing can see at a glance what has migrated to Rust.
     backendOwnership: getBackendOwnership(),
+    // Rust host runtime resolution (doc 16 route 3): production binary
+    // location mode + availability. Absent = Runtime unavailable (agent
+    // commands fail closed; no silent Node fallback).
+    rustHost: rustHostStatus(),
   });
 }
 

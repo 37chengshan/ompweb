@@ -14,18 +14,27 @@
  * rollback via OMPWEB_BACKEND=node.
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertHostAvailable, resolveHostBin } from "./host-bin";
 import { RpcFrameDecoder, type RpcFrameRecord, type RpcProtocolVersion } from "./rpc-frame";
 import { RpcCommandError } from "./rpc-process";
 import type { RpcProcessOptions } from "./rpc-process";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const HOST_BIN = process.env.OMPWEB_HOST_BIN
-  ?? join(ROOT, "crates", "target", "debug", `ompweb-host${process.platform === "win32" ? ".exe" : ""}`);
+/**
+ * Directory of this module — the workspace resolution root (dev/CI cargo
+ * output). Packaged desktop injects OMPWEB_HOST_BIN from the Electron main
+ * process (Resources/bin); standalone servers additionally resolve via their
+ * cwd. Full ladder in host-bin.ts (doc 16 route 3).
+ */
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const READY_TIMEOUT_MS = 30_000;
+
+/** Resolved host binary (env explicit → packaged → workspace ladder). */
+function hostBinaryPath(): string {
+  return resolveHostBin({ moduleDir: MODULE_DIR }).path;
+}
 
 /**
  * Rust hosts are intentionally detached from the Node event loop, but a
@@ -42,6 +51,7 @@ export function cleanupOrphanRustHosts(options: { dryRun?: boolean } = {}): { st
   } catch {
     return { stopped: 0, pids: [] };
   }
+  const hostBin = hostBinaryPath();
   const pids: number[] = [];
   for (const line of listing.split(/\r?\n/)) {
     const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
@@ -50,7 +60,7 @@ export function cleanupOrphanRustHosts(options: { dryRun?: boolean } = {}): { st
     const ppid = Number(match[2]);
     const command = match[3].trim();
     if (!Number.isInteger(pid) || pid <= 0 || ppid !== 1 || pid === process.pid) continue;
-    if (command !== `${HOST_BIN} --ipc` && command !== `${HOST_BIN} --ipc `) continue;
+    if (command !== `${hostBin} --ipc` && command !== `${hostBin} --ipc `) continue;
     if (options.dryRun) {
       pids.push(pid);
       continue;
@@ -159,8 +169,11 @@ class RustHostManager {
     // Fresh boot: drop any leftover boot line from the previous host — a
     // stale port/token here would connect to the dead process.
     this.bootBuffer = "";
+    // Route 3 (doc 16): a missing host binary is Runtime unavailable, never
+    // a silent Node fallback. Throws RuntimeUnavailableError with remediation.
+    const hostResolution = assertHostAvailable({ moduleDir: MODULE_DIR });
     this.bootPromise = new Promise<void>((resolve, reject) => {
-      const child = spawn(HOST_BIN, ["--ipc"], { stdio: ["ignore", "pipe", "inherit"] });
+      const child = spawn(hostResolution.path, ["--ipc"], { stdio: ["ignore", "pipe", "inherit"] });
       // The host is a workhorse for this process: it must never keep the
       // process alive (tests, short-lived scripts). teardown() owns its
       // lifecycle while the process runs.
@@ -510,6 +523,12 @@ export function repairRustRuntime(): { stoppedOrphanHosts: number; orphanHostPid
   return { stoppedOrphanHosts: result.stopped, orphanHostPids: result.pids };
 }
 
+/** Host binary resolution snapshot for diagnostics (doc 16 route 3). */
+export function rustHostStatus(): { mode: string; path: string; available: boolean } {
+  const resolution = resolveHostBin({ moduleDir: MODULE_DIR });
+  return { mode: resolution.mode, path: resolution.path, available: resolution.exists };
+}
+
 /** Factory used by rpc-manager: Rust backend by default. */
 export async function createRpcProcess(options: {
   cwd: string;
@@ -523,14 +542,10 @@ export async function createRpcProcess(options: {
     const { RpcProcess } = await import("./rpc-process");
     return new RpcProcess({ ...options } as RpcProcessOptions);
   }
-  if (!existsSync(HOST_BIN)) {
-    // Rust capability absent (dev/CI without a cargo build): degrade to the
-    // Node path loudly — this is a capability gap, not a silent authority
-    // fallback. Set OMPWEB_BACKEND=rust to force and surface the error.
-    console.warn("[ompweb] ompweb-host binary missing at " + HOST_BIN + " — using Node RPC backend (set OMPWEB_BACKEND=rust to force)");
-    const { RpcProcess } = await import("./rpc-process");
-    return new RpcProcess({ ...options } as RpcProcessOptions);
-  }
+  // Route 3 (doc 16): when the host binary is absent the Rust backend is
+  // Runtime unavailable — an explicit error with remediation, never a silent
+  // fallback to the Node authority (OMPWEB_BACKEND=node is that rollback).
+  assertHostAvailable({ moduleDir: MODULE_DIR });
   return new RustRpcProcess({ ...options, sessionId: options.sessionId });
 }
 

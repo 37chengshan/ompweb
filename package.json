@@ -41,14 +41,16 @@
     "start:lan": "next start -H 0.0.0.0 -p 30177",
     "test": "node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs lib/contracts/*.test.mjs components/*.test.mjs components/ui/*.test.mjs hooks/*.test.mjs bin/*.test.mjs desktop/*.test.mjs",
     "bench:session": "node scripts/perf-session-bench.mjs",
+    "host:build": "cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host",
+    "host:stage": "node scripts/stage-host.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "prepack": "npm run build",
     "release:check": "npm run typecheck && npm run lint && npm test && npm run build",
     "desktop:start": "electron .",
-    "desktop:build": "electron-builder --mac",
-    "desktop:build:win": "electron-builder --win",
-    "desktop:build:all": "electron-builder -mwl"
+    "desktop:build": "npm run host:build && npm run host:stage && electron-builder --mac",
+    "desktop:build:win": "npm run host:build && npm run host:stage && electron-builder --win",
+    "desktop:build:all": "npm run host:build && npm run host:stage && electron-builder -mwl"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -176,6 +178,10 @@
       {
         "from": "templates/desktop/splash.mp4",
         "to": "splash.mp4"
+      },
+      {
+        "from": "build-resources/host",
+        "to": "bin"
       }
     ],
     "publish": [

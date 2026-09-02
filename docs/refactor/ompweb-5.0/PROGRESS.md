@@ -304,3 +304,17 @@
 - **已登记**：README 索引 row 16 + 实施状态 bullet；本日志。
 - **执行纪律**：沿用 doc 15 第 10 条（shadow → canary → cutover → legacy adapter → delete；实测证据过门）；每阶段多维自审；manifest 随域迁移逐行更新；npm test / tsc / lint / cargo 每阶段全绿。
 - **Phase A 自审（4 维）**：产品（安装对照表与仓库真实状态一致——3/9 域 rust 快照核对 yaml/PROGRESS）✅；架构（doc 16 与 doc 15 关系清晰、无内容冲突——doc 15 为历史路线、doc 16 为执行基线）✅；协议/安全（纯文档，无代码面）✅；落地（README 链接/行号/表格完整；git 树无代码改动）✅。
+## 路线 3 — ompweb-host 生产二进制定位 — 完成（2026-09-02，doc 16）
+
+**差距（安装审计实证）**：HOST_BIN 原为源码目录推导常量（`crates/target/debug`）；packaged 布局靠 Next standalone trace 附带 crates（且新构建中 crates/target 因 gitignore 不再进 trace——standalone/crates 已空），运行时解析依赖 bundled chunk 的 import.meta.url 深度，推导在 standalone/打包形态下指向错误路径——机制无正式定义。
+
+**落地**：
+- `lib/omp/host-bin.ts`（新，纯函数可注入）：正式 resolution 阶梯 explicit（OMPWEB_HOST_BIN，headless/CI/测试）→ packaged（<exec>/../Resources/bin 几何推导）→ workspace（module 根 crates/target/debug → cwd 根，覆盖 dev/CI 与 standalone server 以 standalone 为 cwd 的形态）→ none。
+- fail-closed：`assertHostAvailable` 缺失即抛 `RuntimeUnavailableError`（code=runtime_unavailable，remediation 含 npm run host:build 与 OMPWEB_BACKEND=node 显式回滚说明）；`createRpcProcess` 不再在缺 host 时静默回退 Node（R8.7 的 warn+Node 路径删除——doc 16 路线 3「不再 silent fallback 到 Node Authority」）；`ensure()` 启动前同一断言。
+- 孤儿 host 清理与 diagnostics 改用同一 resolution；`/api/diagnostics` 新增 `rustHost`（mode/path/available）。
+- 打包正式化：`scripts/stage-host.mjs`（cargo 产物 → build-resources/host）+ electron-builder extraResources → `<Resources>/bin/ompweb-host`；`desktop/main.js` packaged 时注入 OMPWEB_HOST_BIN（standalone server 以系统 node 运行，execPath 无法推导 bundle 布局）；CI 加 host:stage 步骤；npm scripts host:build/host:stage。
+- 发现并记录：新 dir 构建实证 standalone/crates 已空（gitignore 生效），旧打包布局不再可用——正式 bin 布局即唯一路径。
+
+**验证（全实测）**：host-bin.test.mjs 9 测试（阶梯各态/win32 exe/fail-closed/remediation）；packaging.test 新增 1 项（extraResources bin + CI host:stage + main.js 注入）；**electron-builder --dir 实测打包**：`Resources/bin/ompweb-host` 3782240B 就位 ✓；npm test 全量 **642/640/0/2 skip**（runner 完成后挂起为已知句柄类问题，测试全绿）；lib/omp 组 55/56（1 预置 skip）；cargo 12+1+2 全绿；tsc 0 err；lint 0 err（新增文件 0 error，主警告为既有）。
+
+**多维自审（8 维）**：产品（打包布局实测、fail-closed 语义对齐 doc16）✅；架构（单一 resolution 模块、可注入纯函数、无循环依赖）✅；协议（无协议变更；diagnostics 只增字段）✅；安全（explicit 缺失文件不再跌落到下层候选——显式路径权威；孤儿清理路径一致）✅；OMP Parity（无 omp 行为变更）✅；落地（测试/tsc/lint/cargo/打包实证全过）✅；兼容（dev cwd/module 双候选保留现有 dev 体验；OMPWEB_BACKEND=node 显式回滚保持）✅；遗留（standalone trace 中的空 crates 目录 + extraResources crates 条目为历史残留，待路线 17/21 清理；npm 全局发行版不含 host → agent 域 fail-closed + OMPWEB_HOST_BIN 显式安装路径，记入路线 3 文档）。

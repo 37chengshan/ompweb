@@ -206,9 +206,18 @@ fn main() {
                         let cwd = params.get(&["cwd"]).and_then(|v| v.as_str()).unwrap_or(".").to_string();
                         let session_id = params.get(&["sessionId"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
                         if session_id.is_empty() {
-                            return Err(ipc_server::IpcError::new("bad_params", "sessionId required"));
+                            return Err(ipc_server::IpcError::new("bad_params", "agent.spawn: sessionId required"));
                         }
-                        match supervisor.spawn(&session_id, &cwd) {
+                        // Route 4 (doc 16): spawn args travel verbatim from the
+                        // Node adapter (--resume/--tools/--advisor/...).
+                        let args: Vec<String> = match params.get(&["args"]) {
+                            Some(crate::mini_json::JsonValue::Arr(items)) => items
+                                .iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                .collect(),
+                            _ => Vec::new(),
+                        };
+                        match supervisor.spawn(&session_id, &cwd, &args) {
                             Ok((pid, restarts)) => Ok(Some(format!("{{\"pid\":{},\"restarts\":{}}}", pid, restarts))),
                             Err(err) => Err(ipc_server::IpcError::new("spawn_failed", err)),
                         }

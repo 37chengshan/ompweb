@@ -331,3 +331,19 @@
 **验证**：host-client.test 5/5（真实 host：session scan/rename/delete 往返、journal seq 1/2、status/repair/orphans、env 回滚语义、显式 shutdown 后进程正常退出）；route-boundary.test 3/3（仓库净空 + 负例 + allowlist 语义）；regression 41/41（api-contract/session-files/session-reader）；tsc 0 err；lint 0 err（新增文件）；cargo 不动。
 
 **多维自审（8 维）**：产品（边界语义：路由禁直接 spawn OMP）✅；架构（单向依赖 host-client→process 层、无循环；类型化 surface 为路线 8–14 扩展点）✅；协议（journal seq 解析对齐 host {"seq":N} 实测）✅；安全（route gate 防未来回归；hostRequest seam 文档化唯一调用方）✅；OMP Parity（无行为变更）✅；落地（测试全绿含真实 host 往返）✅；兼容（全部 caller 已迁，无遗留别名；OMPWEB_BACKEND=node 回滚路径不变）✅；遗留（auth login allowlist → 路线 4；suite 挂起为 pre-existing 环境问题记录在案）。
+## 路线 4 切片 — Agent spawn args 完整传递（--resume 修复）— 完成（2026-09-02，doc 16）
+
+**实证发现的 P1 缺陷**（默认 rust 后端 = 5.0.0 生产路径）：
+- RustRpcProcess 完全忽略 extraArgs；supervisor `spawn_child` 只传 `--mode rpc-ui --cwd`。
+- 双路径对照实测（真实 omp + 真实会话副本）：Node `--resume <file>` → get_state.sessionId = 文件 id ✓；Rust 同参数 → **新 session id**（resume 丢失 → 继续旧会话在默认后端下会触发 session-split 报错或静默分叉）。
+- 影响面：rpc-manager `buildSessionSpawnArgs`（--resume/--tools/--advisor）在 rust 下全部失效——工具预设/advisor 同样未传。
+
+**修复（四层，含 restart 保真）**：
+1. `supervisor.rs`：Session 存 `args`；`spawn(session_id, cwd, extra_args)`、`spawn_child(cwd, args)` 按 Node 顺序追加（--cwd 后）；**crash restart 重放 stored args**（重启后仍 resume 同一会话）。
+2. `main.rs` agent.spawn：解析 `args` 数组参数（mini_json Arr）。
+3. `rust-rpc-process.ts`：RustHostManager.spawn 带 `extraArgs`；RustRpcProcess 保存 options.extraArgs 并传入 boot。
+4. 回归测试 `lib/omp/resume-parity.test.mjs`：minimal 真实格式会话 fixture（title slot + session + model_change + thinking_level_change——实测 omp 18 可 resume 的最小结构；无消息避免 transcript rebuild 崩溃路径）；Node 控制组 + Rust 生产工厂路径各 1 测试。
+
+**验证**：resume-parity 2/2（修复前 rust 组失败/修复后通过——实验中已实证修复前后差异）；supervisor+rust-rpc-process+host-ipc 8/8（含 crash recovery 重启语义）；cargo 12+1+2 全绿；tsc 0 err；lint 0 err。环境备注：macOS/node24 上 node --test 全绿后进程挂起为 pre-existing（多个既有 host 测试文件复现），本批新测试文件同样受影响但测试本身全过。
+
+**多维自审（8 维）**：产品（继续旧会话在 rust 默认后端不再丢身份——P1 数据路径修复）✅；架构（args 单向传递、restart 重放存 Session、无新依赖）✅；协议（agent.spawn 参数向后兼容：args 缺省 = 空）✅；安全（args 逐字传递仅经本地 IPC；无 shell）✅；OMP Parity（与 Node spawn 顺序逐字一致）✅；落地（双路径实测 + 回归测试 + 全量相关测试）✅；兼容（Node 路径零改动；host IPC 旧调用无 args 仍有效）✅；遗留（env/utility RPC/auth login 的 rust 收口 = 路线 4 其余切片；工具预设/advisor 传递已随本修复生效但未单独实测——resume 为同机制代表）。

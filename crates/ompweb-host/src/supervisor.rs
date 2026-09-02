@@ -38,6 +38,10 @@ struct Session {
     subscribers: Vec<Sender<SessionEvent>>,
     restarts: u32,
     killed: bool,
+    /// Extra CLI args the child was spawned with (--resume/--tools/...).
+    /// Replayed verbatim on crash restart so a recovered session resumes the
+    /// same conversation (doc 16 route 4: args 完整传递 + restart 保真).
+    args: Vec<String>,
     /// Bounded replay ring: frames emitted before a subscriber attaches are
     /// replayed so late attach (fast omp startup) still sees ready/init
     /// frames. Keeps the ring tight (64 x up-to-1MiB is bounded by the frame
@@ -69,13 +73,15 @@ impl Supervisor {
     }
 
     /// Spawn `omp --mode rpc-ui` for one session. Returns (pid, restarts).
-    pub fn spawn(self: &Arc<Self>, session_id: &str, cwd: &str) -> Result<(u32, u32), String> {
+    /// `extra_args` mirror the Node spawn order (--resume/--tools/--advisor/
+    /// ... appended after `--cwd`); replayed verbatim on crash restart.
+    pub fn spawn(self: &Arc<Self>, session_id: &str, cwd: &str, extra_args: &[String]) -> Result<(u32, u32), String> {
         let mut guard = self.sessions.lock().unwrap();
         if let Some(existing) = guard.get(session_id) {
             // Alive already — idempotent spawn.
             return Ok((existing.child.id(), existing.restarts));
         }
-        let mut child = self.spawn_child(cwd).map_err(|e| format!("spawn omp: {e}"))?;
+        let mut child = self.spawn_child(cwd, extra_args).map_err(|e| format!("spawn omp: {e}"))?;
         let pid = child.id();
         let stdin = child.stdin.take().ok_or("child stdin unavailable")?;
         let (reader_tx, rx) = channel();
@@ -85,6 +91,7 @@ impl Supervisor {
             subscribers: vec![reader_tx],
             restarts: 0,
             killed: false,
+            args: extra_args.to_vec(),
             ring: std::collections::VecDeque::new(),
         };
         guard.insert(session_id.to_string(), session);
@@ -103,15 +110,20 @@ impl Supervisor {
         Ok(rx)
     }
 
-    fn spawn_child(&self, cwd: &str) -> Result<Child, String> {
+    fn spawn_child(&self, cwd: &str, extra_args: &[String]) -> Result<Child, String> {
         let mut cmd = Command::new(&self.omp_bin);
         // Node path (lib/omp/rpc-process.ts) passes --cwd explicitly; the
         // working directory alone is not enough for omp's rpc-ui mode.
+        // extra_args mirror Node's spawn order (appended after --cwd):
+        // --resume <file>, --tools, --advisor, ...
         cmd.args(["--mode", "rpc-ui", "--cwd", cwd])
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
+        for arg in extra_args {
+            cmd.arg(arg);
+        }
         for (key, value) in &self.omp_env {
             cmd.env(key, value);
         }
@@ -226,7 +238,13 @@ impl Supervisor {
         };
         let should_restart = !user_killed && code != Some(0) && restarts < MAX_RESTARTS;
         if should_restart {
-            if let Ok(new_child) = self.spawn_child(&cwd) {
+            // Replay the session's spawn args on restart so a recovered child
+            // resumes the same conversation (--resume etc. — route 4 parity).
+            let restart_args = {
+                let guard = self.sessions.lock().unwrap();
+                guard.get(&session_id).map(|s| s.args.clone()).unwrap_or_default()
+            };
+            if let Ok(new_child) = self.spawn_child(&cwd, &restart_args) {
                 let new_pid = new_child.id();
                 {
                     let mut guard = self.sessions.lock().unwrap();

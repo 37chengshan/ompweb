@@ -334,8 +334,10 @@ class RustHostManager {
     })();
   }
 
-  async spawn(cwd: string, sessionId: string): Promise<{ pid: number }> {
-    return (await this.controlRequest("agent.spawn", { cwd, sessionId })) as { pid: number };
+  async spawn(cwd: string, sessionId: string, extraArgs: string[] = []): Promise<{ pid: number }> {
+    // Route 4 (doc 16): spawn args travel verbatim to the supervisor
+    // (--resume/--tools/--advisor/...), mirroring the Node spawn order.
+    return (await this.controlRequest("agent.spawn", { cwd, sessionId, args: extraArgs })) as { pid: number };
   }
 
   async send(sessionId: string, command: Record<string, unknown>): Promise<unknown> {
@@ -352,6 +354,7 @@ const hostManager = new RustHostManager();
 export class RustRpcProcess {
   readonly cwd: string;
   readonly sessionId: string;
+  private extraArgs: string[];
   private readyPromise: Promise<RpcFrameRecord>;
   private frameListeners = new Set<RpcFrameHandler>();
   private exited = false;
@@ -365,6 +368,7 @@ export class RustRpcProcess {
   constructor(options: RustRpcProcessOptions) {
     this.cwd = options.cwd;
     this.sessionId = options.sessionId;
+    this.extraArgs = options.extraArgs ?? [];
     this.onExit = options.onExit;
     hostManager.acquire();
     hostManager.subscribe((frame) => {
@@ -396,7 +400,7 @@ export class RustRpcProcess {
 
   private async boot(): Promise<void> {
     try {
-      await hostManager.spawn(this.cwd, this.sessionId);
+      await hostManager.spawn(this.cwd, this.sessionId, this.extraArgs);
       const stream = await hostManager.attach(this.sessionId, (frame) => {
         for (const listener of this.frameListeners) listener(frame);
       });

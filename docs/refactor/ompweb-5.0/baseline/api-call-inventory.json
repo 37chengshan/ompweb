@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-09-02T10:19:07.287Z",
+  "generatedAt": "2026-09-02T10:28:03.033Z",
   "totals": {
-    "files": 30,
-    "calls": 144,
-    "http": 137,
+    "files": 29,
+    "calls": 141,
+    "http": 134,
     "sse": 7,
-    "read": 67,
-    "write": 77
+    "read": 66,
+    "write": 75
   },
   "domains": {
     "pair": 9,
@@ -21,9 +21,8 @@
     "file-index": 2,
     "model-roles": 3,
     "files": 9,
-    "git": 4,
+    "git": 2,
     "reveal": 2,
-    "github": 1,
     "web-auth": 1,
     "mcp": 5,
     "agent": 11,
@@ -441,38 +440,6 @@
           "domain": "files",
           "rw": "read",
           "stream": true
-        }
-      ]
-    },
-    {
-      "file": "components/GitHubStatusPanel.tsx",
-      "calls": [
-        {
-          "line": 71,
-          "kind": "http",
-          "method": "GET",
-          "endpoint": "/api/github/status",
-          "domain": "github",
-          "rw": "read",
-          "stream": false
-        },
-        {
-          "line": 98,
-          "kind": "http",
-          "method": "POST",
-          "endpoint": "/api/git/commit",
-          "domain": "git",
-          "rw": "write",
-          "stream": false
-        },
-        {
-          "line": 123,
-          "kind": "http",
-          "method": "POST",
-          "endpoint": "/api/git/push",
-          "domain": "git",
-          "rw": "write",
-          "stream": false
         }
       ]
     },
@@ -1461,7 +1428,7 @@
       "file": "lib/client/http-sse-adapter.ts",
       "calls": [
         {
-          "line": 43,
+          "line": 44,
           "kind": "sse",
           "method": "GET",
           "endpoint": "helper:url",
@@ -1470,7 +1437,7 @@
           "stream": true
         },
         {
-          "line": 136,
+          "line": 137,
           "kind": "http",
           "method": "GET",
           "endpoint": "/api/sessions",
@@ -1479,7 +1446,7 @@
           "stream": false
         },
         {
-          "line": 148,
+          "line": 149,
           "kind": "http",
           "method": "PATCH",
           "endpoint": "/api/sessions/{param}/context{param}",

@@ -5,6 +5,7 @@
 
 import type { AgentEventFrame, ConnectedFrame, SessionDestroyedFrame } from "@/lib/contracts/agent-envelope";
 import type { SessionInfo } from "@/lib/types";
+import type { GitHubRepoStatus } from "@/lib/github";
 
 /** Unified error shape (doc 01 contract rule 3): UI branches on `code`. */
 export interface ClientError {
@@ -76,8 +77,25 @@ export interface SystemClient {
   subscribeSessionsChanged(listener: (sessionIds: string[]) => void): () => void;
 }
 
+/** GET /api/github/status payload (repo + branch state). */
+export interface GitHubStatusPayload {
+  repo?: GitHubRepoStatus | null;
+  git?: GitHubRepoStatus["git"];
+}
+
+/** Git domain (doc 16 route 1 surface; route 10 swaps the backing to Rust). */
+export interface GitClient {
+  /** GET /api/github/status?cwd=&refresh= — workspace repo/branch state. */
+  status(cwd: string, options?: { refresh?: boolean }): Promise<GitHubStatusPayload>;
+  /** POST /api/git/commit — commit workspace changes; resolves { hash? }. */
+  commit(cwd: string, message: string): Promise<{ hash?: string }>;
+  /** POST /api/git/push — push current branch; resolves { branch? }. */
+  push(cwd: string): Promise<{ branch?: string }>;
+}
+
 export interface OmpwebClient {
   agent: AgentClient;
   sessions: SessionClient;
   system: SystemClient;
+  git: GitClient;
 }

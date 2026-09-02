@@ -385,3 +385,10 @@
 **验证**：client-adapters + api-inventory + client-facade 11/11；tsc 0 err；lint 0 err。
 
 **多维自审（8 维）**：产品（palette 行为等价，list 走 no-store 更新鲜）✅；架构（单构造点、kind 枚举穷尽、无循环依赖）✅；协议（无协议变更）✅；安全（未落地 adapter 显式不可用，无半成品路径）✅；OMP Parity（无 omp 面）✅；落地（测试/tsc/lint/库存门全绿）✅；兼容（legacy-http 与既有 createHttpSseClient 等价——工厂即其调用）✅；遗留（terminal/files/git/settings/commands/remote 域 surface + 其余 ~29 文件迁移 = 路线 1 主体，随域 cutover 推进）。
+## 路线 1 切片 2 — git 域 facade surface + GitHubStatusPanel 迁移 — 完成（2026-09-02，doc 16）
+
+- facade 新增 `git` 域（types：`GitClient.status/commit/push` + `GitHubStatusPayload`）：HttpGitClient（raw-body 映射、toClientError、no-store、refresh 参数）＋ FixtureGitClient（setGitStatus/failNextGit 脚本化，FixtureState 扩展）。
+- **GitHubStatusPanel 3 处直 fetch 全迁 facade**（直接调用 144→141 / 30→29 文件；allowlist + W0 baseline 重生成）。
+- 测试 +3（git 路由契约/URL 编码/错误映射 ClientError code http_500 retryable、fixture 脚本化）；19/19（adapters+facade+inventory+gates）；tsc 0 err；lint 0 err。
+
+**自审**：产品（status/commit/push 行为逐字等价：URL、body、refresh、no-store、错误文案）✅；架构（domain surface 单向扩展、fixture 无网络）✅；协议（无后端变更）✅；安全（无新暴露）✅；落地（测试/门禁/库存全绿）✅；遗留（sessions-subagent/usage/models/terminal/files/settings/remote 等域 surface + 余下 ~27 文件 = 路线 1 主体，随各域契约落地推进）。

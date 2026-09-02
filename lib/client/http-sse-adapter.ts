@@ -13,6 +13,7 @@ import type {
   SystemClient,
 } from "./types";
 import { toClientError } from "./types";
+import type { GitClient, GitHubStatusPayload } from "./types";
 import type { SessionInfo } from "@/lib/types";
 import { subscribeSessionsChanged } from "../session-change-bus";
 
@@ -174,10 +175,48 @@ class HttpSystemClient implements SystemClient {
   }
 }
 
+/** Raw-body helpers: the git routes answer payloads WITHOUT the
+ * {success,data} envelope (mirroring the legacy component call sites). */
+async function rawRequest<T extends { error?: string }>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  const body = (await res.json().catch(() => ({}))) as T;
+  if (!res.ok || body.error) throw toClientError(body, res.status);
+  return body;
+}
+
+class HttpGitClient implements GitClient {
+  async status(cwd: string, options: { refresh?: boolean } = {}): Promise<GitHubStatusPayload> {
+    const refresh = options.refresh ? "&refresh=1" : "";
+    // rawRequest already threw on body.error; strip the field for the typed
+    // payload surface.
+    const body = await rawRequest<GitHubStatusPayload & { error?: string }>(
+      `/api/github/status?cwd=${encodeURIComponent(cwd)}${refresh}`,
+      { cache: "no-store" },
+    );
+    delete (body as { error?: string }).error;
+    return body;
+  }
+  async commit(cwd: string, message: string): Promise<{ hash?: string }> {
+    return rawRequest<{ hash?: string; error?: string }>("/api/git/commit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, message }),
+    });
+  }
+  async push(cwd: string): Promise<{ branch?: string }> {
+    return rawRequest<{ branch?: string; error?: string }>("/api/git/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd }),
+    });
+  }
+}
+
 export function createHttpSseClient(): OmpwebClient {
   return {
     agent: new HttpAgentClient(),
     sessions: new HttpSessionClient(),
     system: new HttpSystemClient(),
+    git: new HttpGitClient(),
   };
 }

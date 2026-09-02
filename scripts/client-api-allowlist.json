@@ -11,7 +11,6 @@
     "components/DirectoryPicker.tsx": 1,
     "components/FileExplorer.tsx": 4,
     "components/FileViewer.tsx": 7,
-    "components/GitHubStatusPanel.tsx": 3,
     "components/LoginForm.tsx": 1,
     "components/McpConfig.tsx": 5,
     "components/MessageView.tsx": 2,

@@ -5,6 +5,8 @@ export type {
   AgentSessionEvents,
   ClientError,
   EventSubscription,
+  GitClient,
+  GitHubStatusPayload,
   OmpwebClient,
   SessionClient,
   SubscriptionState,

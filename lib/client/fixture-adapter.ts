@@ -6,6 +6,8 @@ import type {
   AgentClient,
   AgentSessionEvents,
   EventSubscription,
+  GitClient,
+  GitHubStatusPayload,
   OmpwebClient,
   SessionClient,
   SubscriptionState,
@@ -22,6 +24,10 @@ export interface FixtureState {
   setContext(context: unknown): void;
   failNextCommand(error: { code: string; message: string }): void;
   emitSessionsChanged(ids: string[]): void;
+  /** Serve a git status payload once (null = no repo). */
+  setGitStatus(payload: GitHubStatusPayload | null): void;
+  /** Fail the next git mutation once. */
+  failNextGit(error: Error): void;
 }
 
 class ManualSubscription implements EventSubscription {
@@ -71,6 +77,12 @@ export function createFixtureClient(initialSessions: SessionInfo[] = []): { clie
     },
     emitSessionsChanged(ids) {
       for (const l of sessionListeners) l(ids);
+    },
+    setGitStatus(payload) {
+      nextGitStatus = payload;
+    },
+    failNextGit(error) {
+      nextGitFailure = error;
     },
   };
 
@@ -123,8 +135,40 @@ export function createFixtureClient(initialSessions: SessionInfo[] = []): { clie
     },
   };
 
+  let nextGitStatus: GitHubStatusPayload | null = null;
+  let nextGitFailure: Error | null = null;
+
+  // Fixture git: no network; the panel's commit/push/status flows are
+  // exercised in render tests via explicit fixture errors/values below.
+  const git: GitClient = {
+    async status() {
+      if (nextGitStatus) {
+        const payload = nextGitStatus;
+        nextGitStatus = null;
+        return payload;
+      }
+      return { repo: null };
+    },
+    async commit() {
+      if (nextGitFailure) {
+        const failure = nextGitFailure;
+        nextGitFailure = null;
+        throw failure;
+      }
+      return { hash: "fixture-hash" };
+    },
+    async push() {
+      if (nextGitFailure) {
+        const failure = nextGitFailure;
+        nextGitFailure = null;
+        throw failure;
+      }
+      return { branch: "fixture-branch" };
+    },
+  };
+
   return {
-    client: { agent, sessions: sessionApi, system },
+    client: { agent, sessions: sessionApi, system, git },
     fixtures,
   };
 }

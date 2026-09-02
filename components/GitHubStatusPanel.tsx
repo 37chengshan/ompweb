@@ -16,13 +16,13 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { toast } from "@/components/ui/toast";
+import { createOmpwebClient } from "@/lib/client";
 import type { GitHubRepoStatus } from "@/lib/github";
 import type { SlashCommandInfo } from "@/hooks/useAgentSession";
 
-type GitHubStatusPayload = {
-  repo?: GitHubRepoStatus | null;
-  git?: GitHubRepoStatus["git"];
-};
+// Route 1 (doc 16): git domain calls go through the OmpWebClient facade
+// (legacy-http adapter today; route 10 swaps the backing to the Rust host).
+const client = createOmpwebClient("legacy-http");
 
 type GitHubStatusPanelProps = { cwd: string | null; slashCommands?: SlashCommandInfo[]; onInsertCommand?: (command: string) => void };
 
@@ -67,13 +67,7 @@ export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: 
     }
     setLoading(true);
     setLoadError(null);
-    const refreshParam = force ? "&refresh=1" : "";
-    void fetch("/api/github/status?cwd=" + encodeURIComponent(cwd) + refreshParam, { cache: "no-store" })
-      .then(async (res) => {
-        const data = await res.json() as GitHubStatusPayload & { error?: string };
-        if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
-        return data;
-      })
+    void client.git.status(cwd, { refresh: force })
       .then((data) => {
         const repo = data.repo ?? null;
         setStatus(repo ? { ...repo, git: data.git ?? repo.git } : null);
@@ -95,13 +89,7 @@ export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: 
     setActionError(null);
     setActionNotice(null);
     try {
-      const response = await fetch("/api/git/commit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, message: commitMessage.trim() }),
-      });
-      const data = await response.json() as { error?: string; hash?: string };
-      if (!response.ok) throw new Error(data.error || "Commit failed");
+      const data = await client.git.commit(cwd, commitMessage.trim());
       setCommitOpen(false);
       setCommitMessage("");
       setActionNotice(t("githubPanel.commitSuccess", { hash: data.hash || "" }));
@@ -120,13 +108,7 @@ export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: 
     setActionError(null);
     setActionNotice(null);
     try {
-      const response = await fetch("/api/git/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd }),
-      });
-      const data = await response.json() as { error?: string; branch?: string };
-      if (!response.ok) throw new Error(data.error || "Push failed");
+      const data = await client.git.push(cwd);
       setActionNotice(t("githubPanel.pushSuccess", { branch: data.branch || "" }));
       toast.success(t("githubPanel.pushSuccess", { branch: data.branch || "" }));
       refresh(true);

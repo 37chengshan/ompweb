@@ -12,6 +12,9 @@ pub enum JsonValue {
     Arr(Vec<JsonValue>),
     Obj(Vec<(String, JsonValue)>),
 }
+/// Maximum container nesting depth (objects/arrays). Bounds parser recursion
+/// so hostile input cannot overflow the connection thread stack.
+const MAX_JSON_DEPTH: usize = 64;
 
 impl JsonValue {
     /// Parse a complete JSON document. Rejects trailing garbage.
@@ -64,11 +67,21 @@ impl<'a> Parser<'a> {
         self.bytes.get(self.pos).copied()
     }
 
+    /// Nesting cap: input is attacker-visible over local IPC pre-auth, and
+    /// unbounded recursion would overflow the connection thread's stack on a
+    /// ≤1MiB line of nested brackets, aborting the host (kills every session).
     fn parse_value(&mut self) -> Result<JsonValue, String> {
+        self.parse_value_at(0)
+    }
+
+    fn parse_value_at(&mut self, depth: usize) -> Result<JsonValue, String> {
+        if depth > MAX_JSON_DEPTH {
+            return Err(format!("nesting too deep at byte {}", self.pos));
+        }
         self.skip_ws();
         match self.peek() {
-            Some(b'{') => self.parse_object(),
-            Some(b'[') => self.parse_array(),
+            Some(b'{') => self.parse_object_at(depth),
+            Some(b'[') => self.parse_array_at(depth),
             Some(b'"') => Ok(JsonValue::Str(self.parse_string()?)),
             Some(b't') => self.parse_literal("true", JsonValue::Bool(true)),
             Some(b'f') => self.parse_literal("false", JsonValue::Bool(false)),
@@ -148,7 +161,7 @@ impl<'a> Parser<'a> {
             .map_err(|e| format!("bad number {text}: {e}"))
     }
 
-    fn parse_object(&mut self) -> Result<JsonValue, String> {
+    fn parse_object_at(&mut self, depth: usize) -> Result<JsonValue, String> {
         self.pos += 1; // consume {
         let mut entries = Vec::new();
         self.skip_ws();
@@ -164,7 +177,7 @@ impl<'a> Parser<'a> {
                 return Err(format!("expected ':' at byte {}", self.pos));
             }
             self.pos += 1;
-            let value = self.parse_value()?;
+            let value = self.parse_value_at(depth + 1)?;
             entries.push((key, value));
             self.skip_ws();
             match self.peek() {
@@ -180,7 +193,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_array(&mut self) -> Result<JsonValue, String> {
+    fn parse_array_at(&mut self, depth: usize) -> Result<JsonValue, String> {
         self.pos += 1; // consume [
         let mut items = Vec::new();
         self.skip_ws();
@@ -189,7 +202,7 @@ impl<'a> Parser<'a> {
             return Ok(JsonValue::Arr(items));
         }
         loop {
-            let value = self.parse_value()?;
+            let value = self.parse_value_at(depth + 1)?;
             items.push(value);
             self.skip_ws();
             match self.peek() {
@@ -244,6 +257,15 @@ mod tests {
         assert!(JsonValue::parse(r#"{"a":}"#).is_err());
         assert!(JsonValue::parse("null extra").is_err());
         assert!(JsonValue::parse(r#"{"a":1,}"#).is_err());
+    }
+
+    #[test]
+    fn bounds_nesting_depth() {
+        // 65 nested arrays exceed the 64-deep cap; 60 is fine.
+        let deep = format!("{}", "[".repeat(100)) + &"]".repeat(100);
+        assert!(JsonValue::parse(&deep).is_err());
+        let ok = format!("{}", "[".repeat(60)) + &"]".repeat(60);
+        assert!(JsonValue::parse(&ok).is_ok());
     }
 
     #[test]

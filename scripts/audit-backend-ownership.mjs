@@ -152,6 +152,11 @@ const ROUTE_AUTHORITY_MARKERS = [
     description: "route 直接创建 PTY（Node pty authority）",
     pending: "doc16 路线 8",
   },
+  {
+    marker: "lib/omp/rust-rpc-process",
+    description: "route 绕过 HostClient 直接触达 host 进程层（hostRequest/createRpcProcess seam）",
+    pending: "doc16 路线 2：只能经 lib/omp/host-client.ts 类型化边界",
+  },
 ];
 
 /** Files that may contain the markers above, with the reason (pending route). */

@@ -285,6 +285,21 @@ async function startServer() {
     "/opt/homebrew/bin",
     "/usr/local/bin",
   ].filter(Boolean).join(path.delimiter);
+  // Route 3 (doc 16): packaged builds own host resolution deterministically —
+  // always point at Resources/bin (missing file = fail-closed
+  // RuntimeUnavailable with remediation) and NEVER inherit an ambient
+  // OMPWEB_HOST_BIN from the launch environment.
+  const spawnEnv = { ...process.env };
+  if (packagedHostBin) spawnEnv.OMPWEB_HOST_BIN = packagedHostBin;
+  else if (app.isPackaged) delete spawnEnv.OMPWEB_HOST_BIN;
+  if (nodeIsElectron) spawnEnv.ELECTRON_RUN_AS_NODE = "1";
+  spawnEnv.PORT = String(APP_PORT);
+  spawnEnv.OMP_WEB_PORT = String(APP_PORT);
+  spawnEnv.OMP_WEB_APP_PORT = String(APP_PORT);
+  spawnEnv.HOSTNAME = HOST;
+  spawnEnv.OMP_WEB_PACKAGE_DIR = pkgDir;
+  spawnEnv.PATH = runtimePath;
+  if (ompBin) spawnEnv.OMP_WEB_OMP_BIN = ompBin;
   serverProcess = spawn(nodeBin, [serverJs], {
     cwd: standaloneDir,
     // 独立进程组：退出时按组击杀，否则 omp RPC 子进程（孙进程）会变成
@@ -292,19 +307,7 @@ async function startServer() {
     // 占用 → 每次新建会话 → 消息发不出去）的根因。
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      // Only needed when falling back to the Electron binary.
-      ...(nodeIsElectron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
-      PORT: String(APP_PORT),
-      OMP_WEB_PORT: String(APP_PORT),
-      OMP_WEB_APP_PORT: String(APP_PORT),
-      HOSTNAME: HOST,
-      OMP_WEB_PACKAGE_DIR: pkgDir,
-      PATH: runtimePath,
-      ...(ompBin ? { OMP_WEB_OMP_BIN: ompBin } : {}),
-      ...(packagedHostBin && fs.existsSync(packagedHostBin) ? { OMPWEB_HOST_BIN: packagedHostBin } : {}),
-    },
+    env: spawnEnv,
   });
   serverProcess.stderr?.on("data", (chunk) => {
     const text = chunk.toString();

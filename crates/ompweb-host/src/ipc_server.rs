@@ -2,9 +2,12 @@
 //!
 //! Zero-dependency TCP server bound to 127.0.0.1. Line-delimited JSON
 //! (NDJSON) protocol with request/response plus per-request streaming
-//! frames; same-user auth via a host-generated token file (0600) that the
-//! embedded/headless client reads. Max frame 1 MiB; oversized frames are
-//! rejected with a stable error, not silently truncated.
+//! frames; same-user auth via a per-run token (128-bit from /dev/urandom)
+//! printed once on the host's boot stdout line, which the embedded/headless
+//! client reads before connecting. Max frame 1 MiB — enforced while READING
+//! (bounded buffering), and oversized frames are rejected with a stable
+//! error, not silently truncated. Hello must authenticate before any other
+//! method is served.
 //!
 //! Wire shapes:
 //!   → {"id":"1","method":"hello","params":{"token":"..."}}
@@ -105,6 +108,55 @@ fn send_line(stream: &mut TcpStream, line: &str) -> std::io::Result<()> {
     stream.flush()
 }
 
+enum LineRead {
+    /// One complete line (length ≤ cap, newline included).
+    Line,
+    /// A line exceeded the cap: protocol violation — the caller answers
+    /// frame_too_large and closes the connection.
+    TooLarge,
+    /// Clean EOF with no buffered data.
+    Eof,
+}
+
+/// Byte-level line read bounded by `cap`: buffered memory never grows past
+/// the cap. An over-cap line is a protocol violation reported immediately —
+/// never buffered in full and never drained on an open socket (draining
+/// blocks until the peer sends more or closes; the pre-auth path must be
+/// bounded against hostile no-newline streams).
+fn read_line_capped<R: BufRead>(reader: &mut R, out: &mut Vec<u8>, cap: usize) -> std::io::Result<LineRead> {
+    out.clear();
+    let mut total = 0usize;
+    loop {
+        let buf = reader.fill_buf()?;
+        if buf.is_empty() {
+            return Ok(if total == 0 { LineRead::Eof } else { LineRead::Line });
+        }
+        match buf.iter().position(|b| *b == b'\n') {
+            Some(idx) => {
+                let take = idx + 1;
+                if total + take > cap {
+                    reader.consume(take);
+                    return Ok(LineRead::TooLarge);
+                }
+                out.extend_from_slice(&buf[..take]);
+                reader.consume(take);
+                return Ok(LineRead::Line);
+            }
+            None => {
+                if total + buf.len() > cap {
+                    // Newline lies beyond the cap: report the violation and
+                    // let the caller close — do not keep consuming.
+                    return Ok(LineRead::TooLarge);
+                }
+                out.extend_from_slice(buf);
+                let len = buf.len();
+                reader.consume(len);
+                total += len;
+            }
+        }
+    }
+}
+
 fn handle_connection(
     mut stream: TcpStream,
     expected_token: &str,
@@ -113,24 +165,30 @@ fn handle_connection(
 ) -> Result<(), String> {
     let mut authed = false;
     let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
-    let mut line = String::new();
-    let mut frames: Vec<u8> = Vec::new(); // oversized-frame guard buffer
+    let mut raw: Vec<u8> = Vec::new();
 
     loop {
-        line.clear();
-        frames.clear();
-        let n = reader.read_line(&mut line).map_err(|e| format!("read: {e}"))?;
-        if n == 0 {
-            return Ok(()); // EOF
+        // Bounded read: the frame cap constrains buffered memory, oversized
+        // lines are drained and answered, never buffered (pre-auth DoS).
+        match read_line_capped(&mut reader, &mut raw, MAX_FRAME_BYTES) {
+            Ok(LineRead::Eof) => return Ok(()),
+            Ok(LineRead::TooLarge) => {
+                // Protocol violation: an oversized line may never end (a
+                // hostile stream without newline), so answering and closing
+                // is the only bounded behavior — never buffer or drain-on-open.
+                let _ = respond(&mut stream, "null", false, &format!("{{\"code\":\"frame_too_large\",\"message\":\"frame exceeds 1MiB\"}}"));
+                return Ok(());
+            }
+            Ok(LineRead::Line) => {}
+            Err(err) => return Err(format!("read: {err}")),
         }
-        if line.len() > MAX_FRAME_BYTES {
-            let _ = respond(&mut stream, "null", false, &format!("{{\"code\":\"frame_too_large\",\"message\":\"frame exceeds 1MiB\"}}"));
-            return Ok(());
-        }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
+        if raw.iter().all(|b| b.is_ascii_whitespace()) {
             continue;
         }
+        // Lossy decode: invalid UTF-8 fails JSON parsing below with a clean
+        // per-frame error instead of aborting the connection.
+        let trimmed = String::from_utf8_lossy(&raw);
+        let trimmed = trimmed.trim();
         let value = match JsonValue::parse(trimmed) {
             Ok(v) => v,
             Err(err) => {
@@ -326,5 +384,28 @@ mod tests {
             ],
         );
         assert!(responses[1].contains("unknown_method"), "{}", responses[1]);
+    }
+    #[test]
+    fn oversized_no_newline_flood_is_rejected_bounded_and_closed() {
+        let (server, token) = make_server();
+        let port = server.port();
+        let handler: Arc<Handler> = Arc::new(|_m, _p, _e| Ok(Some("null".into())));
+        std::thread::spawn(move || server.serve(handler));
+        // A >1MiB stream with NO newline: the host must answer
+        // frame_too_large from bounded memory and close — it must not buffer
+        // the whole line, nor block draining an open hostile socket.
+        use std::io::{BufRead as _, Read as _, Write as _};
+        let mut sock = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        let flood = "x".repeat(MAX_FRAME_BYTES + 64);
+        sock.write_all(flood.as_bytes()).unwrap();
+        sock.flush().unwrap();
+        let mut reader = std::io::BufReader::new(sock.try_clone().unwrap());
+        let mut response = String::new();
+        reader.read_line(&mut response).unwrap();
+        assert!(response.contains("frame_too_large"), "{response}");
+        // Server closed: further reads hit EOF.
+        let mut rest = String::new();
+        let n = reader.read_to_string(&mut rest).unwrap();
+        assert_eq!(n, 0, "connection must be closed after an oversized frame");
     }
 }

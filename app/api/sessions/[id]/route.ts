@@ -266,8 +266,10 @@ export async function PATCH(
       if (rustBackendActive()) {
         try {
           await hostClient.sessions.rename(join(getAgentDir(), "sessions"), filePath, name.trim());
-        } catch {
-          // Rust path unavailable — fall back to the Node title slot write.
+        } catch (error) {
+          // Explicit, loud mutation fallback (No Hidden Fallback): the host
+          // path failed; the Node write is a visible recovery, never silent.
+          console.warn("[ompweb] Rust session.rename failed — Node title-slot fallback:", error instanceof Error ? error.message : error);
           setSessionTitle(filePath, name.trim(), "user");
         }
       } else {
@@ -407,7 +409,9 @@ export async function DELETE(
     if (rustBackendActive()) {
       try {
         await hostClient.sessions.delete(join(getAgentDir(), "sessions"), filePath);
-      } catch {
+      } catch (error) {
+        // Explicit, loud mutation fallback (No Hidden Fallback).
+        console.warn("[ompweb] Rust session.delete failed — Node file deletion fallback:", error instanceof Error ? error.message : error);
         deleteSessionFileWithArtifacts(filePath);
       }
     } else {

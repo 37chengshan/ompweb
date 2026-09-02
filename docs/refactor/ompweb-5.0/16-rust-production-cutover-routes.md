@@ -14,8 +14,8 @@
 |---|---|---|---|
 | 1 | 统一 Client SDK | R1（client 域） | ✅ 核心（lib/client + ESLint 门）；terminal/files/git/settings/commands/remote 调用未收口 |
 | 2 | HostClient / Domain Backend 边界 | R8–R10 边界 | ◐ host IPC 已有（agent.*/journal.*/session.*）；无 formal HostClient 层与 Route 禁直接调用门 |
-| 3 | ompweb-host 生产二进制定位 | R8 收尾 | ⬜ HOST_BIN 按源码目录推导；packaged 靠 standalone trace 附带，非正式布局 |
-| 4 | 完整接管 Agent | R8（agent=rust） | ✅ 默认 rust 切流（R8.7）；Node spawn 删除 = 路线 21 |
+| 3 | ompweb-host 生产二进制定位 | R8 收尾 | ✅ 完成（2026-09-02）：resolution 阶梯 explicit/packaged/workspace + fail-closed（见 PROGRESS 路线 3） |
+| 4 | 完整接管 Agent | R8（agent=rust） | ◐ 默认 rust 切流（R8.7）✅；**首切片实测发现并修复 --resume 传递缺陷（2026-09-02，P1）**；utility RPC / auth login / env 传递未收口 = 本路线其余切片；Node spawn 删除 = 路线 21 |
 | 5 | Event Authority 迁 Rust | R9（event=rust） | ✅ 切流（attach→SSE adapter）；journal 生产写入 = 路线 6 |
 | 6 | Journal / Snapshot / Resume | R6/R9 | ◐ SQLite journal 端点就绪（append/view）；生产接线、RESUME、client_msg_id 幂等未做 |
 | 7 | Session Authority 迁 Rust | R7/R10（session=rust） | ✅ scan/rename/delete 切流；完整 SessionService（context/tree/blob/archive/search…）未做 |

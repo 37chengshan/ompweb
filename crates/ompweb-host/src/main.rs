@@ -15,6 +15,22 @@ mod supervisor;
 
 const HOST_VERSION: &str = concat!("ompweb-host ", env!("CARGO_PKG_VERSION"));
 
+/// Component-safe containment: `path` must live inside `root` — prefix
+/// equality is not enough (`<root>2/…` must not pass). Rejects sibling
+/// directories sharing the prefix and any `..` segment in the remainder.
+fn is_path_within(root: &str, path: &str) -> bool {
+    let Some(rest) = path.strip_prefix(root) else {
+        return false;
+    };
+    if !rest.is_empty() && !rest.starts_with('/') {
+        return false; // sibling dir sharing the prefix (<root>2/…)
+    }
+    if rest.split('/').any(|seg| seg == "..") {
+        return false;
+    }
+    true
+}
+
 fn resolve_omp_bin() -> String {
     if let Ok(bin) = std::env::var("OMP_WEB_OMP_BIN") {
         if std::path::Path::new(&bin).exists() {
@@ -107,8 +123,20 @@ fn main() {
             // {"status":"ok","port":N,"token":"...","pid":N}
             // The parent (Next/desktop) reads this line, connects to the
             // port and authenticates with the token.
-            let token = format!("{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0))
-                + &format!("-{}", std::process::id());
+            // 128-bit token from /dev/urandom when available (same-host
+            // adversary hardening; subsec_nanos+pid is only the fallback).
+            let token = match std::fs::File::open("/dev/urandom")
+                .and_then(|mut f| {
+                    use std::io::Read;
+                    let mut buf = [0u8; 16];
+                    f.read_exact(&mut buf).map(|_| {
+                        buf.iter().map(|b| format!("{b:02x}")).collect::<String>()
+                    })
+                }) {
+                Ok(hex) => hex,
+                Err(_) => format!("{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0))
+                    + &format!("-{}", std::process::id()),
+            };
             let server = match ipc_server::IpcServer::start(token.clone()) {
                 Ok(srv) => srv,
                 Err(err) => {
@@ -150,7 +178,7 @@ fn main() {
                         let root = params.get(&["root"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
                         let path = params.get(&["path"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
                         let title = params.get(&["title"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        if !path.starts_with(&root) {
+                        if !is_path_within(&root, &path) {
                             return Err(ipc_server::IpcError::new("path_out_of_scope", "path outside sessions root"));
                         }
                         match rewrite_title_slot(&path, &title) {
@@ -163,7 +191,7 @@ fn main() {
                         // stay in Node; this is the raw authority path).
                         let root = params.get(&["root"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
                         let path = params.get(&["path"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        if !path.starts_with(&root) {
+                        if !is_path_within(&root, &path) {
                             return Err(ipc_server::IpcError::new("path_out_of_scope", "path outside sessions root"));
                         }
                         match std::fs::remove_file(&path) {
@@ -209,7 +237,11 @@ fn main() {
                             return Err(ipc_server::IpcError::new("bad_params", "agent.spawn: sessionId required"));
                         }
                         // Route 4 (doc 16): spawn args travel verbatim from the
-                        // Node adapter (--resume/--tools/--advisor/...).
+                        // Node adapter (--resume/--tools/--advisor/...). Trust
+                        // boundary: values originate ONLY in the Node layer
+                        // (rpc-manager buildSessionSpawnArgs) over
+                        // token-authenticated local IPC; the host mirrors the
+                        // Node spawn order and does not re-interpret them.
                         let args: Vec<String> = match params.get(&["args"]) {
                             Some(crate::mini_json::JsonValue::Arr(items)) => items
                                 .iter()
@@ -311,3 +343,21 @@ fn main() {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::is_path_within;
+
+    #[test]
+    fn containment_accepts_children_and_rejects_siblings() {
+        let root = "/Users/u/.omp/agent/sessions";
+        assert!(is_path_within(root, "/Users/u/.omp/agent/sessions/a.jsonl"));
+        assert!(is_path_within(root, "/Users/u/.omp/agent/sessions/sub/b.jsonl"));
+        assert!(is_path_within(root, root));
+        assert!(!is_path_within(root, "/Users/u/.omp/agent/sessions2/a.jsonl"));
+        assert!(!is_path_within(root, "/Users/u/.omp/agent/sessions-archive/a.jsonl"));
+        assert!(!is_path_within(root, "/Users/u/.omp/agent/sessions/../other/x"));
+        assert!(!is_path_within(root, "/etc/passwd"));
+        assert!(!is_path_within(root, ""));
+    }
+}

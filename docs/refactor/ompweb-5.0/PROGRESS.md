@@ -330,7 +330,7 @@
 
 **验证**：host-client.test 5/5（真实 host：session scan/rename/delete 往返、journal seq 1/2、status/repair/orphans、env 回滚语义、显式 shutdown 后进程正常退出）；route-boundary.test 3/3（仓库净空 + 负例 + allowlist 语义）；regression 41/41（api-contract/session-files/session-reader）；tsc 0 err；lint 0 err（新增文件）；cargo 不动。
 
-**多维自审（8 维）**：产品（边界语义：路由禁直接 spawn OMP）✅；架构（单向依赖 host-client→process 层、无循环；类型化 surface 为路线 8–14 扩展点）✅；协议（journal seq 解析对齐 host {"seq":N} 实测）✅；安全（route gate 防未来回归；hostRequest seam 文档化唯一调用方）✅；OMP Parity（无行为变更）✅；落地（测试全绿含真实 host 往返）✅；兼容（全部 caller 已迁，无遗留别名；OMPWEB_BACKEND=node 回滚路径不变）✅；遗留（auth login allowlist → 路线 4；suite 挂起为 pre-existing 环境问题记录在案）。
+**多维自审（8 维）**：产品（边界语义：路由禁直接 spawn OMP）✅；架构（单向依赖 host-client→process 层、无循环；类型化 surface 为路线 8–14 扩展点）✅；协议（journal seq 解析对齐 host {"seq":N} 实测）✅；安全（route gate 防未来回归；hostRequest seam 文档化唯一调用方）✅；OMP Parity（无行为变更）✅；落地（测试全绿含真实 host 往返）✅；兼容（全部 caller 已迁，无遗留别名；OMPWEB_BACKEND=node 回滚路径不变）✅；遗留（auth login allowlist → 路线 4；suite 挂起为 pre-existing 环境问题记录在案；terminal/files/git/settings/commands 的 HostClient surface 与「Route 禁直接 fs.writeFile/execFile(git)/config.yml 写入」全量禁止清单 = doc16 路线 8–14 随域落地——本切片为头切片，非路线 2 全量完成）。
 ## 路线 4 切片 — Agent spawn args 完整传递（--resume 修复）— 完成（2026-09-02，doc 16）
 
 **实证发现的 P1 缺陷**（默认 rust 后端 = 5.0.0 生产路径）：

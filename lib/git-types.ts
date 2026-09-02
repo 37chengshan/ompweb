@@ -18,6 +18,10 @@ export interface GitStatusResponse {
   isGitRepository: boolean;
   repositoryRoot: string | null;
   files: GitFileStatus[];
+  branch?: string | null;
+  upstream?: string | null;
+  ahead?: number;
+  behind?: number;
 }
 
 export interface GitFileDiffResponse {

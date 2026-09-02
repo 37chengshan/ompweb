@@ -3,7 +3,7 @@
   "files": {
     "app/remote/page.tsx": 1,
     "components/AgentsConfig.tsx": 5,
-    "components/AppShell.tsx": 9,
+    "components/AppShell.tsx": 8,
     "components/ArchiveBrowser.tsx": 2,
     "components/BackendDiagnostics.tsx": 5,
     "components/ChatInput.tsx": 4,
@@ -12,7 +12,7 @@
     "components/DirectoryPicker.tsx": 1,
     "components/FileExplorer.tsx": 4,
     "components/FileViewer.tsx": 7,
-    "components/GitHubStatusPanel.tsx": 1,
+    "components/GitHubStatusPanel.tsx": 3,
     "components/LoginForm.tsx": 1,
     "components/McpConfig.tsx": 5,
     "components/MessageView.tsx": 2,
@@ -29,7 +29,7 @@
     "components/TerminalPanel.tsx": 6,
     "components/UpdateNoticeDialog.tsx": 1,
     "components/UsageSidebarPanel.tsx": 2,
-    "hooks/useAgentSession.ts": 14,
+    "hooks/useAgentSession.ts": 15,
     "lib/agent-client.ts": 1,
     "lib/client/http-sse-adapter.ts": 3
   }

@@ -1678,6 +1678,28 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     throw new EventStreamConnectionError(result.status);
   }, [addNotice, connectEvents]);
 
+  // The diagnostics panel can restart all RPC wrappers. Reconnect the active
+  // chat immediately and reload authoritative disk state after recovery.
+  useEffect(() => {
+    const onRestarted = () => {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+      void (async () => {
+        try {
+          await sendAgentCommand(sid, { type: "get_state" });
+          await ensureEventsConnected(sid);
+          await loadSession(sid, false, true);
+          addNotice({ type: "success", message: translate("agentSession.reconnected") });
+        } catch (error) {
+          addNotice({ type: "error", message: translate("agentSession.reconnectFailed", { detail: error instanceof Error ? error.message : String(error) }) });
+        }
+      })();
+    };
+    window.addEventListener("omp-rpc-restarted", onRestarted);
+    return () => window.removeEventListener("omp-rpc-restarted", onRestarted);
+  }, [addNotice, ensureEventsConnected, loadSession]);
+
+
   const handleExtensionUiRequest = useCallback((request: IncomingExtensionUiRequest) => {
     switch (request.method) {
       case "select":
@@ -2495,8 +2517,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // not a request to stop following the response that this prompt starts.
     userScrollIntentUntilRef.current = 0;
 
+    let sentSessionId: string | null = null;
     try {
-      let sentSessionId: string | null = null;
       if (isNew && newSessionCwd) {
         const selectedModel = newSessionModel;
         const existingSid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
@@ -2542,6 +2564,35 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return true;
     } catch (e) {
       console.error("Failed to send message:", e);
+      // A split resume is recoverable when the competing process is an
+      // orphaned OmpWeb Rust host. Repair only those exact orphan hosts, then
+      // recreate the wrapper and retry this prompt once. Terminal omp
+      // processes are intentionally never touched by the repair endpoint.
+      const errorCode = (e as Error & { code?: string })?.code;
+      if (errorCode === "session_split" && sentSessionId) {
+        try {
+          const repair = await fetch("/api/omp-update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "restart" }),
+          });
+          if (!repair.ok) throw new Error(`repair HTTP ${repair.status}`);
+          await sendAgentCommand(sentSessionId, { type: "get_state" });
+          await ensureEventsConnected(sentSessionId);
+          void refreshSubagentRoster(sentSessionId);
+          void registerHostTools(sentSessionId);
+          void registerHostUriSchemes(sentSessionId);
+          await sendAgentCommand(sentSessionId, {
+            type: "prompt",
+            message,
+            ...(piImages?.length ? { images: piImages } : {}),
+          });
+          if (isSlashCommandPrompt) void waitForPromptSettlement(sentSessionId, promptRunId);
+          return true;
+        } catch (repairError) {
+          console.error("Automatic OMP repair failed:", repairError);
+        }
+      }
       // Keep the prompt and add an assistant error row, matching ompcli.
       // Removing the optimistic user bubble made failed turns look as if the
       // app had silently ignored them and left no retry context.

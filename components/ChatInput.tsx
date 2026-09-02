@@ -524,6 +524,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     },
   }));
 
+
   const processImageFiles = useCallback(async (files: File[]) => {
     const remaining = Math.max(
       0,

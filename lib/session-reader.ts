@@ -65,7 +65,11 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
     }));
   }
 
-  return ompSessions.map((s) => {
+  // An ensure_session call creates a metadata-only JSONL before the first
+  // prompt is persisted. Do not surface that transient artifact as a real
+  // “(no messages)” conversation after restart; it was never user-visible
+  // content and otherwise steals the last-session restore target.
+  return ompSessions.filter((s) => s.messageCount > 0 || Boolean(s.title?.trim()) || (s.firstMessage || "(no messages") !== "(no messages)").map((s) => {
     cacheSessionPath(s.id, s.path);
     const project = s.cwd ? projectByCwd.get(s.cwd) : undefined;
     return {

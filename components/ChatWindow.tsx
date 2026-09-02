@@ -13,7 +13,7 @@ import { ChatMinimap } from "./ChatMinimap";
 import { ComposerPanels } from "./ComposerPanels";
 import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
 import { EmptyChatHero } from "./EmptyChatHero";
-import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentInfo } from "@/hooks/useAgentSession";
+import { useAgentSession, type AgentPhase, type NoticeItem, type SlashCommandInfo, type SubagentInfo } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -55,6 +55,7 @@ interface Props {
   onCloseTerminal?: () => void;
   /** Open the session's plan document in the right sidebar panel. */
   onOpenPlan?: () => void;
+  onSlashCommandsChange?: (commands: SlashCommandInfo[], loading: boolean) => void;
 }
 
 function phaseLabel(phase: AgentPhase): string {
@@ -449,7 +450,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
     </>
   );
 });
-export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile, terminalOpen = false, onCloseTerminal, onOpenPlan }: Props) {
+export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile, terminalOpen = false, onCloseTerminal, onOpenPlan, onSlashCommandsChange }: Props) {
   const { t, tn } = useI18n();
   const isMobile = useIsMobile();
   const { playDoneSound, unlockAudio } = useAudio();
@@ -494,6 +495,9 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
     onOpenFile,
   });
+  useEffect(() => {
+    onSlashCommandsChange?.(slashCommands, slashCommandsLoading);
+  }, [onSlashCommandsChange, slashCommands, slashCommandsLoading]);
   const sessionBusy = agentRunning || bashRunning;
   const modelCapacity = useMemo(() => {
     if (!displayModelValue) return null;
@@ -974,7 +978,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
 
 
   const chatInputElement = (
-    <ChatInput
+      <ChatInput
       ref={chatInputRef}
       onSend={handleSend}
       onAbort={handleAbort}
@@ -1270,7 +1274,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
           </div>
         </div>
         {isMobile ? null : (
-          <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, zIndex: 30, display: "flex" }}>
+          <div style={{ position: "absolute", top: 0, bottom: 0, right: 8, zIndex: 30, display: "flex" }}>
             <ChatMinimap
               messages={messages}
               scrollContainer={scrollContainerRef}

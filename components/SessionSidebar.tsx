@@ -1358,7 +1358,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
       // otherwise the app incorrectly exposes the empty “开始使用” state.
       restoreRetryRef.current = 0;
     }
-    if (!rememberedSessionId || (!initialSessionId && !rememberedTargetExists)) {
+    if (!rememberedSessionId || !rememberedTargetExists) {
       // A fresh desktop install (or cleared localStorage) still has a useful
       // session list. Leaving the main pane on the empty "开始使用" screen
       // while the first project already contains sessions makes startup look
@@ -1376,8 +1376,9 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
       restoredRef.current = true;
       onInitialRestoreDone?.();
     }
-    // An explicit deep link to a deleted/missing session is allowed to settle
-    // without opening an unrelated conversation from the workspace fallback.
+    // A stale deep link should not strand the app on a blank pane. Once the
+    // bounded restore retries are exhausted, the workspace fallback above is
+    // safer and more useful than an empty screen.
     if (initialSessionId && rememberedSessionId && !rememberedTargetExists) {
       restoredRef.current = true;
       onInitialRestoreDone?.();

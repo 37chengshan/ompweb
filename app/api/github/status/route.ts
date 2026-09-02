@@ -3,6 +3,7 @@ import { resolveProject } from "@/lib/worktree";
 import { resolveGitHubRepo } from "@/lib/git-remote";
 import { getRepoStatus } from "@/lib/github";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { getGitStatus } from "@/lib/git-changes";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +26,11 @@ function getCache(): Map<string, { data: unknown; expiresAt: number }> {
 export async function GET(req: Request) {
   const cwd = new URL(req.url).searchParams.get("cwd");
   if (!cwd) return NextResponse.json({ error: "Missing cwd", code: "missing_cwd" }, { status: 400 });
+  const forceRefresh = new URL(req.url).searchParams.get("refresh") === "1";
 
   const cacheKey = cwd;
   const cached = getCache().get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.data);
+  if (!forceRefresh && cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.data);
 
   try {
     const project = await resolveProject(cwd);
@@ -44,8 +46,8 @@ export async function GET(req: Request) {
       getCache().set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS });
       return NextResponse.json(data);
     }
-    const status = await getRepoStatus(ref.owner, ref.repo);
-    const data = { repo: status, pulls: status.pulls };
+    const [status, gitStatus] = await Promise.all([getRepoStatus(ref.owner, ref.repo), getGitStatus(project.projectRoot)]);
+    const data = { repo: status, pulls: status.pulls, git: { branch: gitStatus.branch, upstream: gitStatus.upstream, ahead: gitStatus.ahead ?? 0, behind: gitStatus.behind ?? 0, files: gitStatus.files } };
     getCache().set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS });
     return NextResponse.json(data);
   } catch (error) {

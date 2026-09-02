@@ -5,6 +5,7 @@ import { recentRpcFailures } from "@/lib/rpc-manager";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import { listOrphanRustHosts } from "@/lib/omp/rust-rpc-process";
 import YAML from "yaml";
 
 export const dynamic = "force-dynamic";
@@ -20,19 +21,22 @@ export async function GET() {
   const effectiveProxy = await resolveEffectiveProxy();
   const rpcSessionCount = getRpcSessionIds().length;
   const activeRpc = rpcSessionCount;
-  const webPort = process.env.OMP_WEB_PORT
+  const webPort = process.env.OMP_WEB_PORT ?? process.env.OMP_WEB_APP_PORT
     ?? process.env.PORT
     ?? (process.env.NODE_ENV === "production" ? "30177" : "30178");
 
   // RPC 健康信号：最近 60s 内的 omp 子进程异常退出 / 会话分裂——这些直接
   // 导致"消息发不出去"，必须纳入健康判断（仅看 omp 是否安装是不够的）。
   const recentFailures = recentRpcFailures(60_000);
+  const orphanRustHostPids = listOrphanRustHosts();
 
   // 其他 ompweb 实例探测：旧实例（残留的开发服务/旧 app）会持有会话锁、
   // 扰乱 --resume，是"服务异常但健康显示正常"的主要来源。扫描本机常见端口。
   const selfPort = Number(webPort);
   const otherInstances: Array<{ port: number; alive: boolean }> = [];
-  for (const port of [30177, 30178, 30179]) {
+  // Include the historical dev port as well: an old `next-server` on 30180
+  // can still hold session locks even though the current App runs on 30179.
+  for (const port of [30177, 30178, 30179, 30180]) {
     if (port === selfPort) continue;
     // eslint-disable-next-line no-await-in-loop
     otherInstances.push({ port, alive: await probeOmpWebPort(port) });
@@ -69,6 +73,7 @@ export async function GET() {
     rpc: {
       activeSessions: activeRpc,
       recentFailures: recentFailures.map((f) => f.detail),
+      orphanRustHosts: orphanRustHostPids.length,
     },
     instances: {
       selfPort,

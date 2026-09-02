@@ -14,6 +14,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, dialog } = 
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const { pathToFileURL } = require("url");
 const { StartupTracker, createHealthProbe } = require("./startup");
 
 // Internal port for the hosted server (dev 30178 / cli 30177 stay free).
@@ -29,8 +30,8 @@ const pkgDir = path.join(__dirname, "..");
 
 const APP_LOG_MAX_BYTES = 256 * 1024;
 
-// Lightweight startup page shown while the standalone server cold-starts
-// (no splash animation runs). Inline data URL: zero files, zero network.
+// Lightweight startup page shown while the standalone server cold-starts when
+// the user has disabled the optional logo animation.
 const STARTUP_PAGE = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -288,6 +289,8 @@ async function startServer() {
       // Only needed when falling back to the Electron binary.
       ...(nodeIsElectron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
       PORT: String(APP_PORT),
+      OMP_WEB_PORT: String(APP_PORT),
+      OMP_WEB_APP_PORT: String(APP_PORT),
       HOSTNAME: HOST,
       OMP_WEB_PACKAGE_DIR: pkgDir,
       PATH: runtimePath,
@@ -431,6 +434,17 @@ function isFirstLaunchSplash() {
 
 let splashFile_ = null;
 let splashVideo_ = null;
+
+function splashUrl() {
+  const splashFile = splashFile_ || path.join(pkgDir, "desktop", "splash.html");
+  const splashVideo = splashVideo_ || (app.isPackaged
+    ? path.join(process.resourcesPath, "splash.mp4")
+    : path.join(pkgDir, "templates", "desktop", "splash.mp4"));
+  const url = new URL(pathToFileURL(splashFile).toString());
+  url.searchParams.set("app", APP_URL);
+  url.searchParams.set("video", pathToFileURL(splashVideo).toString());
+  return url.toString();
+}
 
 function appUrlForSession(sessionId) {
   if (!sessionId) return APP_URL;
@@ -609,15 +623,14 @@ if (!gotLock) {
     // startup page renders immediately; the standalone server cold-
     // starts in the background and the health probe gates navigation. This
     // keeps window appearance independent of isPortFree/spawn latency.
+    const launchWithSplash = isFirstLaunchSplash();
     createWindow();
     createTray();
-    // Keep one startup visual for every launch. The former first-run video
-    // introduced a third screen between Electron's startup page and React's
-    // restore skeleton, making a healthy backend look like a stalled frontend.
-    // The startup preference remains readable for compatibility, but launch
-    // readiness is now always represented by this single warm-paper surface.
-    void mainWindow?.loadURL(STARTUP_PAGE);
-    waitForServer();
+    void mainWindow?.loadURL(launchWithSplash ? splashUrl() : STARTUP_PAGE);
+    // The splash owns the final transition after receiving server-ready.
+    // Loading the app here as soon as the probe completes would skip the
+    // animation (and race the splash's warm-up/error state).
+    waitForServer(!launchWithSplash);
     await startServer();
     if (quitting) return;
     if (!serverProcess) {
@@ -627,9 +640,10 @@ if (!gotLock) {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
+      const launchWithSplash = isFirstLaunchSplash();
       createWindow();
-      void mainWindow?.loadURL(STARTUP_PAGE);
-      waitForServer();
+      void mainWindow?.loadURL(launchWithSplash ? splashUrl() : STARTUP_PAGE);
+      waitForServer(!launchWithSplash);
     }
   });
 

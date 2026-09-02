@@ -13,7 +13,7 @@
  * Rust is the default backend. Node path (RpcProcess) remains the explicit
  * rollback via OMPWEB_BACKEND=node.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { dirname, join } from "node:path";
@@ -26,6 +26,49 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const HOST_BIN = process.env.OMPWEB_HOST_BIN
   ?? join(ROOT, "crates", "target", "debug", `ompweb-host${process.platform === "win32" ? ".exe" : ""}`);
 const READY_TIMEOUT_MS = 30_000;
+
+/**
+ * Rust hosts are intentionally detached from the Node event loop, but a
+ * crashed standalone server can leave an idle host behind. Those orphan
+ * hosts keep the runtime journal open and make a later resume look like a
+ * second omp instance. Only hosts reparented to launchd/init are eligible;
+ * the host owned by the current server is never touched.
+ */
+export function cleanupOrphanRustHosts(options: { dryRun?: boolean } = {}): { stopped: number; pids: number[] } {
+  if (process.platform === "win32") return { stopped: 0, pids: [] };
+  let listing = "";
+  try {
+    listing = execFileSync("ps", ["-axo", "pid=,ppid=,command="], { encoding: "utf8", timeout: 3000 });
+  } catch {
+    return { stopped: 0, pids: [] };
+  }
+  const pids: number[] = [];
+  for (const line of listing.split(/\r?\n/)) {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const ppid = Number(match[2]);
+    const command = match[3].trim();
+    if (!Number.isInteger(pid) || pid <= 0 || ppid !== 1 || pid === process.pid) continue;
+    if (command !== `${HOST_BIN} --ipc` && command !== `${HOST_BIN} --ipc `) continue;
+    if (options.dryRun) {
+      pids.push(pid);
+      continue;
+    }
+    try {
+      process.kill(pid, "SIGTERM");
+      pids.push(pid);
+    } catch {
+      // A race with launchd/process exit is already a successful cleanup.
+    }
+  }
+  return { stopped: pids.length, pids };
+}
+
+/** Inspect reparented OmpWeb hosts without terminating anything. */
+export function listOrphanRustHosts(): number[] {
+  return cleanupOrphanRustHosts({ dryRun: true }).pids;
+}
 
 export interface RustRpcProcessOptions {
   cwd: string;
@@ -58,6 +101,10 @@ class RustHostManager {
   private nextId = 1;
   private subscribers = new Set<RpcFrameHandler>();
   private refs = 0;
+
+  cleanupOrphans(): { stopped: number; pids: number[] } {
+    return cleanupOrphanRustHosts();
+  }
 
   acquire(): void {
     this.refs += 1;
@@ -455,6 +502,12 @@ export async function rustSessionDelete(root: string, path: string): Promise<voi
 
 export function rustBackendActive(): boolean {
   return process.env.OMPWEB_BACKEND !== "node";
+}
+
+/** Best-effort repair used by the desktop diagnostics action. */
+export function repairRustRuntime(): { stoppedOrphanHosts: number; orphanHostPids: number[] } {
+  const result = hostManager.cleanupOrphans();
+  return { stoppedOrphanHosts: result.stopped, orphanHostPids: result.pids };
 }
 
 /** Factory used by rpc-manager: Rust backend by default. */

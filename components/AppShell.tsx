@@ -31,6 +31,7 @@ import { showCompletionNotification } from "@/lib/browser-notifications";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
+import type { SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
 import { ArchiveBrowser } from "./ArchiveBrowser";
@@ -342,26 +343,6 @@ export function AppShell() {
     setBranchActiveLeafId(activeLeafId);
     branchLeafChangeFnRef.current = onLeafChange;
   }, []);
-  const handleOpenTerminal = useCallback(async () => {
-    const cwd = selectedSession?.cwd ?? newSessionCwd ?? initialNavigation.requestedCwd;
-    try {
-      const res = await fetch("/api/terminal/open", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        toast.info(t("appShell.terminalOpened") || `已在 ${data.terminal ?? "终端"} 打开工作区`);
-      } else {
-        toast.error(data.error || "打开终端失败");
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "打开终端请求失败";
-      toast.error(msg);
-    }
-  }, [selectedSession?.cwd, newSessionCwd, initialNavigation.requestedCwd, t]);
-
   const handleBranchLeafChange = useCallback((leafId: string | null) => {
     branchLeafChangeFnRef.current?.(leafId);
   }, []);
@@ -372,6 +353,7 @@ export function AppShell() {
   const systemPromptLoadIdRef = useRef(0);
   const systemBtnRef = useRef<HTMLButtonElement>(null);
   const sessionStatsBtnRef = useRef<HTMLButtonElement>(null);
+  const githubBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleSystemPromptChange = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
@@ -552,6 +534,10 @@ export function AppShell() {
       if (event.target instanceof Element && event.target.closest("[data-top-panel]")) return;
       if (systemBtnRef.current?.contains(event.target as Node)) return;
       if (sessionStatsBtnRef.current?.contains(event.target as Node)) return;
+      if (githubBtnRef.current?.contains(event.target as Node)) return;
+      // GitHub status is a pinned workspace panel. It remains open while the
+      // user inspects files or messages and closes only from its trigger or Esc.
+      if (activeTopPanel === "github") return;
       setActiveTopPanel(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -589,6 +575,7 @@ export function AppShell() {
 
   const initialSessionId = initialNavigation.sessionId;
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
+  const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
   // The boot gate stays closed until the sidebar has either restored a URL /
   // remembered session or conclusively found no session to restore.
   const [initialSessionRestored, setInitialSessionRestored] = useState(false);
@@ -1421,17 +1408,17 @@ export function AppShell() {
               an empty fixed layer for it (it would sit over the top-bar
               region and swallow clicks). */}
           {(activeTopPanel === "system" || activeTopPanel === "session" || activeTopPanel === "github") && topPanelPos && (
-            <div data-top-panel className="dropdown-surface" style={{
+            <div data-top-panel className="dropdown-surface top-panel-animated" style={{
               position: "fixed",
               top: topPanelPos.top,
               // Right-aligned, width auto based on content — prevents cut-off and lets the window resize with its content
-              right: 12,
+              right: rightPanelOpen && !isMobile ? rightPanelWidth + 12 : 12,
               left: "auto",
-              width: "auto",
-              minWidth: 360,
-              maxWidth: "min(680px, calc(100vw - 24px))",
+              minWidth: activeTopPanel === "github" || isMobile ? 0 : 360,
+              width: activeTopPanel === "github" ? "min(340px, calc(100vw - 24px))" : "auto",
+              maxWidth: activeTopPanel === "github" ? "min(340px, calc(100vw - 24px))" : "min(680px, calc(100vw - 24px))",
               maxHeight: `min(70vh, calc(100dvh - ${topPanelPos.top}px - 12px))`,
-              overflowY: "auto",
+              overflow: "hidden",
               overflowX: "hidden",
               zIndex: 500,
             }}>
@@ -1465,8 +1452,8 @@ export function AppShell() {
                 </div>
               )}
               {activeTopPanel === "github" && (
-                <div style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)", boxShadow: "var(--shadow-pop)", maxHeight: "min(60vh, calc(100dvh - 200px))", overflowY: "auto" }}>
-                  <GitHubStatusPanel cwd={activeCwd ?? selectedSession?.cwd ?? null} />
+                <div style={{ background: "var(--bg-panel)", boxShadow: "var(--shadow-pop)" }}>
+                  <GitHubStatusPanel cwd={activeCwd ?? selectedSession?.cwd ?? null} slashCommands={slashCommands} onInsertCommand={(command) => chatInputRef.current?.insertText(command)} />
                 </div>
               )}
               {activeTopPanel === "session" && (
@@ -1663,6 +1650,7 @@ export function AppShell() {
               terminalOpen={terminalOpen}
               onCloseTerminal={() => setTerminalOpen(false)}
               onOpenPlan={() => selectedSession && handleOpenPlan(selectedSession.id)}
+              onSlashCommandsChange={setSlashCommands}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -1818,6 +1806,22 @@ export function AppShell() {
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
+    {/* GitHub status trigger — pinned in the foreground so the workspace panel
+        can be reopened without relying on the transient top-bar layout. */}
+    {showChat && (
+      <button
+        ref={githubBtnRef}
+        type="button"
+        onClick={() => toggleTopPanel("github")}
+        title={t("appShell.githubStatus")}
+        aria-label={t("appShell.githubStatus")}
+        aria-pressed={activeTopPanel === "github"}
+        className="github-fixed-trigger ui-focus-ring"
+        style={{ right: rightPanelOpen && !isMobile ? rightPanelWidth : 0 }}
+      >
+        <FolderGit2 size={16} strokeWidth={1.8} aria-hidden="true" />
+      </button>
+    )}
     {updateNoticeVersion && (
       <UpdateNoticeDialog version={updateNoticeVersion} onClose={() => setUpdateNoticeVersion(null)} />
     )}

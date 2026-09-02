@@ -41,7 +41,7 @@
       "dur:dur-slow": "320ms",
       "dur:dur-theme": "450ms"
     },
-    "transitionDeclarations": 29,
+    "transitionDeclarations": 35,
     "reducedMotionBlocks": [
       {
         "line": 1684,
@@ -51,21 +51,33 @@
         ]
       },
       {
-        "line": 2421,
+        "line": 1923,
         "rules": 1,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2524,
+        "line": 2078,
+        "rules": 1,
+        "disables": []
+      },
+      {
+        "line": 2611,
+        "rules": 1,
+        "disables": [
+          "none"
+        ]
+      },
+      {
+        "line": 2714,
         "rules": 2,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2627,
+        "line": 2817,
         "rules": 4,
         "disables": [
           "none"

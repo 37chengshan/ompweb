@@ -439,6 +439,7 @@ function AssistantMessageView({
   const latestBlockIndex = blockItems.length > 0 ? blockItems[blockItems.length - 1].originalIndex : -1;
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
+  const [errorExpanded, setErrorExpanded] = useState(false);
 
 
   // Streaming-based timing for thinking blocks
@@ -515,24 +516,35 @@ function AssistantMessageView({
     if (!isAssistantErrorMessage(message)) return null;
     const status = message.errorStatus !== undefined ? String(message.errorStatus) : "error";
     const detail = message.errorMessage?.trim() || "The model request failed.";
+    const summary = detail.split(/\r?\n/, 1)[0].trim() || "The model request failed.";
     return (
-      <div className="chat-message" role="alert" style={{ marginBottom: 10 }}>
+      <div className="chat-message chat-message-error-compact" role="alert">
         <div
           data-message-error="true"
           style={{
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
-            borderLeft: "3px solid var(--status-error)",
-            padding: "7px 10px",
+            borderLeft: "2px solid var(--status-error)",
+            padding: "3px 7px",
             background: "color-mix(in srgb, var(--status-error) 7%, var(--bg-panel))",
             color: "var(--status-error)",
             fontFamily: "var(--font-mono)",
-            fontSize: 13,
-            lineHeight: 1.45,
+            fontSize: 11,
+            lineHeight: 1.35,
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 3 }}>Error: {status}</div>
-          <div>{detail}</div>
+          <button
+            type="button"
+            onClick={() => setErrorExpanded((value) => !value)}
+            aria-expanded={errorExpanded}
+            aria-controls={entryId ? `message-error-${entryId}` : undefined}
+            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: 0, border: "none", background: "transparent", color: "inherit", cursor: "pointer", textAlign: "left", font: "inherit" }}
+          >
+            {errorExpanded ? <ChevronDown size={11} aria-hidden="true" /> : <ChevronRight size={11} aria-hidden="true" />}
+            <span style={{ fontWeight: 650 }}>Error: {status}</span>
+            {!errorExpanded && <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-muted)" }}>{summary}</span>}
+          </button>
+          {errorExpanded && <div id={entryId ? `message-error-${entryId}` : undefined} style={{ marginTop: 5, color: "var(--status-error)" }}>{detail}</div>}
         </div>
       </div>
     );

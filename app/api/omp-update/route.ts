@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { execFileSync } from "node:child_process";
 import { checkOmpUpdate, runOmpUpdateNow, runOmpUpdateStream } from "@/lib/omp/updates";
 import { restartAllRpcSessions } from "@/lib/rpc-manager";
+import { repairRustRuntime } from "@/lib/omp/rust-rpc-process";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +43,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, output: output.slice(-2000), sessionsRestarted });
     }
     if (body.action === "restart") {
+      const repair = repairRustRuntime();
+      const stoppedInstances = await stopOtherOmpWebInstances();
       const sessionsRestarted = await restartAllRpcSessions();
-      return NextResponse.json({ success: true, sessionsRestarted });
+      return NextResponse.json({
+        success: true,
+        sessionsRestarted,
+        stoppedOrphanHosts: repair.stoppedOrphanHosts,
+        orphanHostPids: repair.orphanHostPids,
+        stoppedInstances,
+        reconnectRequired: true,
+      });
     }
     if (body.action === "stop-instance") {
       // 关闭本机其他 ompweb 端口上的旧实例（残留的开发服务/旧 app），
@@ -53,7 +63,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "invalid port", code: "invalid_port" }, { status: 400 });
       }
       const selfPort = Number(
-        process.env.OMP_WEB_PORT ?? process.env.PORT ?? (process.env.NODE_ENV === "production" ? "30177" : "30178"),
+        process.env.OMP_WEB_PORT ?? process.env.OMP_WEB_APP_PORT ?? process.env.PORT ?? (process.env.NODE_ENV === "production" ? "30177" : "30178"),
       );
       if (port === selfPort) {
         return NextResponse.json({ error: "refusing to stop self", code: "stop_self" }, { status: 400 });
@@ -99,4 +109,21 @@ function pidOnPort(port: number): number | null {
   } catch {
     return null;
   }
+}
+
+/** Best-effort self-healing for stale local ompweb servers. Never targets the
+ * current listener and never uses a broad pkill pattern. */
+async function stopOtherOmpWebInstances(): Promise<number[]> {
+  const selfPort = Number(process.env.OMP_WEB_PORT ?? process.env.OMP_WEB_APP_PORT ?? process.env.PORT ?? (process.env.NODE_ENV === "production" ? "30177" : "30178"));
+  const stopped: number[] = [];
+  for (const port of [30177, 30178, 30179, 30180]) {
+    if (port === selfPort) continue;
+    const pid = pidOnPort(port);
+    if (!pid || pid === process.pid) continue;
+    try {
+      process.kill(pid, "SIGTERM");
+      stopped.push(port);
+    } catch { /* stale race / permission: leave it visible to diagnostics */ }
+  }
+  return stopped;
 }

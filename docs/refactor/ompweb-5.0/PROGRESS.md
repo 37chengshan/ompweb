@@ -347,3 +347,29 @@
 **验证**：resume-parity 2/2（修复前 rust 组失败/修复后通过——实验中已实证修复前后差异）；supervisor+rust-rpc-process+host-ipc 8/8（含 crash recovery 重启语义）；cargo 12+1+2 全绿；tsc 0 err；lint 0 err。环境备注：macOS/node24 上 node --test 全绿后进程挂起为 pre-existing（多个既有 host 测试文件复现），本批新测试文件同样受影响但测试本身全过。
 
 **多维自审（8 维）**：产品（继续旧会话在 rust 默认后端不再丢身份——P1 数据路径修复）✅；架构（args 单向传递、restart 重放存 Session、无新依赖）✅；协议（agent.spawn 参数向后兼容：args 缺省 = 空）✅；安全（args 逐字传递仅经本地 IPC；无 shell）✅；OMP Parity（与 Node spawn 顺序逐字一致）✅；落地（双路径实测 + 回归测试 + 全量相关测试）✅；兼容（Node 路径零改动；host IPC 旧调用无 args 仍有效）✅；遗留（env/utility RPC/auth login 的 rust 收口 = 路线 4 其余切片；工具预设/advisor 传递已随本修复生效但未单独实测——resume 为同机制代表）。
+## 最终子代理多维度审查 — 2026-09-02（doc 16 首批执行后）
+
+按用户要求对 0f94ee1..HEAD（5 提交：计划安装 / 路线 3 / 路线 2 / 路线 4 切片 / 终审安全修复）派发多维审查：
+
+**SecurityReview（security-reviewer）— 完整执行（9m44s，8 findings）**：
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| 1 | medium/high | **pre-auth IPC DoS**：1MiB 上限在 read_line 全量缓冲后才检查（无 newline 流无限分配）；mini_json 递归无深度上限（≤1MiB 嵌套括号栈溢出 abort host，杀全部会话） | ✅ 已修：`read_line_capped` 字节级有界读（超限即答 frame_too_large 并关连接，绝不 drain-open）；mini_json `MAX_JSON_DEPTH=64`（parse_value_at 深度链）；集成测试（flood 后同连接 EOF）+ 单元测试 |
+| 2 | low | agent.spawn args 逐字无 allowlist（token 门后单跳注入面） | 接受（token 认证 + 值仅 Node 层生成）+ 信任边界注释（main.rs） |
+| 3 | low/high | **packaged env passthrough**：Resources/bin 缺失时环境残留 OMPWEB_HOST_BIN 被执行（不 fail-closed） | ✅ 已修：main.js packaged 恒置 Resources/bin 路径 / 非 packaged 显式 delete ambient key（copy 上操作） |
+| 4 | low | staged host 为 debug 未签名、无完整性校验 | 记录（release profile + codesign = stable 发布门项，路线 18/21 收口） |
+| 5 | low | orphan cleanup ps 全串匹配（argv0 spoof 限同用户；跨用户 kill 被 EPERM 挡） | 记录（同用户攻击者本可杀自有进程；年龄/锁检查列为增强） |
+| 6 | low/high | **route gate 可绕过**：只扫 route.ts 两标记，不查 host 进程层 import | ✅ 已修：新增 `lib/omp/rust-rpc-process` import 标记（route 只能经 host-client） |
+| 7 | informational | token ~30-bit（subsec_nanos+pid）；模块注释声称 0600 token 文件未实现 | ✅ 已修：/dev/urandom 128-bit（unix；win fallback 保留原式）；ipc_server 模块注释改为实际 stdout handshake 设计 |
+| 8 | informational/high | session.rename/delete `starts_with` 前缀检查（`<root>2` 兄弟目录可过）；route catch 静默回退 Node 同操作 | ✅ 已修：`is_path_within`（strip_prefix + 边界字符 + `..` 段拒绝 + 单测 7 例）；rename/delete catch 加 console.warn（No Hidden Fallback 显式化） |
+
+**PlanConformanceReview（reviewer）— 完整执行（18m35s，3 findings，overall correct）**：
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| 1 | P2 | doc16 安装表 row 4 标 ✅ 与路线本体范围冲突（utility/auth/env 未收口），且同日内被 --resume 缺陷证伪 | ✅ 已修：row 4 → ◐ + 缺陷注记；row 3 → ✅（完成） |
+| 2 | P3 | PROGRESS「路线 2 — 完成」无条件式标题 vs 交付为头切片 | ✅ 已修：遗留行补「头切片，非路线 2 全量完成；8–14 随域落地」 |
+| 3 | P3 | restart args 重放无回归测试 | ✅ 已修：lib/supervisor.test.mjs 新增 args-replay 测试（spawn --no-lsp → SIGKILL → session_restarted → ps argv 断言重放）3/3 |
+
+**CodeQualityReview（code-reviewer/reviewer ×5 次派发）— provider 环境失败（No model selected ×1 / socket closed ×4，与历史一致）**：按既定方案由主 agent 自审覆盖其 8 个指定焦点（read_line_capped EOF/边界语义、token fallback、is_path_within 边界、args-replay ps 时序、mini_json 深度、seq 窄化、env copy 安全、restart 双锁）——逐一核对无缺陷（见终审安全修复提交内实现细节）。
+
+**收尾核验**：cargo 15+1+2 全绿；node 相关测试组全绿（host-ipc 8/8、supervisor 3/3、resume-parity 2/2、boundary 15/15、host-client 5/5）；tsc 0 err；lint 0 err（新增文件）。**子代理多维审查：2 维完整执行并全量处置，1 维（代码质量）因环境 5 次失败按预案主 agent 自审替代**。

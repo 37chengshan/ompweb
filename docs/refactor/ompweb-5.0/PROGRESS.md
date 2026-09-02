@@ -296,3 +296,11 @@
 - **journal 生产写入**：保持可选（每帧 IPC 开销 > 收益）
 - **Remote/Tauri/Mobile**：暂缓（非 5.0 主线；Electron 打包/安装/验证全过，工作良好）
 - **5.0 完成定义**：核心运行时（agent/event/session）Rust 切流完成（3/9 域）——这是 5.0 的目标；其余域 node 为当前效果最佳
+## 24 路线 Rust Production Cutover — 计划安装（2026-09-02，Phase A）
+
+用户交付新主计划（`ompweb_5.0_rust_production_cutover_route.md`，24 路线），指令：完成所有内容、阶段自审 + 最终子代理多维度审查。该文档覆盖并重启了 5.0.0 发布时「效果标准决策」暂缓的 R11+（PTY/File/Git/Settings/Commands/Remote/Relay/Tauri/Mobile/删除 Node Authority），并把 5.0 完成定义推回九域 Rust Authority 终态。
+
+- **已安装**：`docs/refactor/ompweb-5.0/16-rust-production-cutover-routes.md`（doc 16，正文 1089 行原文 + 安装时状态对照表：24 路线 ↔ doc15 R ↔ backend-ownership 域 ↔ 状态快照）。
+- **已登记**：README 索引 row 16 + 实施状态 bullet；本日志。
+- **执行纪律**：沿用 doc 15 第 10 条（shadow → canary → cutover → legacy adapter → delete；实测证据过门）；每阶段多维自审；manifest 随域迁移逐行更新；npm test / tsc / lint / cargo 每阶段全绿。
+- **Phase A 自审（4 维）**：产品（安装对照表与仓库真实状态一致——3/9 域 rust 快照核对 yaml/PROGRESS）✅；架构（doc 16 与 doc 15 关系清晰、无内容冲突——doc 15 为历史路线、doc 16 为执行基线）✅；协议/安全（纯文档，无代码面）✅；落地（README 链接/行号/表格完整；git 树无代码改动）✅。

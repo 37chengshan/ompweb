@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="generator" content="archify 2.16.0-dev.0">
-  <title>ompweb System &amp; Runtime Architecture Diagram</title>
+  <meta name="generator" content="archify 2.17.0-dev.1">
+  <title>ompweb System &amp; Runtime Architecture (v5.1) Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -4955,11 +4955,11 @@
            data-preset-badge-blueprint="BLUEPRINT / REV 01"
            data-preset-badge-editorial="EDITORIAL / FIELD NOTE">
         <div class="pulse-dot"></div>
-        <h1>ompweb System &amp; Runtime Architecture</h1>
+        <h1>ompweb System &amp; Runtime Architecture (v5.1)</h1>
       </div>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[{"id":"full-overview","label":"Full System Topology","focus":["browser-ui","desktop-app","next-server","rpc-manager","omp-process","model-providers","local-storage"],"note":"Complete end-to-end architecture from UI clients to OMP runtime and cloud LLM providers."},{"id":"session-and-chat","label":"Session \u0026 Agent RPC Flow","focus":["browser-ui","session-reader","rpc-manager","omp-process","local-storage","model-providers"],"note":"Streaming JSONL reads directly from disk and prompt execution via NDJSON stdio RPC."},{"id":"terminal-and-files","label":"Terminal \u0026 Workspace Sandbox","focus":["terminal-ui","terminal-manager","pty-shell","file-sandbox","git-worktree"],"note":"Interactive pseudo-terminal execution and canonicalized workspace file security boundary."},{"id":"multi-agent-and-mcp","label":"Multi-Agent \u0026 MCP Ecosystem","focus":["composer-panel","agent-core","agent-mcp-daemon","mcp-servers","skills-hub"],"note":"Todo plan tracking, subagent roster monitoring, Agent-MCP orchestration, and MCP servers."}]</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"full-overview","label":"Full System Topology","focus":["browser-ui","desktop-app","next-server","host-client","supervisor","omp-process","model-providers"],"note":"Complete end-to-end architecture across Presentation, Next.js Gateway, Rust Native Host, and OMP Core."},{"id":"rust-host-core","label":"Rust Native Host Authority","focus":["host-client","supervisor","git-service","pty-service","session-scan","settings-service","sqlite-journal"],"note":"ompweb-host Rust daemon providing high-performance, memory-safe system authority."},{"id":"session-and-chat","label":"Session \u0026 Agent RPC Flow","focus":["browser-ui","next-server","host-client","supervisor","omp-process","local-storage","model-providers"],"note":"Streaming JSONL reads, head-window indexing, and prompt execution via stdio NDJSON RPC."},{"id":"terminal-and-git","label":"Terminal, Git \u0026 Workspace","focus":["terminal-ui","host-client","git-service","pty-service","file-sandbox"],"note":"Interactive pseudo-terminal execution, Git diff/status, and canonicalized workspace bounds."}]</script>
 
     <script id="archify-i18n-data" type="application/json">{"locale":"en","messages":{"viewer.kind.frontend":"Frontend","viewer.kind.backend":"Backend","viewer.kind.database":"Database","viewer.kind.cloud":"Cloud","viewer.kind.security":"Security","viewer.kind.messagebus":"Message bus","viewer.kind.external":"External","viewer.kind.neutral":"Neutral","viewer.kind.node":"Node","viewer.kind.start":"Start","viewer.kind.active":"Active","viewer.kind.waiting":"Waiting","viewer.kind.decision":"Decision","viewer.kind.success":"Success","viewer.kind.failure":"Failure","viewer.toolbar.actions":"Diagram actions","viewer.theme.toggle.title":"Toggle theme (T)","viewer.theme.toggle":"Toggle color theme","viewer.theme.dark":"Dark","viewer.theme.light":"Light","viewer.preset.choose.title":"Choose visual style (S cycles)","viewer.preset.choose":"Choose visual style","viewer.preset.style":"Style","viewer.preset.menu":"Visual style","viewer.preset.identity":"Visual identity","viewer.preset.cycles":"S cycles","viewer.preset.classic":"Classic","viewer.preset.classic.short":"Classic","viewer.preset.classic.hint":"Stable technical default","viewer.preset.flow":"Signal Flow","viewer.preset.flow.short":"Flow","viewer.preset.flow.hint":"Motion-forward presentation","viewer.preset.blueprint":"Blueprint","viewer.preset.blueprint.hint":"Engineering review","viewer.preset.editorial":"Editorial","viewer.preset.editorial.hint":"Publication and launch notes","viewer.preset.badge.signalFlow":"SIGNAL FLOW","viewer.preset.badge.blueprint":"BLUEPRINT / REV 01","viewer.preset.badge.editorial":"EDITORIAL / FIELD NOTE","viewer.preset.badge.editorialPlate":"ARCHIFY / PLATE 04","viewer.preset.current":"Visual style: {style}. Choose visual style","viewer.motion.live":"Live","viewer.motion.still":"Still","viewer.motion.pause":"Pause motion","viewer.motion.resume":"Resume motion","viewer.motion.reduced":"Motion paused by reduced-motion preference","viewer.motion.hidden":"Motion paused while this page is hidden","viewer.motion.yielding":"Pause motion; currently yielding to {owner}","viewer.motion.yielding.title":"Live preview enabled · yielding to {owner}","viewer.owner.story":"the guided story","viewer.owner.chapter":"the active chapter","viewer.owner.chapterPreview":"the chapter delta preview","viewer.owner.handoff":"the chapter handoff","viewer.owner.route":"Route Probe","viewer.owner.lens":"Semantic Lens","viewer.owner.relationship":"Relationship Preview","viewer.owner.intent":"Intent Trace","viewer.owner.focus":"semantic focus","viewer.owner.legend":"legend preview","viewer.owner.reader":"reader interaction","viewer.present.enter":"Enter presentation stage","viewer.present.enter.title":"Presentation stage (F)","viewer.present.exit":"Exit presentation stage","viewer.present.exit.title":"Exit presentation stage (F or Escape)","viewer.present.present":"Present","viewer.present.exit.label":"Exit","viewer.export.button":"Export","viewer.export.button.title":"Export diagram (E)","viewer.export.diagram":"Export diagram","viewer.export.menu":"Export","viewer.export.subtitle":"Portable, clean outputs","viewer.export.share":"Share","viewer.export.shareCard":"Share Card","viewer.export.routeShareCard":"Route Share Card","viewer.export.reachShareCard":"Reach Share Card","viewer.export.copyShareCard":"Copy Share Card","viewer.export.copyDiagram":"Copy diagram","viewer.export.clipboardPng":"PNG to clipboard","viewer.export.raster":"Raster images","viewer.export.image":"Image","viewer.export.lossless":"Lossless image","viewer.export.compact":"Compact image","viewer.export.modern":"Modern image","viewer.export.vectorMotion":"Vector and motion","viewer.export.vectorMotion.heading":"Vector \u0026 motion","viewer.export.editable":"Editable vector","viewer.export.motion6s":"6s motion","viewer.export.unsupported":"Not supported by this browser","viewer.export.clipboardUnsupported":"Clipboard image write not supported by this browser","viewer.export.clipboardUnsupported.period":"Clipboard image write not supported by this browser.","viewer.export.clipboardUnsupported.short":"Clipboard image write not supported in this browser.","viewer.export.motionUnavailable":"Motion capture unavailable in this browser","viewer.export.webmUnavailable":"WebM unavailable in this browser","viewer.export.failed":"Export failed: {message}","viewer.export.unknownVariant":"Unknown Share Card variant: {variant}","viewer.export.routeRequired":"Trace a route before exporting a Route Share Card","viewer.export.reachRequired":"Trace authored reach before exporting a Reach Share Card","viewer.export.unknown":"unknown","viewer.export.routeFailed":"Route Share Card export failed: {message}","viewer.export.reachFailed":"Reach Share Card export failed: {message}","viewer.export.copyFailed":"Copy failed: {message}","viewer.export.copiedPng":"Copied PNG to clipboard","viewer.export.copiedShare":"Copied Share Card","viewer.export.downloadedShare":"Downloaded Share Card","viewer.export.downloadedRoute":"Downloaded Route Share Card","viewer.export.downloadedReach":"Downloaded Reach Share Card","viewer.export.downloadedWebm":"Downloaded WebM","viewer.export.recording":"Recording 6 seconds of motion…","viewer.export.card.routeSummary.one":"Route: {source} → {target} · {count} directed hop","viewer.export.card.routeSummary.other":"Route: {source} → {target} · {count} directed hops","viewer.export.card.reachSummary":"Authored {direction} from {origin} · {nodes} · {links} · max {hops}","viewer.export.card.node.one":"{count} node","viewer.export.card.node.other":"{count} nodes","viewer.export.card.link.one":"{count} link","viewer.export.card.link.other":"{count} links","viewer.export.card.hop.one":"{count} hop","viewer.export.card.hop.other":"{count} hops","viewer.export.card.routeBadge":"ARCHIFY · ROUTE · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction} REACH","viewer.export.card.defaultBadge":"ARCHIFY · {preset} · {theme}","viewer.export.direction.upstream":"Upstream","viewer.export.direction.downstream":"Downstream","viewer.export.error.canvasUnavailable":"Canvas unavailable for {label}","viewer.export.error.contextUnavailable":"2D canvas context unavailable for {label}","viewer.export.error.toBlobUnavailable":"canvas.toBlob unavailable for {label}","viewer.export.error.toBlobNull":"canvas.toBlob returned no data for {label}","viewer.export.error.variantsCombined":"Share Card variants cannot be combined","viewer.export.error.viewerState":"Share Card export could not remove temporary viewer state","viewer.export.error.routeState":"Route Card export could not preserve the resolved route safely","viewer.export.error.reachState":"Reach Card export could not preserve authored reach safely","viewer.export.error.webmRequirements":"WebM motion export requires a trace animation and browser MediaRecorder support","viewer.export.error.mediaRecorder":"MediaRecorder failed","viewer.export.error.emptyWebm":"MediaRecorder produced an empty WebM","viewer.export.error.webmBackground":"SVG background could not be loaded for WebM export","viewer.guided.region":"Guided diagram views","viewer.guided.previous":"Previous guided view","viewer.guided.previous.title":"Previous guided view ([)","viewer.guided.next":"Next guided view","viewer.guided.next.title":"Next guided view (])","viewer.guided.views":"Guided views","viewer.guided.explore":"Explore this system","viewer.guided.intro":"Step through curated paths without changing the source diagram.","viewer.guided.trail":"Story trail","viewer.guided.beat":"Beat","viewer.guided.nextBeat":"Next","viewer.guided.play":"Play guided story","viewer.guided.play.title":"Play guided story (P)","viewer.guided.pause":"Pause guided story","viewer.guided.pause.title":"Pause guided story (P)","viewer.guided.replay":"Replay guided story","viewer.guided.replay.title":"Replay guided story (P)","viewer.guided.playStory":"Play story","viewer.guided.pauseStory":"Pause","viewer.guided.replayStory":"Replay story","viewer.guided.motionUnavailable":"Story playback unavailable while motion is Still","viewer.guided.enableMotion":"Switch motion to Live to play the guided story","viewer.guided.selectBeatLink":"Select a Story Beat to copy its exact link","viewer.guided.copyMoment":"Copy moment","viewer.guided.momentCopied":"Moment link copied","viewer.guided.momentCopyFailed":"Could not copy story moment link","viewer.guided.copied":"Copied","viewer.guided.copyFailed":"Copy failed","viewer.guided.showAll":"Show all","viewer.guided.showAll.aria":"Show entire diagram","viewer.guided.chapters":"Story chapters","viewer.guided.storyTrail":"Story trail for {label}: {count} beats","viewer.guided.chapter.open":"Open chapter {index} of {total}: {label}, {count} stops","viewer.guided.chapter.current":"Current chapter {index} of {total}: {label}, {count} stops","viewer.guided.chapter.selectedNodes":"{count} selected nodes","viewer.guided.chapter.stops":"{count} stops","viewer.guided.chapter.stop.one":"{count} stop","viewer.guided.chapter.stop.other":"{count} stops","viewer.guided.chapter.current.title":"{label} — current chapter, {count} stops","viewer.guided.chapter.delta.expanded":"{stay} stay, {enter} enter, {leave} leave","viewer.guided.chapter.delta.aria":"Open chapter {index} of {total}: {label}. Chapter focus delta: {delta}","viewer.guided.chapter.delta.title":"{label} — {delta} chapter focus","viewer.guided.handoff":"{from} → {to} · via {label}","viewer.guided.share.chapter":"Chapter {index} / {total}","viewer.guided.share.initial":"Chapter 01 / 01","viewer.guided.share.default":"Guided chapter","viewer.guided.state.ready":"Ready","viewer.guided.state.playing":"Playing","viewer.guided.state.settled":"Settled","viewer.guided.state.paused":"Paused","viewer.guided.state.pinned":"Pinned","viewer.guided.state.still":"Still","viewer.guided.share.step":"Step {index} / {total} · {label}","viewer.guided.share.staticMoment":"{step} · Static moment","viewer.guided.share.complete":"{count} steps complete · {note}","viewer.guided.share.settled":"Path settled for reading.","viewer.guided.share.staticPath":"{count} steps · Static path","viewer.guided.share.ready":"{count} steps · Ready","viewer.guided.share.aria":"{state} chapter {index} of {total}: {label}. {beat}. {route}","viewer.guided.beat.start":"Beat {index} / {total} · {label} · starting point","viewer.guided.beat.forward":"Beat {index} / {total} · {from} → {to}","viewer.guided.beat.reverse":"Beat {index} / {total} · {from} → {to} · reverse authored link","viewer.guided.beat.multiple":"Beat {index} / {total} · {from} ⇄ {to} · {count} authored links","viewer.guided.beat.group":"Beat {index} / {total} · {from} · {to} · grouped · no direct link","viewer.guided.beat.aria.prefix":"Story beat {index} of {total}: {label}. ","viewer.guided.beat.aria.start":"Starting point.","viewer.guided.beat.aria.forward":"From {from} through one authored forward relationship.","viewer.guided.beat.aria.reverse":"From {from}; the authored relationship points from {to} to {from}.","viewer.guided.beat.aria.multiple":"From {from} through {count} authored relationships; shown without arbitrary motion.","viewer.guided.beat.aria.group":"Grouped from {from} with no direct authored relationship.","viewer.guided.caption.start":"Starting point","viewer.guided.caption.grouped":"Grouped transition · no direct authored link","viewer.guided.caption.more":" +{count} more","viewer.guided.caption.reverse":"Reverse authored relationship","viewer.guided.caption.relationships":"{count} authored relationships","viewer.guided.caption.relationship":"Authored relationship","viewer.guided.caption.direction":"authored direction: {from} → {to}","viewer.guided.caption.starting":"Authored starting point","viewer.guided.beatLink":"Copy link to current story moment: Beat {index} of {total}: {label}","viewer.guided.noStory":"This diagram has no authored guided story.","viewer.guide.eyebrow":"Diagram guide","viewer.guide.close":"Close diagram guide","viewer.guide.inspecting":"Inspecting compiled semantics","viewer.guide.actions":"Diagram exploration actions","viewer.guide.find":"Find any node","viewer.guide.find.hint":"Search labels, responsibilities, kinds, and stable IDs.","viewer.guide.route":"Trace a route","viewer.guide.route.aria":"Trace a directed route","viewer.guide.route.hint":"Ask how two semantic nodes connect in authored direction.","viewer.guide.map":"See the whole system","viewer.guide.map.hint":"Open Semantic Radar with a live viewport and stable nodes.","viewer.guide.lens":"Compare semantic kinds","viewer.guide.lens.hint":"Count roles, reveal their traffic, and compare direct authored links.","viewer.guide.story":"Play the guided story","viewer.guide.story.hint":"Walk the authored chapters and real relationships.","viewer.guide.present":"Enter Presentation Stage","viewer.guide.present.hint":"Give the live diagram the viewport without changing export.","viewer.guide.shortcuts":"Additional keyboard shortcuts","viewer.guide.shortcut.export":"Export","viewer.guide.shortcut.theme":"Theme","viewer.guide.shortcut.style":"Style","viewer.guide.shortcut.reset":"Reset","viewer.guide.shortcut.zoomIn":"Zoom in","viewer.guide.shortcut.zoomOut":"Zoom out","viewer.guide.shortcut.close":"Close","viewer.guide.facts":"{nodes} · {relationships} · {views}","viewer.guide.fact.node.one":"{count} semantic node","viewer.guide.fact.node.other":"{count} semantic nodes","viewer.guide.fact.relationship.one":"{count} relationship","viewer.guide.fact.relationship.other":"{count} relationships","viewer.guide.fact.view.one":"{count} guided view","viewer.guide.fact.view.other":"{count} guided views","viewer.guide.story.available.one":"Walk {count} authored chapter and its real relationships.","viewer.guide.story.available.other":"Walk {count} authored chapters and their real relationships.","viewer.guide.story.unavailable":"No authored guided story in this diagram.","viewer.guide.open":"Open diagram guide","viewer.guide.noStory":"This diagram has no authored guided story.","viewer.finder.title":"Find a node","viewer.finder.close":"Close node finder","viewer.finder.placeholder":"Search labels or IDs","viewer.finder.search":"Search diagram nodes","viewer.finder.results":"Diagram nodes","viewer.finder.empty":"No matching nodes","viewer.finder.result.focus":"Focus {label}","viewer.finder.result.routeStart":"Choose {label} as route start","viewer.finder.result.routeTarget":"Choose {label} as route destination, {links}","viewer.finder.status.empty":"No matching nodes","viewer.finder.status.count.one":"{count} matching node","viewer.finder.status.count.other":"{count} matching nodes","viewer.finder.noun.nodes":"nodes","viewer.finder.link.one":"{count} link","viewer.finder.link.other":"{count} links","viewer.finder.result.focus.one":"Focus {label}, {count} related connection","viewer.finder.result.focus.other":"Focus {label}, {count} related connections","viewer.finder.status.filtered":"{visible} of {available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"Semantic passport","viewer.passport.metadata":"Node metadata","viewer.passport.evidence":"Verified source evidence","viewer.passport.verified":"Verified source","viewer.passport.reach":"Authored reach","viewer.passport.reach.trace":"Trace authored reachability","viewer.passport.upstream":"Upstream","viewer.passport.downstream":"Downstream","viewer.passport.upstream.trace":"Trace upstream authored reachability","viewer.passport.downstream.trace":"Trace downstream authored reachability","viewer.passport.close":"Close semantic passport","viewer.passport.copy":"Copy link","viewer.passport.copy.focus":"Copy link to focused node","viewer.passport.relations":"Relations","viewer.passport.relations.show":"Show connected relationships","viewer.passport.relations.hide":"Hide connected relationships","viewer.passport.relations.list":"Connected relationships","viewer.passport.copyRelation":"Copy relation","viewer.passport.copyNode":"Copy node","viewer.passport.copyPinned":"Copy link to pinned relationship","viewer.passport.copySource":"Copy link to source node","viewer.passport.copy.focused.success":"Focused node link copied","viewer.passport.copy.pinned.success":"Pinned relationship link copied","viewer.passport.copy.focused.failed":"Could not copy focused node link","viewer.passport.copy.pinned.failed":"Could not copy pinned relationship link","viewer.passport.relationship.none":"No connected relationships","viewer.passport.relationship.count.one":"{count} relation","viewer.passport.relationship.count.other":"{count} relations","viewer.passport.relationship.show.one":"Show {count} connected relationship","viewer.passport.relationship.show.other":"Show {count} connected relationships","viewer.passport.relationship.summary":"{out} outgoing · {in} incoming{loops}","viewer.passport.relationship.loops":" · {count} loop","viewer.passport.relationship.explorer":"Direct relationship explorer","viewer.passport.relationship.help":"Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.","viewer.passport.relationship.loopsBack":"loops back","viewer.passport.relationship.connectsTo":"connects to","viewer.passport.relationship.connectsFrom":"connects from","viewer.passport.relationship.pinned":"Pinned relationship · {from} → {to} · {label}","viewer.passport.relationship.inspect":"Inspect relationship {index} of {total}: {from} to {to}, {label}. Press Enter for details.","viewer.passport.relationship.group.out":"Outgoing","viewer.passport.relationship.group.in":"Incoming","viewer.passport.relationship.group.loop":"Self loops","viewer.passport.relationship.row":"{group}: {relationship}, {neighbor}","viewer.passport.relationship.direction.out":"OUT →","viewer.passport.relationship.direction.in":"← IN","viewer.passport.relationship.direction.loop":"LOOP","viewer.passport.sourceCount.one":"{count} verified source reference","viewer.passport.sourceCount.other":"{count} verified source references","viewer.passport.sourceMarker":"SRC","viewer.passport.beacon.one":"{count} verified source; focus this node to inspect","viewer.passport.beacon.other":"{count} verified sources; focus this node to inspect","viewer.passport.repository.open":"Open verified repository revision {revision}","viewer.passport.source.open":"Open verified source {path} at revision {revision}","viewer.passport.source.openLink":"Open ↗","viewer.passport.reach.upstream.one":"Trace {count} upstream authored node","viewer.passport.reach.upstream.other":"Trace {count} upstream authored nodes","viewer.passport.reach.downstream.one":"Trace {count} downstream authored node","viewer.passport.reach.downstream.other":"Trace {count} downstream authored nodes","viewer.passport.reach.noUpstream":"No upstream authored nodes","viewer.passport.reach.noDownstream":"No downstream authored nodes","viewer.passport.reach.status":"{direction} · {nodes} nodes · {links} links · max {hops} hops","viewer.route.eyebrow":"Route probe","viewer.route.start":"Choose a start node","viewer.route.start.find":"Find start","viewer.route.start.find.aria":"Find a route start","viewer.route.copy":"Copy link","viewer.route.copy.aria":"Copy link to traced route","viewer.route.clear":"Clear","viewer.route.clear.aria":"Clear route probe","viewer.route.traced":"Traced route","viewer.route.pickTwo":"Pick two semantic nodes on the diagram","viewer.route.pickOne":"Pick a semantic node on the diagram","viewer.route.controls":"Route journey controls","viewer.route.previous":"Previous route position","viewer.route.play":"Play route journey","viewer.route.pause":"Pause route journey","viewer.route.replay":"Replay route journey","viewer.route.next":"Next route position","viewer.route.journey":"Journey","viewer.route.pause.label":"Pause","viewer.route.replay.label":"Replay","viewer.route.overview":"Overview","viewer.route.overview.aria":"Show complete route overview","viewer.route.instructions":"Choose the source, then the destination. Direction matters.","viewer.route.destination":"Choose a destination from {label}","viewer.route.destination.find":"Find target","viewer.route.destination.find.aria":"Find a reachable route destination","viewer.route.differentDestination":"Choose a different destination","viewer.route.distinct":"A route needs two distinct semantic nodes.","viewer.route.unreachable":"No directed route to {label}","viewer.route.unreachable.detail":"{target} is not reachable from {source}. Pick a highlighted destination.","viewer.route.start.instructions":"Select the source. The next step will reveal only directed destinations.","viewer.route.copy.success":"Traced route link copied","viewer.route.copy.failed":"Could not copy traced route link","viewer.route.position":"Route position {index} of {total}: {label}","viewer.route.step":"Step {index} of {total} · {phase} · {label}","viewer.route.motionRequired":"Automatic journey requires Live motion","viewer.route.trigger.clear":"Clear traced route","viewer.route.overview.status":"{nodes} · {hops} · shortest authored route","viewer.route.overview.node.one":"{count} node","viewer.route.overview.node.other":"{count} nodes","viewer.route.overview.hop.one":"{count} directed hop","viewer.route.overview.hop.other":"{count} directed hops","viewer.route.phase.playing":"Playing","viewer.route.phase.complete":"Complete","viewer.route.phase.inspecting":"Inspecting","viewer.route.destination.count.one":"{count} directed destination available. Pick a highlighted node.","viewer.route.destination.count.other":"{count} directed destinations available. Pick a highlighted node.","viewer.route.noOutgoing":"No outgoing route starts here. Clear and choose another source.","viewer.route.result.title":"{source} to {target}","viewer.route.finder.source.title":"Choose route start","viewer.route.finder.source.placeholder":"Search route sources","viewer.route.finder.source.empty":"No matching route sources","viewer.route.finder.source.results":"Nodes that can start a route","viewer.route.finder.source.noun":"route sources","viewer.route.finder.source.badge":"start","viewer.route.finder.target.title":"Destination from {label}","viewer.route.finder.target.placeholder":"Search reachable destinations","viewer.route.finder.target.empty":"No matching reachable destinations","viewer.route.finder.target.results":"Reachable route destinations","viewer.route.finder.target.noun":"reachable destinations","viewer.route.hop.one":"{count} hop","viewer.route.hop.other":"{count} hops","viewer.lens.eyebrow":"Semantic lens","viewer.lens.title":"Compare system roles","viewer.lens.close":"Close semantic lens","viewer.lens.instruction":"Choose up to two semantic kinds. One reveals its real traffic; two compare only direct authored relationships.","viewer.lens.kinds":"Semantic kinds","viewer.lens.choose":"Choose a kind to inspect its nodes and touching relationships.","viewer.lens.copy":"Copy link to semantic lens","viewer.lens.clear":"Clear semantic lens","viewer.lens.open":"Open semantic lens","viewer.lens.openActive":"Open active semantic lens","viewer.lens.legend":"Semantic legend","viewer.lens.legend.inspect.one":"Inspect {label}, {count} node","viewer.lens.legend.inspect.other":"Inspect {label}, {count} nodes","viewer.lens.kind.count.one":"{label}, {count} node","viewer.lens.kind.count.other":"{label}, {count} nodes","viewer.lens.compare.one":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationship","viewer.lens.compare.other":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationships","viewer.lens.single":"{nodes} · {relationships} · connected peers remain visible","viewer.lens.node.one":"{count} {label} node","viewer.lens.node.other":"{count} {label} nodes","viewer.lens.relationship.one":"{count} touching relationship","viewer.lens.relationship.other":"{count} touching relationships","viewer.radar.title":"Semantic radar","viewer.radar.building":"Building overview","viewer.radar.openFull":"Open full semantic radar","viewer.radar.open":"Open radar","viewer.radar.close":"Close semantic radar","viewer.radar.surface":"Diagram overview. Click a node to focus it, or use arrow keys to pan.","viewer.radar.click":"Click node","viewer.radar.drag":"Drag to pan","viewer.radar.space":"Semantic radar needs more MAP space.","viewer.radar.nodes":"Semantic diagram radar nodes","viewer.radar.focus":"Focus {label} from Semantic Radar","viewer.radar.status":"{count} nodes · {viewport}","viewer.radar.fullMap":"{count} nodes · full map","viewer.radar.compacted":"Radar compacted to avoid covering the Semantic Passport or MAP controls.","viewer.radar.cancelWaiting":"Cancel semantic radar waiting for more MAP space","viewer.radar.needsSpace":"Semantic radar needs more visible MAP space","viewer.radar.viewport.full":"full map","viewer.radar.viewport.width":"{percent}% width","viewer.radar.viewport.scale":"{percent}% viewport","viewer.nav.controls":"Diagram view controls","viewer.nav.route":"Trace a directed route","viewer.nav.route.title":"Trace route (R)","viewer.nav.route.short":"PATH","viewer.nav.radar":"Open semantic radar","viewer.nav.radar.title":"Semantic radar (M)","viewer.nav.radar.short":"MAP","viewer.nav.lens":"Open semantic lens","viewer.nav.lens.title":"Semantic lens (L)","viewer.nav.lens.short":"LENS","viewer.nav.find":"Find a node","viewer.nav.find.title":"Find a node (/)","viewer.nav.guide":"Open diagram guide","viewer.nav.guide.title":"Diagram guide (?)","viewer.nav.zoomOut":"Zoom out","viewer.nav.zoomOut.title":"Zoom out (-)","viewer.nav.reset":"Reset diagram view","viewer.nav.reset.title":"Reset view (0)","viewer.nav.read":"READ","viewer.nav.zoomIn":"Zoom in","viewer.nav.zoomIn.title":"Zoom in (+)","viewer.nav.camera":"{hint}. Reset diagram view","viewer.nav.camera.title":"{semantic}{hint} · reset view (0)","viewer.nav.camera.semantic":"Semantic camera active · ","viewer.nav.level.map":"MAP","viewer.nav.level.read":"READ","viewer.nav.level.full":"FULL","viewer.nav.level.auto":"AUTO","viewer.nav.detail.map":"Zoom in to reveal relationship labels and node context","viewer.nav.detail.read":"Zoom in again to reveal tags and annotations","viewer.nav.detail.full":"Full diagram detail","viewer.intent.summary":"{label}. {out} outgoing, {in} incoming{loops}. {total} connections. Press Enter for details.","viewer.intent.loops":", {count} self loop","viewer.common.copied":"Copied","viewer.common.copyFailed":"Copy failed","viewer.common.copyLink":"Copy link","viewer.common.clear":"Clear","viewer.common.close":"Close"}}</script>
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
@@ -5005,7 +5005,7 @@
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / PLATE 04">
       <svg viewBox="0 0 1360 920" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="standard">
-        <title id="archify-diagram-title">ompweb System &amp; Runtime Architecture</title>
+        <title id="archify-diagram-title">ompweb System &amp; Runtime Architecture (v5.1)</title>
         <desc id="archify-diagram-description">An architecture diagram generated by Archify.</desc>
         <!-- Definitions -->
         <defs>
@@ -5030,31 +5030,32 @@
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Presentation Layer (Web Browser &amp; Electron Desktop)" x="16.754823409677442" y="70" width="286.4903531806451" height="648" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Presentation Layer (Web Browser &amp; Electron Desktop)" x="16.754823409677442" y="70" width="286.4903531806451" height="598" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="1" data-composition-frame-label="ompweb Application Server (Next.js 16 / Node.js)" x="314.65159850322584" y="70" width="270.6968029935483" height="648" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="1" data-composition-frame-label="ompweb Application Server (Next.js 16 / Node.js)" x="314.65159850322584" y="70" width="270.6968029935483" height="598" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="2" data-composition-frame-label="Local OMP Agent Core &amp; Host Runtime" x="660" y="130" width="250" height="718" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="2" data-composition-frame-label="ompweb-host Native Runtime (Rust Daemon)" x="660" y="70" width="250" height="738" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="3" data-composition-frame-label="Persistence &amp; External Cloud Ecosystem" x="1000" y="50" width="250" height="708" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="3" data-composition-frame-label="OMP AI Agent Runtime &amp; Persistence" x="1000" y="70" width="250" height="798" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <path data-edge-from="browser-ui" data-edge-to="next-server" data-edge-label="HTTP / SSE" data-edge-key="0" data-edge-id="browser-to-server" data-composition-points="240,127;360,127" d="M 240 127 L 360 127" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="desktop-app" data-edge-to="next-server" data-edge-label="internal IPC" data-edge-key="1" data-edge-id="desktop-to-server" data-composition-points="240,264;300,264;300,141;360,141" d="M 240 264 L 292 264 Q 300 264 300 256 L 300 149 Q 300 141 308 141 L 360 141" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="terminal-ui" data-edge-to="terminal-manager" data-edge-label="SSE Stream" data-edge-key="2" data-edge-id="terminal-ui-to-manager" data-composition-points="240,514;264,514;264,540;336,540;336,524;360,524" d="M 240 514 L 256 514 Q 264 514 264 522 L 264 532 Q 264 540 272 540 L 328 540 Q 336 540 336 532 L 336 532 Q 336 524 344 524 L 360 524" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="composer-panel" data-edge-to="file-sandbox" data-edge-label="plan context" data-edge-key="3" data-edge-id="composer-to-reader" data-composition-points="240,664;360,664" d="M 240 664 L 360 664" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="next-server" data-edge-to="rpc-manager" data-edge-label="route dispatch" data-edge-key="4" data-edge-id="gateway-to-rpc" data-composition-points="450,168;450,230" d="M 450 168 L 450 230" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="rpc-manager" data-edge-to="omp-process" data-edge-label="stdio NDJSON" data-edge-key="5" data-edge-id="rpc-to-omp" data-composition-points="540,264;615,264;615,196;690,196" d="M 540 264 L 607 264 Q 615 264 615 256 L 615 204 Q 615 196 623 196 L 690 196" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="session-reader" data-edge-to="local-storage" data-edge-label="read JSONL" data-edge-key="6" data-edge-id="reader-to-storage" data-composition-points="540,394;570,394;570,420;980,420;980,384;1030,384" d="M 540 394 L 562 394 Q 570 394 570 402 L 570 412 Q 570 420 578 420 L 972 420 Q 980 420 980 412 L 980 392 Q 980 384 988 384 L 1030 384" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="terminal-manager" data-edge-to="pty-shell" data-edge-label="pty.spawn()" data-edge-key="7" data-edge-id="terminal-mgr-to-shell" data-composition-points="540,524;690,524" d="M 540 524 L 690 524" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="file-sandbox" data-edge-to="git-worktree" data-edge-label="path validator" data-edge-key="8" data-edge-id="sandbox-to-worktree" data-composition-points="540,664;690,664" d="M 540 664 L 690 664" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="omp-process" data-edge-to="agent-core" data-edge-label="loop lifecycle" data-edge-key="9" data-edge-id="omp-to-agent-core" data-composition-points="785,232;785,310" d="M 785 232 L 785 310" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="omp-process" data-edge-to="agent-db" data-edge-label="SQLite auth" data-edge-key="10" data-edge-id="omp-to-db" data-composition-points="880,196;955,196;955,234;1030,234" d="M 880 196 L 947 196 Q 955 196 955 204 L 955 226 Q 955 234 963 234 L 1030 234" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="omp-process" data-edge-to="model-providers" data-edge-label="LLM Inference" data-edge-key="11" data-edge-id="omp-to-models" data-composition-points="785,160;785,114;1030,114" d="M 785 160 L 785 122 Q 785 114 793 114 L 1030 114" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="agent-core" data-edge-to="local-storage" data-edge-label="atomic append" data-edge-key="12" data-edge-id="agent-to-storage" data-composition-points="880,344;955,344;955,384;1030,384" d="M 880 344 L 947 344 Q 955 344 955 352 L 955 376 Q 955 384 963 384 L 1030 384" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="agent-core" data-edge-to="mcp-servers" data-edge-label="MCP Protocol" data-edge-key="13" data-edge-id="agent-to-mcp" data-composition-points="785,378;785,440;970,440;970,564;1030,564" d="M 785 378 L 785 432 Q 785 440 793 440 L 962 440 Q 970 440 970 448 L 970 556 Q 970 564 978 564 L 1030 564" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="mcp-servers" data-edge-to="agent-mcp-daemon" data-edge-label="agent bridge" data-edge-key="14" data-edge-id="mcp-to-daemon" data-composition-points="1125,598;1125,622;904,622;904,794;880,794" d="M 1125 598 L 1125 614 Q 1125 622 1117 622 L 912 622 Q 904 622 904 630 L 904 786 Q 904 794 896 794 L 880 794" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="agent-core" data-edge-to="skills-hub" data-edge-label="skill calls" data-edge-key="15" data-edge-id="agent-to-skills" data-composition-points="785,378;785,460;950,460;950,704;1030,704" d="M 785 378 L 785 452 Q 785 460 793 460 L 942 460 Q 950 460 950 468 L 950 696 Q 950 704 958 704 L 1030 704" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="desktop-app" data-edge-to="next-server" data-edge-label="internal IPC" data-edge-key="1" data-edge-id="desktop-to-server" data-composition-points="240,274;300,274;300,141;360,141" d="M 240 274 L 292 274 Q 300 274 300 266 L 300 149 Q 300 141 308 141 L 360 141" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="terminal-ui" data-edge-to="host-client" data-edge-label="SSE stream" data-edge-key="2" data-edge-id="terminal-ui-to-server" data-composition-points="240,454;300,454;300,294;360,294" d="M 240 454 L 292 454 Q 300 454 300 446 L 300 302 Q 300 294 308 294 L 360 294" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="composer-panel" data-edge-to="session-reader" data-edge-label="plan context" data-edge-key="3" data-edge-id="composer-to-reader" data-composition-points="240,614;300,614;300,454;360,454" d="M 240 614 L 292 614 Q 300 614 300 606 L 300 462 Q 300 454 308 454 L 360 454" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="next-server" data-edge-to="host-client" data-edge-label="route dispatch" data-edge-key="4" data-edge-id="server-to-client" data-composition-points="450,168;450,260" d="M 450 168 L 450 260" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="host-client" data-edge-to="supervisor" data-edge-label="session RPC" data-edge-key="5" data-edge-id="client-to-supervisor" data-composition-points="540,276;615,276;615,134;690,134" d="M 540 276 L 607 276 Q 615 276 615 268 L 615 142 Q 615 134 623 134 L 690 134" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="host-client" data-edge-to="git-service" data-edge-label="git IPC" data-edge-key="6" data-edge-id="client-to-git" data-composition-points="540,288;690,288" d="M 540 288 L 690 288" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="host-client" data-edge-to="pty-service" data-edge-label="pty IPC" data-edge-key="7" data-edge-id="client-to-pty" data-composition-points="540,300;615,300;615,454;690,454" d="M 540 300 L 607 300 Q 615 300 615 308 L 615 446 Q 615 454 623 454 L 690 454" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="host-client" data-edge-to="session-scan" data-edge-label="scan IPC" data-edge-key="8" data-edge-id="client-to-scan" data-composition-points="540,312;615,312;615,614;690,614" d="M 540 312 L 607 312 Q 615 312 615 320 L 615 606 Q 615 614 623 614 L 690 614" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="host-client" data-edge-to="settings-service" data-edge-label="config IPC" data-edge-key="9" data-edge-id="client-to-settings" data-composition-points="540,294;640,294;640,754;690,754" d="M 540 294 L 632 294 Q 640 294 640 302 L 640 746 Q 640 754 648 754 L 690 754" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="file-sandbox" data-edge-to="git-service" data-edge-label="path bounds" data-edge-key="10" data-edge-id="file-to-git" data-composition-points="540,614;600,614;600,350;785,350;785,328" d="M 540 614 L 592 614 Q 600 614 600 606 L 600 358 Q 600 350 608 350 L 777 350 Q 785 350 785 342 L 785 328" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="supervisor" data-edge-to="omp-process" data-edge-label="stdio NDJSON" data-edge-key="11" data-edge-id="supervisor-to-omp" data-composition-points="880,134;1030,134" d="M 880 134 L 1030 134" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="omp-process" data-edge-to="model-providers" data-edge-label="LLM Inference" data-edge-key="12" data-edge-id="omp-to-models" data-composition-points="1125,168;1125,240" d="M 1125 168 L 1125 240" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="omp-process" data-edge-to="agent-db" data-edge-label="SQLite auth" data-edge-key="13" data-edge-id="omp-to-db" data-composition-points="1220,134;1280,134;1280,414;1220,414" d="M 1220 134 L 1272 134 Q 1280 134 1280 142 L 1280 406 Q 1280 414 1272 414 L 1220 414" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="session-scan" data-edge-to="local-storage" data-edge-label="zero-copy head scan" data-edge-key="14" data-edge-id="scan-to-storage" data-composition-points="880,614;955,614;955,554;1030,554" d="M 880 614 L 947 614 Q 955 614 955 606 L 955 562 Q 955 554 963 554 L 1030 554" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="settings-service" data-edge-to="mcp-servers" data-edge-label="MCP proxy" data-edge-key="15" data-edge-id="settings-to-mcp" data-composition-points="880,754;955,754;955,814;1030,814" d="M 880 754 L 947 754 Q 955 754 955 762 L 955 806 Q 955 814 963 814 L 1030 814" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="supervisor" data-edge-to="sqlite-journal" data-edge-label="crash recovery" data-edge-key="16" data-edge-id="supervisor-to-journal" data-composition-points="880,134;935,134;935,694;1030,694" d="M 880 134 L 927 134 Q 935 134 935 142 L 935 686 Q 935 694 943 694 L 1030 694" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 
         <!-- Components -->
         <g id="node-browser-ui" data-node-id="browser-ui" data-node-label="Web Browser UI" tabindex="0" role="button" aria-label="Focus Web Browser UI, React 19 / Base UI, Presentation Layer (Web Browser &amp; Electron Desktop), React" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="React 19 / Base UI" data-node-context="Presentation Layer (Web Browser &amp; Electron Desktop)" data-node-brand="React" data-node-brand-id="react" data-node-brand-status="preset" data-node-brand-source="https://github.com/facebook/create-react-app/blob/282c03f9525fdf8061ffa1ec50dce89296d916bd/test/fixtures/relative-paths/src/logo.svg">
@@ -5076,46 +5077,46 @@
         <text data-detail="context" x="160" y="148" class="t-muted" font-size="9" text-anchor="middle">React 19 / Base UI</text>
         </g>
 
-        <g id="node-desktop-app" data-node-id="desktop-app" data-node-label="Desktop Client" tabindex="0" role="button" aria-label="Focus Desktop Client, Electron 44 / Tray, Presentation Layer (Web Browser &amp; Electron Desktop)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Electron 44 / Tray" data-node-context="Presentation Layer (Web Browser &amp; Electron Desktop)">
-          <title>Desktop Client · Electron 44 / Tray · Presentation Layer (Web Browser &amp; Electron Desktop)</title>
-          <rect x="80" y="230" width="160" height="68" rx="6" class="c-mask"/>
-          <rect x="80" y="230" width="160" height="68" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(86 236) scale(0.6875)">
+        <g id="node-desktop-app" data-node-id="desktop-app" data-node-label="Desktop Client" tabindex="0" role="button" aria-label="Focus Desktop Client, Electron 44 / Native Shell, Presentation Layer (Web Browser &amp; Electron Desktop)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Electron 44 / Native Shell" data-node-context="Presentation Layer (Web Browser &amp; Electron Desktop)">
+          <title>Desktop Client · Electron 44 / Native Shell · Presentation Layer (Web Browser &amp; Electron Desktop)</title>
+          <rect x="80" y="240" width="160" height="68" rx="6" class="c-mask"/>
+          <rect x="80" y="240" width="160" height="68" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(86 246) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="160" y="262" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Desktop Client</text>
-        <text data-detail="context" x="160" y="278" class="t-muted" font-size="9" text-anchor="middle">Electron 44 / Tray</text>
+          <text data-node-label="" data-detail-anchor="" x="160" y="272" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Desktop Client</text>
+        <text data-detail="context" x="160" y="288" class="t-muted" font-size="9" text-anchor="middle">Electron 44 / Native Shell</text>
         </g>
 
-        <g id="node-terminal-ui" data-node-id="terminal-ui" data-node-label="Web PTY Terminal" tabindex="0" role="button" aria-label="Focus Web PTY Terminal, xterm.js / ANSI TrueColor, Presentation Layer (Web Browser &amp; Electron Desktop)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="xterm.js / ANSI TrueColor" data-node-context="Presentation Layer (Web Browser &amp; Electron Desktop)">
-          <title>Web PTY Terminal · xterm.js / ANSI TrueColor · Presentation Layer (Web Browser &amp; Electron Desktop)</title>
-          <rect x="80" y="480" width="160" height="68" rx="6" class="c-mask"/>
-          <rect x="80" y="480" width="160" height="68" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(86 486) scale(0.6875)">
+        <g id="node-terminal-ui" data-node-id="terminal-ui" data-node-label="Web PTY Terminal" tabindex="0" role="button" aria-label="Focus Web PTY Terminal, xterm.js / TrueColor, Presentation Layer (Web Browser &amp; Electron Desktop)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="xterm.js / TrueColor" data-node-context="Presentation Layer (Web Browser &amp; Electron Desktop)">
+          <title>Web PTY Terminal · xterm.js / TrueColor · Presentation Layer (Web Browser &amp; Electron Desktop)</title>
+          <rect x="80" y="420" width="160" height="68" rx="6" class="c-mask"/>
+          <rect x="80" y="420" width="160" height="68" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(86 426) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="160" y="512" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Web PTY Terminal</text>
-        <text data-detail="context" x="160" y="528" class="t-muted" font-size="9" text-anchor="middle">xterm.js / ANSI TrueColor</text>
+          <text data-node-label="" data-detail-anchor="" x="160" y="452" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Web PTY Terminal</text>
+        <text data-detail="context" x="160" y="468" class="t-muted" font-size="9" text-anchor="middle">xterm.js / TrueColor</text>
         </g>
 
         <g id="node-composer-panel" data-node-id="composer-panel" data-node-label="Composer &amp; Plan UI" tabindex="0" role="button" aria-label="Focus Composer &amp; Plan UI, Todo Kanban / Subagents, Presentation Layer (Web Browser &amp; Electron Desktop)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Todo Kanban / Subagents" data-node-context="Presentation Layer (Web Browser &amp; Electron Desktop)">
           <title>Composer &amp; Plan UI · Todo Kanban / Subagents · Presentation Layer (Web Browser &amp; Electron Desktop)</title>
-          <rect x="80" y="630" width="160" height="68" rx="6" class="c-mask"/>
-          <rect x="80" y="630" width="160" height="68" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(86 636) scale(0.6875)">
+          <rect x="80" y="580" width="160" height="68" rx="6" class="c-mask"/>
+          <rect x="80" y="580" width="160" height="68" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(86 586) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="160" y="662" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Composer &amp; Plan UI</text>
-        <text data-detail="context" x="160" y="678" class="t-muted" font-size="9" text-anchor="middle">Todo Kanban / Subagents</text>
+          <text data-node-label="" data-detail-anchor="" x="160" y="612" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Composer &amp; Plan UI</text>
+        <text data-detail="context" x="160" y="628" class="t-muted" font-size="9" text-anchor="middle">Todo Kanban / Subagents</text>
         </g>
 
         <g id="node-next-server" data-node-id="next-server" data-node-label="Next.js Gateway" tabindex="0" role="button" aria-label="Focus Next.js Gateway, HTTP / SSE / Cookie Auth, ompweb Application Server (Next.js 16 / Node.js), Next.js" aria-pressed="false" data-node-kind="backend" data-node-sublabel="HTTP / SSE / Cookie Auth" data-node-context="ompweb Application Server (Next.js 16 / Node.js)" data-node-brand="Next.js" data-node-brand-id="next-js" data-node-brand-status="preset" data-node-brand-source="https://vercel.com/design/brands#next-js">
@@ -5134,190 +5135,191 @@
         <text data-detail="context" x="450" y="148" class="t-muted" font-size="9" text-anchor="middle">HTTP / SSE / Cookie Auth</text>
         </g>
 
-        <g id="node-rpc-manager" data-node-id="rpc-manager" data-node-label="RPC Manager" tabindex="0" role="button" aria-label="Focus RPC Manager, Process Pool &amp; Lifecycle, ompweb Application Server (Next.js 16 / Node.js), Node.js" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Process Pool &amp; Lifecycle" data-node-context="ompweb Application Server (Next.js 16 / Node.js)" data-node-brand="Node.js" data-node-brand-id="node-js" data-node-brand-status="preset" data-node-brand-source="https://nodejs.org/en/about/branding">
-          <title>RPC Manager · Process Pool &amp; Lifecycle · ompweb Application Server (Next.js 16 / Node.js) · Node.js</title>
-          <rect x="360" y="230" width="180" height="68" rx="6" class="c-mask"/>
-          <rect x="360" y="230" width="180" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(366 236) scale(0.6875)">
+        <g id="node-host-client" data-node-id="host-client" data-node-label="HostClient Facade" tabindex="0" role="button" aria-label="Focus HostClient Facade, Typed IPC / Fail-Closed, ompweb Application Server (Next.js 16 / Node.js), Node.js" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Typed IPC / Fail-Closed" data-node-context="ompweb Application Server (Next.js 16 / Node.js)" data-node-brand="Node.js" data-node-brand-id="node-js" data-node-brand-status="preset" data-node-brand-source="https://nodejs.org/en/about/branding">
+          <title>HostClient Facade · Typed IPC / Fail-Closed · ompweb Application Server (Next.js 16 / Node.js) · Node.js</title>
+          <rect x="360" y="260" width="180" height="68" rx="6" class="c-mask"/>
+          <rect x="360" y="260" width="180" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(366 266) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <g aria-hidden="true" data-brand-mark="node-js" data-brand-title="Node.js" data-brand-status="preset" data-brand-source="https://nodejs.org/en/about/branding" class="brand-mark" transform="translate(518 236)">
+          <g aria-hidden="true" data-brand-mark="node-js" data-brand-title="Node.js" data-brand-status="preset" data-brand-source="https://nodejs.org/en/about/branding" class="brand-mark" transform="translate(518 266)">
             <rect width="16" height="16" rx="4" class="brand-mark-badge"/>
             <path d="M11.998,24c-0.321,0-0.641-0.084-0.922-0.247l-2.936-1.737c-0.438-0.245-0.224-0.332-0.08-0.383 c0.585-0.203,0.703-0.25,1.328-0.604c0.065-0.037,0.151-0.023,0.218,0.017l2.256,1.339c0.082,0.045,0.197,0.045,0.272,0l8.795-5.076 c0.082-0.047,0.134-0.141,0.134-0.238V6.921c0-0.099-0.053-0.192-0.137-0.242l-8.791-5.072c-0.081-0.047-0.189-0.047-0.271,0 L3.075,6.68C2.99,6.729,2.936,6.825,2.936,6.921v10.15c0,0.097,0.054,0.189,0.139,0.235l2.409,1.392 c1.307,0.654,2.108-0.116,2.108-0.89V7.787c0-0.142,0.114-0.253,0.256-0.253h1.115c0.139,0,0.255,0.112,0.255,0.253v10.021 c0,1.745-0.95,2.745-2.604,2.745c-0.508,0-0.909,0-2.026-0.551L2.28,18.675c-0.57-0.329-0.922-0.945-0.922-1.604V6.921 c0-0.659,0.353-1.275,0.922-1.603l8.795-5.082c0.557-0.315,1.296-0.315,1.848,0l8.794,5.082c0.57,0.329,0.924,0.944,0.924,1.603 v10.15c0,0.659-0.354,1.273-0.924,1.604l-8.794,5.078C12.643,23.916,12.324,24,11.998,24z M19.099,13.993 c0-1.9-1.284-2.406-3.987-2.763c-2.731-0.361-3.009-0.548-3.009-1.187c0-0.528,0.235-1.233,2.258-1.233 c1.807,0,2.473,0.389,2.747,1.607c0.024,0.115,0.129,0.199,0.247,0.199h1.141c0.071,0,0.138-0.031,0.186-0.081 c0.048-0.054,0.074-0.123,0.067-0.196c-0.177-2.098-1.571-3.076-4.388-3.076c-2.508,0-4.004,1.058-4.004,2.833 c0,1.925,1.488,2.457,3.895,2.695c2.88,0.282,3.103,0.703,3.103,1.269c0,0.983-0.789,1.402-2.642,1.402 c-2.327,0-2.839-0.584-3.011-1.742c-0.02-0.124-0.126-0.215-0.253-0.215h-1.137c-0.141,0-0.254,0.112-0.254,0.253 c0,1.482,0.806,3.248,4.655,3.248C17.501,17.007,19.099,15.91,19.099,13.993z" transform="translate(3 3) scale(0.4166666666666667)" fill="#5FA04E"/>
             <rect width="16" height="16" rx="4" class="brand-mark-frame"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="450" y="262" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">RPC Manager</text>
-        <text data-detail="context" x="450" y="278" class="t-muted" font-size="9" text-anchor="middle">Process Pool &amp; Lifecycle</text>
+          <text data-node-label="" data-detail-anchor="" x="450" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">HostClient Facade</text>
+        <text data-detail="context" x="450" y="308" class="t-muted" font-size="9" text-anchor="middle">Typed IPC / Fail-Closed</text>
         </g>
 
-        <g id="node-session-reader" data-node-id="session-reader" data-node-label="Session Reader" tabindex="0" role="button" aria-label="Focus Session Reader, JSONL LRU Cache / Tree, ompweb Application Server (Next.js 16 / Node.js)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="JSONL LRU Cache / Tree" data-node-context="ompweb Application Server (Next.js 16 / Node.js)">
-          <title>Session Reader · JSONL LRU Cache / Tree · ompweb Application Server (Next.js 16 / Node.js)</title>
-          <rect x="360" y="360" width="180" height="68" rx="6" class="c-mask"/>
-          <rect x="360" y="360" width="180" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(366 366) scale(0.6875)">
+        <g id="node-session-reader" data-node-id="session-reader" data-node-label="Session Reader" tabindex="0" role="button" aria-label="Focus Session Reader, JSONL LRU Cache / Fast-Path, ompweb Application Server (Next.js 16 / Node.js)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="JSONL LRU Cache / Fast-Path" data-node-context="ompweb Application Server (Next.js 16 / Node.js)">
+          <title>Session Reader · JSONL LRU Cache / Fast-Path · ompweb Application Server (Next.js 16 / Node.js)</title>
+          <rect x="360" y="420" width="180" height="68" rx="6" class="c-mask"/>
+          <rect x="360" y="420" width="180" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(366 426) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="450" y="392" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Session Reader</text>
-        <text data-detail="context" x="450" y="408" class="t-muted" font-size="9" text-anchor="middle">JSONL LRU Cache / Tree</text>
-        </g>
-
-        <g id="node-terminal-manager" data-node-id="terminal-manager" data-node-label="PTY Manager" tabindex="0" role="button" aria-label="Focus PTY Manager, FIFO Queue / 30m TTL, ompweb Application Server (Next.js 16 / Node.js)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="FIFO Queue / 30m TTL" data-node-context="ompweb Application Server (Next.js 16 / Node.js)">
-          <title>PTY Manager · FIFO Queue / 30m TTL · ompweb Application Server (Next.js 16 / Node.js)</title>
-          <rect x="360" y="490" width="180" height="68" rx="6" class="c-mask"/>
-          <rect x="360" y="490" width="180" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(366 496) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="450" y="522" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PTY Manager</text>
-        <text data-detail="context" x="450" y="538" class="t-muted" font-size="9" text-anchor="middle">FIFO Queue / 30m TTL</text>
+          <text data-node-label="" data-detail-anchor="" x="450" y="452" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Session Reader</text>
+        <text data-detail="context" x="450" y="468" class="t-muted" font-size="9" text-anchor="middle">JSONL LRU Cache / Fast-Path</text>
         </g>
 
         <g id="node-file-sandbox" data-node-id="file-sandbox" data-node-label="File Sandbox" tabindex="0" role="button" aria-label="Focus File Sandbox, Canonical Path Validator, ompweb Application Server (Next.js 16 / Node.js)" aria-pressed="false" data-node-kind="security" data-node-sublabel="Canonical Path Validator" data-node-context="ompweb Application Server (Next.js 16 / Node.js)">
           <title>File Sandbox · Canonical Path Validator · ompweb Application Server (Next.js 16 / Node.js)</title>
-          <rect x="360" y="630" width="180" height="68" rx="6" class="c-mask"/>
-          <rect x="360" y="630" width="180" height="68" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(366 636) scale(0.6875)">
+          <rect x="360" y="580" width="180" height="68" rx="6" class="c-mask"/>
+          <rect x="360" y="580" width="180" height="68" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(366 586) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="450" y="662" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">File Sandbox</text>
-        <text data-detail="context" x="450" y="678" class="t-muted" font-size="9" text-anchor="middle">Canonical Path Validator</text>
+          <text data-node-label="" data-detail-anchor="" x="450" y="612" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">File Sandbox</text>
+        <text data-detail="context" x="450" y="628" class="t-muted" font-size="9" text-anchor="middle">Canonical Path Validator</text>
         </g>
 
-        <g id="node-omp-process" data-node-id="omp-process" data-node-label="omp Process" tabindex="0" role="button" aria-label="Focus omp Process, omp --mode rpc-ui (v1/v2), Local OMP Agent Core &amp; Host Runtime" aria-pressed="false" data-node-kind="backend" data-node-sublabel="omp --mode rpc-ui (v1/v2)" data-node-tag="Per Active Session" data-node-context="Local OMP Agent Core &amp; Host Runtime">
-          <title>omp Process · omp --mode rpc-ui (v1/v2) · Local OMP Agent Core &amp; Host Runtime · Per Active Session</title>
-          <rect x="690" y="160" width="190" height="72" rx="6" class="c-mask"/>
-          <rect x="690" y="160" width="190" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 166) scale(0.6875)">
+        <g id="node-supervisor" data-node-id="supervisor" data-node-label="Process Supervisor" tabindex="0" role="button" aria-label="Focus Process Supervisor, omp Lifecycle &amp; Crash Auto-Heal, ompweb-host Native Runtime (Rust Daemon)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="omp Lifecycle &amp; Crash Auto-Heal" data-node-tag="Auto-Heal" data-node-context="ompweb-host Native Runtime (Rust Daemon)">
+          <title>Process Supervisor · omp Lifecycle &amp; Crash Auto-Heal · ompweb-host Native Runtime (Rust Daemon) · Auto-Heal</title>
+          <rect x="690" y="100" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="690" y="100" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 106) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="785" y="194" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">omp Process</text>
-        <text data-detail="context" x="785" y="210" class="t-muted" font-size="9" text-anchor="middle">omp --mode rpc-ui (v1/v2)</text>
-        <text data-detail="fine" x="785" y="224" class="t-backend" font-size="7" text-anchor="middle">Per Active Session</text>
+          <text data-node-label="" data-detail-anchor="" x="785" y="132" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Process Supervisor</text>
+        <text data-detail="context" x="785" y="148" class="t-muted" font-size="9" text-anchor="middle">omp Lifecycle &amp; Crash Auto-Heal</text>
+        <text data-detail="fine" x="785" y="160" class="t-backend" font-size="7" text-anchor="middle">Auto-Heal</text>
         </g>
 
-        <g id="node-agent-core" data-node-id="agent-core" data-node-label="Agent Core" tabindex="0" role="button" aria-label="Focus Agent Core, Tools, Memory, Reasoning, Local OMP Agent Core &amp; Host Runtime" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Tools, Memory, Reasoning" data-node-context="Local OMP Agent Core &amp; Host Runtime">
-          <title>Agent Core · Tools, Memory, Reasoning · Local OMP Agent Core &amp; Host Runtime</title>
-          <rect x="690" y="310" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="690" y="310" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 316) scale(0.6875)">
+        <g id="node-git-service" data-node-id="git-service" data-node-label="Git Native Service" tabindex="0" role="button" aria-label="Focus Git Native Service, diff / status / branches / push, ompweb-host Native Runtime (Rust Daemon)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="diff / status / branches / push" data-node-tag="Rust Core" data-node-context="ompweb-host Native Runtime (Rust Daemon)">
+          <title>Git Native Service · diff / status / branches / push · ompweb-host Native Runtime (Rust Daemon) · Rust Core</title>
+          <rect x="690" y="260" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="690" y="260" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 266) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="785" y="342" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Agent Core</text>
-        <text data-detail="context" x="785" y="358" class="t-muted" font-size="9" text-anchor="middle">Tools, Memory, Reasoning</text>
+          <text data-node-label="" data-detail-anchor="" x="785" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Git Native Service</text>
+        <text data-detail="context" x="785" y="308" class="t-muted" font-size="9" text-anchor="middle">diff / status / branches / push</text>
+        <text data-detail="fine" x="785" y="320" class="t-backend" font-size="7" text-anchor="middle">Rust Core</text>
         </g>
 
-        <g id="node-pty-shell" data-node-id="pty-shell" data-node-label="System PTY Shell" tabindex="0" role="button" aria-label="Focus System PTY Shell, zsh / bash / cmd.exe, Local OMP Agent Core &amp; Host Runtime" aria-pressed="false" data-node-kind="backend" data-node-sublabel="zsh / bash / cmd.exe" data-node-context="Local OMP Agent Core &amp; Host Runtime">
-          <title>System PTY Shell · zsh / bash / cmd.exe · Local OMP Agent Core &amp; Host Runtime</title>
-          <rect x="690" y="490" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="690" y="490" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 496) scale(0.6875)">
+        <g id="node-pty-service" data-node-id="pty-service" data-node-label="PTY Engine" tabindex="0" role="button" aria-label="Focus PTY Engine, Virtual Terminal / Bounded Buffer, ompweb-host Native Runtime (Rust Daemon)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Virtual Terminal / Bounded Buffer" data-node-tag="Rust Core" data-node-context="ompweb-host Native Runtime (Rust Daemon)">
+          <title>PTY Engine · Virtual Terminal / Bounded Buffer · ompweb-host Native Runtime (Rust Daemon) · Rust Core</title>
+          <rect x="690" y="420" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="690" y="420" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 426) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="785" y="522" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">System PTY Shell</text>
-        <text data-detail="context" x="785" y="538" class="t-muted" font-size="9" text-anchor="middle">zsh / bash / cmd.exe</text>
+          <text data-node-label="" data-detail-anchor="" x="785" y="452" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PTY Engine</text>
+        <text data-detail="context" x="785" y="468" class="t-muted" font-size="9" text-anchor="middle">Virtual Terminal / Bounded Buffer</text>
+        <text data-detail="fine" x="785" y="480" class="t-backend" font-size="7" text-anchor="middle">Rust Core</text>
         </g>
 
-        <g id="node-git-worktree" data-node-id="git-worktree" data-node-label="Git Worktrees" tabindex="0" role="button" aria-label="Focus Git Worktrees, Multi-Branch Workspace, Local OMP Agent Core &amp; Host Runtime, GitHub" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Multi-Branch Workspace" data-node-context="Local OMP Agent Core &amp; Host Runtime" data-node-brand="GitHub" data-node-brand-id="github" data-node-brand-status="preset" data-node-brand-source="https://github.com/logos">
-          <title>Git Worktrees · Multi-Branch Workspace · Local OMP Agent Core &amp; Host Runtime · GitHub</title>
-          <rect x="690" y="630" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="690" y="630" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 636) scale(0.6875)">
+        <g id="node-session-scan" data-node-id="session-scan" data-node-label="Session Scanner" tabindex="0" role="button" aria-label="Focus Session Scanner, Head-Window Indexing &lt;15ms, ompweb-host Native Runtime (Rust Daemon)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Head-Window Indexing &lt;15ms" data-node-tag="&lt;15ms" data-node-context="ompweb-host Native Runtime (Rust Daemon)">
+          <title>Session Scanner · Head-Window Indexing &lt;15ms · ompweb-host Native Runtime (Rust Daemon) · &lt;15ms</title>
+          <rect x="690" y="580" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="690" y="580" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 586) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <g aria-hidden="true" data-brand-mark="github" data-brand-title="GitHub" data-brand-status="preset" data-brand-source="https://github.com/logos" class="brand-mark" transform="translate(858 636)">
-            <rect width="16" height="16" rx="4" class="brand-mark-badge"/>
-            <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" transform="translate(3 3) scale(0.4166666666666667)" fill="#181717"/>
-            <rect width="16" height="16" rx="4" class="brand-mark-frame"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="785" y="662" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Git Worktrees</text>
-        <text data-detail="context" x="785" y="678" class="t-muted" font-size="9" text-anchor="middle">Multi-Branch Workspace</text>
+          <text data-node-label="" data-detail-anchor="" x="785" y="612" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Session Scanner</text>
+        <text data-detail="context" x="785" y="628" class="t-muted" font-size="9" text-anchor="middle">Head-Window Indexing &lt;15ms</text>
+        <text data-detail="fine" x="785" y="640" class="t-backend" font-size="7" text-anchor="middle">&lt;15ms</text>
         </g>
 
-        <g id="node-agent-mcp-daemon" data-node-id="agent-mcp-daemon" data-node-label="Agent-MCP Daemon" tabindex="0" role="button" aria-label="Focus Agent-MCP Daemon, Multi-Agent Coordinator, Local OMP Agent Core &amp; Host Runtime, Python" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Multi-Agent Coordinator" data-node-context="Local OMP Agent Core &amp; Host Runtime" data-node-brand="Python" data-node-brand-id="python" data-node-brand-status="preset" data-node-brand-source="https://www.python.org/community/logos/">
-          <title>Agent-MCP Daemon · Multi-Agent Coordinator · Local OMP Agent Core &amp; Host Runtime · Python</title>
-          <rect x="690" y="760" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="690" y="760" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 766) scale(0.6875)">
+        <g id="node-settings-service" data-node-id="settings-service" data-node-label="Settings Service" tabindex="0" role="button" aria-label="Focus Settings Service, 485-Key OMP Config Proxy, ompweb-host Native Runtime (Rust Daemon)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="485-Key OMP Config Proxy" data-node-tag="Rust Core" data-node-context="ompweb-host Native Runtime (Rust Daemon)">
+          <title>Settings Service · 485-Key OMP Config Proxy · ompweb-host Native Runtime (Rust Daemon) · Rust Core</title>
+          <rect x="690" y="720" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="690" y="720" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 726) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <g aria-hidden="true" data-brand-mark="python" data-brand-title="Python" data-brand-status="preset" data-brand-source="https://www.python.org/community/logos/" class="brand-mark" transform="translate(858 766)">
-            <rect width="16" height="16" rx="4" class="brand-mark-badge"/>
-            <path d="M14.25.18l.9.2.73.26.59.3.45.32.34.34.25.34.16.33.1.3.04.26.02.2-.01.13V8.5l-.05.63-.13.55-.21.46-.26.38-.3.31-.33.25-.35.19-.35.14-.33.1-.3.07-.26.04-.21.02H8.77l-.69.05-.59.14-.5.22-.41.27-.33.32-.27.35-.2.36-.15.37-.1.35-.07.32-.04.27-.02.21v3.06H3.17l-.21-.03-.28-.07-.32-.12-.35-.18-.36-.26-.36-.36-.35-.46-.32-.59-.28-.73-.21-.88-.14-1.05-.05-1.23.06-1.22.16-1.04.24-.87.32-.71.36-.57.4-.44.42-.33.42-.24.4-.16.36-.1.32-.05.24-.01h.16l.06.01h8.16v-.83H6.18l-.01-2.75-.02-.37.05-.34.11-.31.17-.28.25-.26.31-.23.38-.2.44-.18.51-.15.58-.12.64-.1.71-.06.77-.04.84-.02 1.27.05zm-6.3 1.98l-.23.33-.08.41.08.41.23.34.33.22.41.09.41-.09.33-.22.23-.34.08-.41-.08-.41-.23-.33-.33-.22-.41-.09-.41.09zm13.09 3.95l.28.06.32.12.35.18.36.27.36.35.35.47.32.59.28.73.21.88.14 1.04.05 1.23-.06 1.23-.16 1.04-.24.86-.32.71-.36.57-.4.45-.42.33-.42.24-.4.16-.36.09-.32.05-.24.02-.16-.01h-8.22v.82h5.84l.01 2.76.02.36-.05.34-.11.31-.17.29-.25.25-.31.24-.38.2-.44.17-.51.15-.58.13-.64.09-.71.07-.77.04-.84.01-1.27-.04-1.07-.14-.9-.2-.73-.25-.59-.3-.45-.33-.34-.34-.25-.34-.16-.33-.1-.3-.04-.25-.02-.2.01-.13v-5.34l.05-.64.13-.54.21-.46.26-.38.3-.32.33-.24.35-.2.35-.14.33-.1.3-.06.26-.04.21-.02.13-.01h5.84l.69-.05.59-.14.5-.21.41-.28.33-.32.27-.35.2-.36.15-.36.1-.35.07-.32.04-.28.02-.21V6.07h2.09l.14.01zm-6.47 14.25l-.23.33-.08.41.08.41.23.33.33.23.41.08.41-.08.33-.23.23-.33.08-.41-.08-.41-.23-.33-.33-.23-.41-.08-.41.08z" transform="translate(3 3) scale(0.4166666666666667)" fill="#3776AB"/>
-            <rect width="16" height="16" rx="4" class="brand-mark-frame"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="785" y="792" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Agent-MCP Daemon</text>
-        <text data-detail="context" x="785" y="808" class="t-muted" font-size="9" text-anchor="middle">Multi-Agent Coordinator</text>
+          <text data-node-label="" data-detail-anchor="" x="785" y="752" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Settings Service</text>
+        <text data-detail="context" x="785" y="768" class="t-muted" font-size="9" text-anchor="middle">485-Key OMP Config Proxy</text>
+        <text data-detail="fine" x="785" y="780" class="t-backend" font-size="7" text-anchor="middle">Rust Core</text>
         </g>
 
-        <g id="node-model-providers" data-node-id="model-providers" data-node-label="LLM Providers" tabindex="0" role="button" aria-label="Focus LLM Providers, Anthropic, OpenAI, DeepSeek, Persistence &amp; External Cloud Ecosystem, Anthropic" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Anthropic, OpenAI, DeepSeek" data-node-context="Persistence &amp; External Cloud Ecosystem" data-node-brand="Anthropic" data-node-brand-id="anthropic" data-node-brand-status="preset" data-node-brand-source="https://www.anthropic.com">
-          <title>LLM Providers · Anthropic, OpenAI, DeepSeek · Persistence &amp; External Cloud Ecosystem · Anthropic</title>
-          <rect x="1030" y="80" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="1030" y="80" width="190" height="68" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1036 86) scale(0.6875)">
+        <g id="node-omp-process" data-node-id="omp-process" data-node-label="omp Core Process" tabindex="0" role="button" aria-label="Focus omp Core Process, omp --mode rpc-ui, OMP AI Agent Runtime &amp; Persistence" aria-pressed="false" data-node-kind="backend" data-node-sublabel="omp --mode rpc-ui" data-node-tag="Per Session" data-node-context="OMP AI Agent Runtime &amp; Persistence">
+          <title>omp Core Process · omp --mode rpc-ui · OMP AI Agent Runtime &amp; Persistence · Per Session</title>
+          <rect x="1030" y="100" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="1030" y="100" width="190" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1036 106) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1125" y="132" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">omp Core Process</text>
+        <text data-detail="context" x="1125" y="148" class="t-muted" font-size="9" text-anchor="middle">omp --mode rpc-ui</text>
+        <text data-detail="fine" x="1125" y="160" class="t-backend" font-size="7" text-anchor="middle">Per Session</text>
+        </g>
+
+        <g id="node-model-providers" data-node-id="model-providers" data-node-label="LLM Providers" tabindex="0" role="button" aria-label="Focus LLM Providers, Anthropic, OpenAI, DeepSeek, OMP AI Agent Runtime &amp; Persistence, Anthropic" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Anthropic, OpenAI, DeepSeek" data-node-context="OMP AI Agent Runtime &amp; Persistence" data-node-brand="Anthropic" data-node-brand-id="anthropic" data-node-brand-status="preset" data-node-brand-source="https://www.anthropic.com">
+          <title>LLM Providers · Anthropic, OpenAI, DeepSeek · OMP AI Agent Runtime &amp; Persistence · Anthropic</title>
+          <rect x="1030" y="240" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="1030" y="240" width="190" height="68" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1036 246) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <g aria-hidden="true" data-brand-mark="anthropic" data-brand-title="Anthropic" data-brand-status="preset" data-brand-source="https://www.anthropic.com" class="brand-mark" transform="translate(1198 86)">
+          <g aria-hidden="true" data-brand-mark="anthropic" data-brand-title="Anthropic" data-brand-status="preset" data-brand-source="https://www.anthropic.com" class="brand-mark" transform="translate(1198 246)">
             <rect width="16" height="16" rx="4" class="brand-mark-badge"/>
             <path d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z" transform="translate(3 3) scale(0.4166666666666667)" fill="#191919"/>
             <rect width="16" height="16" rx="4" class="brand-mark-frame"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1125" y="112" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LLM Providers</text>
-        <text data-detail="context" x="1125" y="128" class="t-muted" font-size="9" text-anchor="middle">Anthropic, OpenAI, DeepSeek</text>
+          <text data-node-label="" data-detail-anchor="" x="1125" y="272" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LLM Providers</text>
+        <text data-detail="context" x="1125" y="288" class="t-muted" font-size="9" text-anchor="middle">Anthropic, OpenAI, DeepSeek</text>
         </g>
 
-        <g id="node-agent-db" data-node-id="agent-db" data-node-label="Auth DB" tabindex="0" role="button" aria-label="Focus Auth DB, ~/.omp/agent/agent.db (SQLite), Persistence &amp; External Cloud Ecosystem, SQLite" aria-pressed="false" data-node-kind="database" data-node-sublabel="~/.omp/agent/agent.db (SQLite)" data-node-context="Persistence &amp; External Cloud Ecosystem" data-node-brand="SQLite" data-node-brand-id="sqlite" data-node-brand-status="preset" data-node-brand-source="https://github.com/sqlite/sqlite/blob/43e862723ec680542ca6f608f9963c0993dd7324/art/sqlite370.eps">
-          <title>Auth DB · ~/.omp/agent/agent.db (SQLite) · Persistence &amp; External Cloud Ecosystem · SQLite</title>
-          <rect x="1030" y="200" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="1030" y="200" width="190" height="68" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1036 206) scale(0.6875)">
+        <g id="node-agent-db" data-node-id="agent-db" data-node-label="Auth DB" tabindex="0" role="button" aria-label="Focus Auth DB, ~/.omp/agent/agent.db, OMP AI Agent Runtime &amp; Persistence, SQLite" aria-pressed="false" data-node-kind="database" data-node-sublabel="~/.omp/agent/agent.db" data-node-context="OMP AI Agent Runtime &amp; Persistence" data-node-brand="SQLite" data-node-brand-id="sqlite" data-node-brand-status="preset" data-node-brand-source="https://github.com/sqlite/sqlite/blob/43e862723ec680542ca6f608f9963c0993dd7324/art/sqlite370.eps">
+          <title>Auth DB · ~/.omp/agent/agent.db · OMP AI Agent Runtime &amp; Persistence · SQLite</title>
+          <rect x="1030" y="380" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="1030" y="380" width="190" height="68" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1036 386) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <g aria-hidden="true" data-brand-mark="sqlite" data-brand-title="SQLite" data-brand-status="preset" data-brand-source="https://github.com/sqlite/sqlite/blob/43e862723ec680542ca6f608f9963c0993dd7324/art/sqlite370.eps" class="brand-mark" transform="translate(1198 206)">
+          <g aria-hidden="true" data-brand-mark="sqlite" data-brand-title="SQLite" data-brand-status="preset" data-brand-source="https://github.com/sqlite/sqlite/blob/43e862723ec680542ca6f608f9963c0993dd7324/art/sqlite370.eps" class="brand-mark" transform="translate(1198 386)">
             <rect width="16" height="16" rx="4" class="brand-mark-badge"/>
             <path d="M21.678.521c-1.032-.92-2.28-.55-3.513.544a8.71 8.71 0 0 0-.547.535c-2.109 2.237-4.066 6.38-4.674 9.544.237.48.422 1.093.544 1.561a13.044 13.044 0 0 1 .164.703s-.019-.071-.096-.296l-.05-.146a1.689 1.689 0 0 0-.033-.08c-.138-.32-.518-.995-.686-1.289-.143.423-.27.818-.376 1.176.484.884.778 2.4.778 2.4s-.025-.099-.147-.442c-.107-.303-.644-1.244-.772-1.464-.217.804-.304 1.346-.226 1.478.152.256.296.698.422 1.186.286 1.1.485 2.44.485 2.44l.017.224a22.41 22.41 0 0 0 .056 2.748c.095 1.146.273 2.13.5 2.657l.155-.084c-.334-1.038-.47-2.399-.41-3.967.09-2.398.642-5.29 1.661-8.304 1.723-4.55 4.113-8.201 6.3-9.945-1.993 1.8-4.692 7.63-5.5 9.788-.904 2.416-1.545 4.684-1.931 6.857.666-2.037 2.821-2.912 2.821-2.912s1.057-1.304 2.292-3.166c-.74.169-1.955.458-2.362.629-.6.251-.762.337-.762.337s1.945-1.184 3.613-1.72C21.695 7.9 24.195 2.767 21.678.521m-18.573.543A1.842 1.842 0 0 0 1.27 2.9v16.608a1.84 1.84 0 0 0 1.835 1.834h9.418a22.953 22.953 0 0 1-.052-2.707c-.006-.062-.011-.141-.016-.2a27.01 27.01 0 0 0-.473-2.378c-.121-.47-.275-.898-.369-1.057-.116-.197-.098-.31-.097-.432 0-.12.015-.245.037-.386a9.98 9.98 0 0 1 .234-1.045l.217-.028c-.017-.035-.014-.065-.031-.097l-.041-.381a32.8 32.8 0 0 1 .382-1.194l.2-.019c-.008-.016-.01-.038-.018-.053l-.043-.316c.63-3.28 2.587-7.443 4.8-9.791.066-.069.133-.128.198-.194Z" transform="translate(3 3) scale(0.4166666666666667)" fill="#003B57"/>
             <rect width="16" height="16" rx="4" class="brand-mark-frame"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1125" y="232" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Auth DB</text>
-        <text data-detail="context" x="1125" y="248" class="t-muted" font-size="9" text-anchor="middle">~/.omp/agent/agent.db (SQLite)</text>
+          <text data-node-label="" data-detail-anchor="" x="1125" y="412" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Auth DB</text>
+        <text data-detail="context" x="1125" y="428" class="t-muted" font-size="9" text-anchor="middle">~/.omp/agent/agent.db</text>
         </g>
 
-        <g id="node-local-storage" data-node-id="local-storage" data-node-label="Session Storage" tabindex="0" role="button" aria-label="Focus Session Storage, ~/.omp/agent/sessions/*.jsonl, Persistence &amp; External Cloud Ecosystem" aria-pressed="false" data-node-kind="database" data-node-sublabel="~/.omp/agent/sessions/*.jsonl" data-node-context="Persistence &amp; External Cloud Ecosystem">
-          <title>Session Storage · ~/.omp/agent/sessions/*.jsonl · Persistence &amp; External Cloud Ecosystem</title>
-          <rect x="1030" y="350" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="1030" y="350" width="190" height="68" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1036 356) scale(0.6875)">
+        <g id="node-local-storage" data-node-id="local-storage" data-node-label="Session Storage" tabindex="0" role="button" aria-label="Focus Session Storage, ~/.omp/agent/sessions/*.jsonl, OMP AI Agent Runtime &amp; Persistence" aria-pressed="false" data-node-kind="database" data-node-sublabel="~/.omp/agent/sessions/*.jsonl" data-node-context="OMP AI Agent Runtime &amp; Persistence">
+          <title>Session Storage · ~/.omp/agent/sessions/*.jsonl · OMP AI Agent Runtime &amp; Persistence</title>
+          <rect x="1030" y="520" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="1030" y="520" width="190" height="68" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1036 526) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1125" y="382" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Session Storage</text>
-        <text data-detail="context" x="1125" y="398" class="t-muted" font-size="9" text-anchor="middle">~/.omp/agent/sessions/*.jsonl</text>
+          <text data-node-label="" data-detail-anchor="" x="1125" y="552" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Session Storage</text>
+        <text data-detail="context" x="1125" y="568" class="t-muted" font-size="9" text-anchor="middle">~/.omp/agent/sessions/*.jsonl</text>
         </g>
 
-        <g id="node-mcp-servers" data-node-id="mcp-servers" data-node-label="Project MCP" tabindex="0" role="button" aria-label="Focus Project MCP, .omp/mcp.json (Stdio/HTTP), Persistence &amp; External Cloud Ecosystem" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel=".omp/mcp.json (Stdio/HTTP)" data-node-context="Persistence &amp; External Cloud Ecosystem">
-          <title>Project MCP · .omp/mcp.json (Stdio/HTTP) · Persistence &amp; External Cloud Ecosystem</title>
-          <rect x="1030" y="530" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="1030" y="530" width="190" height="68" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(1036 536) scale(0.6875)">
+        <g id="node-sqlite-journal" data-node-id="sqlite-journal" data-node-label="SQLite Journal" tabindex="0" role="button" aria-label="Focus SQLite Journal, Device Registry &amp; 24h Ledger, OMP AI Agent Runtime &amp; Persistence, SQLite" aria-pressed="false" data-node-kind="database" data-node-sublabel="Device Registry &amp; 24h Ledger" data-node-context="OMP AI Agent Runtime &amp; Persistence" data-node-brand="SQLite" data-node-brand-id="sqlite" data-node-brand-status="preset" data-node-brand-source="https://github.com/sqlite/sqlite/blob/43e862723ec680542ca6f608f9963c0993dd7324/art/sqlite370.eps">
+          <title>SQLite Journal · Device Registry &amp; 24h Ledger · OMP AI Agent Runtime &amp; Persistence · SQLite</title>
+          <rect x="1030" y="660" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="1030" y="660" width="190" height="68" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1036 666) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <g aria-hidden="true" data-brand-mark="sqlite" data-brand-title="SQLite" data-brand-status="preset" data-brand-source="https://github.com/sqlite/sqlite/blob/43e862723ec680542ca6f608f9963c0993dd7324/art/sqlite370.eps" class="brand-mark" transform="translate(1198 666)">
+            <rect width="16" height="16" rx="4" class="brand-mark-badge"/>
+            <path d="M21.678.521c-1.032-.92-2.28-.55-3.513.544a8.71 8.71 0 0 0-.547.535c-2.109 2.237-4.066 6.38-4.674 9.544.237.48.422 1.093.544 1.561a13.044 13.044 0 0 1 .164.703s-.019-.071-.096-.296l-.05-.146a1.689 1.689 0 0 0-.033-.08c-.138-.32-.518-.995-.686-1.289-.143.423-.27.818-.376 1.176.484.884.778 2.4.778 2.4s-.025-.099-.147-.442c-.107-.303-.644-1.244-.772-1.464-.217.804-.304 1.346-.226 1.478.152.256.296.698.422 1.186.286 1.1.485 2.44.485 2.44l.017.224a22.41 22.41 0 0 0 .056 2.748c.095 1.146.273 2.13.5 2.657l.155-.084c-.334-1.038-.47-2.399-.41-3.967.09-2.398.642-5.29 1.661-8.304 1.723-4.55 4.113-8.201 6.3-9.945-1.993 1.8-4.692 7.63-5.5 9.788-.904 2.416-1.545 4.684-1.931 6.857.666-2.037 2.821-2.912 2.821-2.912s1.057-1.304 2.292-3.166c-.74.169-1.955.458-2.362.629-.6.251-.762.337-.762.337s1.945-1.184 3.613-1.72C21.695 7.9 24.195 2.767 21.678.521m-18.573.543A1.842 1.842 0 0 0 1.27 2.9v16.608a1.84 1.84 0 0 0 1.835 1.834h9.418a22.953 22.953 0 0 1-.052-2.707c-.006-.062-.011-.141-.016-.2a27.01 27.01 0 0 0-.473-2.378c-.121-.47-.275-.898-.369-1.057-.116-.197-.098-.31-.097-.432 0-.12.015-.245.037-.386a9.98 9.98 0 0 1 .234-1.045l.217-.028c-.017-.035-.014-.065-.031-.097l-.041-.381a32.8 32.8 0 0 1 .382-1.194l.2-.019c-.008-.016-.01-.038-.018-.053l-.043-.316c.63-3.28 2.587-7.443 4.8-9.791.066-.069.133-.128.198-.194Z" transform="translate(3 3) scale(0.4166666666666667)" fill="#003B57"/>
+            <rect width="16" height="16" rx="4" class="brand-mark-frame"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1125" y="692" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SQLite Journal</text>
+        <text data-detail="context" x="1125" y="708" class="t-muted" font-size="9" text-anchor="middle">Device Registry &amp; 24h Ledger</text>
+        </g>
+
+        <g id="node-mcp-servers" data-node-id="mcp-servers" data-node-label="Project MCP &amp; Skills" tabindex="0" role="button" aria-label="Focus Project MCP &amp; Skills, .omp/mcp.json &amp; skills.sh, OMP AI Agent Runtime &amp; Persistence" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel=".omp/mcp.json &amp; skills.sh" data-node-context="OMP AI Agent Runtime &amp; Persistence">
+          <title>Project MCP &amp; Skills · .omp/mcp.json &amp; skills.sh · OMP AI Agent Runtime &amp; Persistence</title>
+          <rect x="1030" y="780" width="190" height="68" rx="6" class="c-mask"/>
+          <rect x="1030" y="780" width="190" height="68" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(1036 786) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1125" y="562" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Project MCP</text>
-        <text data-detail="context" x="1125" y="578" class="t-muted" font-size="9" text-anchor="middle">.omp/mcp.json (Stdio/HTTP)</text>
-        </g>
-
-        <g id="node-skills-hub" data-node-id="skills-hub" data-node-label="Skills Hub" tabindex="0" role="button" aria-label="Focus Skills Hub, skills.sh / .agents/skills, Persistence &amp; External Cloud Ecosystem" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="skills.sh / .agents/skills" data-node-context="Persistence &amp; External Cloud Ecosystem">
-          <title>Skills Hub · skills.sh / .agents/skills · Persistence &amp; External Cloud Ecosystem</title>
-          <rect x="1030" y="670" width="190" height="68" rx="6" class="c-mask"/>
-          <rect x="1030" y="670" width="190" height="68" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1036 676) scale(0.6875)">
-            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1125" y="702" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Skills Hub</text>
-        <text data-detail="context" x="1125" y="718" class="t-muted" font-size="9" text-anchor="middle">skills.sh / .agents/skills</text>
+          <text data-node-label="" data-detail-anchor="" x="1125" y="812" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Project MCP &amp; Skills</text>
+        <text data-detail="context" x="1125" y="828" class="t-muted" font-size="9" text-anchor="middle">.omp/mcp.json &amp; skills.sh</text>
         </g>
 
         <!-- Connection labels -->
@@ -5326,64 +5328,68 @@
           <text x="300" y="117" class="t-backend" font-size="8" text-anchor="middle">HTTP / SSE</text>
         </g>
         <g data-detail="context" data-edge-from="desktop-app" data-edge-to="next-server" data-edge-label="internal IPC" data-edge-key="1" data-edge-id="desktop-to-server">
-          <rect x="266.2" y="182.5" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="300" y="192.5" class="t-muted" font-size="8" text-anchor="middle">internal IPC</text>
+          <rect x="266.2" y="187.5" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="300" y="197.5" class="t-muted" font-size="8" text-anchor="middle">internal IPC</text>
         </g>
-        <g data-detail="context" data-edge-from="terminal-ui" data-edge-to="terminal-manager" data-edge-label="SSE Stream" data-edge-key="2" data-edge-id="terminal-ui-to-manager">
-          <rect x="266" y="485" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="295" y="495" class="t-muted" font-size="8" text-anchor="middle">SSE Stream</text>
+        <g data-detail="context" data-edge-from="terminal-ui" data-edge-to="host-client" data-edge-label="SSE stream" data-edge-key="2" data-edge-id="terminal-ui-to-server">
+          <rect x="271" y="354" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="300" y="364" class="t-muted" font-size="8" text-anchor="middle">SSE stream</text>
         </g>
-        <g data-detail="context" data-edge-from="composer-panel" data-edge-to="file-sandbox" data-edge-label="plan context" data-edge-key="3" data-edge-id="composer-to-reader">
-          <rect x="266.2" y="644" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="300" y="654" class="t-muted" font-size="8" text-anchor="middle">plan context</text>
+        <g data-detail="context" data-edge-from="composer-panel" data-edge-to="session-reader" data-edge-label="plan context" data-edge-key="3" data-edge-id="composer-to-reader">
+          <rect x="266.2" y="514" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="300" y="524" class="t-muted" font-size="8" text-anchor="middle">plan context</text>
         </g>
-        <g data-detail="context" data-edge-from="next-server" data-edge-to="rpc-manager" data-edge-label="route dispatch" data-edge-key="4" data-edge-id="gateway-to-rpc">
-          <rect x="411.4" y="185" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="450" y="195" class="t-muted" font-size="8" text-anchor="middle">route dispatch</text>
+        <g data-detail="context" data-edge-from="next-server" data-edge-to="host-client" data-edge-label="route dispatch" data-edge-key="4" data-edge-id="server-to-client">
+          <rect x="411.4" y="205" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="450" y="215" class="t-muted" font-size="8" text-anchor="middle">route dispatch</text>
         </g>
-        <g data-detail="context" data-edge-from="rpc-manager" data-edge-to="omp-process" data-edge-label="stdio NDJSON" data-edge-key="5" data-edge-id="rpc-to-omp">
-          <rect x="581.2" y="210" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="615" y="220" class="t-backend" font-size="8" text-anchor="middle">stdio NDJSON</text>
+        <g data-detail="context" data-edge-from="host-client" data-edge-to="supervisor" data-edge-label="session RPC" data-edge-key="5" data-edge-id="client-to-supervisor">
+          <rect x="583.6" y="185" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="615" y="195" class="t-backend" font-size="8" text-anchor="middle">session RPC</text>
         </g>
-        <g data-detail="context" data-edge-from="session-reader" data-edge-to="local-storage" data-edge-label="read JSONL" data-edge-key="6" data-edge-id="reader-to-storage">
-          <rect x="571" y="410" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="600" y="420" class="t-muted" font-size="8" text-anchor="middle">read JSONL</text>
+        <g data-detail="context" data-edge-from="host-client" data-edge-to="git-service" data-edge-label="git IPC" data-edge-key="6" data-edge-id="client-to-git">
+          <rect x="593.2" y="268" width="43.6" height="14" rx="3" class="c-mask"/>
+          <text x="615" y="278" class="t-muted" font-size="8" text-anchor="middle">git IPC</text>
         </g>
-        <g data-detail="context" data-edge-from="terminal-manager" data-edge-to="pty-shell" data-edge-label="pty.spawn()" data-edge-key="7" data-edge-id="terminal-mgr-to-shell">
-          <rect x="583.6" y="504" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="615" y="514" class="t-backend" font-size="8" text-anchor="middle">pty.spawn()</text>
+        <g data-detail="context" data-edge-from="host-client" data-edge-to="pty-service" data-edge-label="pty IPC" data-edge-key="7" data-edge-id="client-to-pty">
+          <rect x="593.2" y="357" width="43.6" height="14" rx="3" class="c-mask"/>
+          <text x="615" y="367" class="t-muted" font-size="8" text-anchor="middle">pty IPC</text>
         </g>
-        <g data-detail="context" data-edge-from="file-sandbox" data-edge-to="git-worktree" data-edge-label="path validator" data-edge-key="8" data-edge-id="sandbox-to-worktree">
-          <rect x="576.4" y="644" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="615" y="654" class="t-muted" font-size="8" text-anchor="middle">path validator</text>
+        <g data-detail="context" data-edge-from="host-client" data-edge-to="session-scan" data-edge-label="scan IPC" data-edge-key="8" data-edge-id="client-to-scan">
+          <rect x="590.8" y="443" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="615" y="453" class="t-muted" font-size="8" text-anchor="middle">scan IPC</text>
         </g>
-        <g data-detail="context" data-edge-from="omp-process" data-edge-to="agent-core" data-edge-label="loop lifecycle" data-edge-key="9" data-edge-id="omp-to-agent-core">
-          <rect x="746.4" y="260" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="785" y="270" class="t-muted" font-size="8" text-anchor="middle">loop lifecycle</text>
+        <g data-detail="context" data-edge-from="host-client" data-edge-to="settings-service" data-edge-label="config IPC" data-edge-key="9" data-edge-id="client-to-settings">
+          <rect x="611" y="700" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="640" y="710" class="t-muted" font-size="8" text-anchor="middle">config IPC</text>
         </g>
-        <g data-detail="context" data-edge-from="omp-process" data-edge-to="agent-db" data-edge-label="SQLite auth" data-edge-key="10" data-edge-id="omp-to-db">
-          <rect x="923.6" y="195" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="955" y="205" class="t-muted" font-size="8" text-anchor="middle">SQLite auth</text>
+        <g data-detail="context" data-edge-from="file-sandbox" data-edge-to="git-service" data-edge-label="path bounds" data-edge-key="10" data-edge-id="file-to-git">
+          <rect x="648.6" y="355" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="680" y="365" class="t-muted" font-size="8" text-anchor="middle">path bounds</text>
         </g>
-        <g data-detail="context" data-edge-from="omp-process" data-edge-to="model-providers" data-edge-label="LLM Inference" data-edge-key="11" data-edge-id="omp-to-models">
-          <rect x="871.3" y="94" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="907.5" y="104" class="t-backend" font-size="8" text-anchor="middle">LLM Inference</text>
+        <g data-detail="context" data-edge-from="supervisor" data-edge-to="omp-process" data-edge-label="stdio NDJSON" data-edge-key="11" data-edge-id="supervisor-to-omp">
+          <rect x="921.2" y="114" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="955" y="124" class="t-backend" font-size="8" text-anchor="middle">stdio NDJSON</text>
         </g>
-        <g data-detail="context" data-edge-from="agent-core" data-edge-to="local-storage" data-edge-label="atomic append" data-edge-key="12" data-edge-id="agent-to-storage">
-          <rect x="918.8" y="344" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="955" y="354" class="t-muted" font-size="8" text-anchor="middle">atomic append</text>
+        <g data-detail="context" data-edge-from="omp-process" data-edge-to="model-providers" data-edge-label="LLM Inference" data-edge-key="12" data-edge-id="omp-to-models">
+          <rect x="1088.8" y="194" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="1125" y="204" class="t-backend" font-size="8" text-anchor="middle">LLM Inference</text>
         </g>
-        <g data-detail="context" data-edge-from="agent-core" data-edge-to="mcp-servers" data-edge-label="MCP Protocol" data-edge-key="13" data-edge-id="agent-to-mcp">
-          <rect x="843.7" y="420" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="877.5" y="430" class="t-muted" font-size="8" text-anchor="middle">MCP Protocol</text>
+        <g data-detail="context" data-edge-from="omp-process" data-edge-to="agent-db" data-edge-label="SQLite auth" data-edge-key="13" data-edge-id="omp-to-db">
+          <rect x="1248.6" y="254" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="1280" y="264" class="t-muted" font-size="8" text-anchor="middle">SQLite auth</text>
         </g>
-        <g data-detail="context" data-edge-from="mcp-servers" data-edge-to="agent-mcp-daemon" data-edge-label="agent bridge" data-edge-key="14" data-edge-id="mcp-to-daemon">
-          <rect x="980.7" y="602" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="1014.5" y="612" class="t-muted" font-size="8" text-anchor="middle">agent bridge</text>
+        <g data-detail="context" data-edge-from="session-scan" data-edge-to="local-storage" data-edge-label="zero-copy head scan" data-edge-key="14" data-edge-id="scan-to-storage">
+          <rect x="924.4" y="535" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="975" y="545" class="t-muted" font-size="8" text-anchor="middle">zero-copy head scan</text>
         </g>
-        <g data-detail="context" data-edge-from="agent-core" data-edge-to="skills-hub" data-edge-label="skill calls" data-edge-key="15" data-edge-id="agent-to-skills">
-          <rect x="836.1" y="440" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="867.5" y="450" class="t-muted" font-size="8" text-anchor="middle">skill calls</text>
+        <g data-detail="context" data-edge-from="settings-service" data-edge-to="mcp-servers" data-edge-label="MCP proxy" data-edge-key="15" data-edge-id="settings-to-mcp">
+          <rect x="928.4" y="764" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="955" y="774" class="t-muted" font-size="8" text-anchor="middle">MCP proxy</text>
+        </g>
+        <g data-detail="context" data-edge-from="supervisor" data-edge-to="sqlite-journal" data-edge-label="crash recovery" data-edge-key="16" data-edge-id="supervisor-to-journal">
+          <rect x="896.4" y="190" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="935" y="200" class="t-muted" font-size="8" text-anchor="middle">crash recovery</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
@@ -5397,44 +5403,18 @@
           <text data-boundary-label="" x="322.65159850322584" y="92.7741945483871" class="t-security" font-size="8.774194548387095" font-weight="600">ompweb Application Server (Next.js 16 / Node.js)</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="2" data-composition-frame-kind="security-group" data-composition-frame-label="Local OMP Agent Core &amp; Host Runtime">
-          <rect data-graph-role="structural-frame-label-mask" x="664" y="140" width="199" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="668" y="153" class="t-security" font-size="9" font-weight="600">Local OMP Agent Core &amp; Host Runtime</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="2" data-composition-frame-kind="security-group" data-composition-frame-label="ompweb-host Native Runtime (Rust Daemon)">
+          <rect data-graph-role="structural-frame-label-mask" x="664" y="80" width="226" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="668" y="93" class="t-security" font-size="9" font-weight="600">ompweb-host Native Runtime (Rust Daemon)</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="3" data-composition-frame-kind="region" data-composition-frame-label="Persistence &amp; External Cloud Ecosystem">
-          <rect data-graph-role="structural-frame-label-mask" x="1004" y="60" width="215.2" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="1008" y="73" class="t-cloud" font-size="9" font-weight="600">Persistence &amp; External Cloud Ecosystem</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="3" data-composition-frame-kind="region" data-composition-frame-label="OMP AI Agent Runtime &amp; Persistence">
+          <rect data-graph-role="structural-frame-label-mask" x="1004" y="80" width="193.6" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="1008" y="93" class="t-cloud" font-size="9" font-weight="600">OMP AI Agent Runtime &amp; Persistence</text>
         </g>
 
         <!-- Legend -->
-        <g data-legend="" data-legend-bridge="">
-          <text x="40" y="884" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="904" data-legend-width="83">
-            <rect x="40" y="895" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
-            <text x="62" y="904" class="t-muted" font-size="10" font-weight="500">Frontend</text>
-          </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="145" data-legend-baseline="904" data-legend-width="78">
-            <rect x="145" y="895" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="167" y="904" class="t-muted" font-size="10" font-weight="500">Backend</text>
-          </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="245" data-legend-baseline="904" data-legend-width="83">
-            <rect x="245" y="895" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="267" y="904" class="t-muted" font-size="10" font-weight="500">Database</text>
-          </g>
-          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="Cloud" data-legend-x="350" data-legend-baseline="904" data-legend-width="68">
-            <rect x="350" y="895" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
-            <text x="372" y="904" class="t-muted" font-size="10" font-weight="500">Cloud</text>
-          </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="440" data-legend-baseline="904" data-legend-width="83">
-            <rect x="440" y="895" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
-            <text x="462" y="904" class="t-muted" font-size="10" font-weight="500">Security</text>
-          </g>
-          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="Message bus" data-legend-x="545" data-legend-baseline="904" data-legend-width="98">
-            <rect x="545" y="895" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
-            <text x="567" y="904" class="t-muted" font-size="10" font-weight="500">Message bus</text>
-          </g>
-        </g>
+
       </svg>
       <p class="intent-trace-status no-print" id="intent-trace-status" role="status" aria-live="polite" aria-atomic="true"></p>
       <div class="share-chapter-cue no-print" id="share-chapter-cue" hidden role="status" aria-live="polite">
@@ -5628,8 +5608,8 @@
         </div>
         <ul>
           <li>&bull; React 19 &amp; Base UI warm-paper styled workspace</li>
-          <li>&bull; Electron 44 desktop client with system tray integration</li>
-          <li>&bull; node-pty interactive shell with TrueColor &amp; FIFO queue</li>
+          <li>&bull; Electron 44 desktop client with system tray &amp; splash</li>
+          <li>&bull; Zero-Reflow streaming markdown &amp; xterm.js terminal</li>
           <li>&bull; Composer-attached Todo Plan &amp; Subagent live telemetry</li>
         </ul>
       </div>
@@ -5637,13 +5617,13 @@
       <div class="card">
         <div class="card-header">
           <div class="card-dot emerald"></div>
-          <h3>Application Gateway &amp; Sandbox</h3>
+          <h3>Rust Native Host Authority</h3>
         </div>
         <ul>
-          <li>&bull; Next.js 16 server on Node 22+ with HTTP-only signed cookies</li>
-          <li>&bull; RPC manager driving omp child processes over stdio NDJSON</li>
-          <li>&bull; JSONL stream parsing with 32-slot LRU caching &amp; branch tree</li>
-          <li>&bull; Strict file sandbox enforcing canonical project root bounds</li>
+          <li>&bull; ompweb-host Rust daemon connected via high-speed IPC</li>
+          <li>&bull; Native Git service executing diff, status, branches &amp; push</li>
+          <li>&bull; PTY engine with bounded buffers &amp; crash resilience</li>
+          <li>&bull; Head-window session scanning under 15ms for GB logs</li>
         </ul>
       </div>
 
@@ -5653,10 +5633,10 @@
           <h3>OMP Core &amp; Sovereignty</h3>
         </div>
         <ul>
-          <li>&bull; Native omp CLI owns agent logic, SQLite auth, and live writes</li>
-          <li>&bull; Direct connection to LLM providers (Anthropic, OpenAI, DeepSeek)</li>
-          <li>&bull; Visual project &amp; global MCP server management</li>
-          <li>&bull; Integrated Agent-MCP daemon for multi-agent coordination</li>
+          <li>&bull; Process supervisor with crash recovery and --resume support</li>
+          <li>&bull; HMAC-SHA256 challenge-proof remote client authentication</li>
+          <li>&bull; 24-hour mutation ledger guaranteeing idempotent actions</li>
+          <li>&bull; Full 485-key OMP configuration proxy &amp; MCP management</li>
         </ul>
       </div>
     </div>

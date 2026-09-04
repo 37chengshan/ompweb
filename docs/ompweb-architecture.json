@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "ompweb System & Runtime Architecture",
+    "title": "ompweb System & Runtime Architecture (v5.1)",
     "quality_profile": "standard",
     "viewBox": [
       1360,
@@ -16,49 +16,52 @@
           "browser-ui",
           "desktop-app",
           "next-server",
-          "rpc-manager",
+          "host-client",
+          "supervisor",
           "omp-process",
-          "model-providers",
-          "local-storage"
+          "model-providers"
         ],
-        "note": "Complete end-to-end architecture from UI clients to OMP runtime and cloud LLM providers."
+        "note": "Complete end-to-end architecture across Presentation, Next.js Gateway, Rust Native Host, and OMP Core."
+      },
+      {
+        "id": "rust-host-core",
+        "label": "Rust Native Host Authority",
+        "focus": [
+          "host-client",
+          "supervisor",
+          "git-service",
+          "pty-service",
+          "session-scan",
+          "settings-service",
+          "sqlite-journal"
+        ],
+        "note": "ompweb-host Rust daemon providing high-performance, memory-safe system authority."
       },
       {
         "id": "session-and-chat",
         "label": "Session & Agent RPC Flow",
         "focus": [
           "browser-ui",
-          "session-reader",
-          "rpc-manager",
+          "next-server",
+          "host-client",
+          "supervisor",
           "omp-process",
           "local-storage",
           "model-providers"
         ],
-        "note": "Streaming JSONL reads directly from disk and prompt execution via NDJSON stdio RPC."
+        "note": "Streaming JSONL reads, head-window indexing, and prompt execution via stdio NDJSON RPC."
       },
       {
-        "id": "terminal-and-files",
-        "label": "Terminal & Workspace Sandbox",
+        "id": "terminal-and-git",
+        "label": "Terminal, Git & Workspace",
         "focus": [
           "terminal-ui",
-          "terminal-manager",
-          "pty-shell",
-          "file-sandbox",
-          "git-worktree"
+          "host-client",
+          "git-service",
+          "pty-service",
+          "file-sandbox"
         ],
-        "note": "Interactive pseudo-terminal execution and canonicalized workspace file security boundary."
-      },
-      {
-        "id": "multi-agent-and-mcp",
-        "label": "Multi-Agent & MCP Ecosystem",
-        "focus": [
-          "composer-panel",
-          "agent-core",
-          "agent-mcp-daemon",
-          "mcp-servers",
-          "skills-hub"
-        ],
-        "note": "Todo plan tracking, subagent roster monitoring, Agent-MCP orchestration, and MCP servers."
+        "note": "Interactive pseudo-terminal execution, Git diff/status, and canonicalized workspace bounds."
       }
     ]
   },
@@ -82,10 +85,10 @@
       "id": "desktop-app",
       "type": "frontend",
       "label": "Desktop Client",
-      "sublabel": "Electron 44 / Tray",
+      "sublabel": "Electron 44 / Native Shell",
       "pos": [
         80,
-        230
+        240
       ],
       "size": [
         160,
@@ -96,10 +99,10 @@
       "id": "terminal-ui",
       "type": "frontend",
       "label": "Web PTY Terminal",
-      "sublabel": "xterm.js / ANSI TrueColor",
+      "sublabel": "xterm.js / TrueColor",
       "pos": [
         80,
-        480
+        420
       ],
       "size": [
         160,
@@ -113,7 +116,7 @@
       "sublabel": "Todo Kanban / Subagents",
       "pos": [
         80,
-        630
+        580
       ],
       "size": [
         160,
@@ -136,14 +139,14 @@
       ]
     },
     {
-      "id": "rpc-manager",
+      "id": "host-client",
       "type": "backend",
-      "label": "RPC Manager",
-      "sublabel": "Process Pool & Lifecycle",
+      "label": "HostClient Facade",
+      "sublabel": "Typed IPC / Fail-Closed",
       "brand": "node-js",
       "pos": [
         360,
-        230
+        260
       ],
       "size": [
         180,
@@ -154,24 +157,10 @@
       "id": "session-reader",
       "type": "backend",
       "label": "Session Reader",
-      "sublabel": "JSONL LRU Cache / Tree",
+      "sublabel": "JSONL LRU Cache / Fast-Path",
       "pos": [
         360,
-        360
-      ],
-      "size": [
-        180,
-        68
-      ]
-    },
-    {
-      "id": "terminal-manager",
-      "type": "backend",
-      "label": "PTY Manager",
-      "sublabel": "FIFO Queue / 30m TTL",
-      "pos": [
-        360,
-        490
+        420
       ],
       "size": [
         180,
@@ -185,7 +174,7 @@
       "sublabel": "Canonical Path Validator",
       "pos": [
         360,
-        630
+        580
       ],
       "size": [
         180,
@@ -193,77 +182,94 @@
       ]
     },
     {
+      "id": "supervisor",
+      "type": "backend",
+      "label": "Process Supervisor",
+      "sublabel": "omp Lifecycle & Crash Auto-Heal",
+      "pos": [
+        690,
+        100
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "Auto-Heal"
+    },
+    {
+      "id": "git-service",
+      "type": "backend",
+      "label": "Git Native Service",
+      "sublabel": "diff / status / branches / push",
+      "pos": [
+        690,
+        260
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "Rust Core"
+    },
+    {
+      "id": "pty-service",
+      "type": "backend",
+      "label": "PTY Engine",
+      "sublabel": "Virtual Terminal / Bounded Buffer",
+      "pos": [
+        690,
+        420
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "Rust Core"
+    },
+    {
+      "id": "session-scan",
+      "type": "backend",
+      "label": "Session Scanner",
+      "sublabel": "Head-Window Indexing <15ms",
+      "pos": [
+        690,
+        580
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "<15ms"
+    },
+    {
+      "id": "settings-service",
+      "type": "backend",
+      "label": "Settings Service",
+      "sublabel": "485-Key OMP Config Proxy",
+      "pos": [
+        690,
+        720
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "Rust Core"
+    },
+    {
       "id": "omp-process",
       "type": "backend",
-      "label": "omp Process",
-      "sublabel": "omp --mode rpc-ui (v1/v2)",
+      "label": "omp Core Process",
+      "sublabel": "omp --mode rpc-ui",
       "pos": [
-        690,
-        160
-      ],
-      "size": [
-        190,
-        72
-      ],
-      "tag": "Per Active Session"
-    },
-    {
-      "id": "agent-core",
-      "type": "backend",
-      "label": "Agent Core",
-      "sublabel": "Tools, Memory, Reasoning",
-      "pos": [
-        690,
-        310
+        1030,
+        100
       ],
       "size": [
         190,
         68
-      ]
-    },
-    {
-      "id": "pty-shell",
-      "type": "backend",
-      "label": "System PTY Shell",
-      "sublabel": "zsh / bash / cmd.exe",
-      "pos": [
-        690,
-        490
       ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "git-worktree",
-      "type": "backend",
-      "label": "Git Worktrees",
-      "sublabel": "Multi-Branch Workspace",
-      "brand": "github",
-      "pos": [
-        690,
-        630
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "agent-mcp-daemon",
-      "type": "backend",
-      "label": "Agent-MCP Daemon",
-      "sublabel": "Multi-Agent Coordinator",
-      "brand": "python",
-      "pos": [
-        690,
-        760
-      ],
-      "size": [
-        190,
-        68
-      ]
+      "tag": "Per Session"
     },
     {
       "id": "model-providers",
@@ -273,7 +279,7 @@
       "brand": "anthropic",
       "pos": [
         1030,
-        80
+        240
       ],
       "size": [
         190,
@@ -284,11 +290,11 @@
       "id": "agent-db",
       "type": "database",
       "label": "Auth DB",
-      "sublabel": "~/.omp/agent/agent.db (SQLite)",
+      "sublabel": "~/.omp/agent/agent.db",
       "brand": "sqlite",
       "pos": [
         1030,
-        200
+        380
       ],
       "size": [
         190,
@@ -302,7 +308,22 @@
       "sublabel": "~/.omp/agent/sessions/*.jsonl",
       "pos": [
         1030,
-        350
+        520
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "sqlite-journal",
+      "type": "database",
+      "label": "SQLite Journal",
+      "sublabel": "Device Registry & 24h Ledger",
+      "brand": "sqlite",
+      "pos": [
+        1030,
+        660
       ],
       "size": [
         190,
@@ -312,25 +333,11 @@
     {
       "id": "mcp-servers",
       "type": "messagebus",
-      "label": "Project MCP",
-      "sublabel": ".omp/mcp.json (Stdio/HTTP)",
+      "label": "Project MCP & Skills",
+      "sublabel": ".omp/mcp.json & skills.sh",
       "pos": [
         1030,
-        530
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "skills-hub",
-      "type": "cloud",
-      "label": "Skills Hub",
-      "sublabel": "skills.sh / .agents/skills",
-      "pos": [
-        1030,
-        670
+        780
       ],
       "size": [
         190,
@@ -354,32 +361,32 @@
       "label": "ompweb Application Server (Next.js 16 / Node.js)",
       "wraps": [
         "next-server",
-        "rpc-manager",
+        "host-client",
         "session-reader",
-        "terminal-manager",
         "file-sandbox"
       ]
     },
     {
       "kind": "security-group",
-      "label": "Local OMP Agent Core & Host Runtime",
+      "label": "ompweb-host Native Runtime (Rust Daemon)",
       "wraps": [
-        "omp-process",
-        "agent-core",
-        "pty-shell",
-        "git-worktree",
-        "agent-mcp-daemon"
+        "supervisor",
+        "git-service",
+        "pty-service",
+        "session-scan",
+        "settings-service"
       ]
     },
     {
       "kind": "region",
-      "label": "Persistence & External Cloud Ecosystem",
+      "label": "OMP AI Agent Runtime & Persistence",
       "wraps": [
+        "omp-process",
         "model-providers",
         "agent-db",
         "local-storage",
-        "mcp-servers",
-        "skills-hub"
+        "sqlite-journal",
+        "mcp-servers"
       ]
     }
   ],
@@ -400,104 +407,122 @@
       "toSide": "left"
     },
     {
-      "id": "terminal-ui-to-manager",
+      "id": "terminal-ui-to-server",
       "from": "terminal-ui",
-      "to": "terminal-manager",
-      "label": "SSE Stream",
-      "labelAt": [
-        295,
-        495
-      ],
+      "to": "host-client",
+      "label": "SSE stream",
       "fromSide": "right",
       "toSide": "left"
     },
     {
       "id": "composer-to-reader",
       "from": "composer-panel",
-      "to": "file-sandbox",
+      "to": "session-reader",
       "label": "plan context",
       "fromSide": "right",
       "toSide": "left"
     },
     {
-      "id": "gateway-to-rpc",
+      "id": "server-to-client",
       "from": "next-server",
-      "to": "rpc-manager",
+      "to": "host-client",
       "label": "route dispatch",
+      "fromSide": "bottom",
+      "toSide": "top",
       "labelAt": [
         450,
-        195
-      ],
-      "fromSide": "bottom",
-      "toSide": "top"
+        215
+      ]
     },
     {
-      "id": "rpc-to-omp",
-      "from": "rpc-manager",
-      "to": "omp-process",
-      "label": "stdio NDJSON",
-      "variant": "emphasis"
+      "id": "client-to-supervisor",
+      "from": "host-client",
+      "to": "supervisor",
+      "label": "session RPC",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
     },
     {
-      "id": "reader-to-storage",
-      "from": "session-reader",
-      "to": "local-storage",
-      "label": "read JSONL",
-      "labelAt": [
-        600,
-        420
-      ],
+      "id": "client-to-git",
+      "from": "host-client",
+      "to": "git-service",
+      "label": "git IPC",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "client-to-pty",
+      "from": "host-client",
+      "to": "pty-service",
+      "label": "pty IPC",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "client-to-scan",
+      "from": "host-client",
+      "to": "session-scan",
+      "label": "scan IPC",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "client-to-settings",
+      "from": "host-client",
+      "to": "settings-service",
+      "label": "config IPC",
       "fromSide": "right",
       "toSide": "left",
       "via": [
         [
-          570,
-          394
+          640,
+          294
         ],
         [
-          570,
-          420
-        ],
-        [
-          980,
-          420
-        ],
-        [
-          980,
-          384
+          640,
+          754
         ]
+      ],
+      "labelAt": [
+        640,
+        710
       ]
     },
     {
-      "id": "terminal-mgr-to-shell",
-      "from": "terminal-manager",
-      "to": "pty-shell",
-      "label": "pty.spawn()",
-      "variant": "emphasis"
-    },
-    {
-      "id": "sandbox-to-worktree",
+      "id": "file-to-git",
       "from": "file-sandbox",
-      "to": "git-worktree",
-      "label": "path validator"
-    },
-    {
-      "id": "omp-to-agent-core",
-      "from": "omp-process",
-      "to": "agent-core",
-      "label": "loop lifecycle",
-      "labelAt": [
-        785,
-        270
+      "to": "git-service",
+      "label": "path bounds",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          600,
+          614
+        ],
+        [
+          600,
+          350
+        ],
+        [
+          785,
+          350
+        ]
       ],
-      "fromSide": "bottom",
-      "toSide": "top"
+      "labelAt": [
+        680,
+        365
+      ]
     },
     {
-      "id": "omp-to-db",
-      "from": "omp-process",
-      "to": "agent-db",
-      "label": "SQLite auth"
+      "id": "supervisor-to-omp",
+      "from": "supervisor",
+      "to": "omp-process",
+      "label": "stdio NDJSON",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
     },
     {
       "id": "omp-to-models",
@@ -505,71 +530,71 @@
       "to": "model-providers",
       "label": "LLM Inference",
       "variant": "emphasis",
-      "fromSide": "top",
-      "toSide": "left",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        1125,
+        204
+      ]
+    },
+    {
+      "id": "omp-to-db",
+      "from": "omp-process",
+      "to": "agent-db",
+      "label": "SQLite auth",
+      "fromSide": "right",
+      "toSide": "right",
       "via": [
         [
-          785,
-          114
+          1280,
+          134
+        ],
+        [
+          1280,
+          414
         ]
       ]
     },
     {
-      "id": "agent-to-storage",
-      "from": "agent-core",
+      "id": "scan-to-storage",
+      "from": "session-scan",
       "to": "local-storage",
-      "label": "atomic append"
-    },
-    {
-      "id": "agent-to-mcp",
-      "from": "agent-core",
-      "to": "mcp-servers",
-      "label": "MCP Protocol",
-      "fromSide": "bottom",
+      "label": "zero-copy head scan",
+      "fromSide": "right",
       "toSide": "left",
-      "via": [
-        [
-          785,
-          440
-        ],
-        [
-          970,
-          440
-        ],
-        [
-          970,
-          564
-        ]
+      "labelAt": [
+        975,
+        545
       ]
     },
     {
-      "id": "mcp-to-daemon",
-      "from": "mcp-servers",
-      "to": "agent-mcp-daemon",
-      "label": "agent bridge",
-      "fromSide": "bottom",
-      "toSide": "right"
+      "id": "settings-to-mcp",
+      "from": "settings-service",
+      "to": "mcp-servers",
+      "label": "MCP proxy",
+      "fromSide": "right",
+      "toSide": "left"
     },
     {
-      "id": "agent-to-skills",
-      "from": "agent-core",
-      "to": "skills-hub",
-      "label": "skill calls",
-      "fromSide": "bottom",
+      "id": "supervisor-to-journal",
+      "from": "supervisor",
+      "to": "sqlite-journal",
+      "label": "crash recovery",
+      "fromSide": "right",
       "toSide": "left",
       "via": [
         [
-          785,
-          460
+          935,
+          134
         ],
         [
-          950,
-          460
-        ],
-        [
-          950,
-          704
+          935,
+          694
         ]
+      ],
+      "labelAt": [
+        935,
+        200
       ]
     }
   ],
@@ -579,29 +604,29 @@
       "title": "Presentation & Interaction",
       "items": [
         "React 19 & Base UI warm-paper styled workspace",
-        "Electron 44 desktop client with system tray integration",
-        "node-pty interactive shell with TrueColor & FIFO queue",
+        "Electron 44 desktop client with system tray & splash",
+        "Zero-Reflow streaming markdown & xterm.js terminal",
         "Composer-attached Todo Plan & Subagent live telemetry"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Application Gateway & Sandbox",
+      "title": "Rust Native Host Authority",
       "items": [
-        "Next.js 16 server on Node 22+ with HTTP-only signed cookies",
-        "RPC manager driving omp child processes over stdio NDJSON",
-        "JSONL stream parsing with 32-slot LRU caching & branch tree",
-        "Strict file sandbox enforcing canonical project root bounds"
+        "ompweb-host Rust daemon connected via high-speed IPC",
+        "Native Git service executing diff, status, branches & push",
+        "PTY engine with bounded buffers & crash resilience",
+        "Head-window session scanning under 15ms for GB logs"
       ]
     },
     {
       "dot": "amber",
       "title": "OMP Core & Sovereignty",
       "items": [
-        "Native omp CLI owns agent logic, SQLite auth, and live writes",
-        "Direct connection to LLM providers (Anthropic, OpenAI, DeepSeek)",
-        "Visual project & global MCP server management",
-        "Integrated Agent-MCP daemon for multi-agent coordination"
+        "Process supervisor with crash recovery and --resume support",
+        "HMAC-SHA256 challenge-proof remote client authentication",
+        "24-hour mutation ledger guaranteeing idempotent actions",
+        "Full 485-key OMP configuration proxy & MCP management"
       ]
     }
   ]

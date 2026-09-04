@@ -7,7 +7,7 @@
     "components/ArchiveBrowser.tsx": 2,
     "components/BackendDiagnostics.tsx": 7,
     "components/ChatInput.tsx": 4,
-    "components/ChatWindow.tsx": 2,
+    "components/ChatWindow.tsx": 1,
     "components/DirectoryPicker.tsx": 1,
     "components/FileExplorer.tsx": 4,
     "components/FileViewer.tsx": 7,
@@ -27,8 +27,10 @@
     "components/TerminalPanel.tsx": 6,
     "components/UpdateNoticeDialog.tsx": 1,
     "components/UsageSidebarPanel.tsx": 2,
+    "components/panels/RightWorkbench.tsx": 1,
     "hooks/useAgentSession.ts": 15,
     "lib/agent-client.ts": 1,
-    "lib/client/http-sse-adapter.ts": 3
+    "lib/client/http-sse-adapter.ts": 3,
+    "lib/workbench-client.ts": 3
   }
 }

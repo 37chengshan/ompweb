@@ -37,18 +37,22 @@ export function estimateGroupHeight(group: ChatGroup, messages: unknown[]): numb
   let images = 0;
   for (let i = group.startIdx; i < group.endIdx; i++) {
     const msg = messages[i] as { content?: unknown } | undefined;
-    const content = msg?.content;
+      const content = msg?.content;
     if (typeof content === "string") {
       textChars += content.length;
     } else if (Array.isArray(content)) {
       for (const block of content as Array<{ type?: string; text?: string }>) {
-        if (block.type === "text") textChars += block.text?.length ?? 0;
+        if (block.type === "text") {
+          const length = typeof block.text === "string" ? block.text.length : 0;
+          textChars += Number.isFinite(length) ? length : 0;
+        }
         else if (block.type === "image") images += 1;
       }
     }
   }
   const count = group.endIdx - group.startIdx;
-  return count * 52 + (textChars / 55) * 19 + images * 220 + 24;
+  const estimate = count * 52 + (textChars / 55) * 19 + images * 220 + 24;
+  return Number.isFinite(estimate) && estimate >= 0 ? estimate : count * 52 + 24;
 }
 
 /**
@@ -108,7 +112,10 @@ export class GroupHeightCache {
   constructor(groups: ChatGroup[], messages: unknown[], estimator: GroupEstimator = estimateGroupHeight) {
     this._estimator = estimator;
     this._messages = messages;
-    this._heights = groups.map((g) => estimator(g, messages));
+    this._heights = groups.map((g) => {
+      const estimate = estimator(g, messages);
+      return Number.isFinite(estimate) && estimate >= 0 ? estimate : 52 + 24;
+    });
     this._measured = new Array<boolean>(groups.length).fill(false);
     this._prefix = new Array<number>(groups.length + 1).fill(0);
     this._rebuildPrefix();
@@ -140,7 +147,7 @@ export class GroupHeightCache {
 
   /** Replace an estimate with a measured height; returns the delta, 0 if unchanged. */
   measure(groupIdx: number, height: number): number {
-    if (!Number.isFinite(height) || height < 0) return 0;
+    if (groupIdx < 0 || groupIdx >= this._heights.length || !Number.isFinite(height) || height < 0) return 0;
     const delta = height - this._heights[groupIdx];
     if (Math.abs(delta) < 0.5) return 0;
     this._heights[groupIdx] = height;
@@ -157,7 +164,7 @@ export class GroupHeightCache {
     if (heights.size === 0) return;
     let wrote = false;
     for (const [groupIdx, height] of heights) {
-      if (!Number.isFinite(height) || height < 0) continue;
+      if (groupIdx < 0 || groupIdx >= this._heights.length || !Number.isFinite(height) || height < 0) continue;
       this._heights[groupIdx] = height;
       this._measured[groupIdx] = true;
       wrote = true;
@@ -169,6 +176,7 @@ export class GroupHeightCache {
 
   /** Group containing the given scroll offset (binary search). */
   indexAtOffset(offset: number): { groupIdx: number; offsetInGroup: number } {
+    if (this._heights.length === 0) return { groupIdx: 0, offsetInGroup: 0 };
     const prefix = this._prefix;
     let lo = 0;
     let hi = prefix.length - 1;
@@ -186,7 +194,8 @@ export class GroupHeightCache {
     let acc = 0;
     for (let i = 0; i < n; i++) {
       this._prefix[i] = acc;
-      acc += this._heights[i];
+      const height = this._heights[i];
+      acc += Number.isFinite(height) && height >= 0 ? height : 0;
     }
     this._prefix[n] = acc;
   }
@@ -214,9 +223,14 @@ export function computeWindow(
   const clamped = Math.max(0, Math.min(scrollTop, Math.max(0, total - 1)));
   const { groupIdx } = cache.indexAtOffset(clamped);
   const bottomOffset = Math.min(total, clamped + Math.max(viewportHeight, 0));
+  const atBottom = clamped + Math.max(viewportHeight, 0) >= total - 1;
   const { groupIdx: endIdx } = cache.indexAtOffset(Math.max(clamped, bottomOffset - 1));
   const startGroup = Math.max(0, groupIdx - overscan);
-  const endGroup = Math.min(cache.count, endIdx + 1 + overscan);
+  // At the real bottom, always include the final group. A zero-height or
+  // still-settling prefix entry can make indexAtOffset under-report the end
+  // index; leaving a large bottom spacer mounted then shows a blank viewport
+  // even though the scrollTop is already at scrollHeight - clientHeight.
+  const endGroup = atBottom ? cache.count : Math.min(cache.count, endIdx + 1 + overscan);
   return {
     startGroup,
     endGroup,

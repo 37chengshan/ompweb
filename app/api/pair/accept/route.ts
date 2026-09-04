@@ -46,8 +46,13 @@ export async function POST(request: Request) {
     }
   }
   const response = NextResponse.json({ device }, { status: 201 });
+  // Preserve LAN HTTP pairing while preventing a paired-device credential
+  // from ever being replayed over plaintext when the configured remote URL
+  // is HTTPS (for example a Cloudflare Tunnel or reverse proxy).
+  const secure = new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto") === "https";
   response.cookies.set(service.getConfig().cookieName, device.id, {
     httpOnly: true,
+    secure,
     sameSite: "lax",
     path: "/",
     maxAge: 365 * 24 * 60 * 60,

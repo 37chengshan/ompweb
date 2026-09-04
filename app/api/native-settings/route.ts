@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { resolveOmpBin } from "@/lib/omp/omp-cli";
+import { hostClient, rustBackendActive } from "@/lib/omp/host-client";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,9 @@ function safeValue(raw: RawEntry): unknown {
 
 export async function GET() {
   try {
-    const stdout = await runOmp(["config", "list", "--json"]);
+    const stdout = rustBackendActive()
+      ? JSON.stringify(await hostClient.settings.list())
+      : await runOmp(["config", "list", "--json"]);
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
     const settings: Array<{
       key: string;
@@ -65,7 +68,10 @@ export async function GET() {
       });
     }
     settings.sort((a, b) => a.key.localeCompare(b.key));
-    return NextResponse.json({ settings, path: await ompConfigPath().catch(() => null) });
+    const path = rustBackendActive()
+      ? await hostClient.settings.path().catch(() => null)
+      : await ompConfigPath().catch(() => null);
+    return NextResponse.json({ settings, path });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
@@ -90,6 +96,10 @@ export async function PUT(request: Request) {
       : value === null
         ? "null"
         : JSON.stringify(value);
+    if (rustBackendActive()) {
+      const result = await hostClient.settings.set(body.key, serialized);
+      return NextResponse.json({ ok: true, output: result.output });
+    }
     const stdout = await runOmp(["config", "set", body.key, serialized]);
     return NextResponse.json({ ok: true, output: stdout.trim() });
   } catch (error) {
@@ -104,6 +114,10 @@ export async function POST(request: Request) {
     const body = await request.json() as { key?: unknown };
     if (typeof body.key !== "string" || !body.key.trim() || !/^[A-Za-z0-9._-]+$/.test(body.key)) {
       return NextResponse.json({ error: "Invalid setting key", code: "invalid_key" }, { status: 400 });
+    }
+    if (rustBackendActive()) {
+      const result = await hostClient.settings.reset(body.key);
+      return NextResponse.json({ ok: true, output: result.output });
     }
     const stdout = await runOmp(["config", "reset", body.key]);
     return NextResponse.json({ ok: true, output: stdout.trim() });

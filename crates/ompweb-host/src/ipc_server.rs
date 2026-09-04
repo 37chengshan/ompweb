@@ -27,7 +27,9 @@ pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 /// flood must exhaust the cap, not the process (v4 P28 crash boundary).
 pub const MAX_CONNECTIONS: usize = 16;
 
-pub type Handler = dyn Fn(&str, &JsonValue, &mut dyn FnMut(&str)) -> Result<Option<String>, IpcError> + Send + Sync;
+pub type Handler = dyn Fn(&str, &JsonValue, &mut dyn FnMut(&str)) -> Result<Option<String>, IpcError>
+    + Send
+    + Sync;
 
 #[derive(Debug)]
 pub struct IpcError {
@@ -37,7 +39,10 @@ pub struct IpcError {
 
 impl IpcError {
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
-        IpcError { code, message: message.into() }
+        IpcError {
+            code,
+            message: message.into(),
+        }
     }
 }
 
@@ -123,13 +128,21 @@ enum LineRead {
 /// never buffered in full and never drained on an open socket (draining
 /// blocks until the peer sends more or closes; the pre-auth path must be
 /// bounded against hostile no-newline streams).
-fn read_line_capped<R: BufRead>(reader: &mut R, out: &mut Vec<u8>, cap: usize) -> std::io::Result<LineRead> {
+fn read_line_capped<R: BufRead>(
+    reader: &mut R,
+    out: &mut Vec<u8>,
+    cap: usize,
+) -> std::io::Result<LineRead> {
     out.clear();
     let mut total = 0usize;
     loop {
         let buf = reader.fill_buf()?;
         if buf.is_empty() {
-            return Ok(if total == 0 { LineRead::Eof } else { LineRead::Line });
+            return Ok(if total == 0 {
+                LineRead::Eof
+            } else {
+                LineRead::Line
+            });
         }
         match buf.iter().position(|b| *b == b'\n') {
             Some(idx) => {
@@ -176,7 +189,12 @@ fn handle_connection(
                 // Protocol violation: an oversized line may never end (a
                 // hostile stream without newline), so answering and closing
                 // is the only bounded behavior — never buffer or drain-on-open.
-                let _ = respond(&mut stream, "null", false, &format!("{{\"code\":\"frame_too_large\",\"message\":\"frame exceeds 1MiB\"}}"));
+                let _ = respond(
+                    &mut stream,
+                    "null",
+                    false,
+                    "{\"code\":\"frame_too_large\",\"message\":\"frame exceeds 1MiB\"}",
+                );
                 return Ok(());
             }
             Ok(LineRead::Line) => {}
@@ -192,26 +210,64 @@ fn handle_connection(
         let value = match JsonValue::parse(trimmed) {
             Ok(v) => v,
             Err(err) => {
-                let _ = respond(&mut stream, "null", false, &format!("{{\"code\":\"invalid_json\",\"message\":{}}}", json_str(&err)));
+                let _ = respond(
+                    &mut stream,
+                    "null",
+                    false,
+                    &format!(
+                        "{{\"code\":\"invalid_json\",\"message\":{}}}",
+                        json_str(&err)
+                    ),
+                );
                 continue;
             }
         };
-        let id = value.get(&["id"]).and_then(|v| v.as_str()).unwrap_or("null").to_string();
-        let method = value.get(&["method"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let id = value
+            .get(&["id"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("null")
+            .to_string();
+        let method = value
+            .get(&["method"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let params = value.get(&["params"]).cloned().unwrap_or(JsonValue::Null);
 
         if !authed {
             if method != "hello" {
-                let _ = respond(&mut stream, &id, false, "{\"code\":\"not_authed\",\"message\":\"hello first\"}");
+                let _ = respond(
+                    &mut stream,
+                    &id,
+                    false,
+                    "{\"code\":\"not_authed\",\"message\":\"hello first\"}",
+                );
                 continue;
             }
-            let token = params.get(&["token"]).and_then(|v| v.as_str()).unwrap_or("");
+            let token = params
+                .get(&["token"])
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if token != expected_token {
-                let _ = respond(&mut stream, &id, false, "{\"code\":\"auth_failed\",\"message\":\"bad token\"}");
+                let _ = respond(
+                    &mut stream,
+                    &id,
+                    false,
+                    "{\"code\":\"auth_failed\",\"message\":\"bad token\"}",
+                );
                 return Ok(());
             }
             authed = true;
-            let _ = respond(&mut stream, &id, true, &format!("{{\"protocol\":{},\"pid\":{}}}", IPC_PROTOCOL_VERSION, std::process::id()));
+            let _ = respond(
+                &mut stream,
+                &id,
+                true,
+                &format!(
+                    "{{\"protocol\":{},\"pid\":{}}}",
+                    IPC_PROTOCOL_VERSION,
+                    std::process::id()
+                ),
+            );
             continue;
         }
 
@@ -220,7 +276,10 @@ fn handle_connection(
         // block until the session ends — collecting would delay every frame
         // until the handler returns).
         let mut emit = |frame: &str| {
-            let _ = send_line(&mut stream, &format!("{{\"id\":{},\"event\":{}}}", json_str(&id), frame));
+            let _ = send_line(
+                &mut stream,
+                &format!("{{\"id\":{},\"event\":{}}}", json_str(&id), frame),
+            );
         };
         let result = handler(&method, &params, &mut emit);
         match result {
@@ -231,7 +290,16 @@ fn handle_connection(
                 let _ = respond(&mut stream, &id, true, "null");
             }
             Err(err) => {
-                let _ = respond(&mut stream, &id, false, &format!("{{\"code\":{},\"message\":{}}}", json_str(err.code), json_str(&err.message)));
+                let _ = respond(
+                    &mut stream,
+                    &id,
+                    false,
+                    &format!(
+                        "{{\"code\":{},\"message\":{}}}",
+                        json_str(err.code),
+                        json_str(&err.message)
+                    ),
+                );
             }
         }
         let _ = running.load(Ordering::Relaxed);
@@ -240,9 +308,23 @@ fn handle_connection(
 
 fn respond(stream: &mut TcpStream, id: &str, ok: bool, body: &str) -> std::io::Result<()> {
     if ok {
-        send_line(stream, &format!("{{\"id\":{},\"ok\":true,\"result\":{}}}", json_str(id), body))
+        send_line(
+            stream,
+            &format!(
+                "{{\"id\":{},\"ok\":true,\"result\":{}}}",
+                json_str(id),
+                body
+            ),
+        )
     } else {
-        send_line(stream, &format!("{{\"id\":{},\"ok\":false,\"error\":{}}}", json_str(id), body))
+        send_line(
+            stream,
+            &format!(
+                "{{\"id\":{},\"ok\":false,\"error\":{}}}",
+                json_str(id),
+                body
+            ),
+        )
     }
 }
 
@@ -270,7 +352,7 @@ mod tests {
     use std::io::Write;
     use std::net::TcpStream;
 
-    fn client_exchange(port: u16, token: &str, requests: &[&str]) -> Vec<String> {
+    fn client_exchange(port: u16, _token: &str, requests: &[&str]) -> Vec<String> {
         let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
         let mut reader = BufReader::new(stream.try_clone().expect("clone"));
         let mut responses = Vec::new();
@@ -288,17 +370,24 @@ mod tests {
     fn make_server() -> (IpcServer, String) {
         let token = "test-token".to_string();
         let server = IpcServer::start(token.clone()).expect("start");
-        let handler: Arc<Handler> = Arc::new(|method, params, emit| match method {
+        let _handler: Arc<Handler> = Arc::new(|method, params, emit| match method {
             "echo" => {
-                let text = params.get(&["text"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let text = params
+                    .get(&["text"])
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 Ok(Some(format!("{{\"echo\":{}}}", json_str(&text))))
             }
             "stream" => {
-                emit(&format!("{{\"type\":\"frame\",\"n\":1}}"));
-                emit(&format!("{{\"type\":\"frame\",\"n\":2}}"));
+                emit("{\"type\":\"frame\",\"n\":1}");
+                emit("{\"type\":\"frame\",\"n\":2}");
                 Ok(None)
             }
-            _ => Err(IpcError::new("unknown_method", format!("no method {method}"))),
+            _ => Err(IpcError::new(
+                "unknown_method",
+                format!("no method {method}"),
+            )),
         });
         (server, token)
     }
@@ -309,7 +398,11 @@ mod tests {
         let port = server.port();
         let handler: Arc<Handler> = Arc::new(|method, params, _emit| match method {
             "echo" => {
-                let text = params.get(&["text"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let text = params
+                    .get(&["text"])
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 Ok(Some(format!("{{\"echo\":{}}}", json_str(&text))))
             }
             _ => Err(IpcError::new("unknown_method", "no")),
@@ -323,8 +416,16 @@ mod tests {
                 "{\"id\":\"2\",\"method\":\"echo\",\"params\":{\"text\":\"hi\"}}",
             ],
         );
-        assert!(responses[0].contains("\"ok\":true"), "hello: {}", responses[0]);
-        assert!(responses[1].contains("\"echo\":\"hi\""), "echo: {}", responses[1]);
+        assert!(
+            responses[0].contains("\"ok\":true"),
+            "hello: {}",
+            responses[0]
+        );
+        assert!(
+            responses[1].contains("\"echo\":\"hi\""),
+            "echo: {}",
+            responses[1]
+        );
     }
 
     #[test]
@@ -345,7 +446,7 @@ mod tests {
     fn streaming_frames_then_result() {
         let (server, token) = make_server();
         let port = server.port();
-        let handler: Arc<Handler> = Arc::new(|method, params, emit| match method {
+        let handler: Arc<Handler> = Arc::new(|method, _params, emit| match method {
             "stream" => {
                 emit("{\"type\":\"frame\",\"n\":1}");
                 emit("{\"type\":\"frame\",\"n\":2}");
@@ -364,16 +465,29 @@ mod tests {
                 "{\"id\":\"4\",\"method\":\"stream\",\"params\":{}}",
             ],
         );
-        assert!(responses[1].contains("\"event\""), "frame1: {}", responses[1]);
-        assert!(responses[2].contains("\"event\""), "frame2: {}", responses[2]);
-        assert!(responses[3].contains("\"ok\":true"), "end: {}", responses[3]);
+        assert!(
+            responses[1].contains("\"event\""),
+            "frame1: {}",
+            responses[1]
+        );
+        assert!(
+            responses[2].contains("\"event\""),
+            "frame2: {}",
+            responses[2]
+        );
+        assert!(
+            responses[3].contains("\"ok\":true"),
+            "end: {}",
+            responses[3]
+        );
     }
 
     #[test]
     fn unknown_method_stable_error() {
         let (server, token) = make_server();
         let port = server.port();
-        let handler: Arc<Handler> = Arc::new(|_m, _p, _e| Err(IpcError::new("unknown_method", "nope")));
+        let handler: Arc<Handler> =
+            Arc::new(|_m, _p, _e| Err(IpcError::new("unknown_method", "nope")));
         std::thread::spawn(move || server.serve(handler));
         let responses = client_exchange(
             port,
@@ -387,7 +501,7 @@ mod tests {
     }
     #[test]
     fn oversized_no_newline_flood_is_rejected_bounded_and_closed() {
-        let (server, token) = make_server();
+        let (server, _token) = make_server();
         let port = server.port();
         let handler: Arc<Handler> = Arc::new(|_m, _p, _e| Ok(Some("null".into())));
         std::thread::spawn(move || server.serve(handler));

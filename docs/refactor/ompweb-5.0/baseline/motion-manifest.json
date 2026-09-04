@@ -43,43 +43,43 @@
       "dur:dur-slow": "320ms",
       "dur:dur-theme": "450ms"
     },
-    "transitionDeclarations": 35,
+    "transitionDeclarations": 38,
     "reducedMotionBlocks": [
       {
-        "line": 1684,
+        "line": 1716,
         "rules": 1,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 1937,
+        "line": 1967,
         "rules": 1,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2105,
+        "line": 2130,
         "rules": 1,
         "disables": []
       },
       {
-        "line": 2638,
+        "line": 2669,
         "rules": 1,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2741,
+        "line": 2774,
         "rules": 2,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2844,
+        "line": 2880,
         "rules": 4,
         "disables": [
           "none"
@@ -121,9 +121,6 @@
         "notice"
       ]
     },
-    "components/ComposerPanels.tsx": {
-      "inlineTransitions": 2
-    },
     "components/DirectoryPicker.tsx": {
       "inlineTransitions": 5
     },
@@ -149,24 +146,10 @@
       "inlineTransitions": 9
     },
     "components/ModelsConfig.tsx": {
-      "inlineTransitions": 6,
+      "inlineTransitions": 8,
       "inlineAnimations": [
         "savedOk"
       ]
-    },
-    "components/OmpBouncingLetter.tsx": {
-      "inlineTransitions": 0,
-      "inlineAnimations": [
-        "omp-solo-jump-o",
-        "omp-solo-jump-m",
-        "omp-solo-jump-p",
-        "none"
-      ],
-      "styleKeyframes": {
-        "omp-solo-jump-o": "182500f560f30031",
-        "omp-solo-jump-m": "9b1693b7e7239381",
-        "omp-solo-jump-p": "ae3157ed0772b229"
-      }
     },
     "components/OmpSetupWizard.tsx": {
       "inlineTransitions": 0,
@@ -189,7 +172,7 @@
       "inlineTransitions": 5
     },
     "components/SettingsTabs.tsx": {
-      "inlineTransitions": 1
+      "inlineTransitions": 3
     },
     "components/SkillsConfig.tsx": {
       "inlineTransitions": 5
@@ -208,6 +191,18 @@
     },
     "components/UsageSidebarPanel.tsx": {
       "inlineTransitions": 1
+    },
+    "components/agents/SubagentCard.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/panels/ResizeHandles.tsx": {
+      "inlineTransitions": 1
+    },
+    "components/panels/RightPanelTabs.tsx": {
+      "inlineTransitions": 1
+    },
+    "components/panels/RightWorkbench.tsx": {
+      "inlineTransitions": 2
     },
     "components/ui/field.tsx": {
       "inlineTransitions": 2

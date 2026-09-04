@@ -48,6 +48,8 @@
 | [14-gpt-review-action-plan.md](./14-gpt-review-action-plan.md) | 评审收敛 | GPT 评审落地：启动/长对话/后端三轮行动 + 发布门 | 阅读全部计划 |
 | [15-v4-production-cutover.md](./15-v4-production-cutover.md) | 生产切换 | v4 主计划落地：Ownership Matrix、R0–R23 路线对照、里程碑与门禁 | 阅读全部计划 |
 | [16-rust-production-cutover-routes.md](./16-rust-production-cutover-routes.md) | 生产切换（重启） | 24 路线主计划：Client SDK/HostClient/二进制定位 + 9 域 Rust Authority 收尾 | 阅读全部计划 |
+| [17-5.1-multidimensional-audit.md](./17-5.1-multidimensional-audit.md) | 5.1 多维审查 | UI/终端/设置/诊断/启动与 Rust Host 的审查记录、阻断项和验证矩阵 | 16 |
+| [18-full-project-closeout.md](./18-full-project-closeout.md) | 全项目收口 | 第二轮大迭代、Web/App 实证、门禁结果、未完成路线与发布边界 | 17 |
 
 ## 依赖主线
 

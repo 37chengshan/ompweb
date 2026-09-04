@@ -44,10 +44,10 @@ function readPairingState(): PairingFileState | null {
 
 function checkPairingGate(request: NextRequest): NextResponse | null {
   // Loopback detection MUST NOT trust the Host header: a LAN attacker can
-  // send `Host: localhost` to bypass the loopback-only token gate. The only
-  // trustworthy signal is the actual socket peer — exposed via CF-Connecting-IP
-  // ONLY behind a trusted reverse proxy, otherwise x-forwarded-for (direct
-  // Node listeners cannot be spoofed by remote clients), otherwise request.ip.
+  // send `Host: localhost` to bypass the loopback-only token gate. A forwarding
+  // header is equally forgeable on a direct listener, so it is considered only
+  // when the operator explicitly declares a trusted reverse proxy. Without a
+  // peer address the request is conservatively classified as non-loopback.
   const loopback = isLoopbackSocket(request);
   const host = request.headers.get("host");
   const hostSaysLocal = !host || isRemoteRequest(host) === false;
@@ -99,13 +99,9 @@ function deny(): NextResponse {
   return NextResponse.json({ error: "Remote access requires a paired device", code: "pairing_required" }, { status: 401 });
 }
 
-/** Socket-peer loopback detection — the trustworthy network source, never
- *  the forgeable Host header. Precedence:
- *   1. CF-Connecting-IP (only trusted when a reverse proxy is configured —
- *      otherwise ignored, because LAN clients could spoof it).
- *   2. x-forwarded-for (Next strips untrusted clients when
- *      `trustHostHeader` is false; direct Node listeners bind the peer).
- *   3. request.ip (the raw socket peer Next resolved). */
+/** Socket-peer loopback detection — never infer a trusted peer from a
+ * forgeable request header. A configured reverse proxy may provide the
+ * client address; otherwise only a runtime-resolved peer IP counts. */
 function isLoopbackSocket(request: NextRequest): boolean {
   const trustedProxy = process.env.OMP_WEB_TRUSTED_PROXY === "1";
   if (trustedProxy) {
@@ -116,25 +112,18 @@ function isLoopbackSocket(request: NextRequest): boolean {
       const first = fwd.split(",")[0]?.trim();
       if (first) return isIpLoopback(first);
     }
+    const forwarded = request.headers.get("forwarded");
+    if (forwarded) {
+      const forMatch = forwarded.match(/(?:^|,\s*)for=(?:"?\[?)([^\];,"\s]+)/);
+      if (forMatch?.[1]) return isIpLoopback(forMatch[1]);
+    }
   }
-  // Raw socket peer, from the x-vercel-forwarded/forwarded chain only when
-  // Next provides it; otherwise we conservatively treat an unknown peer as
-  // loopback. Critical: the Host header is NEVER used as a loopback signal —
-  // a LAN attacker can forge `Host: localhost`, but cannot forge the socket.
-  const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) {
-    const first = fwd.split(",")[0]?.trim();
-    if (first) return isIpLoopback(first);
-  }
-  const forwarded = request.headers.get("forwarded");
-  if (forwarded) {
-    const forMatch = forwarded.match(/(?:^|,\s*)for=(?:"?\[?)([^\];,"\s]+)/);
-    if (forMatch?.[1]) return isIpLoopback(forMatch[1]);
-  }
-  // Source-resolved IP when available; unknown ⇒ conservative loopback.
+  // Source-resolved IP when available. In Next versions that do not expose
+  // it, unknown must fail closed as non-loopback; treating it as local would
+  // silently open a wildcard listener to any LAN client.
   const srcIp = (request as unknown as { ip?: string }).ip;
   if (srcIp) return isIpLoopback(srcIp);
-  return true;
+  return false;
 }
 
 function isIpLoopback(ip: string): boolean {

@@ -13,8 +13,8 @@
 //! loopback-issued — the `05-security-and-device-identity.md` hash
 //! recommendation is queued behind the same dependency gate as ADR-005.
 
-use std::sync::Mutex;
 use rusqlite::{params, Connection};
+use std::sync::Mutex;
 
 pub struct DeviceRecord {
     pub id: String,
@@ -43,14 +43,18 @@ impl DeviceRegistry {
     pub fn open_in_memory() -> rusqlite::Result<Self> {
         let conn = Connection::open_in_memory()?;
         init(&conn)?;
-        Ok(DeviceRegistry { conn: Mutex::new(conn) })
+        Ok(DeviceRegistry {
+            conn: Mutex::new(conn),
+        })
     }
 
     pub fn open(path: &std::path::Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode = WAL;")?;
         init(&conn)?;
-        Ok(DeviceRegistry { conn: Mutex::new(conn) })
+        Ok(DeviceRegistry {
+            conn: Mutex::new(conn),
+        })
     }
 
     // ── enrollment tokens ────────────────────────────────────────────────
@@ -60,7 +64,10 @@ impl DeviceRegistry {
     /// mirroring PairingService.issue).
     pub fn issue_token(&self, value: &str, expires_at: i64) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM enrollment_tokens WHERE consumed_at IS NULL", [])?;
+        conn.execute(
+            "DELETE FROM enrollment_tokens WHERE consumed_at IS NULL",
+            [],
+        )?;
         conn.execute(
             "INSERT INTO enrollment_tokens (value, expires_at) VALUES (?1, ?2)",
             params![value, expires_at],
@@ -91,7 +98,14 @@ impl DeviceRegistry {
 
     // ── devices ──────────────────────────────────────────────────────────
 
-    pub fn register_device(&self, id: &str, name: &str, platform: &str, auth_secret: &str, now_ms: i64) -> rusqlite::Result<()> {
+    pub fn register_device(
+        &self,
+        id: &str,
+        name: &str,
+        platform: &str,
+        auth_secret: &str,
+        now_ms: i64,
+    ) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT OR REPLACE INTO devices (id, enrolled_at, last_seen, name, platform, revoked_at, auth_secret) VALUES (?1, ?2, ?2, ?3, ?4, NULL, ?5)",
@@ -121,7 +135,10 @@ impl DeviceRegistry {
     /// Revoke all devices and drop the unconsumed token (stop()).
     pub fn revoke_all(&self, now_ms: i64) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("UPDATE devices SET revoked_at = ?1 WHERE revoked_at IS NULL", params![now_ms])?;
+        conn.execute(
+            "UPDATE devices SET revoked_at = ?1 WHERE revoked_at IS NULL",
+            params![now_ms],
+        )?;
         conn.execute("DELETE FROM enrollment_tokens", [])?;
         Ok(())
     }
@@ -214,9 +231,7 @@ fn init(conn: &Connection) -> rusqlite::Result<()> {
         names
     };
     if !names.iter().any(|name| name == "auth_secret") {
-        conn.execute_batch(
-            "ALTER TABLE devices ADD COLUMN auth_secret TEXT NOT NULL DEFAULT '';",
-        )?;
+        conn.execute_batch("ALTER TABLE devices ADD COLUMN auth_secret TEXT NOT NULL DEFAULT '';")?;
     }
     Ok(())
 }
@@ -245,11 +260,17 @@ mod tests {
     fn device_register_touch_revoke_list_and_cap() {
         let registry = DeviceRegistry::open_in_memory().unwrap();
         let now = 1_000_000i64;
-        registry.register_device("dev-1", "Phone", "ios", "secret-1", now).unwrap();
-        registry.register_device("dev-2", "PC", "darwin", "secret-2", now + 1).unwrap();
-        registry.register_device("dev-3", "PC", "win32", "secret-3", now + 2).unwrap();
+        registry
+            .register_device("dev-1", "Phone", "ios", "secret-1", now)
+            .unwrap();
+        registry
+            .register_device("dev-2", "PC", "darwin", "secret-2", now + 1)
+            .unwrap();
+        registry
+            .register_device("dev-3", "PC", "win32", "secret-3", now + 2)
+            .unwrap();
         assert!(registry.touch("dev-1", now + 100).unwrap());
-        assert!(registry.touch("nope", now).unwrap() == false);
+        assert!(!registry.touch("nope", now).unwrap());
         registry.enforce_max_devices(2, now + 10_000).unwrap();
         let devices = registry.list_devices().unwrap();
         let alive: Vec<&DeviceRecord> = devices.iter().filter(|d| d.revoked_at.is_none()).collect();
@@ -265,9 +286,16 @@ mod tests {
         let registry = DeviceRegistry::open_in_memory().unwrap();
         let now = 1_000_000i64;
         registry.issue_token("t", now + 1000).unwrap();
-        registry.register_device("d", "Phone", "ios", "secret-d", now).unwrap();
+        registry
+            .register_device("d", "Phone", "ios", "secret-d", now)
+            .unwrap();
         registry.revoke_all(now + 50).unwrap();
         assert!(!registry.token_exists("t", now + 50).unwrap());
-        assert!(registry.get_device("d").unwrap().unwrap().revoked_at.is_some());
+        assert!(registry
+            .get_device("d")
+            .unwrap()
+            .unwrap()
+            .revoked_at
+            .is_some());
     }
 }

@@ -63,10 +63,14 @@ domains:
     fallback: node
     migrate: R12  # status/branches/checkout/commit/push/diff 走 host；worktree list/add/remove 显式豁免 Node（编排 in-memory file-root allowlist + 项目缓存，Node 为根集权威）
   settings:
-    authority: node
+    authority: rust
+    fallback: node
     evidence:
+      - crates/ompweb-host/src/settings_service.rs
+      - lib/omp/host-client.ts
       - lib/omp/settings-service.ts
       - app/api/omp-settings
+      - app/api/native-settings
     migrate: R13
   commands:
     authority: rust

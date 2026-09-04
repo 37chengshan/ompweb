@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { BackendHealthBanner } from "./BackendDiagnostics";
+import { TooltipProvider } from "./ui/primitives";
 import { ToastProvider } from "./ui/toast";
 import { toast } from "./ui/toast";
 import { ChatWindow } from "./ChatWindow";
@@ -16,7 +17,12 @@ import { Check, CircleCheck, FolderGit2, History, Menu, Moon, PanelLeft, Search,
 import { ThemePicker } from "./ThemePicker";
 import { DesktopUpdateBanner } from "./DesktopUpdateBanner";
 import { OmpSetupWizard } from "./OmpSetupWizard";
-import { TerminalPanel } from "./TerminalPanel";
+import { TerminalTabs } from "./terminal/TerminalTabs";
+import { RightWorkbench } from "./panels/RightWorkbench";
+import { PanelErrorBoundary } from "./panels/PanelErrorBoundary";
+import { AgentsPanel } from "./agents/AgentsPanel";
+import { FileExplorer } from "./FileExplorer";
+import { SubagentDetailPanel } from "./agents/SubagentDetailPanel";
 import { useTheme } from "@/hooks/useTheme";
 import { formatCompactNumber, formatPercent, getCacheHitRate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -31,7 +37,7 @@ import { showCompletionNotification } from "@/lib/browser-notifications";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
-import type { SlashCommandInfo } from "@/hooks/useAgentSession";
+import type { SubagentInfo } from "@/hooks/useAgentSession";
 import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
 import { ArchiveBrowser } from "./ArchiveBrowser";
@@ -54,12 +60,32 @@ const THINKING_DISPLAY_MODE_STORAGE_KEY = "omp-web:thinking-display-mode";
 export type ThinkingDisplayMode = "auto" | "collapsed" | "expanded";
 const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 520;
-/** Right (file/plan) panel: draggable floor — never closes on drag. */
+/** Right workbench floor.  The rail is intentionally not draggable; its only
+ * structural affordance is the explicit upper/lower split inside the panel. */
 const RIGHT_PANEL_MIN_WIDTH = 180;
 const SIDEBAR_DEFAULT_WIDTH = 260;
-
+const GITHUB_TRIGGER_DEFAULT_TOP = 72;
+const GITHUB_TRIGGER_STORAGE_KEY = "omp-web:github-trigger-top";
+const GITHUB_TRIGGER_MIN_TOP = 48;
+const GITHUB_TRIGGER_HEIGHT = 40;
 function clampSidebarWidth(width: number): number {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
+}
+
+/** The floating Git handle is deliberately free on the vertical axis, but it
+ * must never disappear under the browser chrome or input area. */
+function clampGithubTriggerTop(top: number, viewportHeight = typeof window === "undefined" ? 900 : window.innerHeight): number {
+  return Math.max(GITHUB_TRIGGER_MIN_TOP, Math.min(Math.round(top), Math.max(GITHUB_TRIGGER_MIN_TOP, viewportHeight - GITHUB_TRIGGER_HEIGHT - 12)));
+}
+
+function loadGithubTriggerTop(): number {
+  if (typeof window === "undefined") return GITHUB_TRIGGER_DEFAULT_TOP;
+  try {
+    const stored = Number(window.localStorage.getItem(GITHUB_TRIGGER_STORAGE_KEY));
+    return Number.isFinite(stored) ? clampGithubTriggerTop(stored) : GITHUB_TRIGGER_DEFAULT_TOP;
+  } catch {
+    return GITHUB_TRIGGER_DEFAULT_TOP;
+  }
 }
 
 function loadSidebarWidth(): number {
@@ -150,66 +176,43 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
+    return loadSidebarWidth();
+  });
   const [toolCallsDefaultCollapsed, setToolCallsDefaultCollapsed] = useState(true);
   const [thinkingDisplayMode, setThinkingDisplayMode] = useState<ThinkingDisplayMode>("auto");
   const [sidebarResizing, setSidebarResizing] = useState(false);
-  const [terminalOpen, setTerminalOpen] = useState(false);
   // Quick-script "run in terminal": { text, nonce } bumps trigger the terminal
   // to type the command + Enter once the panel session is live.
   const [terminalRunCommand, setTerminalRunCommand] = useState<{ text: string; nonce: number } | null>(null);
-  const terminalRunNonceRef = useRef(0);
-  const openTerminalWithCommand = useCallback((cwd: string | null, command: string) => {
-    // Route the run to the terminal drawer: if the drawer was closed, opening
-    // it with cwd spawns a fresh PTY there; the command queues until live.
-    setTerminalRunCommand({ text: command, nonce: ++terminalRunNonceRef.current });
-    setTerminalOpen(true);
-    void cwd;
-  }, []);
-  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+  // Keep the last known width for continuity with existing installs, but do
+  // not expose a drag handle: the workbench rail is structurally fixed now.
+  const [rightPanelWidth] = useState<number>(() => {
     if (typeof window === "undefined") return 480;
     try {
       const raw = localStorage.getItem("omp-right-panel-width");
-      return raw ? Number(raw) : 480;
+      const parsed = raw ? Number(raw) : 480;
+      return Number.isFinite(parsed) ? Math.min(640, Math.max(360, parsed)) : 480;
     } catch {
       return 480;
     }
   });
+  // Live subagent roster lifted from the active ChatWindow (session-scoped).
+  const [subagents, setSubagents] = useState<SubagentInfo[] | null>(null);
+  const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
+  useEffect(() => {
+    // A transcript belongs to one parent session. Never leave a detail view
+    // pointing at the previous session while the sidebar selection changes.
+    setSelectedSubagent(null);
+  }, [selectedSession?.id, newSessionCwd]);
 
-  const handleRightResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = rightPanelWidth;
-
-    const onMouseMove = (ev: MouseEvent) => {
-      const delta = startX - ev.clientX;
-      const newW = startW + delta;
-      // Dragging narrower must keep the panel visible (clamp to the minimum
-      // width) — closing it mid-drag made it "disappear" for no reason. The
-      // toolbar toggle is the explicit close affordance.
-      setRightPanelOpen(true);
-      const clamped = Math.min(window.innerWidth * 0.75, Math.max(RIGHT_PANEL_MIN_WIDTH, newW));
-      setRightPanelWidth(clamped);
-      try {
-        localStorage.setItem("omp-right-panel-width", String(clamped));
-      } catch {}
-    };
-
-    const onMouseUp = () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  }, [rightPanelWidth]);
   // Active drag handlers so an unmount mid-drag can detach them.
   const sidebarResizeHandlersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
   // DOM element + live width during a drag (see handleSidebarResizeStart).
   const sidebarContainerRef = useRef<HTMLDivElement>(null);
   const pendingSidebarWidthRef = useRef<number>(SIDEBAR_DEFAULT_WIDTH);
   useEffect(() => {
-    setSidebarWidth(loadSidebarWidth());
     // T1.3: first interactive frame mounted → shell_mounted stage for the
     // desktop startup timeline (no-op in plain browsers).
     (window as { ompWebDesktop?: { startupStage?: (stage: string) => void } }).ompWebDesktop?.startupStage?.("shell_mounted");
@@ -270,6 +273,16 @@ export function AppShell() {
   }, [isMobile]);
   useEffect(() => {
     setMobileSidebarReady(true);
+  }, []);
+  // Pause continuous animations when the browser tab is hidden to conserve power
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const updateVisibility = () => {
+      document.documentElement.setAttribute("data-hidden", document.hidden ? "true" : "false");
+    };
+    updateVisibility();
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
   }, []);
   // Chrome does not blur a focused descendant when a subtree becomes
   // aria-hidden + inert (e.g. tapping a session button closes the mobile
@@ -365,6 +378,10 @@ export function AppShell() {
   const systemBtnRef = useRef<HTMLButtonElement>(null);
   const sessionStatsBtnRef = useRef<HTMLButtonElement>(null);
   const githubBtnRef = useRef<HTMLButtonElement>(null);
+  const githubTriggerDragRef = useRef<{ startY: number; startTop: number; moved: boolean } | null>(null);
+  const suppressGithubTriggerClickRef = useRef(false);
+  const [githubTriggerTop, setGithubTriggerTop] = useState(loadGithubTriggerTop);
+  const [githubTriggerDragging, setGithubTriggerDragging] = useState(false);
 
   const handleSystemPromptChange = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
@@ -420,6 +437,55 @@ export function AppShell() {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile]);
+
+  const persistGithubTriggerTop = useCallback((top: number) => {
+    try { window.localStorage.setItem(GITHUB_TRIGGER_STORAGE_KEY, String(top)); } catch { /* storage is optional */ }
+  }, []);
+
+  const handleGithubTriggerPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    githubTriggerDragRef.current = { startY: event.clientY, startTop: githubTriggerTop, moved: false };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, [githubTriggerTop]);
+
+  const handleGithubTriggerPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = githubTriggerDragRef.current;
+    if (!drag) return;
+    const next = clampGithubTriggerTop(drag.startTop + event.clientY - drag.startY);
+    if (Math.abs(event.clientY - drag.startY) > 3) {
+      drag.moved = true;
+      suppressGithubTriggerClickRef.current = true;
+      setGithubTriggerDragging(true);
+    }
+    setGithubTriggerTop(next);
+  }, []);
+
+  const finishGithubTriggerDrag = useCallback((event?: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = githubTriggerDragRef.current;
+    if (!drag) return;
+    githubTriggerDragRef.current = null;
+    setGithubTriggerDragging(false);
+    const next = clampGithubTriggerTop(drag.startTop + ((event?.clientY ?? drag.startY) - drag.startY));
+    setGithubTriggerTop(next);
+    if (drag.moved) persistGithubTriggerTop(next);
+    if (event?.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }, [persistGithubTriggerTop]);
+
+  const resetGithubTriggerPosition = useCallback(() => {
+    const next = clampGithubTriggerTop(GITHUB_TRIGGER_DEFAULT_TOP);
+    setGithubTriggerTop(next);
+    persistGithubTriggerTop(next);
+  }, [persistGithubTriggerTop]);
+
+  useEffect(() => {
+    const onResize = () => setGithubTriggerTop((top) => {
+      const next = clampGithubTriggerTop(top);
+      if (next !== top) persistGithubTriggerTop(next);
+      return next;
+    });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [persistGithubTriggerTop]);
 
   // Generation speed — current live t/s and the session average.
   const [generationSpeed, setGenerationSpeed] = useState<GenerationSpeedInfo | null>(null);
@@ -549,7 +615,7 @@ export function AppShell() {
       if (event.target instanceof Element && event.target.closest("[data-top-panel]")) return;
       if (systemBtnRef.current?.contains(event.target as Node)) return;
       if (sessionStatsBtnRef.current?.contains(event.target as Node)) return;
-      if (githubBtnRef.current?.contains(event.target as Node)) return;
+      if (githubBtnRef.current?.contains(event.target as Node) || (event.target instanceof Element && event.target.closest("[data-github-status-trigger]"))) return;
       // GitHub status is a pinned workspace panel. It remains open while the
       // user inspects files or messages and closes only from its trigger or Esc.
       if (activeTopPanel === "github") return;
@@ -568,10 +634,29 @@ export function AppShell() {
     };
   }, [activeTopPanel]);
 
-  // Right panel — file tabs only
+  // Right workbench owns Files, Agents, Browser and Side chat. Terminal remains
+  // a dedicated bottom bar/drawer so its resize and PTY lifecycle stay clear.
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalCwd, setTerminalCwd] = useState<string | null>(null);
+
+  // Quick-script "run in terminal" → open the bottom terminal drawer and queue
+  // the command for the active (or a new) tab. The command object lives in
+  // parent state and is dropped on onRunCommandConsumed (a TerminalTabs remount
+  // must never re-run it), so the parent never needs to observe consumption —
+  // dropping is the observation.
+  const terminalRunNonceRef = useRef(0);
+  const openTerminalWithCommand = useCallback((cwd: string | null, command: string) => {
+    setTerminalCwd(cwd ?? selectedSession?.cwd ?? null);
+    setTerminalRunCommand({ text: command, nonce: ++terminalRunNonceRef.current });
+    setTerminalOpen(true);
+  }, [selectedSession?.cwd]);
+  const toggleTerminalPanel = useCallback(() => {
+    setTerminalCwd((current) => current ?? selectedSession?.cwd ?? null);
+    setTerminalOpen((open) => !open);
+  }, [selectedSession?.cwd]);
 
   // Keep the GitHub status trigger on the chat side of the file viewer.  A
   // persisted width can be larger than the available viewport, so use the
@@ -598,12 +683,17 @@ export function AppShell() {
 
   const initialSessionId = initialNavigation.sessionId;
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
-  const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
   // The boot gate stays closed until the sidebar has either restored a URL /
   // remembered session or conclusively found no session to restore.
   const [initialSessionRestored, setInitialSessionRestored] = useState(false);
-  // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
-  const suppressCwdBumpRef = useRef(false);
+  // The sidebar updates selectedCwd before invoking onSelectSession. Keep the
+  // expected project as a token rather than a boolean: rapid clicks can emit
+  // a stale cwd event first, and consuming a boolean there used to clear the
+  // newly selected session and produce twitching/blank transcripts.
+  const suppressCwdBumpRef = useRef<{ project: string; expiresAt: number } | null>(null);
+  const armCwdSuppression = useCallback((project: string) => {
+    suppressCwdBumpRef.current = { project: comparableProjectPath(project), expiresAt: Date.now() + 1500 };
+  }, []);
 
   useEffect(() => {
     const requestedCwd = initialNavigation.requestedCwd;
@@ -627,7 +717,7 @@ export function AppShell() {
 
         // The sidebar will notify us when it adopts this cwd. Avoid remounting
         // the just-created empty chat during that initial synchronization.
-        suppressCwdBumpRef.current = true;
+        armCwdSuppression(data.cwd);
         setNewSessionCwd(data.cwd);
         setInitialCwdStatus("ready");
         setInitialSessionRestored(true);
@@ -640,15 +730,26 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [initialNavigation]);
+  }, [initialNavigation, armCwdSuppression]);
 
   const handleCwdChange = useCallback((cwd: string | null, projectRoot?: string | null) => {
     setActiveCwd(cwd);
     // Skip if cwd is null (initial mount) or during the initial URL restore.
     if (!cwd) return;
-    if (suppressCwdBumpRef.current) {
-      suppressCwdBumpRef.current = false;
-      return;
+    const newProject = projectRoot ?? cwd;
+    const pendingCwd = suppressCwdBumpRef.current;
+    if (pendingCwd) {
+      if (Date.now() > pendingCwd.expiresAt) {
+        suppressCwdBumpRef.current = null;
+      } else if (pendingCwd.project === comparableProjectPath(newProject)) {
+        suppressCwdBumpRef.current = null;
+        return;
+      } else {
+        // This is an out-of-order event from the previous project. Do not
+        // tear down the session selected by the user; wait for its matching
+        // cwd event (or the short expiry above).
+        return;
+      }
     }
     // Worktrees of one repo share a project root. Moving the effective cwd
     // within the same project (e.g. switching worktree, or clicking a session
@@ -656,7 +757,6 @@ export function AppShell() {
     // Compare case-folded: the same folder can be spelled with different
     // casing (Windows/NTFS) between the session's projectRoot and the
     // sidebar's resolved project root.
-    const newProject = projectRoot ?? cwd;
     const sessionProject = selectedSession ? (selectedSession.projectRoot ?? selectedSession.cwd) : null;
     if (sessionProject && comparableProjectPath(sessionProject) === comparableProjectPath(newProject)) {
       return;
@@ -675,7 +775,7 @@ export function AppShell() {
     setSystemPromptLoading(false);
     setActiveTopPanel(null);
     router.replace("/", { scroll: false });
-  }, [router, selectedSession]);
+  }, [router, selectedSession, armCwdSuppression]);
 
   // Client-built transient SessionInfo (new session / fork) lacks the
   // server-computed projectRoot, which the same-project check in
@@ -705,7 +805,7 @@ export function AppShell() {
     // change effect fires after this callback. Without suppressing it, a
     // cross-project click first selects the session, then handleCwdChange
     // clears the selection again ("clicking a session does nothing").
-    suppressCwdBumpRef.current = true;
+    armCwdSuppression(session.projectRoot ?? session.cwd);
     // Transient sessions (new/fork) lack projectRoot, which the
     // same-project check in handleCwdChange relies on — hydrate it so the
     // comparison cannot misfire and close the chat we just opened.
@@ -715,7 +815,7 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [router, isMobile, hydrateSelectedSession]);
+  }, [router, isMobile, hydrateSelectedSession, armCwdSuppression]);
 
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
@@ -1000,6 +1100,7 @@ export function AppShell() {
 
   return (
     <>
+    <TooltipProvider delay={400} closeDelay={50}>
     <ToastProvider>
     <style>{`
       @keyframes session-info-pop {
@@ -1125,7 +1226,7 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, minHeight: 0 }}>
         {ompMissing && !ompMissingDismissed && (
           <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 14px", background: "color-mix(in srgb, var(--status-warning) 12%, var(--bg-panel))", borderBottom: "1px solid color-mix(in srgb, var(--status-warning) 35%, var(--border))", fontSize: 12, color: "var(--text)", flexShrink: 0 }}>
             <span style={{ flex: 1, minWidth: 0 }}>
@@ -1172,9 +1273,9 @@ export function AppShell() {
           <ThemePicker />
           <button
             type="button"
-            onClick={() => setTerminalOpen((v) => !v)}
-            title={terminalOpen ? (t("appShell.hideTerminal") || "隐藏页面内嵌终端") : (t("appShell.toggleTerminal") || "切换页面内嵌终端 (Terminal)")}
-            aria-label={t("appShell.toggleTerminal") || "切换页面内嵌终端"}
+            onClick={toggleTerminalPanel}
+            title={terminalOpen ? (t("appShell.hideTerminal") || "收起终端") : (t("appShell.toggleTerminal") || "打开终端 (Terminal)")}
+            aria-label={t("appShell.toggleTerminal") || "切换终端"}
             aria-pressed={terminalOpen}
             className="shell-toolbar-btn ui-focus-ring"
             style={{
@@ -1255,6 +1356,7 @@ export function AppShell() {
                 aria-label={t("appShell.githubStatus")}
                 aria-pressed={activeTopPanel === "github"}
                 className="shell-toolbar-btn ui-focus-ring"
+                data-github-status-trigger
                 style={{ color: activeTopPanel === "github" ? "var(--accent)" : undefined, background: activeTopPanel === "github" ? "var(--bg-selected)" : undefined }}
               >
                 <FolderGit2 size={16} strokeWidth={1.8} aria-hidden="true" />
@@ -1488,7 +1590,7 @@ export function AppShell() {
               )}
               {activeTopPanel === "github" && (
                 <div style={{ background: "var(--bg-panel)", boxShadow: "var(--shadow-pop)" }}>
-                  <GitHubStatusPanel cwd={activeCwd ?? selectedSession?.cwd ?? null} slashCommands={slashCommands} onInsertCommand={(command) => chatInputRef.current?.insertText(command)} />
+                  <GitHubStatusPanel cwd={activeCwd ?? selectedSession?.cwd ?? null} />
                 </div>
               )}
               {activeTopPanel === "session" && (
@@ -1682,10 +1784,8 @@ export function AppShell() {
               onGenerationSpeedChange={handleGenerationSpeedChange}
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
               thinkingDisplayMode={thinkingDisplayMode}
-              terminalOpen={terminalOpen}
-              onCloseTerminal={() => setTerminalOpen(false)}
               onOpenPlan={() => selectedSession && handleOpenPlan(selectedSession.id)}
-              onSlashCommandsChange={setSlashCommands}
+              onSubagentsChange={setSubagents}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -1743,122 +1843,124 @@ export function AppShell() {
             )
           )}
         </div>
-        {/* Bottom Terminal Drawer */}
-        <TerminalPanel
-          open={terminalOpen}
-          onClose={() => setTerminalOpen(false)}
-          cwd={activeCwd ?? undefined}
-          runCommand={terminalRunCommand}
-        />
+        {/* Bottom terminal bar. It remains independent from the right
+            workbench so the terminal always has a predictable home and its
+            tab/PTY lifecycle is not tied to sidebar navigation. */}
+        <div
+          style={{
+            display: terminalOpen ? "flex" : "none",
+            flexDirection: "column",
+            flexShrink: 0,
+            borderTop: terminalOpen ? "1px solid var(--border)" : "none",
+            background: "var(--bg)",
+          }}
+        >
+          <TerminalTabs
+            open={terminalOpen}
+            onClose={() => setTerminalOpen(false)}
+            cwd={terminalCwd ?? activeCwd ?? null}
+            runCommand={terminalRunCommand}
+            onRunCommandConsumed={() => setTerminalRunCommand(null)}
+          />
+        </div>
       </main>
 
-      {/* Right panel: file viewer — always mounted, width animated via CSS */}
-      <div
-        className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}`}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          borderLeft: rightPanelOpen ? "1px solid var(--border)" : "none",
-          background: "var(--bg)",
-          // Draggable width, but never let the panel crowd the chat out when
-          // the window shrinks: cap it so the sidebar + a readable chat column
-          // always fit (360px = ~260 sidebar + ~100 chat floor).
-          width: rightPanelOpen ? (isMobile ? "100%" : `${rightPanelWidth}px`) : 0,
-          minWidth: rightPanelOpen ? (isMobile ? 0 : RIGHT_PANEL_MIN_WIDTH) : 0,
-          maxWidth: rightPanelOpen && !isMobile ? "calc(100vw - 360px)" : undefined,
-          position: "relative",
-        }}
-      >
-        {rightPanelOpen && !isMobile && (
-          <div
-            onMouseDown={handleRightResizeStart}
-            title="拖拽调节右侧栏宽度，向右拖拽收缩"
-            style={{
-              position: "absolute",
-              top: 0,
-              left: -4,
-              bottom: 0,
-              width: 8,
-              cursor: "col-resize",
-              zIndex: 40,
-            }}
+      {/* Native right workbench. It opens to a calm empty state and supports
+          one explicit upper/lower split; terminal stays in the bottom bar. */}
+        <div
+          className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}`}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            borderLeft: rightPanelOpen ? "1px solid var(--border)" : "none",
+            background: "var(--bg)",
+            // Keep a readable chat column when the panel is resized.
+            width: rightPanelOpen ? (isMobile ? "100%" : `${rightPanelWidth}px`) : 0,
+            minWidth: rightPanelOpen ? (isMobile ? 0 : RIGHT_PANEL_MIN_WIDTH) : 0,
+            maxWidth: rightPanelOpen && !isMobile ? "calc(100vw - 360px)" : undefined,
+            position: "relative",
+          }}
+        >
+          <RightWorkbench
+            storageKey={selectedSession?.id ?? activeCwd ?? newSessionCwd ?? "new"}
+            cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd}
+            files={(
+              <PanelErrorBoundary title={t("rightPanel.files") ?? "Files"} unavailable={t("rightPanel.unavailable") ?? "is temporarily unavailable"} retryLabel={t("rightPanel.retry") ?? "Retry"}>
+                <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", flexShrink: 0, background: "var(--bg-panel)", borderBottom: "1px solid var(--border)", height: 36 }}>
+                    <div style={{ flex: 1, overflow: "hidden" }}>
+                      <TabBar tabs={fileTabs} activeTabId={activeFileTabId ?? ""} onSelectTab={setActiveFileTabId} onCloseTab={handleCloseFileTab} />
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                    {fileTabs.length > 0 ? fileTabs.map((tab) => (
+                      <div key={tab.id} style={{ display: tab.id === activeFileTabId ? "block" : "none", height: "100%", minHeight: 0 }}>
+                        <FileViewer filePath={tab.filePath} cwd={activeCwd ?? undefined} sourceSessionId={tab.sourceSessionId} gitRefreshKey={explorerRefreshKey} onMentionLines={tab.id === activeFileTabId && rightPanelOpen ? handleFileLineMention : undefined} onOpenFile={(filePath) => handleOpenFile(filePath, getFileName(filePath), tab.sourceSessionId)} />
+                      </div>
+                    )) : activeCwd ? (
+                      <FileExplorer cwd={activeCwd} refreshKey={explorerRefreshKey} onOpenFile={handleOpenFile} onAtMention={handleAtMention} onAtMentions={handleAtMentions} onRefreshDone={handleExplorerRefreshDone} />
+                    ) : (
+                      <div style={{ padding: 20, color: "var(--text-dim)", fontSize: 12, textAlign: "center" }}>{t("appShell.noActiveSession") ?? "Open a workspace to browse files."}</div>
+                    )}
+                  </div>
+                </div>
+              </PanelErrorBoundary>
+            )}
+            agents={(
+              <PanelErrorBoundary title={t("rightPanel.agents") ?? "Agents"} unavailable={t("rightPanel.unavailable") ?? "is temporarily unavailable"} retryLabel={t("rightPanel.retry") ?? "Retry"}>
+                {selectedSubagent ? <SubagentDetailPanel subagent={selectedSubagent} sessionId={selectedSession?.id ?? null} onBack={() => setSelectedSubagent(null)} /> : subagents ? <AgentsPanel subagents={subagents} onSelectSubagent={(subagent) => { setSelectedSubagent(subagent); setRightPanelOpen(true); }} /> : <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12, textAlign: "center", padding: 24 }}>{t("appShell.noActiveSession") ?? "Open a session to see its agents."}</div>}
+              </PanelErrorBoundary>
+            )}
           />
-        )}
-        {/* Right panel tab bar */}
-        <div style={{ display: "flex", alignItems: "center", flexShrink: 0, background: "var(--bg-panel)", borderBottom: "1px solid var(--border)", height: 36 }}>
-          <div style={{ flex: 1, overflow: "hidden" }}>
-            <TabBar
-              tabs={fileTabs}
-              activeTabId={activeFileTabId ?? ""}
-              onSelectTab={setActiveFileTabId}
-              onCloseTab={handleCloseFileTab}
-            />
-          </div>
-
         </div>
-
-        {/* Keep open viewers mounted so switching tabs preserves scroll and preview state. */}
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          {fileTabs.length > 0 ? fileTabs.map((tab) => (
-            <div key={tab.id} style={{ display: tab.id === activeFileTabId ? "block" : "none", height: "100%" }}>
-              <FileViewer
-                filePath={tab.filePath}
-                cwd={activeCwd ?? undefined}
-                sourceSessionId={tab.sourceSessionId}
-                gitRefreshKey={explorerRefreshKey}
-                onMentionLines={tab.id === activeFileTabId && rightPanelOpen ? handleFileLineMention : undefined}
-                onOpenFile={(filePath) => handleOpenFile(
-                  filePath,
-                  getFileName(filePath),
-                  tab.sourceSessionId,
-                )}
-              />
-            </div>
-          )) : (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
-              {t("appShell.noFileOpen")}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-    {/* File panel toggle — always visible at top-right */}
-    <button
-      onClick={() => setRightPanelOpen((v) => !v)}
-      title={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
-      aria-label={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
-      style={{
-        position: "fixed", top: 0, right: 0, zIndex: 300,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
-        background: "var(--bg-panel)", border: "none", borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
-        color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
-        cursor: "pointer", transition: "color var(--dur-fast) var(--ease-out-warm)",
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
-      </svg>
-    </button>
-    {/* GitHub status trigger — pinned in the foreground so the workspace panel
-        can be reopened without relying on the transient top-bar layout.
-        Chat view offsets past the ChatMinimap rail (36px wide at right:8) so
-        the scrollbar stays clickable; file view has no rail and hugs the edge. */}
+      {/* File panel toggle — always visible at top-right */}
+      <button
+        onClick={() => { setRightPanelOpen((v) => !v); }}
+        title={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
+        aria-label={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
+        style={{
+          position: "fixed", top: 0, right: 0, zIndex: 300,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
+          background: "var(--bg-panel)", border: "none", borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
+          color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
+          cursor: "pointer", transition: "color var(--dur-fast) var(--ease-out-warm)",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
+        </svg>
+      </button>
+    {/* GitHub status trigger — a vertically movable edge handle. The Git
+        popover stays exactly as before; only this opener may be repositioned. */}
     {(showChat || activeCwd) && (
       <button
         ref={githubBtnRef}
         type="button"
-        onClick={() => toggleTopPanel("github")}
-        title={t("appShell.githubStatus")}
+        onClick={(event) => {
+          if (suppressGithubTriggerClickRef.current) {
+            event.preventDefault();
+            suppressGithubTriggerClickRef.current = false;
+            return;
+          }
+          toggleTopPanel("github");
+        }}
+        onPointerDown={handleGithubTriggerPointerDown}
+        onPointerMove={handleGithubTriggerPointerMove}
+        onPointerUp={finishGithubTriggerDrag}
+        onPointerCancel={finishGithubTriggerDrag}
+        onLostPointerCapture={finishGithubTriggerDrag}
+        onDoubleClick={resetGithubTriggerPosition}
+        title={`${t("appShell.githubStatus")} · 拖动可上下移动，双击恢复默认位置`}
         aria-label={t("appShell.githubStatus")}
         aria-pressed={activeTopPanel === "github"}
         aria-haspopup="dialog"
         aria-controls="github-status-panel"
         className="github-fixed-trigger ui-focus-ring"
         data-github-status-trigger
-        style={{ right: `calc(${rightPanelInset} + ${showChat ? 48 : 4}px)` }}
+        style={{ top: githubTriggerTop, right: `calc(${rightPanelInset} + ${showChat ? 48 : 4}px)`, touchAction: "none", cursor: githubTriggerDragging ? "grabbing" : "grab" }}
       >
         <FolderGit2 size={16} strokeWidth={1.8} aria-hidden="true" />
       </button>
@@ -1874,7 +1976,9 @@ export function AppShell() {
         onRestored={handleArchiveRestored}
       />
     )}
+    </div>
     </ToastProvider>
+    </TooltipProvider>
     <DesktopUpdateBanner />
     </>
   );

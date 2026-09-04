@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Gauge, LoaderCircle, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, Gauge, LoaderCircle, RefreshCw, Settings2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { formatCompactNumber } from "@/lib/format";
 import type { ProviderUsageReport, ProviderUsageWindow } from "@/lib/provider-usage-types";
 
 const USAGE_PANEL_OPEN_KEY = "omp-web:usage-panel-open";
+const USAGE_VISIBLE_ACCOUNTS_KEY = "omp-web:usage-visible-accounts";
 
 type WindowKey = "fiveHour" | "sevenDay" | "monthly";
 const WINDOW_KEYS: Array<{ key: WindowKey; label: string }> = [
@@ -54,6 +55,8 @@ export function UsageSidebarPanel() {
   const [closing, setClosing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [manageAccounts, setManageAccounts] = useState(false);
+  const [hiddenAccounts, setHiddenAccounts] = useState<Set<string>>(new Set());
   const loadedRef = useRef(false);
 
   const load = useCallback(() => {
@@ -85,6 +88,23 @@ export function UsageSidebarPanel() {
       load();
     }
   }, [open, load]);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(USAGE_VISIBLE_ACCOUNTS_KEY) || "[]") as unknown;
+      if (Array.isArray(saved)) setHiddenAccounts(new Set(saved.filter((value): value is string => typeof value === "string")));
+    } catch { /* ignore malformed/private storage */ }
+  }, []);
+
+  const accountKey = useCallback((report: ProviderUsageReport, index: number) => `${report.provider}:${report.accountLabel ?? report.accountIndex ?? index + 1}`, []);
+  const toggleAccount = useCallback((key: string) => {
+    setHiddenAccounts((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try { window.localStorage.setItem(USAGE_VISIBLE_ACCOUNTS_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   // Keep the body mounted briefly after close so the exit animation can play.
   useEffect(() => {
@@ -161,12 +181,28 @@ export function UsageSidebarPanel() {
             </div>
           )}
 
-          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>{t("sidebar.usageLimits")}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ flex: 1, fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>{t("sidebar.usageLimits")}</div>
+            <button type="button" onClick={() => setManageAccounts((value) => !value)} aria-expanded={manageAccounts} aria-label={t("sidebar.usageManageAccounts")} title={t("sidebar.usageManageAccounts")} style={{ display: "grid", placeItems: "center", width: 22, height: 22, padding: 0, border: "1px solid var(--border)", borderRadius: 5, background: manageAccounts ? "var(--bg-selected)" : "var(--bg-panel)", color: manageAccounts ? "var(--accent)" : "var(--text-dim)", cursor: "pointer" }}><Settings2 size={12} aria-hidden="true" /></button>
+          </div>
+          {manageAccounts && (reports ?? []).length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 7px", border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg-subtle)" }}>
+              <div style={{ fontSize: 10, color: "var(--text-dim)", lineHeight: 1.4 }}>{t("sidebar.usageManageHint")}</div>
+              {(reports ?? []).map((report, index) => {
+                const key = accountKey(report, index);
+                const hidden = hiddenAccounts.has(key);
+                return <button key={`manage-${key}`} type="button" onClick={() => toggleAccount(key)} aria-pressed={!hidden} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 24, padding: "2px 3px", border: 0, background: "transparent", color: hidden ? "var(--text-dim)" : "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 10.5, opacity: hidden ? 0.65 : 1 }}>
+                  {hidden ? <EyeOff size={12} aria-hidden="true" /> : <Eye size={12} aria-hidden="true" />}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{report.provider} · {report.accountLabel ?? t("appShell.account", { number: report.accountIndex ?? index + 1 })}</span>
+                </button>;
+              })}
+            </div>
+          )}
           {(reports ?? []).length === 0 && !error && (
             <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.usageEmpty")}</span>
           )}
-          {(reports ?? []).map((report, index) => (
-            <div key={`${report.provider}-${index}`} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {(reports ?? []).map((report, index) => ({ report, index, key: accountKey(report, index) })).filter(({ key }) => !hiddenAccounts.has(key)).map(({ report, index, key }) => (
+            <div key={key} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
                 <span style={{ fontWeight: 500, color: "var(--text)" }}>{report.provider}</span>
                 {report.accountLabel ? (
@@ -192,6 +228,9 @@ export function UsageSidebarPanel() {
               )}
             </div>
           ))}
+          {(reports ?? []).length > 0 && (reports ?? []).every((report, index) => hiddenAccounts.has(accountKey(report, index))) && (
+            <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.usageAllHidden")}</span>
+          )}
           {hasAny && (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button

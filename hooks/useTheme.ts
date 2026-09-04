@@ -20,6 +20,7 @@ export type ThemePreference =
   | "ocean-flow"
   | "sakura-flow"
   | "bamboo-flow"
+  | "codex"
   | "custom";
 
 export type Theme = "light" | "dark";
@@ -48,12 +49,13 @@ export interface ThemeOption {
 }
 
 export const THEME_OPTIONS: ThemeOption[] = [
-  // ── 1. 静态经典色盘 (10 款高质感护眼预设) ──────────────────────────
+  // ── 1. 静态经典色盘 (11 款高质感护眼预设) ──────────────────────────
   { id: "light", name: "暖阳手帐", nameKey: "theme.light", isDark: false, color: "#FAF9F6", accent: "#B03E22", border: "#E2DDD2", category: "static" },
   { id: "nord", name: "极地雪原", nameKey: "theme.nord", isDark: true, color: "#2E3440", accent: "#88C0D0", border: "#434C5E", category: "static" },
   { id: "oatmeal", name: "燕麦拿铁", nameKey: "theme.oatmeal", isDark: false, color: "#F7F4EE", accent: "#965A38", border: "#D8D2C4", category: "static" },
   { id: "matcha", name: "京都抹茶", nameKey: "theme.matcha", isDark: false, color: "#F3F6F3", accent: "#2D6A4F", border: "#CAD6C8", category: "static" },
   { id: "oled", name: "极夜黑曜", nameKey: "theme.oled", isDark: true, color: "#000000", accent: "#38BDF8", border: "#242424", category: "static" },
+  { id: "codex", name: "极简黑白 (Codex)", nameKey: "theme.codex", isDark: true, color: "#000000", accent: "#FFFFFF", border: "#27272A", category: "static" },
   { id: "dark", name: "暗夜余烬", nameKey: "theme.dark", isDark: true, color: "#1B1916", accent: "#E07B54", border: "#38322B", category: "static" },
   { id: "sepia", name: "大英古籍", nameKey: "theme.sepia", isDark: false, color: "#F5EEDC", accent: "#8C4820", border: "#D5BE99", category: "static" },
   { id: "dracula", name: "德古拉之夜", nameKey: "theme.dracula", isDark: true, color: "#282A36", accent: "#BD93F9", border: "#44475A", category: "static" },
@@ -73,7 +75,7 @@ export const THEME_OPTIONS: ThemeOption[] = [
 ];
 
 const VALID_THEMES = new Set<string>([
-  "system", "light", "nord", "oatmeal", "matcha", "oled", "dark", "sepia", "dracula", "pine", "navy",
+  "system", "light", "nord", "oatmeal", "matcha", "oled", "codex", "dark", "sepia", "dracula", "pine", "navy",
   "aurora-flow", "dawn-flow", "cosmic-flow", "ocean-flow", "sakura-flow", "bamboo-flow", "custom"
 ]);
 
@@ -163,6 +165,7 @@ export function isDarkTheme(preference: ThemePreference, prefersDark = false): b
   }
   return preference === "dark"
     || preference === "oled"
+    || preference === "codex"
     || preference === "nord"
     || preference === "dracula"
     || preference === "pine"
@@ -287,16 +290,19 @@ export function useTheme() {
     const x = origin?.x ?? window.innerWidth / 2;
     const y = origin?.y ?? window.innerHeight / 2;
     const endRadius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    document.documentElement.classList.add("theme-transition");
+    const cleanup = () => document.documentElement.classList.remove("theme-transition");
     const transition = document.startViewTransition(apply);
     transition.ready.then(() => {
       const styles = getComputedStyle(document.documentElement);
-      document.documentElement.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`] }, {
+      const animation = document.documentElement.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`] }, {
         duration: motionDurationMs("--dur-theme", 450),
         easing: styles.getPropertyValue("--ease-out-warm").trim() || "ease-out",
         pseudoElement: "::view-transition-new(root)",
       });
-    }).catch(() => {});
-    transition.finished?.catch(() => {});
+      animation.finished.then(cleanup).catch(cleanup);
+    }).catch(cleanup);
+    transition.finished?.then(cleanup).catch(cleanup);
   }, []);
 
   const toggleTheme = useCallback((origin?: ToggleOrigin) => setTheme(nextThemePreference(preference), origin), [preference, setTheme]);

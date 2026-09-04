@@ -11,8 +11,8 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 
+use crate::file_service::is_path_within_any;
 use crate::ipc_server::{json_str, IpcError};
-use crate::file_service::{is_path_within, is_path_within_any};
 
 const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 /// Mirror of TEXT_PREVIEW_MAX_BYTES (lib/file-types.ts) — diff previews cap
@@ -37,7 +37,11 @@ fn run_git(cwd: &str, args: &[&str]) -> Result<String, String> {
     let result = result.map_err(|e| e.to_string())?;
     if !result.status.success() {
         let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-        return Err(if stderr.is_empty() { "git failed".into() } else { stderr });
+        return Err(if stderr.is_empty() {
+            "git failed".into()
+        } else {
+            stderr
+        });
     }
     Ok(String::from_utf8_lossy(&result.stdout).to_string())
 }
@@ -45,7 +49,11 @@ fn run_git(cwd: &str, args: &[&str]) -> Result<String, String> {
 fn find_repository_root(cwd: &str) -> Option<String> {
     let out = run_git(cwd, &["rev-parse", "--show-toplevel"]).ok()?;
     let trimmed = out.trim().to_string();
-    if trimmed.is_empty() { None } else { Some(trimmed) }
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 /// Port of parseGitPorcelainV1 (lib/git-status.ts): NUL-separated records,
@@ -91,11 +99,21 @@ fn uses_rename_path(index_status: char, worktree_status: char) -> bool {
 fn classify(index_status: &str, worktree_status: &str) -> (&'static str, &'static str) {
     let pair = format!("{index_status}{worktree_status}");
     const CONFLICTS: [&str; 7] = ["DD", "AU", "UD", "UA", "DU", "AA", "UU"];
-    if pair == "??" { return ("untracked", "U"); }
-    if CONFLICTS.contains(&pair.as_str()) || pair.contains('U') { return ("conflict", "C"); }
-    if pair.contains('D') { return ("deleted", "D"); }
-    if pair.contains('R') || pair.contains('C') { return ("renamed", "R"); }
-    if pair.contains('A') { return ("added", "A"); }
+    if pair == "??" {
+        return ("untracked", "U");
+    }
+    if CONFLICTS.contains(&pair.as_str()) || pair.contains('U') {
+        return ("conflict", "C");
+    }
+    if pair.contains('D') {
+        return ("deleted", "D");
+    }
+    if pair.contains('R') || pair.contains('C') {
+        return ("renamed", "R");
+    }
+    if pair.contains('A') {
+        return ("added", "A");
+    }
     ("modified", "M")
 }
 
@@ -108,7 +126,9 @@ enum GitError {
 impl GitError {
     fn ipc(self) -> IpcError {
         match self {
-            GitError::NotARepository => IpcError::new("not_a_git_repository", "not a git repository"),
+            GitError::NotARepository => {
+                IpcError::new("not_a_git_repository", "not a git repository")
+            }
             GitError::Message(m) => IpcError::new("git_failed", m),
         }
     }
@@ -122,7 +142,9 @@ fn normalized_components(path: &str) -> Vec<&str> {
         let seg = component.as_os_str().to_str().unwrap_or("");
         match seg {
             "" | "." | "/" => {}
-            ".." => { out.pop(); }
+            ".." => {
+                out.pop();
+            }
             _ => out.push(seg),
         }
     }
@@ -155,9 +177,11 @@ fn status_inner(cwd: &str) -> Result<String, GitError> {
             );
         }
     };
-    let output = run_git(&repository_root, &[
-        "status", "--porcelain=v1", "-z", "--untracked-files=all",
-    ]).map_err(GitError::Message)?;
+    let output = run_git(
+        &repository_root,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )
+    .map_err(GitError::Message)?;
     let mut files = String::new();
     for entry in parse_porcelain_v1(&output) {
         let file_path = format!("{}/{}", repository_root, entry.path);
@@ -165,7 +189,9 @@ fn status_inner(cwd: &str) -> Result<String, GitError> {
             continue;
         }
         let (status, code) = classify(&entry.index_status, &entry.worktree_status);
-        if files.len() > 0 { files.push(','); }
+        if !files.is_empty() {
+            files.push(',');
+        }
         files.push_str(&format!(
             "{{\"filePath\":{},\"status\":{},\"code\":{},\"indexStatus\":{},\"worktreeStatus\":{}}}",
             json_str(&file_path),
@@ -175,13 +201,33 @@ fn status_inner(cwd: &str) -> Result<String, GitError> {
             json_str(&entry.worktree_status),
         ));
     }
-    let branch = run_git(&repository_root, &["symbolic-ref", "--quiet", "--short", "HEAD"])
-        .map(|v| v.trim().to_string()).unwrap_or_else(|_| "HEAD".to_string());
-    let upstream = run_git(&repository_root, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
-        .map(|v| v.trim().to_string()).ok();
-    let counts = run_git(&repository_root, &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
-        .map(|v| v.trim().split_whitespace().filter_map(|s| s.parse::<u64>().ok()).collect::<Vec<_>>())
-        .unwrap_or_default();
+    let branch = run_git(
+        &repository_root,
+        &["symbolic-ref", "--quiet", "--short", "HEAD"],
+    )
+    .map(|v| v.trim().to_string())
+    .unwrap_or_else(|_| "HEAD".to_string());
+    let upstream = run_git(
+        &repository_root,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    )
+    .map(|v| v.trim().to_string())
+    .ok();
+    let counts = run_git(
+        &repository_root,
+        &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
+    )
+    .map(|v| {
+        v.split_whitespace()
+            .filter_map(|s| s.parse::<u64>().ok())
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
     let behind = counts.first().copied().unwrap_or(0);
     let ahead = counts.get(1).copied().unwrap_or(0);
     Ok(format!(
@@ -198,18 +244,33 @@ fn status_inner(cwd: &str) -> Result<String, GitError> {
 /// Mirrors listGitBranches(cwd).
 fn branches_inner(cwd: &str) -> Result<String, GitError> {
     let repository_root = find_repository_root(cwd).ok_or(GitError::NotARepository)?;
-    let output = run_git(&repository_root, &["for-each-ref", "--format=%(HEAD)\t%(refname:short)", "refs/heads/"])
-        .map_err(GitError::Message)?;
+    let output = run_git(
+        &repository_root,
+        &[
+            "for-each-ref",
+            "--format=%(HEAD)\t%(refname:short)",
+            "refs/heads/",
+        ],
+    )
+    .map_err(GitError::Message)?;
     let mut body = String::from("[");
     let mut first = true;
     for line in output.split('\n') {
-        if line.trim().is_empty() { continue; }
+        if line.trim().is_empty() {
+            continue;
+        }
         // git emits a leading tab for non-current branches ("\tmain"); split
         // BEFORE trimming so the name survives (mirror of listGitBranches).
         if let Some((head, name)) = line.split_once('\t') {
-            if !first { body.push(','); }
+            if !first {
+                body.push(',');
+            }
             first = false;
-            body.push_str(&format!("{{\"name\":{},\"current\":{}}}", json_str(name), head == "*"));
+            body.push_str(&format!(
+                "{{\"name\":{},\"current\":{}}}",
+                json_str(name),
+                head == "*"
+            ));
         }
     }
     body.push(']');
@@ -221,15 +282,21 @@ fn checkout_inner(cwd: &str, branch: &str) -> Result<String, GitError> {
     let repository_root = find_repository_root(cwd).ok_or(GitError::NotARepository)?;
     let target = branch.trim();
     let valid = !target.is_empty()
-        && target.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
+        && target
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
         && !target.starts_with('-')
         && !target.contains("..");
     if !valid {
         return Err(GitError::Message("Invalid branch name".to_string()));
     }
     run_git(&repository_root, &["checkout", target]).map_err(GitError::Message)?;
-    let current = run_git(&repository_root, &["symbolic-ref", "--quiet", "--short", "HEAD"])
-        .map(|v| v.trim().to_string()).unwrap_or_default();
+    let current = run_git(
+        &repository_root,
+        &["symbolic-ref", "--quiet", "--short", "HEAD"],
+    )
+    .map(|v| v.trim().to_string())
+    .unwrap_or_default();
     Ok(format!("{{\"branch\":{}}}", json_str(&current)))
 }
 
@@ -258,13 +325,22 @@ pub fn checkout(roots: &[String], cwd: &str, branch: &str) -> Result<String, Ipc
 /// CLI parity modes (`--git-status <cwd>`, `--git-branches <cwd>`,
 /// `--git-checkout <cwd> <branch>`): no roots gate — fixture repos are local.
 pub fn cli_status(cwd: &str) -> Result<String, String> {
-    status_inner(cwd).map_err(|e| match e { GitError::NotARepository => "not a git repository".into(), GitError::Message(m) => m })
+    status_inner(cwd).map_err(|e| match e {
+        GitError::NotARepository => "not a git repository".into(),
+        GitError::Message(m) => m,
+    })
 }
 pub fn cli_branches(cwd: &str) -> Result<String, String> {
-    branches_inner(cwd).map_err(|e| match e { GitError::NotARepository => "not a git repository".into(), GitError::Message(m) => m })
+    branches_inner(cwd).map_err(|e| match e {
+        GitError::NotARepository => "not a git repository".into(),
+        GitError::Message(m) => m,
+    })
 }
 pub fn cli_checkout(cwd: &str, branch: &str) -> Result<String, String> {
-    checkout_inner(cwd, branch).map_err(|e| match e { GitError::NotARepository => "not a git repository".into(), GitError::Message(m) => m })
+    checkout_inner(cwd, branch).map_err(|e| match e {
+        GitError::NotARepository => "not a git repository".into(),
+        GitError::Message(m) => m,
+    })
 }
 
 /// Mirrors commitGitChanges(cwd, message): repo probe, message validation,
@@ -281,30 +357,58 @@ fn commit_inner(cwd: &str, message: &str) -> Result<String, GitError> {
         return Err(GitError::Message("No changes to commit".to_string()));
     }
     run_git(&repository_root, &["add", "-A"]).map_err(GitError::Message)?;
-    let output = run_git(&repository_root, &["commit", "-m", trimmed]).map_err(GitError::Message)?;
+    let output =
+        run_git(&repository_root, &["commit", "-m", trimmed]).map_err(GitError::Message)?;
     let hash = run_git(&repository_root, &["rev-parse", "--short", "HEAD"])
-        .map(|v| v.trim().to_string()).unwrap_or_default();
-    Ok(format!("{{\"hash\":{},\"output\":{}}}", json_str(&hash), json_str(output.trim())))
+        .map(|v| v.trim().to_string())
+        .unwrap_or_default();
+    Ok(format!(
+        "{{\"hash\":{},\"output\":{}}}",
+        json_str(&hash),
+        json_str(output.trim())
+    ))
 }
 
 /// Mirrors pushGitChanges(cwd): branch resolution, upstream detection,
 /// `push` or `push --set-upstream origin <branch>`.
 fn push_inner(cwd: &str) -> Result<String, GitError> {
     let repository_root = find_repository_root(cwd).ok_or(GitError::NotARepository)?;
-    let branch = run_git(&repository_root, &["symbolic-ref", "--quiet", "--short", "HEAD"])
-        .map(|v| v.trim().to_string()).unwrap_or_default();
+    let branch = run_git(
+        &repository_root,
+        &["symbolic-ref", "--quiet", "--short", "HEAD"],
+    )
+    .map(|v| v.trim().to_string())
+    .unwrap_or_default();
     if branch.is_empty() || branch == "HEAD" {
-        return Err(GitError::Message("Cannot push from detached HEAD".to_string()));
+        return Err(GitError::Message(
+            "Cannot push from detached HEAD".to_string(),
+        ));
     }
-    let upstream = run_git(&repository_root, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
-        .map(|v| v.trim().to_string()).unwrap_or_default();
+    let upstream = run_git(
+        &repository_root,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    )
+    .map(|v| v.trim().to_string())
+    .unwrap_or_default();
     let output = if upstream.is_empty() {
-        run_git(&repository_root, &["push", "--set-upstream", "origin", &branch])
+        run_git(
+            &repository_root,
+            &["push", "--set-upstream", "origin", &branch],
+        )
     } else {
         run_git(&repository_root, &["push"])
     }
     .map_err(GitError::Message)?;
-    Ok(format!("{{\"branch\":{},\"output\":{}}}", json_str(&branch), json_str(output.trim())))
+    Ok(format!(
+        "{{\"branch\":{},\"output\":{}}}",
+        json_str(&branch),
+        json_str(output.trim())
+    ))
 }
 
 /// IPC arms: `git.commit` / `git.push` — mutation authority on the host.
@@ -323,10 +427,16 @@ pub fn push(roots: &[String], cwd: &str) -> Result<String, IpcError> {
 
 /// CLI parity modes (`--git-commit <cwd> <message>`, `--git-push <cwd>`).
 pub fn cli_commit(cwd: &str, message: &str) -> Result<String, String> {
-    commit_inner(cwd, message).map_err(|e| match e { GitError::NotARepository => "not a git repository".into(), GitError::Message(m) => m })
+    commit_inner(cwd, message).map_err(|e| match e {
+        GitError::NotARepository => "not a git repository".into(),
+        GitError::Message(m) => m,
+    })
 }
 pub fn cli_push(cwd: &str) -> Result<String, String> {
-    push_inner(cwd).map_err(|e| match e { GitError::NotARepository => "not a git repository".into(), GitError::Message(m) => m })
+    push_inner(cwd).map_err(|e| match e {
+        GitError::NotARepository => "not a git repository".into(),
+        GitError::Message(m) => m,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -361,8 +471,19 @@ fn has_null_byte(content: &[u8]) -> bool {
 
 /// Tracked-file patch via `git diff HEAD -- <paths>`; None on any git failure
 /// (mirror of createTrackedFilePatch's catch → null).
-fn create_tracked_file_patch(repository_root: &str, relative_path: &str, original_path: Option<&str>) -> Option<String> {
-    let mut args = vec!["diff", "--no-color", "--no-ext-diff", "--unified=3", "HEAD", "--"];
+fn create_tracked_file_patch(
+    repository_root: &str,
+    relative_path: &str,
+    original_path: Option<&str>,
+) -> Option<String> {
+    let mut args = vec![
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--unified=3",
+        "HEAD",
+        "--",
+    ];
     let paths: Vec<String>;
     if let Some(original) = original_path {
         if original != relative_path {
@@ -380,10 +501,14 @@ fn create_tracked_file_patch(repository_root: &str, relative_path: &str, origina
 /// Parse `git status --porcelain=v1 -z` into entries keyed by relative path,
 /// then find the single entry whose path equals `relative_path`.
 fn find_status_entry(repository_root: &str, relative_path: &str) -> Option<PrEntry> {
-    let output = run_git(repository_root, &[
-        "status", "--porcelain=v1", "-z", "--untracked-files=all",
-    ]).ok()?;
-    parse_porcelain_v1(&output).into_iter().find(|e| e.path == relative_path)
+    let output = run_git(
+        repository_root,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )
+    .ok()?;
+    parse_porcelain_v1(&output)
+        .into_iter()
+        .find(|e| e.path == relative_path)
 }
 
 /// Diff preview for one file: `{supported, status?, patch?}`. Mirrors
@@ -425,7 +550,8 @@ fn diff_inner(cwd: &str, file_path: &str) -> Result<String, GitError> {
     if status == "deleted" {
         return Ok("{\"supported\":false}".into());
     }
-    let current = std::fs::read(&resolved_file_path).map_err(|_| GitError::Message("read failed".into()))?;
+    let current =
+        std::fs::read(&resolved_file_path).map_err(|_| GitError::Message("read failed".into()))?;
     if has_null_byte(&current) {
         return Ok("{\"supported\":false}".into());
     }
@@ -433,7 +559,11 @@ fn diff_inner(cwd: &str, file_path: &str) -> Result<String, GitError> {
     let patch = if status == "untracked" {
         create_added_file_patch(&relative_path, &content)
     } else {
-        let tracked = create_tracked_file_patch(&repository_root, &relative_path, entry.original_path.as_deref());
+        let tracked = create_tracked_file_patch(
+            &repository_root,
+            &relative_path,
+            entry.original_path.as_deref(),
+        );
         match tracked {
             Some(p) => p,
             None => {
@@ -478,16 +608,25 @@ mod tests {
     use super::*;
 
     fn git_available() -> bool {
-        Command::new("git").arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+        Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
     }
 
     /// Fresh temp repo with a committed file + one dirty change + a branch.
     fn fixture_repo() -> Option<String> {
-        if !git_available() { return None; }
+        if !git_available() {
+            return None;
+        }
         let dir = std::env::temp_dir().join(format!(
             "ompweb-git-service-test-{}-{:?}",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
         ));
         std::fs::create_dir_all(&dir).ok()?;
         let d = dir.to_str()?;
@@ -498,16 +637,24 @@ mod tests {
             vec!["commit", "-m", "initial"],
             vec!["checkout", "-b", "feature"],
         ] {
-            let args_ref: Vec<&str> = args.iter().copied().collect();
-            let cmd = Command::new("git").args(&args_ref).env("LC_ALL", "C").output().ok()?;
-            if !cmd.status.success() { return None; }
+            let args_ref: Vec<&str> = args.to_vec();
+            let cmd = Command::new("git")
+                .args(&args_ref)
+                .env("LC_ALL", "C")
+                .output()
+                .ok()?;
+            if !cmd.status.success() {
+                return None;
+            }
         }
         Some(d.to_string())
     }
 
     #[test]
     fn status_reports_repo_branch_and_dirty_files() {
-        let Some(dir) = fixture_repo() else { return; };
+        let Some(dir) = fixture_repo() else {
+            return;
+        };
         std::fs::write(format!("{dir}/b.txt"), "two").unwrap();
         let out = status_inner(&dir).unwrap();
         assert!(out.contains("\"isGitRepository\":true"));
@@ -519,7 +666,14 @@ mod tests {
 
     #[test]
     fn status_reports_not_a_repository_for_plain_dir() {
-        let dir = std::env::temp_dir().join(format!("ompweb-git-plain-{}-{:?}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()));
+        let dir = std::env::temp_dir().join(format!(
+            "ompweb-git-plain-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let out = status_inner(dir.to_str().unwrap()).unwrap();
         assert!(out.contains("\"isGitRepository\":false"));
@@ -528,7 +682,9 @@ mod tests {
 
     #[test]
     fn branches_lists_with_current_marker() {
-        let Some(dir) = fixture_repo() else { return; };
+        let Some(dir) = fixture_repo() else {
+            return;
+        };
         let out = branches_inner(&dir).unwrap();
         assert!(out.contains("\"name\":\"main\",\"current\":false"));
         assert!(out.contains("\"name\":\"feature\",\"current\":true"));
@@ -537,7 +693,9 @@ mod tests {
 
     #[test]
     fn checkout_switches_branches_and_validates_names() {
-        let Some(dir) = fixture_repo() else { return; };
+        let Some(dir) = fixture_repo() else {
+            return;
+        };
         let out = checkout_inner(&dir, "main").unwrap();
         assert!(out.contains("\"branch\":\"main\""));
         let bad = checkout_inner(&dir, "..evil").unwrap_err();
@@ -547,7 +705,9 @@ mod tests {
 
     #[test]
     fn status_filters_files_outside_cwd_subtree() {
-        let Some(dir) = fixture_repo() else { return; };
+        let Some(dir) = fixture_repo() else {
+            return;
+        };
         std::fs::write(format!("{dir}/b.txt"), "two").unwrap();
         let sub = format!("{dir}/sub");
         std::fs::create_dir_all(&sub).unwrap();
@@ -560,10 +720,15 @@ mod tests {
 
     #[test]
     fn commit_creates_hash_and_rejects_empty_or_noop() {
-        let Some(dir) = fixture_repo() else { return; };
+        let Some(dir) = fixture_repo() else {
+            return;
+        };
         // Empty message rejected.
         let err = commit_inner(&dir, "   ").unwrap_err();
-        assert_eq!(err, GitError::Message("Commit message is required".to_string()));
+        assert_eq!(
+            err,
+            GitError::Message("Commit message is required".to_string())
+        );
         // No changes → "No changes to commit".
         let err = commit_inner(&dir, "nothing").unwrap_err();
         assert_eq!(err, GitError::Message("No changes to commit".to_string()));
@@ -577,7 +742,9 @@ mod tests {
 
     #[test]
     fn push_reports_branch_or_fails_without_remote() {
-        let Some(dir) = fixture_repo() else { return; };
+        let Some(dir) = fixture_repo() else {
+            return;
+        };
         std::fs::write(format!("{dir}/b.txt"), "two").unwrap();
         let _ = commit_inner(&dir, "add b").unwrap();
         // No origin remote → push fails with a git error rather than hanging.
@@ -597,7 +764,9 @@ mod tests {
 
     #[test]
     fn diff_previews_modified_untracked_and_rejects_deleted() {
-        let Some(dir) = fixture_repo() else { return; };
+        let Some(dir) = fixture_repo() else {
+            return;
+        };
         // Modified tracked file → supported patch from git.
         std::fs::write(format!("{dir}/a.txt"), "one\nchanged\n").unwrap();
         let out = diff_inner(&dir, &format!("{dir}/a.txt")).unwrap();
@@ -612,7 +781,9 @@ mod tests {
         assert!(out2.contains("new file mode 100644"));
         assert!(out2.contains("+fresh"));
         // Non-git / missing / outside-root paths → unsupported.
-        assert!(diff_inner(&dir, "/etc/passwd").unwrap().contains("\"supported\":false"));
+        assert!(diff_inner(&dir, "/etc/passwd")
+            .unwrap()
+            .contains("\"supported\":false"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -99,7 +99,12 @@ function maybeAutoFix(): void {
   // 的 RPC 会话（避免代理暂断/普通 warn 时误杀正在进行的对话）。
   const hostDead = data.rustHost && data.rustHost.mode !== "node" && !data.rustHost.available;
   const hostCrash = (data.backendErrors ?? []).some((e) => e.kind === "host_crash" || e.kind === "host_unavailable");
-  if (!hostDead && !hostCrash) return;
+  const orphanHost = (data.rpc.orphanRustHosts ?? 0) > 0;
+  // Orphaned supervisors are safe to clean automatically: they are
+  // reparented to launchd/init and are explicitly excluded from the current
+  // host manager. Leaving them around is what makes every fresh instance
+  // report a warning even though its own host is healthy.
+  if (!hostDead && !hostCrash && !orphanHost) return;
   autoFixInFlight = true;
   lastAutoFixAt = Date.now();
   // 「repair」= 无损：只清孤儿 host + 清错误环，不重启用户会话。
@@ -145,7 +150,11 @@ export function healthOf(d: DiagnosticsData): BackendHealth {
   if (failures >= 1) return "warn";
   if (backendErrors.length >= 1) return "warn";
   if ((d.rpc.orphanRustHosts ?? 0) > 0) return "warn";
-  if ((d.instances?.others.length ?? 0) > 0) return "warn";
+  // A development server and the packaged desktop app intentionally run
+  // side-by-side during local verification (30178/30179). Presence of another
+  // healthy loopback instance is informational; only its own RPC/host errors
+  // should change the health state. The diagnostics row still exposes the
+  // instance and offers an explicit stop action when it is actually stale.
   if (!d.proxy.effective && d.proxy.config.mode === "auto") return "warn";
   return "ok";
 }
@@ -353,6 +362,27 @@ export function BackendDiagnosticsBody() {
       {success && <div role="status" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--status-success)", padding: "0 4px" }}><Check size={11} aria-hidden="true" />{success}</div>}
       {diag && (
         <>
+          {/* A classified recovery queue keeps the page actionable: each
+              detected fault is paired with the least-destructive operation
+              that can actually resolve it. */}
+          {(() => {
+            const hostDown = Boolean(diag.rustHost && diag.rustHost.mode !== "node" && !diag.rustHost.available);
+            const hostCrash = backendErrors.some((entry) => entry.kind === "host_crash" || entry.kind === "host_unavailable");
+            const rpcFailed = (diag.rpc.recentFailures?.length ?? 0) > 0;
+            const orphan = (diag.rpc.orphanRustHosts ?? 0) > 0;
+            const proxyMissing = !diag.proxy.effective && diag.proxy.config.mode === "auto";
+            const missingOmp = !diag.omp.installed;
+            const issues = [
+              missingOmp ? { key: "omp", title: "OMP 未安装", detail: "安装 omp 后再重试。", action: undefined } : null,
+              hostDown || hostCrash ? { key: "host", title: "Rust host 不可用", detail: "清理孤儿 host 并重新探测，不会重启正在运行的会话。", action: <ActionButton onClick={() => void repairHost()} disabled={actionBusy} icon={<Activity size={11} />} label={t("diagnostics.repair")} /> } : null,
+              orphan ? { key: "orphan", title: "发现孤儿 host", detail: "孤儿进程可能占用锁或 PTY。", action: <ActionButton onClick={() => void repairHost()} disabled={actionBusy} icon={<Activity size={11} />} label={t("diagnostics.repair")} /> } : null,
+              rpcFailed ? { key: "rpc", title: "RPC 会话失败", detail: `${diag.rpc.recentFailures?.length ?? 0} 次最近失败；重启只影响活动 RPC 会话。`, action: <ActionButton onClick={() => void restartRpc()} disabled={restarting || actionBusy} icon={<RotateCcw size={11} />} label={t("diagnostics.restartRpc")} tone="quiet" /> } : null,
+              backendErrors.length > 0 && !hostCrash ? { key: "errors", title: "后端错误记录", detail: `${backendErrors.length} 条错误仍在错误环中。`, action: <ActionButton onClick={() => void clearErrors()} disabled={actionBusy} icon={<Eraser size={11} />} label={t("diagnostics.clearErrors")} tone="quiet" /> } : null,
+              proxyMissing ? { key: "proxy", title: "代理未生效", detail: "当前为自动代理模式，但没有可用端点；请检查代理客户端或改为手动配置。", action: <ActionButton onClick={() => refreshDetails()} disabled={refreshing} icon={<RefreshCw size={11} />} label={t("diagnostics.refresh")} tone="quiet" /> } : null,
+            ].filter(Boolean) as Array<{ key: string; title: string; detail: string; action?: ReactNode }>;
+            if (!issues.length) return null;
+            return <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "4px", border: "1px solid color-mix(in srgb, var(--status-warning) 40%, var(--border))", borderRadius: "var(--radius-control)", background: "color-mix(in srgb, var(--status-warning) 5%, var(--bg))" }}><span style={{ fontSize: 10, fontWeight: 700, color: "var(--status-warning)", textTransform: "uppercase" }}>Recovery queue</span>{issues.map((issue) => <div key={issue.key} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: "5px 2px" }}><div><div style={{ fontSize: 11, fontWeight: 650, color: "var(--text)" }}>{issue.title}</div><div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.35 }}>{issue.detail}</div></div>{issue.action}</div>)}</div>;
+          })()}
           <Row
             label={t("diagnostics.omp")}
             ok={diag.omp.installed}
@@ -372,7 +402,7 @@ export function BackendDiagnosticsBody() {
             <Row
               key={port}
               label={t("diagnostics.otherInstance")}
-              ok={false}
+              ok
               detail={`127.0.0.1:${port}`}
               action={
                 <button

@@ -45,10 +45,22 @@ pub struct ClientCursor {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResumePlan {
     FullSnapshot,
-    ProtocolError { stream: String, head_seq: i64 },
-    SnapshotThenReplay { stream: String, snapshot_seq: i64, seqs: Vec<i64> },
-    Replay { stream: String, seqs: Vec<i64> },
-    NoChange { stream: String },
+    ProtocolError {
+        stream: String,
+        head_seq: i64,
+    },
+    SnapshotThenReplay {
+        stream: String,
+        snapshot_seq: i64,
+        seqs: Vec<i64>,
+    },
+    Replay {
+        stream: String,
+        seqs: Vec<i64>,
+    },
+    NoChange {
+        stream: String,
+    },
 }
 
 struct TailEntry {
@@ -79,7 +91,7 @@ impl SqliteJournal {
         Self::init(conn, host_epoch)
     }
 
-    fn init(mut conn: Connection, host_epoch: &str) -> rusqlite::Result<Self> {
+    fn init(conn: Connection, host_epoch: &str) -> rusqlite::Result<Self> {
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS runtime_meta (
@@ -222,7 +234,12 @@ impl SqliteJournal {
 
     /// Compact at the current head: snapshot becomes the resume base.
     /// The head seq is OBSERVED, not consumed (matches the in-memory oracle).
-    pub fn snapshot(&mut self, stream: &str, state_version: i64, now_ms: i64) -> rusqlite::Result<i64> {
+    pub fn snapshot(
+        &mut self,
+        stream: &str,
+        state_version: i64,
+        now_ms: i64,
+    ) -> rusqlite::Result<i64> {
         self.conn.execute(
             "INSERT OR IGNORE INTO streams (stream_id, next_seq, compacted_through, updated_at)
              VALUES (?1, 1, 0, ?2)",
@@ -239,10 +256,14 @@ impl SqliteJournal {
              ON CONFLICT(stream_id) DO UPDATE SET seq = ?2, state_version = ?3, payload = ?4, created_at = ?5",
             params![stream, seq, state_version, format!("v{}", state_version), now_ms],
         )?;
-        self.conn
-            .execute("UPDATE streams SET compacted_through = ?2 WHERE stream_id = ?1", params![stream, seq])?;
-        self.conn
-            .execute("DELETE FROM events WHERE stream_id = ?1 AND seq <= ?2", params![stream, seq])?;
+        self.conn.execute(
+            "UPDATE streams SET compacted_through = ?2 WHERE stream_id = ?1",
+            params![stream, seq],
+        )?;
+        self.conn.execute(
+            "DELETE FROM events WHERE stream_id = ?1 AND seq <= ?2",
+            params![stream, seq],
+        )?;
         Ok(seq)
     }
 
@@ -268,7 +289,11 @@ impl SqliteJournal {
 
     /// Resume decision for a client cursor set — same semantics as the
     /// in-memory oracle (epoch mismatch, cursor-ahead guard, snapshot base).
-    pub fn resume(&mut self, client_epoch: &str, cursors: &[ClientCursor]) -> rusqlite::Result<Vec<ResumePlan>> {
+    pub fn resume(
+        &mut self,
+        client_epoch: &str,
+        cursors: &[ClientCursor],
+    ) -> rusqlite::Result<Vec<ResumePlan>> {
         if client_epoch != self.host_epoch {
             return Ok(vec![ResumePlan::FullSnapshot]);
         }
@@ -276,12 +301,16 @@ impl SqliteJournal {
         for c in cursors {
             let head: Option<i64> = self
                 .conn
-                .query_row("SELECT next_seq - 1 FROM streams WHERE stream_id = ?1", params![c.stream_id], |row| {
-                    row.get(0)
-                })
+                .query_row(
+                    "SELECT next_seq - 1 FROM streams WHERE stream_id = ?1",
+                    params![c.stream_id],
+                    |row| row.get(0),
+                )
                 .optional()?;
             let Some(head) = head else {
-                plans.push(ResumePlan::NoChange { stream: c.stream_id.clone() });
+                plans.push(ResumePlan::NoChange {
+                    stream: c.stream_id.clone(),
+                });
                 continue;
             };
             if c.seq > head {
@@ -303,7 +332,8 @@ impl SqliteJournal {
                 let mut stmt = self.conn.prepare(
                     "SELECT seq FROM events WHERE stream_id = ?1 AND seq > ?2 ORDER BY seq",
                 )?;
-                let seqs: Vec<i64> = stmt.query_map(params![c.stream_id, snap_seq], |row| row.get(0))?
+                let seqs: Vec<i64> = stmt
+                    .query_map(params![c.stream_id, snap_seq], |row| row.get(0))?
                     .filter_map(|r| r.ok())
                     .collect();
                 plans.push(ResumePlan::SnapshotThenReplay {
@@ -313,16 +343,22 @@ impl SqliteJournal {
                 });
                 continue;
             }
-            let mut stmt =
-                self.conn.prepare("SELECT seq FROM events WHERE stream_id = ?1 AND seq > ?2 ORDER BY seq")?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT seq FROM events WHERE stream_id = ?1 AND seq > ?2 ORDER BY seq")?;
             let seqs: Vec<i64> = stmt
                 .query_map(params![c.stream_id, c.seq], |row| row.get(0))?
                 .filter_map(|r| r.ok())
                 .collect();
             if seqs.is_empty() {
-                plans.push(ResumePlan::NoChange { stream: c.stream_id.clone() });
+                plans.push(ResumePlan::NoChange {
+                    stream: c.stream_id.clone(),
+                });
             } else {
-                plans.push(ResumePlan::Replay { stream: c.stream_id.clone(), seqs });
+                plans.push(ResumePlan::Replay {
+                    stream: c.stream_id.clone(),
+                    seqs,
+                });
             }
         }
         Ok(plans)
@@ -333,7 +369,10 @@ impl SqliteJournal {
         let mut stmt = self
             .conn
             .prepare("SELECT seq FROM events WHERE stream_id = ?1 ORDER BY seq")?;
-        let seqs: Vec<i64> = stmt.query_map(params![stream], |row| row.get(0))?.filter_map(|r| r.ok()).collect();
+        let seqs: Vec<i64> = stmt
+            .query_map(params![stream], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
         Ok(seqs)
     }
 }

@@ -10,7 +10,7 @@ import { toast } from "@/components/ui/toast";
 import { formatCompactNumber } from "@/lib/format";
 import { clearDraft, getDraft, setDraft, type ChatDraftImage } from "@/lib/draft-store";
 import { WEB_SLASH_COMMANDS, expandWebSlashCommand, extractSlashQuery, type SlashQueryMatch } from "@/lib/web-slash-commands";
-import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
+import { CHAT_COLUMN_GUTTER, CHAT_COLUMN_MAX_WIDTH, CHAT_MINIMAP_RAIL_GUTTER } from "@/lib/chat-layout";
 import {
   MAX_ATTACHED_IMAGE_BYTES,
   MAX_ATTACHED_IMAGES,
@@ -166,7 +166,10 @@ const BUILTIN_SLASH_COMMAND_DEFS: { name: string; descriptionKey: string; argume
 
 const CLIENT_BUILTIN_COMMAND_NAMES = new Set(BUILTIN_SLASH_COMMAND_DEFS.map((def) => def.name));
 
-const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill", "ompBuiltin"];
+// The user-facing hierarchy is deliberate: built-ins first, then skills and
+// custom commands, with the broad native OMP registry last. This keeps the
+// most common actions compact while still exposing every OMP command.
+const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "skill", "extension", "prompt", "ompBuiltin"];
 
 const SLASH_SOURCE_GROUP_LABEL_KEYS: Record<SlashCommandSource, string> = {
   builtin: "chatInput.groupBuiltin",
@@ -178,9 +181,9 @@ const SLASH_SOURCE_GROUP_LABEL_KEYS: Record<SlashCommandSource, string> = {
 
 const SLASH_SOURCE_ORDER: Record<SlashCommandSource, number> = {
   builtin: 0,
-  extension: 1,
-  prompt: 2,
-  skill: 3,
+  skill: 1,
+  extension: 2,
+  prompt: 3,
   ompBuiltin: 4,
 };
 
@@ -459,6 +462,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   // reads must not re-append their results afterwards.
   const attachmentRevisionRef = useRef(0);
   const pendingImageCountRef = useRef(0);
+  const lastMeasuredValueRef = useRef(value);
   valueRef.current = value;
   attachedImagesRef.current = attachedImages;
 
@@ -691,6 +695,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   }, [draftKey]);
 
   useEffect(() => {
+    if (value === lastMeasuredValueRef.current) return;
+    lastMeasuredValueRef.current = value;
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = "auto";
@@ -761,7 +767,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       const source = command.source as string;
       if (CLIENT_BUILTIN_COMMAND_NAMES.has(command.name)) return [];
       if (source === "builtin" || source === "ompBuiltin") {
-        return [{ name: command.name, description: command.description, source: "ompBuiltin" }];
+        return [{ name: command.name, description: command.description, argumentHint: command.argumentHint, source: "ompBuiltin" }];
       }
       return [command];
     }),
@@ -1284,6 +1290,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const handleInput = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
+    lastMeasuredValueRef.current = ta.value;
     ta.style.height = "auto";
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, []);
@@ -1451,7 +1458,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       style={{
         flexShrink: 0,
         background: "transparent",
-         padding: "0 16px calc(8px + env(safe-area-inset-bottom))",
+         padding: isMobile
+           ? `0 ${CHAT_COLUMN_GUTTER} calc(8px + env(safe-area-inset-bottom))`
+           : `0 calc(${CHAT_COLUMN_GUTTER} + ${CHAT_MINIMAP_RAIL_GUTTER}) calc(8px + env(safe-area-inset-bottom)) ${CHAT_COLUMN_GUTTER}`,
       }}
     >
       {/* Hidden file input */}
@@ -1712,8 +1721,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                          gap: 8,
+                          gridTemplateColumns: "repeat(auto-fit, minmax(174px, 1fr))",
+                          gap: 4,
                         }}
                       >
                         {group.items.map(({ command, index }) => {
@@ -1731,15 +1740,15 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                                 applySlashCommand(command);
                               }}
                               onMouseEnter={() => setSlashActiveIndex(index)}
+                              title={[`/${command.name}`, command.argumentHint, command.description].filter(Boolean).join(" — ")}
                               style={{
                                 width: "100%",
                                 minWidth: 0,
-                                minHeight: 58,
+                                minHeight: 34,
                                 display: "flex",
-                                flexDirection: "column",
-                                gap: 4,
-                                justifyContent: "center",
-                                padding: "9px 10px",
+                                alignItems: "center",
+                                gap: 7,
+                                padding: "5px 8px",
                                 border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
                                 borderRadius: 7,
                                 background: active ? "var(--bg-selected)" : "var(--bg-panel)",
@@ -1750,10 +1759,10 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                               }}
                             >
                               <span style={{
+                                flexShrink: 0,
                                 fontSize: 13,
                                 fontFamily: "var(--font-mono)",
-                                overflowWrap: "anywhere",
-                                wordBreak: "break-word",
+                                whiteSpace: "nowrap",
                               }}>
                                 /{command.name}
                                 {command.argumentHint && (
@@ -1763,11 +1772,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                               </span>
                               {command.description && (
                                 <span style={{
+                                  minWidth: 0,
                                   display: "-webkit-box",
                                   WebkitBoxOrient: "vertical",
-                                  WebkitLineClamp: 2,
+                                  WebkitLineClamp: 1,
                                   overflow: "hidden",
-                                  fontSize: 11,
+                                  fontSize: 10.5,
                                   lineHeight: 1.35,
                                   color: "var(--text-dim)",
                                 }}>

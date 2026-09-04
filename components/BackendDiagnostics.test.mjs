@@ -20,6 +20,10 @@ test("healthOf: everything green reports ok", () => {
   assert.equal(healthOf(base), "ok");
 });
 
+test("healthOf: healthy sibling loopback instance is informational", () => {
+  assert.equal(healthOf({ ...base, instances: { selfPort: 30178, others: [30179] } }), "ok");
+});
+
 test("healthOf: missing omp binary reports error", () => {
   assert.equal(healthOf({ ...base, omp: { installed: false, path: null, version: null } }), "error");
 });

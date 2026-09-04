@@ -46,7 +46,11 @@ fn collect_session_files_inner(root: &Path, allow_loose_files: bool) -> Vec<Path
                     }
                 }
             } else if let Some(name) = entry.file_name().to_str() {
-                if name.ends_with(".jsonl") && (allow_loose_files || is_session_file_name(name) || is_session_header_file(&path)) {
+                if name.ends_with(".jsonl")
+                    && (allow_loose_files
+                        || is_session_file_name(name)
+                        || is_session_header_file(&path))
+                {
                     files.push(path);
                 }
             }
@@ -59,12 +63,22 @@ fn collect_session_files_inner(root: &Path, allow_loose_files: bool) -> Vec<Path
 /// Accept legacy/imported session files with non-standard names only when
 /// their bounded prefix proves they contain a session header.
 fn is_session_header_file(path: &Path) -> bool {
-    let Ok(raw) = fs::read_to_string(path) else { return false; };
+    let Ok(raw) = fs::read_to_string(path) else {
+        return false;
+    };
     for line in raw.lines().take(32) {
-        if line.trim().is_empty() { continue; }
-        let Ok(value) = JsonValue::parse(line) else { return false; };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(value) = JsonValue::parse(line) else {
+            return false;
+        };
         return value.get(&["type"]).and_then(|v| v.as_str()) == Some("session")
-            && value.get(&["id"]).and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
+            && value
+                .get(&["id"])
+                .and_then(|v| v.as_str())
+                .map(|s| !s.is_empty())
+                .unwrap_or(false);
     }
     false
 }
@@ -74,8 +88,12 @@ fn is_session_header_file(path: &Path) -> bool {
 /// transcripts and other artifacts never match, keeping R7 shadow parity with
 /// the Node scanner.
 pub fn is_session_file_name(name: &str) -> bool {
-    let Some(stem) = name.strip_suffix(".jsonl") else { return false; };
-    let Some(index) = stem.find('_') else { return false; };
+    let Some(stem) = name.strip_suffix(".jsonl") else {
+        return false;
+    };
+    let Some(index) = stem.find('_') else {
+        return false;
+    };
     let (ts, body) = stem.split_at(index);
     let body = &body[1..];
     if body.is_empty() || !body.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
@@ -94,7 +112,13 @@ fn is_compact_timestamp(ts: &str) -> bool {
         return false;
     }
     let bytes = ts.as_bytes();
-    (0..15).all(|i| if i == 8 { bytes[i] == b'T' } else { bytes[i].is_ascii_digit() })
+    (0..15).all(|i| {
+        if i == 8 {
+            bytes[i] == b'T'
+        } else {
+            bytes[i].is_ascii_digit()
+        }
+    })
 }
 
 /// `2026-08-27T16-58-53Z` (20) or `2026-08-27T16-58-53-862Z` (24).
@@ -145,7 +169,7 @@ fn read_title_slot(raw: &str) -> String {
         Ok(v) => v
             .get(&["title"])
             .and_then(|t| t.as_str())
-            .map(|t| t.trim_end_matches(|c: char| c == ' ' || c == '\u{00A0}').to_string())
+            .map(|t| t.trim_end_matches([' ', '\u{00A0}']).to_string())
             .unwrap_or_default(),
         Err(_) => String::new(),
     }
@@ -181,12 +205,22 @@ fn extract_message_text(value: &JsonValue) -> String {
         let mut out = String::new();
         for item in items {
             if let JsonValue::Obj(entries) = item {
-                let is_text = entries.iter().any(|(k, v)| k == "type" && v.as_str() == Some("text"));
+                let is_text = entries
+                    .iter()
+                    .any(|(k, v)| k == "type" && v.as_str() == Some("text"));
                 if is_text {
-                    if let Some(text) = entries.iter().find(|(k, _)| k == "text").and_then(|(_, v)| v.as_str()) {
-                        if !out.is_empty() { out.push(' '); }
+                    if let Some(text) = entries
+                        .iter()
+                        .find(|(k, _)| k == "text")
+                        .and_then(|(_, v)| v.as_str())
+                    {
+                        if !out.is_empty() {
+                            out.push(' ');
+                        }
                         out.push_str(text);
-                        if out.chars().count() >= 240 { break; }
+                        if out.chars().count() >= 240 {
+                            break;
+                        }
                     }
                 }
             }
@@ -200,13 +234,17 @@ fn extract_message_text(value: &JsonValue) -> String {
 /// Scan one file into a projection (head-window read, Node-parity).
 pub fn project_file(path: &Path) -> Result<SessionProjection, String> {
     let file = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
-    let size = file.metadata().map_err(|e| format!("stat {}: {e}", path.display()))?.len();
+    let size = file
+        .metadata()
+        .map_err(|e| format!("stat {}: {e}", path.display()))?
+        .len();
     let head = size.min(LIST_PREFIX_BYTES) as usize;
     let mut buf = vec![0u8; head];
     if head > 0 {
         use std::io::Read;
         let mut file = file;
-        file.read_exact(&mut buf).map_err(|e| format!("read {}: {e}", path.display()))?;
+        file.read_exact(&mut buf)
+            .map_err(|e| format!("read {}: {e}", path.display()))?;
     }
     let raw = String::from_utf8_lossy(&buf);
     let mut lines = 0usize;
@@ -231,10 +269,26 @@ pub fn project_file(path: &Path) -> Result<SessionProjection, String> {
                     }
                 }
             } else if kind == "session" {
-                session_id = value.get(&["id"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                cwd = value.get(&["cwd"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                parent_session = value.get(&["parentSession"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                created = value.get(&["timestamp"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                session_id = value
+                    .get(&["id"])
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                cwd = value
+                    .get(&["cwd"])
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                parent_session = value
+                    .get(&["parentSession"])
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                created = value
+                    .get(&["timestamp"])
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -260,7 +314,10 @@ pub fn project_file(path: &Path) -> Result<SessionProjection, String> {
                     if let Ok(value) = JsonValue::parse(line) {
                         let kind = value.get(&["type"]).and_then(|t| t.as_str()).unwrap_or("");
                         if kind == "message" {
-                            let role = value.get(&["message", "role"]).and_then(|r| r.as_str()).unwrap_or("");
+                            let role = value
+                                .get(&["message", "role"])
+                                .and_then(|r| r.as_str())
+                                .unwrap_or("");
                             if role == "user" {
                                 if let Some(content) = value.get(&["message", "content"]) {
                                     first_message = extract_message_text(content);
@@ -278,7 +335,11 @@ pub fn project_file(path: &Path) -> Result<SessionProjection, String> {
     // Display title: when the title slot is empty, inject the opening
     // message so the sidebar never shows a bare "(no messages)" row.
     let title = read_title_slot(&raw);
-    let display_title = if title.is_empty() { first_message.chars().take(120).collect() } else { title };
+    let display_title = if title.is_empty() {
+        first_message.chars().take(120).collect()
+    } else {
+        title
+    };
     Ok(SessionProjection {
         path: path.to_string_lossy().to_string(),
         id: session_id,
@@ -381,8 +442,12 @@ mod tests {
 
     #[test]
     fn session_file_name_filter_matches_omp_and_rejects_artifacts() {
-        assert!(is_session_file_name("2026-08-27T16-58-53-862Z_01a04429-0426-71ee-9345-c66edc32e851.jsonl"));
-        assert!(is_session_file_name("20260103T030000_00000000002a-4a0d-4f5e-9c1b-000000051336.jsonl"));
+        assert!(is_session_file_name(
+            "2026-08-27T16-58-53-862Z_01a04429-0426-71ee-9345-c66edc32e851.jsonl"
+        ));
+        assert!(is_session_file_name(
+            "20260103T030000_00000000002a-4a0d-4f5e-9c1b-000000051336.jsonl"
+        ));
         assert!(is_session_file_name("2026-08-27T16-58-53Z_01a04429.jsonl"));
         assert!(!is_session_file_name("CodeQualityReview.jsonl"));
         assert!(!is_session_file_name("sec-review-eval.jsonl"));

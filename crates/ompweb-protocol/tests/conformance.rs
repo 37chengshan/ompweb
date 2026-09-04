@@ -76,7 +76,8 @@ fn run_script(text: &str) -> Result<(), String> {
                         format!("{scenario}: expected plan {kind} for {stream}, got {plans:?}")
                     })?;
                 if seq_list != "-" {
-                    let expected: Vec<i64> = seq_list.split(',').map(|s| s.parse().unwrap()).collect();
+                    let expected: Vec<i64> =
+                        seq_list.split(',').map(|s| s.parse().unwrap()).collect();
                     let actual = plan_seqs(plan);
                     assert_eq!(
                         actual, expected,
@@ -91,11 +92,21 @@ fn run_script(text: &str) -> Result<(), String> {
             }
             "accept" => {
                 let outcome = ledger.accept(args[0], args[1], args[2]);
-                assert_eq!(outcome, parse_outcome(args[3]), "{scenario}: accept {}", args[1]);
+                assert_eq!(
+                    outcome,
+                    parse_outcome(args[3]),
+                    "{scenario}: accept {}",
+                    args[1]
+                );
             }
             "reaccept" => {
                 let outcome = ledger.reaccept_unknown(args[0], args[1], args[2]);
-                assert_eq!(outcome, parse_outcome(args[3]), "{scenario}: reaccept {}", args[1]);
+                assert_eq!(
+                    outcome,
+                    parse_outcome(args[3]),
+                    "{scenario}: reaccept {}",
+                    args[1]
+                );
             }
             "settle" => {
                 let status = match args[2] {
@@ -128,7 +139,9 @@ fn plan_matches(plan: &ResumePlan, kind: &str, stream: &str) -> bool {
 
 fn plan_seqs(plan: &ResumePlan) -> Vec<i64> {
     match plan {
-        ResumePlan::Replay { seqs, .. } | ResumePlan::SnapshotThenReplay { seqs, .. } => seqs.clone(),
+        ResumePlan::Replay { seqs, .. } | ResumePlan::SnapshotThenReplay { seqs, .. } => {
+            seqs.clone()
+        }
         _ => Vec::new(),
     }
 }

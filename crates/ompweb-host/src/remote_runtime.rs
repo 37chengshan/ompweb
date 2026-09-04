@@ -21,7 +21,6 @@
 //!     are later slices.
 //!   - Frames respect the protocol v1 1 MiB maxMessageBytes.
 
-use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use tokio::net::TcpListener;
@@ -31,14 +30,16 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::device_service::DeviceService;
 use crate::ipc_server::json_str;
 use crate::mini_json::JsonValue;
-use ompweb_protocol::{ClientCursor, Event, EventClass, Journal, MutationLedger, MutationStatus, ResumePlan};
+use ompweb_protocol::{ClientCursor, Event, Journal, MutationLedger, MutationStatus, ResumePlan};
+
+#[cfg(test)]
+use ompweb_protocol::EventClass;
 
 use futures_util::{SinkExt, StreamExt};
 
 const PROTOCOL_VERSION: i64 = 1;
 const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
 const SUPPORTED_FEATURES: &[&str] = &["resume_v1", "mutations_v1"];
-const CLOSE_POLICY_VIOLATION: u16 = 1008;
 
 /// Mutation executors: agent.prompt / agent.cancel route to the OMP
 /// supervisor. (device_id, command_json) → output.
@@ -57,7 +58,12 @@ pub struct RemoteRuntimeShared {
 pub type Shared = Arc<RemoteRuntimeShared>;
 
 impl RemoteRuntimeShared {
-    pub fn new(device: Arc<DeviceService>, executor: Executor, host_epoch: &str, offline_after_ms: i64) -> Self {
+    pub fn new(
+        device: Arc<DeviceService>,
+        executor: Executor,
+        host_epoch: &str,
+        offline_after_ms: i64,
+    ) -> Self {
         let mut ledger = MutationLedger::new(0);
         // Idempotency retention mirrors lib/continuity/mutations.ts (24h):
         // a retried clientMsgId inside the window re-issues the recorded
@@ -74,7 +80,11 @@ impl RemoteRuntimeShared {
 
     /// Serve the WS endpoint; each connection is a spawned task bounded by
     /// `max_connections`.
-    pub async fn serve(&self, listener: TcpListener, max_connections: usize) -> std::io::Result<()> {
+    pub async fn serve(
+        &self,
+        listener: TcpListener,
+        max_connections: usize,
+    ) -> std::io::Result<()> {
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_connections));
         loop {
             let (stream, _peer) = listener.accept().await?;
@@ -114,7 +124,7 @@ fn epoch_shared(shared: &Shared) -> String {
 }
 
 async fn send_text(sink: &mut (impl SinkExt<Message> + Unpin), text: String) {
-    let _ = sink.send(Message::Text(text.into())).await;
+    let _ = sink.send(Message::Text(text)).await;
 }
 
 async fn send_error(sink: &mut (impl SinkExt<Message> + Unpin), request_id: &str, code: &str) {
@@ -124,14 +134,15 @@ async fn send_error(sink: &mut (impl SinkExt<Message> + Unpin), request_id: &str
         json_str(request_id),
         json_str(code),
     );
-    let _ = sink.send(Message::Text(body.into())).await;
+    let _ = sink.send(Message::Text(body)).await;
 }
 
 fn event_frame(stream_id: &str, event: &Event) -> String {
     // Wire shape mirrors lib/remote-protocol/host-connection.ts emitEvent:
     // the frame's `type` is the EVENT's own type and `payload` is a
     // STRUCTURED value (not a double-encoded JSON string), with a cursor.
-    let payload = JsonValue::parse(&event.payload_token).unwrap_or(JsonValue::Str(event.payload_token.clone()));
+    let payload = JsonValue::parse(&event.payload_token)
+        .unwrap_or(JsonValue::Str(event.payload_token.clone()));
     format!(
         "{{\"version\":{},\"kind\":\"event\",\"streamId\":{},\"type\":{},\"cursor\":{{\"hostEpoch\":{},\"seq\":{}}},\"payload\":{}}}",
         PROTOCOL_VERSION,
@@ -161,7 +172,10 @@ fn sync_complete_frame(shared: &Shared, request_id: &str, stream_id: &str) -> St
     )
 }
 
-async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>) -> Result<(), ()> {
+async fn handle_connection(
+    shared: Shared,
+    ws: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+) -> Result<(), ()> {
     let (mut sink, mut source) = ws.split();
     let mut state = ConnState::AwaitHello;
     let mut device_id = String::new();
@@ -190,10 +204,26 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                 continue;
             }
         };
-        let kind = parsed.get(&["kind"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let msg_type = parsed.get(&["type"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let stream_id = parsed.get(&["streamId"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let request_id = parsed.get(&["requestId"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let kind = parsed
+            .get(&["kind"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let msg_type = parsed
+            .get(&["type"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let stream_id = parsed
+            .get(&["streamId"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let request_id = parsed
+            .get(&["requestId"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         match state {
             ConnState::AwaitHello => {
@@ -203,7 +233,9 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                 }
                 hello_stream = stream_id.clone();
                 let version_ok = match parsed.get(&["payload", "protocolVersions"]) {
-                    Some(JsonValue::Arr(items)) => items.iter().any(|v| v.as_num().map(|n| n as i64) == Some(PROTOCOL_VERSION)),
+                    Some(JsonValue::Arr(items)) => items
+                        .iter()
+                        .any(|v| v.as_num().map(|n| n as i64) == Some(PROTOCOL_VERSION)),
                     _ => false,
                 };
                 if !version_ok {
@@ -211,7 +243,9 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                     break;
                 }
                 let features: Vec<&str> = match parsed.get(&["payload", "features"]) {
-                    Some(JsonValue::Arr(items)) => items.iter().filter_map(|v| v.as_str()).collect(),
+                    Some(JsonValue::Arr(items)) => {
+                        items.iter().filter_map(|v| v.as_str()).collect()
+                    }
                     _ => Vec::new(),
                 };
                 if !features.iter().all(|f| SUPPORTED_FEATURES.contains(f)) {
@@ -242,10 +276,21 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                 // bearer device id — replayable). Now the proof is
                 // HMAC-sha256(nonce, device-auth-secret); the nonce is single
                 // use and tied to this connection.
-                let device_id_claim = parsed.get(&["payload", "deviceId"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let proof = parsed.get(&["payload", "proof"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let device_id_claim = parsed
+                    .get(&["payload", "deviceId"])
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let proof = parsed
+                    .get(&["payload", "proof"])
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let nonce = pending_nonce.take().unwrap_or_default();
-                let secret = shared.device.auth_secret_for(&device_id_claim).unwrap_or(None);
+                let secret = shared
+                    .device
+                    .auth_secret_for(&device_id_claim)
+                    .unwrap_or(None);
                 let ok = match secret {
                     Some(secret) if !nonce.is_empty() => {
                         // HMAC(key=secret, message=nonce) — secret is the
@@ -276,14 +321,24 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
             }
             ConnState::AwaitResume => {
                 if kind == "request" && msg_type == "resume" {
-                    let client_epoch = parsed.get(&["payload", "hostEpoch"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let client_epoch = parsed
+                        .get(&["payload", "hostEpoch"])
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let cursors: Vec<ClientCursor> = match parsed.get(&["payload", "cursors"]) {
                         Some(JsonValue::Arr(items)) => items
                             .iter()
                             .filter_map(|item| {
-                                let stream = item.get(&["streamId"]).and_then(|v| v.as_str())?.to_string();
+                                let stream = item
+                                    .get(&["streamId"])
+                                    .and_then(|v| v.as_str())?
+                                    .to_string();
                                 let seq = item.get(&["seq"]).and_then(|v| v.as_num())? as i64;
-                                Some(ClientCursor { stream_id: stream, seq })
+                                Some(ClientCursor {
+                                    stream_id: stream,
+                                    seq,
+                                })
                             })
                             .collect(),
                         _ => Vec::new(),
@@ -296,7 +351,6 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                                 "{{\"version\":{},\"kind\":\"error\",\"requestId\":{},\"streamId\":{},\"type\":\"protocol_error\",\"payload\":{{\"code\":\"full_resync_required\",\"message\":\"epoch mismatch\",\"hostEpoch\":{}}}}}",
                                 PROTOCOL_VERSION, json_str(&request_id), json_str(&stream_id), json_str(journal.host_epoch()),
                             ));
-                            state = ConnState::Live; // connection stays open per protocol
                         } else {
                             let plans = journal.resume(&client_epoch, &cursors);
                             for plan in &plans {
@@ -325,7 +379,9 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                             let heads: Vec<String> = journal
                                 .view_seqs_multi()
                                 .iter()
-                                .map(|(stream, seq)| format!("{{\"streamId\":{},\"seq\":{}}}", json_str(stream), seq))
+                                .map(|(stream, seq)| {
+                                    format!("{{\"streamId\":{},\"seq\":{}}}", json_str(stream), seq)
+                                })
                                 .collect();
                             out_frames.push(format!(
                                 "{{\"version\":{},\"kind\":\"event\",\"requestId\":{},\"streamId\":{},\"type\":\"sync_complete\",\"payload\":{{\"heads\":[{}]}}}}",
@@ -356,9 +412,21 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                     continue;
                 }
                 if kind == "request" && msg_type == "mutation" {
-                    let client_msg_id = parsed.get(&["payload", "clientMsgId"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let request_hash = parsed.get(&["payload", "requestHash"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let mutation_type = parsed.get(&["payload", "mutation", "type"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let client_msg_id = parsed
+                        .get(&["payload", "clientMsgId"])
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let request_hash = parsed
+                        .get(&["payload", "requestHash"])
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let mutation_type = parsed
+                        .get(&["payload", "mutation", "type"])
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     // Full mutation payload forwarded verbatim (the receipt
                     // ledger keys on clientMsgId+hash; the executor receives
                     // the untouched payload JSON so prompt text / params /
@@ -374,7 +442,11 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                     //   RetentionExpired → tombstone: refuse (re-execution of an
                     //     aged receipt would violate idempotency).
                     let accept_outcome = {
-                        shared.ledger.lock().unwrap().accept(&device_id, &client_msg_id, &request_hash)
+                        shared.ledger.lock().unwrap().accept(
+                            &device_id,
+                            &client_msg_id,
+                            &request_hash,
+                        )
                     };
                     match accept_outcome {
                         ompweb_protocol::AcceptOutcome::Conflict => {
@@ -386,7 +458,11 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                             continue;
                         }
                         ompweb_protocol::AcceptOutcome::Duplicate => {
-                            let recorded = shared.ledger.lock().unwrap().record(&device_id, &client_msg_id);
+                            let recorded = shared
+                                .ledger
+                                .lock()
+                                .unwrap()
+                                .record(&device_id, &client_msg_id);
                             let status = match recorded.map(|r| r.status) {
                                 Some(MutationStatus::Committed) => "committed",
                                 Some(MutationStatus::Failed) => "failed",
@@ -410,12 +486,21 @@ async fn handle_connection(shared: Shared, ws: tokio_tungstenite::WebSocketStrea
                             continue;
                         }
                         ompweb_protocol::AcceptOutcome::Accepted => {
-                            let result = execute_mutation(&shared, &device_id, &mutation_type, &payload_json);
+                            let result = execute_mutation(
+                                &shared,
+                                &device_id,
+                                &mutation_type,
+                                &payload_json,
+                            );
                             let (status, payload) = match result {
                                 Ok(output) => (MutationStatus::Committed, output),
                                 Err(message) => (MutationStatus::Failed, message),
                             };
-                            shared.ledger.lock().unwrap().settle(&device_id, &client_msg_id, status);
+                            shared.ledger.lock().unwrap().settle(
+                                &device_id,
+                                &client_msg_id,
+                                status,
+                            );
                             let status_label = match status {
                                 MutationStatus::Committed => "committed",
                                 MutationStatus::Failed => "failed",
@@ -458,7 +543,10 @@ fn challenge_nonce() -> String {
         return buf.iter().map(|b| format!("{b:02x}")).collect();
     }
     use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0) as u64;
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0) as u64;
     format!("{:016x}{:016x}", nanos, std::process::id())
 }
 
@@ -502,16 +590,21 @@ fn hmac_sha256_hex(key: &str, data: &str) -> String {
 /// to a multiple of 64 bytes.
 fn sha256_raw_bytes(message: &[u8]) -> [u8; 32] {
     const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
     ];
-    let mut h: [u32; 8] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    let mut h: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
     let bit_len = (message.len() as u64).wrapping_mul(8);
     let mut padded = message.to_vec();
     padded.push(0x80);
@@ -522,7 +615,12 @@ fn sha256_raw_bytes(message: &[u8]) -> [u8; 32] {
     for chunk in padded.chunks(64) {
         let mut w = [0u32; 64];
         for i in 0..16 {
-            w[i] = u32::from_be_bytes([chunk[i * 4], chunk[i * 4 + 1], chunk[i * 4 + 2], chunk[i * 4 + 3]]);
+            w[i] = u32::from_be_bytes([
+                chunk[i * 4],
+                chunk[i * 4 + 1],
+                chunk[i * 4 + 2],
+                chunk[i * 4 + 3],
+            ]);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
@@ -578,7 +676,13 @@ fn to_hex(bytes: &[u8]) -> String {
 fn mini_json_to_json_string(value: &JsonValue) -> String {
     match value {
         JsonValue::Null => "null".to_string(),
-        JsonValue::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+        JsonValue::Bool(b) => {
+            if *b {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            }
+        }
         JsonValue::Num(n) => {
             if *n == n.trunc() && n.abs() < 1e15 {
                 format!("{}", *n as i64)
@@ -594,32 +698,51 @@ fn mini_json_to_json_string(value: &JsonValue) -> String {
         JsonValue::Obj(entries) => {
             let parts: Vec<String> = entries
                 .iter()
-                .map(|(key, value)| format!("{}:{}", json_str(key), mini_json_to_json_string(value)))
+                .map(|(key, value)| {
+                    format!("{}:{}", json_str(key), mini_json_to_json_string(value))
+                })
                 .collect();
             format!("{{{}}}", parts.join(","))
         }
     }
 }
 
-fn execute_mutation(shared: &Shared, device_id: &str, mutation_type: &str, payload_json: &str) -> Result<String, String> {
+fn execute_mutation(
+    shared: &Shared,
+    device_id: &str,
+    mutation_type: &str,
+    payload_json: &str,
+) -> Result<String, String> {
     match mutation_type {
         "agent.prompt" | "agent.cancel" => {
             // Reconstruct the OMP command from the full payload: the executor
             // receives `{"type":<mutation_type>,"sessionId":<s>} + the raw
             // prompt params`, so prompt text and controls reach the agent.
             let parsed = JsonValue::parse(payload_json).unwrap_or(JsonValue::Null);
-            let session_id = parsed.get(&["sessionId"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let session_id = parsed
+                .get(&["sessionId"])
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let mut fields: Vec<String> = Vec::new();
             if let JsonValue::Obj(entries) = &parsed {
                 for (key, value) in entries {
                     if key == "sessionId" {
                         continue;
                     }
-                    fields.push(format!("{}:{}", json_str(key), mini_json_to_json_string(value)));
+                    fields.push(format!(
+                        "{}:{}",
+                        json_str(key),
+                        mini_json_to_json_string(value)
+                    ));
                 }
             }
             fields.push(format!("\"sessionId\":{}", json_str(&session_id)));
-            let command = format!("{{\"type\":{},{}}}", json_str(mutation_type), fields.join(","));
+            let command = format!(
+                "{{\"type\":{},{}}}",
+                json_str(mutation_type),
+                fields.join(",")
+            );
             (shared.executor)(device_id, &command)
         }
         _ => Err("unsupported mutation type".to_string()),
@@ -634,9 +757,15 @@ mod tests {
     fn sha256_matches_fips_known_vector() {
         // FIPS 180-4 "abc" → ba7816bf8f01cfea414140de5dae2223...
         let digest = to_hex(&sha256_raw_bytes(b"abc"));
-        assert_eq!(digest, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(
+            digest,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
         let empty = to_hex(&sha256_raw_bytes(b""));
-        assert_eq!(empty, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert_eq!(
+            empty,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 
     #[test]
@@ -644,7 +773,10 @@ mod tests {
         // RFC 4231 test case 1: key = 20 bytes of 0x0b, data = "Hi There".
         let key = String::from_utf8(vec![0x0b; 20]).unwrap();
         let out = hmac_sha256_hex(&key, "Hi There");
-        assert_eq!(out, "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+        assert_eq!(
+            out,
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+        );
     }
 
     #[test]
@@ -665,8 +797,14 @@ mod tests {
             "{\"sessionId\":\"s-1\",\"message\":\"hello world\",\"tools\":[\"bash\"]}",
         )
         .unwrap();
-        assert!(out.contains("\"message\":\"hello world\""), "prompt text must survive: {out}");
-        assert!(out.contains("\"tools\":[\"bash\"]"), "params must survive: {out}");
+        assert!(
+            out.contains("\"message\":\"hello world\""),
+            "prompt text must survive: {out}"
+        );
+        assert!(
+            out.contains("\"tools\":[\"bash\"]"),
+            "params must survive: {out}"
+        );
         assert!(out.contains("\"sessionId\":\"s-1\""));
         assert!(execute_mutation(&shared, "d1", "approval.resolve", "{}").is_err());
         assert!(execute_mutation(&shared, "d1", "files.read_remote", "{}").is_err());
@@ -692,7 +830,11 @@ mod tests {
         let conflict = shared.ledger.lock().unwrap().accept("d1", id, "hash-2");
         assert_eq!(conflict, ompweb_protocol::AcceptOutcome::Conflict);
         // Settle, then the duplicate retry re-issues the recorded outcome.
-        shared.ledger.lock().unwrap().settle("d1", id, MutationStatus::Committed);
+        shared
+            .ledger
+            .lock()
+            .unwrap()
+            .settle("d1", id, MutationStatus::Committed);
         let recorded = shared.ledger.lock().unwrap().record("d1", id);
         assert_eq!(recorded.map(|r| r.status), Some(MutationStatus::Committed));
     }
@@ -700,16 +842,26 @@ mod tests {
     #[test]
     fn event_frame_shapes_follow_protocol_v1() {
         let event = Event {
-            cursor: ompweb_protocol::EventCursor { host_epoch: "e1".into(), stream_id: "session:s1".into(), seq: 3 },
+            cursor: ompweb_protocol::EventCursor {
+                host_epoch: "e1".into(),
+                stream_id: "session:s1".into(),
+                seq: 3,
+            },
             event_id: 1,
             kind: "token.usage".into(),
             class: EventClass::Reliable,
             payload_token: "{\"n\":1}".into(),
         };
         let frame = event_frame("session:s1", &event);
-        assert!(frame.contains("\"type\":\"token.usage\""), "frame type must be the event's own type: {frame}");
+        assert!(
+            frame.contains("\"type\":\"token.usage\""),
+            "frame type must be the event's own type: {frame}"
+        );
         assert!(frame.contains("\"cursor\":{\"hostEpoch\":\"e1\",\"seq\":3}"));
-        assert!(frame.contains("\"payload\":{\"n\":1}"), "payload must be structured, not double-encoded: {frame}");
+        assert!(
+            frame.contains("\"payload\":{\"n\":1}"),
+            "payload must be structured, not double-encoded: {frame}"
+        );
         assert!(frame.contains("\"kind\":\"event\""));
     }
 }

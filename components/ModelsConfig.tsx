@@ -5,6 +5,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/lib/i18n";
 import { isSafeExternalUrl } from "@/lib/safe-url";
 import { omitUntouchedModelDrafts } from "@/lib/models-config-drafts";
+import { buildRoleSelector, parseRoleSelector } from "@/lib/model-role-selector";
 import { formatApiError } from "@/lib/i18n/api-error";
 import {
   Dialog,
@@ -22,7 +23,7 @@ import {
   ConfirmDialog,
   useFieldValidation,
 } from "@/components/ui/field";
-import { Plus, Trash2, RefreshCw, AlertCircle, Cpu, Settings, Sparkles, Check as CheckIcon, ArrowDown, ArrowUp, Layers, RotateCcw, SlidersHorizontal, BookOpen, Search } from "lucide-react";
+import { Plus, Trash2, RefreshCw, AlertCircle, Cpu, Settings, Sparkles, Check as CheckIcon, ArrowDown, ArrowUp, ChevronRight, Layers, RotateCcw, SlidersHorizontal, BookOpen, Search } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { SettingsTabs, type SettingsTab } from "./SettingsTabs";
 import { ModelCatalogPicker } from "./ModelCatalogPicker";
@@ -332,6 +333,27 @@ function NativeRegistryDetail({ models, connectedProviders, onChanged }: { model
 }
 
 const COMPOSER_MODELS_STORAGE_KEY = "omp-composer-models";
+const PROVIDER_COLLAPSE_STORAGE_KEY = "omp-web:models-config:collapsed-providers";
+
+type ProviderCollapsePrefs = {
+  custom: string[];
+  picker: string[];
+};
+
+const EMPTY_PROVIDER_COLLAPSE_PREFS: ProviderCollapsePrefs = { custom: [], picker: [] };
+
+export function providerCollapsePrefs(value: unknown): ProviderCollapsePrefs {
+  if (!value || typeof value !== "object") return EMPTY_PROVIDER_COLLAPSE_PREFS;
+  const source = value as Partial<ProviderCollapsePrefs>;
+  const list = (items: unknown): string[] => Array.isArray(items)
+    ? [...new Set(items.filter((item): item is string => typeof item === "string" && item.length > 0))]
+    : [];
+  return { custom: list(source.custom), picker: list(source.picker) };
+}
+
+export function toggleCollapsedProvider(current: string[], provider: string): string[] {
+  return current.includes(provider) ? current.filter((value) => value !== provider) : [...current, provider];
+}
 const NATIVE_MODEL_ROLES = ["default", "smol", "slow", "vision", "plan", "designer", "commit", "tiny", "task", "advisor"];
 
 function ModelRolesDetail({ models }: { models: RuntimeModelEntry[] }) {
@@ -364,16 +386,28 @@ function ModelRolesDetail({ models }: { models: RuntimeModelEntry[] }) {
     }
   };
 
-  const updateRoleModel = (role: string, modelValue: string) => {
-    const current = roles[role] ?? "";
-    const effort = current.match(/:([^,:]+)$/)?.[1] ?? "";
-    setRoles((values) => ({ ...values, [role]: modelValue ? `${modelValue}${effort ? `:${effort}` : ""}` : "" }));
+  // A role selector is `provider/modelId[:effort]`. Model ids from custom
+  // providers may themselves contain slashes (org/model) — and a bare model
+  // id in a role selector is inferred by omp, so only a trailing known effort
+  // is ever split off (never the text after the last slash). Persisted
+  // selectors keep exactly the provider/model text the user picked plus the
+  // effort; both updates preserve the other half instead of re-mangling it.
+  const updateRoleModel = (role: string, modelKey: string) => {
+    const { effort } = parseRoleSelector(roles[role]);
+    setRoles((values) => ({ ...values, [role]: buildRoleSelector(modelKey, effort) }));
   };
 
   const updateRoleThinking = (role: string, effort: string) => {
-    const current = roles[role] ?? "";
-    const modelValue = current.replace(/:([^,:]+)$/, "");
-    setRoles((values) => ({ ...values, [role]: modelValue ? `${modelValue}${effort ? `:${effort}` : ""}` : "" }));
+    const { modelKey } = parseRoleSelector(roles[role]);
+    setRoles((values) => ({ ...values, [role]: buildRoleSelector(modelKey, effort) }));
+  };
+
+  const clearRole = (role: string) => {
+    setRoles((values) => {
+      const next = { ...values };
+      delete next[role];
+      return next;
+    });
   };
 
   return <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -386,20 +420,35 @@ function ModelRolesDetail({ models }: { models: RuntimeModelEntry[] }) {
         <code style={{ color: "var(--text-muted)" }}>{role}</code>
         {(() => {
           const raw = roles[role] ?? "";
-          const selectedModel = raw.replace(/:([^,:]+)$/, "");
-          const selectedThinking = raw.match(/:([^,:]+)$/)?.[1] ?? "";
-          const model = models.find((item) => `${item.provider}/${item.id}` === selectedModel);
-          const modelKnown = !selectedModel || Boolean(model);
+          // Preserve the persisted selector verbatim while editing a field:
+          // the model dropdown value is the provider-qualified key (first
+          // slash splits provider from id; ids may contain further slashes)
+          // and the effort only splits off a trailing KNOWN level.
+          const { modelKey, effort } = parseRoleSelector(raw);
+          const model = models.find((item) => `${item.provider}/${item.id}` === modelKey);
+          const modelKnown = !modelKey || Boolean(model);
           return <>
-            <select aria-label={`Model override for ${role}`} value={selectedModel} onChange={(event) => updateRoleModel(role, event.target.value)} style={{ minWidth: 0, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}>
+            <select aria-label={`Model override for ${role}`} value={modelKey} onChange={(event) => updateRoleModel(role, event.target.value)} style={{ minWidth: 0, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}>
               <option value="">{t("modelsConfig.noOverride")}</option>
-              {!modelKnown && <option value={selectedModel}>{selectedModel} (not currently available)</option>}
+              {!modelKnown && <option value={modelKey}>{modelKey} (not currently available)</option>}
               {models.map((item) => <option key={`${item.provider}:${item.id}`} value={`${item.provider}/${item.id}`}>{item.name || item.id} ({item.provider}/{item.id})</option>)}
             </select>
-            <select aria-label={`Thinking level for ${role}`} value={selectedThinking} disabled={!model} onChange={(event) => updateRoleThinking(role, event.target.value)} style={{ minWidth: 0, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", fontSize: 12, opacity: model ? 1 : 0.55 }}>
+            <select aria-label={`Thinking level for ${role}`} value={effort} disabled={!model} onChange={(event) => updateRoleThinking(role, event.target.value)} style={{ minWidth: 0, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", fontSize: 12, opacity: model ? 1 : 0.55 }}>
               <option value="">{t("modelsConfig.modelDefault")}</option>
               {(model?.thinkingLevels ?? []).filter((level) => level !== "off").map((level) => <option key={level} value={level}>{level}</option>)}
             </select>
+            {raw !== "" && (
+              <button
+                type="button"
+                onClick={() => clearRole(role)}
+                title={t("modelsConfig.clearRoleOverride") ?? "Clear override"}
+                aria-label={`${t("modelsConfig.clearRoleOverride") ?? "Clear override"} for ${role}`}
+                className="ui-focus-ring"
+                style={{ width: 24, height: 24, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 4, background: "transparent", color: "var(--text-dim)", cursor: "pointer" }}
+              >
+                <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            )}
           </>;
         })()}
       </div>
@@ -496,9 +545,11 @@ const presetButtonStyle = {
   cursor: "pointer",
 } as const;
 
-function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
+function ProviderDetail({ name, provider, onChange, onRename, onDelete, takenNames }: {
   name: string; provider: ProviderEntry;
   onChange: (p: ProviderEntry) => void; onRename: (n: string) => void; onDelete: () => void;
+  /** Other existing provider keys — a rename onto one would silently merge. */
+  takenNames: ReadonlySet<string>;
 }) {
   const { t } = useI18n();
   const [editingName, setEditingName] = useState(name);
@@ -513,9 +564,24 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
 
   const renameValidate = () => {
     if (!editingName.trim()) return t("modelsConfig.errorNameRequired");
+    const trimmed = editingName.trim();
+    // A rename onto an existing provider key would make the save overwrite
+    // that provider's config — reject before any state or file write.
+    if (trimmed !== name && takenNames.has(trimmed)) return t("modelsConfig.errorNameTaken", { name: trimmed });
     return null;
   };
   const renameV = useFieldValidation(renameValidate);
+
+  // Commit a provider rename (name is the providers dict key, so it needs an
+  // explicit rename — on the Rename button AND on blur so typing a name then
+  // leaving the field / saving never silently keeps the old key).
+  const commitRename = useCallback(() => {
+    const trimmed = editingName.trim();
+    if (trimmed === name) return;
+    const err = renameV.onSubmit();
+    if (!err) onRename(trimmed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingName, name, onRename]);
 
   const baseUrlValidate = () => {
     const v = provider.baseUrl ?? "";
@@ -558,7 +624,18 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
       const data = await res.json();
       if (res.ok && data.models && data.models.length > 0) {
         const existingIds = new Set((provider.models ?? []).map((m: ModelEntry) => m.id));
-        const newModels = data.models.filter((m: ModelEntry) => !existingIds.has(m.id));
+        // Endpoint model catalogs (OpenAI /models & friends) carry no
+        // capability metadata — default every fetched model to reasoning +
+        // image input (the standard for current chat/agent models) so a
+        // fetched model is actually usable out of the box. Users can turn
+        // either off per model in the editor.
+        const newModels = (data.models as ModelEntry[])
+          .filter((m: ModelEntry) => !existingIds.has(m.id))
+          .map((m) => ({
+            ...m,
+            reasoning: true,
+            input: ["text", "image"],
+          }));
         const merged = [...(provider.models ?? []), ...newModels];
         onChange({ ...provider, models: merged });
         toast.success(t("modelsConfig.autoFetchedSuccess", { count: newModels.length, total: data.models.length }) || `成功发现 ${data.models.length} 个模型（新增 ${newModels.length} 个）！`);
@@ -647,6 +724,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
           <TextInput
             value={editingName}
             onChange={(v) => { setEditingName(v); renameV.onChange(); }}
+            onBlur={() => { renameV.onBlur(); commitRename(); }}
             placeholder="provider-name"
             mono
             invalid={Boolean(renameV.error)}
@@ -657,10 +735,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete }: {
         {trimmedRename !== name && (
           <button
             type="button"
-            onClick={() => {
-              const err = renameV.onSubmit();
-              if (!err) onRename(trimmedRename);
-            }}
+            onClick={commitRename}
             style={{
               alignSelf: "flex-start",
               padding: "5px 12px",
@@ -1793,6 +1868,46 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
   // instead of an empty form, and saving stays blocked so the hand-written file
   // is never overwritten with nothing.
   const [parseError, setParseError] = useState<{ message: string; path?: string } | null>(null);
+  // Long provider/model catalogs are intentionally collapsed by default. The
+  // two lists have independent persisted state because the custom models.yml
+  // editor and the Composer visibility picker serve different jobs.
+  const [collapsedProviderGroups, setCollapsedProviderGroups] = useState<ProviderCollapsePrefs>(EMPTY_PROVIDER_COLLAPSE_PREFS);
+  const [collapsePreferencesReady, setCollapsePreferencesReady] = useState(false);
+  const collapsePreferencesStoredRef = useRef(false);
+  const customCollapseDefaultsAppliedRef = useRef(false);
+  const pickerCollapseDefaultsAppliedRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(PROVIDER_COLLAPSE_STORAGE_KEY);
+      if (raw) {
+        collapsePreferencesStoredRef.current = true;
+        setCollapsedProviderGroups(providerCollapsePrefs(JSON.parse(raw)));
+      }
+    } catch {
+      // A malformed UI preference never prevents model configuration.
+    } finally {
+      setCollapsePreferencesReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!collapsePreferencesReady) return;
+    try {
+      window.localStorage.setItem(PROVIDER_COLLAPSE_STORAGE_KEY, JSON.stringify(collapsedProviderGroups));
+    } catch {
+      // Collapse state is a convenience preference, not configuration data.
+    }
+  }, [collapsePreferencesReady, collapsedProviderGroups]);
+
+  const toggleProviderCollapse = useCallback((kind: keyof ProviderCollapsePrefs, provider: string) => {
+    setCollapsedProviderGroups((current) => ({ ...current, [kind]: toggleCollapsedProvider(current[kind], provider) }));
+  }, []);
+  const expandCustomProvider = useCallback((provider: string) => {
+    setCollapsedProviderGroups((current) => current.custom.includes(provider)
+      ? { ...current, custom: current.custom.filter((value) => value !== provider) }
+      : current);
+  }, []);
 
   const loadOAuthProviders = useCallback(() => {
     fetch("/api/auth/providers")
@@ -1908,8 +2023,9 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
     let n = 1;
     while (config.providers?.[finalName]) finalName = `new-provider-${n++}`;
     setConfig((prev) => ({ ...prev, providers: { ...(prev.providers ?? {}), [finalName]: { api: "openai-completions" } } }));
+    expandCustomProvider(finalName);
     setSelection({ type: "provider", name: finalName });
-  }, [config.providers]);
+  }, [config.providers, expandCustomProvider]);
 
   const updateProvider = useCallback((name: string, p: ProviderEntry) => {
     setConfig((prev) => ({ ...prev, providers: { ...(prev.providers ?? {}), [name]: p } }));
@@ -1929,6 +2045,10 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
       if (prev.type === "model" && prev.providerName === oldName) return { ...prev, providerName: newName };
       return prev;
     });
+    setCollapsedProviderGroups((current) => ({
+      ...current,
+      custom: current.custom.map((value) => value === oldName ? newName : value),
+    }));
   }, []);
 
   const deleteProvider = useCallback((name: string) => {
@@ -1942,36 +2062,51 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
       setSelection(remaining.length > 0 ? { type: "provider", name: remaining[0] } : null);
       return prev;
     });
+    setCollapsedProviderGroups((current) => ({
+      ...current,
+      custom: current.custom.filter((value) => value !== name),
+    }));
   }, []);
 
   const addModel = useCallback((providerName: string) => {
     setConfig((prev) => {
       const provider = prev.providers?.[providerName] ?? {};
-      const models = [...(provider.models ?? []), { id: "" }];
+      // New blank model rows default to reasoning + image input (see
+      // handleAutoFetchModels — same rationale for out-of-the-box usability).
+      const models = [...(provider.models ?? []), { id: "", reasoning: true, input: ["text", "image"] }];
       return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: { ...provider, models } } };
     });
+    expandCustomProvider(providerName);
     setConfig((prev) => {
       const idx = (prev.providers?.[providerName]?.models?.length ?? 1) - 1;
       setSelection({ type: "model", providerName, index: idx });
       return prev;
     });
-  }, []);
+  }, [expandCustomProvider]);
 
   const addModelFromCatalog = useCallback((providerName: string, model: ModelEntry, baseUrl?: string) => {
     setConfig((prev) => {
       const provider = prev.providers?.[providerName] ?? {};
-      const models = [...(provider.models ?? []), model];
+      // Catalog entries may omit capability metadata (plain /models lists) —
+      // default reasoning + image input unless the catalog already declared
+      // them, matching the blank-row and auto-fetch defaults.
+      const models = [...(provider.models ?? []), {
+        ...model,
+        reasoning: model.reasoning ?? true,
+        input: model.input ?? ["text", "image"],
+      }];
       const next: ProviderEntry = { ...provider, models };
       if (baseUrl && !provider.baseUrl) next.baseUrl = baseUrl;
       return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: next } };
     });
+    expandCustomProvider(providerName);
     setConfig((prev) => {
       const idx = (prev.providers?.[providerName]?.models?.length ?? 1) - 1;
       setSelection({ type: "model", providerName, index: idx });
       return prev;
     });
     setCatalogPicker(null);
-  }, []);
+  }, [expandCustomProvider]);
 
   const updateModel = useCallback((providerName: string, index: number, m: ModelEntry) => {
     setConfig((prev) => {
@@ -1994,6 +2129,15 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
 
   const handleSave = useCallback(async () => {
     if (parseError) return;
+    // Last line of defense for the rename-onto-existing-key data loss: even if
+    // a rename slipped past the per-field validation, refuse a save whose
+    // serialized providers would contain duplicate keys.
+    const providerNames = Object.keys(config.providers ?? {});
+    const seen = new Set<string>();
+    if (providerNames.some((p) => (seen.has(p) ? true : (seen.add(p), false)))) {
+      setSaveError(t("modelsConfig.saveDuplicateProviderError"));
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     setSavedOk(false);
@@ -2018,6 +2162,19 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
         await loadRuntimeModels();
         loadApiKeyProviders();
         onSaved?.();
+        // Newly added providers/models must show up in the composer picker:
+        // the localStorage visibility set only gains keys on manual toggle, so
+        // union every persisted model into it (when a set is active at all).
+        setVisibleModelKeys((current) => {
+          if (current === null) return current;
+          const next = new Set(current);
+          for (const [providerName, providerData] of Object.entries(config.providers ?? {})) {
+            for (const m of providerData?.models ?? []) {
+              if (m?.id) next.add(`${providerName}:${m.id}`);
+            }
+          }
+          return next;
+        });
         setSavedOk(true);
         setTimeout(() => setSavedOk(false), 2000);
         toast.success(t("modelsConfig.saveSuccessTitle"));
@@ -2038,6 +2195,30 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
     (groups[model.provider] ??= []).push(model);
     return groups;
   }, {});
+  const customProviderSignature = providers.map(([name, provider]) => `${name}:${provider.models?.length ?? 0}`).join("|");
+  const pickerProviderSignature = Object.entries(runtimeModelsByProvider).map(([name, models]) => `${name}:${models.length}`).sort().join("|");
+
+  useEffect(() => {
+    if (!collapsePreferencesReady || customCollapseDefaultsAppliedRef.current || providers.length === 0) return;
+    customCollapseDefaultsAppliedRef.current = true;
+    if (collapsePreferencesStoredRef.current) return;
+    // Custom endpoint catalogs can carry dozens of rows. Start compact and
+    // let the user expand exactly the providers they are editing.
+    setCollapsedProviderGroups((current) => ({
+      ...current,
+      custom: [...new Set([...current.custom, ...providers.filter(([, provider]) => (provider.models?.length ?? 0) > 0).map(([name]) => name)])],
+    }));
+  }, [collapsePreferencesReady, customProviderSignature, providers]);
+
+  useEffect(() => {
+    if (!collapsePreferencesReady || pickerCollapseDefaultsAppliedRef.current || Object.keys(runtimeModelsByProvider).length === 0) return;
+    pickerCollapseDefaultsAppliedRef.current = true;
+    if (collapsePreferencesStoredRef.current) return;
+    setCollapsedProviderGroups((current) => ({
+      ...current,
+      picker: [...new Set([...current.picker, ...Object.keys(runtimeModelsByProvider)])],
+    }));
+  }, [collapsePreferencesReady, pickerProviderSignature, runtimeModelsByProvider]);
 
   // Resolve current detail
   const detailContent = (() => {
@@ -2102,14 +2283,21 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
           ) : filteredProviders.map(([provider, models]) => {
             const providerVisible = models.every((model) => visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`));
             const providerSomeVisible = models.some((model) => visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`));
+            // A typed filter intentionally opens matching groups: hiding the
+            // only search results behind a remembered collapse is surprising.
+            const isCollapsed = collapsedProviderGroups.picker.includes(provider) && !pickerQuery;
+            const regionId = `composer-provider-models-${provider.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
             return <section key={provider} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", overflow: "hidden", background: "var(--bg-panel)", boxShadow: "var(--shadow-card)" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", background: "var(--bg)", borderBottom: "1px solid var(--border)", color: "var(--text)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 10px", background: "var(--bg)", borderBottom: isCollapsed ? "none" : "1px solid var(--border)", color: "var(--text)", fontSize: 12, fontWeight: 700 }}>
                 <input type="checkbox" checked={providerVisible} ref={(input) => { if (input) input.indeterminate = providerSomeVisible && !providerVisible; }} onChange={(event) => setComposerProviderVisible(provider, event.target.checked)} aria-label={`Show all ${provider} models in composer`} />
-                <ProviderIcon id={provider} size={15} />
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{provider}</span>
-                <span style={{ color: "var(--text-dim)", fontSize: 11, fontWeight: 500, padding: "2px 7px", borderRadius: 10, background: "var(--bg-subtle)", border: "1px solid var(--border)" }}>{models.length}</span>
-              </label>
-              <div style={{ display: "flex", flexDirection: "column" }}>
+                <button type="button" onClick={() => toggleProviderCollapse("picker", provider)} aria-expanded={!isCollapsed} aria-controls={regionId} title={`${isCollapsed ? "展开" : "收起"} ${provider}`} style={{ minWidth: 0, flex: 1, display: "flex", alignItems: "center", gap: 7, padding: "3px 0", border: "none", background: "transparent", color: "inherit", cursor: "pointer", font: "inherit", textAlign: "left" }}>
+                  <ChevronRight size={13} aria-hidden="true" style={{ color: "var(--text-dim)", flexShrink: 0, transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)", transition: "transform var(--dur-fast) var(--ease-out-warm)" }} />
+                  <ProviderIcon id={provider} size={15} />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{provider}</span>
+                  <span style={{ color: "var(--text-dim)", fontSize: 11, fontWeight: 500, padding: "2px 7px", borderRadius: 10, background: "var(--bg-subtle)", border: "1px solid var(--border)" }}>{models.length}</span>
+                </button>
+              </div>
+              {!isCollapsed && <div id={regionId} style={{ display: "flex", flexDirection: "column" }}>
                 {models.map((model) => (
                   <label key={`${model.provider}:${model.id}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", color: "var(--text)", cursor: "pointer", borderTop: "1px solid var(--border)", background: visibleModelKeys !== null && !visibleModelKeys.has(`${model.provider}:${model.id}`) ? "var(--bg)" : "var(--bg-panel)" }}>
                     <input type="checkbox" checked={visibleModelKeys === null || visibleModelKeys.has(`${model.provider}:${model.id}`)} onChange={(event) => setComposerModelVisible(model, event.target.checked)} aria-label={`Show ${model.provider}/${model.id} in composer`} />
@@ -2117,7 +2305,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                     <code style={{ color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{model.provider}/{model.id}</code>
                   </label>
                 ))}
-              </div>
+              </div>}
             </section>;
           })}
           {!runtimeModelsLoading && connectedProviders.filter((provider) => !runtimeModelsByProvider[provider.id]).map((provider) => (
@@ -2141,6 +2329,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
           onChange={(p) => updateProvider(selection.name, p)}
           onRename={(n) => renameProvider(selection.name, n)}
           onDelete={() => deleteProvider(selection.name)}
+          takenNames={new Set(Object.keys(config.providers ?? {}))}
         />
       );
     }
@@ -2294,15 +2483,22 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                     {providers.map(([pName, pData]) => {
                       const isProviderSelected = selection?.type === "provider" && selection.name === pName;
                       const models = pData.models ?? [];
+                      const isCollapsed = collapsedProviderGroups.custom.includes(pName);
+                      const regionId = `custom-provider-models-${pName.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
                       return (
                         <div key={pName} style={{ borderRadius: "var(--radius-card)", background: "var(--bg)", border: isProviderSelected ? "1px solid var(--accent)" : "1px solid var(--border)", overflow: "hidden", boxShadow: isProviderSelected ? "0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent)" : "none" }}>
-                          {/* Provider row */}
+                          {/* Provider summary.  The large model list stays out
+                              of the way until this one provider is expanded. */}
                           <button
                             type="button"
-                            onClick={() => setSelection({ type: "provider", name: pName })}
-                            style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 10px", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isProviderSelected ? "var(--bg-selected)" : "var(--bg)", borderBottom: models.length ? "1px solid var(--border)" : "none" }}
+                            onClick={() => { setSelection({ type: "provider", name: pName }); toggleProviderCollapse("custom", pName); }}
+                            aria-expanded={!isCollapsed}
+                            aria-controls={regionId}
+                            title={`${isCollapsed ? "展开" : "收起"} ${pName}`}
+                            style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 10px", cursor: "pointer", width: "100%", border: "none", textAlign: "left", fontFamily: "inherit", background: isProviderSelected ? "var(--bg-selected)" : "var(--bg)", borderBottom: !isCollapsed && models.length ? "1px solid var(--border)" : "none" }}
                             {...hoverRow(isProviderSelected)}
                           >
+                            <ChevronRight size={13} aria-hidden="true" style={{ color: "var(--text-dim)", flexShrink: 0, transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)", transition: "transform var(--dur-fast) var(--ease-out-warm)" }} />
                             <ProviderIcon id={pName} size={15} />
                             <span style={{ fontSize: 12, fontWeight: isProviderSelected ? 700 : 600, color: "var(--text)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {pName}
@@ -2312,6 +2508,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                             </span>
                           </button>
 
+                          {!isCollapsed && <div id={regionId}>
                           {/* Model rows */}
                           {models.map((m, i) => {
                             const isModelSelected = selection?.type === "model" && selection.providerName === pName && selection.index === i;
@@ -2354,6 +2551,7 @@ export function ModelsConfig({ onClose, onSelectTab, onSaved, embedded = false }
                               <span>{t("modelsConfig.addFromCatalog")}</span>
                             </button>
                           </div>
+                          </div>}
                         </div>
                       );
                     })}

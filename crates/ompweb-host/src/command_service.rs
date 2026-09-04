@@ -34,12 +34,22 @@ use crate::ipc_server::{json_str, IpcError};
 const WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_OUTPUT_BYTES: usize = 20 * 1024;
 
-fn spawn_shell_with_env(cwd: &str, command: &str, stdout: Stdio, stderr: Stdio, envs: &[(String, String)]) -> Result<Child, std::io::Error> {
+fn spawn_shell_with_env(
+    cwd: &str,
+    command: &str,
+    stdout: Stdio,
+    stderr: Stdio,
+    envs: &[(String, String)],
+) -> Result<Child, std::io::Error> {
     #[cfg(target_os = "windows")]
     {
         let mut cmd = Command::new("cmd.exe");
         cmd.args(["/d", "/s", "/c", command]);
-        cmd.current_dir(cwd).env("LC_ALL", "C").stdin(Stdio::null()).stdout(stdout).stderr(stderr);
+        cmd.current_dir(cwd)
+            .env("LC_ALL", "C")
+            .stdin(Stdio::null())
+            .stdout(stdout)
+            .stderr(stderr);
         cmd.envs(envs.iter().map(|(k, v)| (k.as_str(), v.as_str())));
         cmd.spawn()
     }
@@ -47,16 +57,14 @@ fn spawn_shell_with_env(cwd: &str, command: &str, stdout: Stdio, stderr: Stdio, 
     {
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", command]);
-        cmd.current_dir(cwd).env("LC_ALL", "C").stdin(Stdio::null()).stdout(stdout).stderr(stderr);
+        cmd.current_dir(cwd)
+            .env("LC_ALL", "C")
+            .stdin(Stdio::null())
+            .stdout(stdout)
+            .stderr(stderr);
         cmd.envs(envs.iter().map(|(k, v)| (k.as_str(), v.as_str())));
         cmd.spawn()
     }
-}
-
-/// Constant literal shell + fixed argv (the script text is the single and
-/// last argv element — never interpolated into a runtime-built option).
-fn spawn_shell(cwd: &str, command: &str, stdout: Stdio, stderr: Stdio) -> Result<Child, std::io::Error> {
-    spawn_shell_with_env(cwd, command, stdout, stderr, &[])
 }
 
 /// 20 KiB merged-output cap (mirror of MAX_OUTPUT_BYTES in the route).
@@ -67,7 +75,10 @@ struct Sink {
 
 impl Sink {
     fn new() -> Self {
-        Sink { bytes: Vec::with_capacity(MAX_OUTPUT_BYTES), capped: false }
+        Sink {
+            bytes: Vec::with_capacity(MAX_OUTPUT_BYTES),
+            capped: false,
+        }
     }
     fn feed(&mut self, chunk: &[u8]) {
         if self.capped {
@@ -85,7 +96,10 @@ impl Sink {
 
 /// Read one pipe into the shared sink until EOF (own thread — a blocking
 /// read must never stall the wait loop that watches for child exit).
-fn drain_thread<R: Read + Send + 'static>(mut pipe: R, sink: std::sync::Arc<std::sync::Mutex<Sink>>) -> std::thread::JoinHandle<()> {
+fn drain_thread<R: Read + Send + 'static>(
+    mut pipe: R,
+    sink: std::sync::Arc<std::sync::Mutex<Sink>>,
+) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -102,7 +116,12 @@ fn run_wait(cwd: &str, command: &str, envs: &[(String, String)]) -> Result<Strin
     run_wait_with_timeout(cwd, command, WAIT_TIMEOUT, envs)
 }
 
-fn run_wait_with_timeout(cwd: &str, command: &str, timeout: Duration, envs: &[(String, String)]) -> Result<String, IpcError> {
+fn run_wait_with_timeout(
+    cwd: &str,
+    command: &str,
+    timeout: Duration,
+    envs: &[(String, String)],
+) -> Result<String, IpcError> {
     let mut child = spawn_shell_with_env(cwd, command, Stdio::piped(), Stdio::piped(), envs)
         .map_err(|e| IpcError::new("spawn_failed", e.to_string()))?;
     let sink = std::sync::Arc::new(std::sync::Mutex::new(Sink::new()));
@@ -150,20 +169,27 @@ fn run_wait_with_timeout(cwd: &str, command: &str, timeout: Duration, envs: &[(S
 /// Detach mode: spawn in the background writing to a project-local log file.
 fn run_detach(cwd: &str, command: &str, envs: &[(String, String)]) -> Result<String, IpcError> {
     let log_dir = format!("{cwd}/.omp/scripts-logs");
-    std::fs::create_dir_all(&log_dir).map_err(|e| IpcError::new("log_dir_failed", e.to_string()))?;
+    std::fs::create_dir_all(&log_dir)
+        .map_err(|e| IpcError::new("log_dir_failed", e.to_string()))?;
     let log_path = format!(
         "{log_dir}/{}.log",
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
     );
     let file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&log_path)
         .map_err(|e| IpcError::new("log_open_failed", e.to_string()))?;
-    let mut child = spawn_shell_with_env(
+    let child = spawn_shell_with_env(
         cwd,
         command,
-        Stdio::from(file.try_clone().map_err(|e| IpcError::new("log_clone_failed", e.to_string()))?),
+        Stdio::from(
+            file.try_clone()
+                .map_err(|e| IpcError::new("log_clone_failed", e.to_string()))?,
+        ),
         Stdio::from(file),
         envs,
     )
@@ -171,7 +197,11 @@ fn run_detach(cwd: &str, command: &str, envs: &[(String, String)]) -> Result<Str
     let pid = child.id();
     // Never reap: the script outlives this request, like Node's unref().
     std::mem::forget(child);
-    Ok(format!("{{\"mode\":\"detach\",\"pid\":{},\"logPath\":{}}}", pid, json_str(&log_path)))
+    Ok(format!(
+        "{{\"mode\":\"detach\",\"pid\":{},\"logPath\":{}}}",
+        pid,
+        json_str(&log_path)
+    ))
 }
 
 /// IPC arm `commands.run` — wait or detach a registry-resolved script.
@@ -179,14 +209,24 @@ fn run_detach(cwd: &str, command: &str, envs: &[(String, String)]) -> Result<Str
 /// containment and owns process spawning. `envs` carries per-request env
 /// overrides (proxy vars) merged by the Node layer; the host's own inherited
 /// environment stays the base, exactly like Node's `{...process.env, ...proxy}`.
-pub fn run(roots: &[String], cwd: &str, command: &str, detach: bool, envs: &[(String, String)]) -> Result<String, IpcError> {
+pub fn run(
+    roots: &[String],
+    cwd: &str,
+    command: &str,
+    detach: bool,
+    envs: &[(String, String)],
+) -> Result<String, IpcError> {
     if !is_path_within_any(roots, cwd) {
         return Err(IpcError::new("access_denied", "cwd outside allowed roots"));
     }
     if command.trim().is_empty() {
         return Err(IpcError::new("bad_params", "command required"));
     }
-    if detach { run_detach(cwd, command, envs) } else { run_wait(cwd, command, envs) }
+    if detach {
+        run_detach(cwd, command, envs)
+    } else {
+        run_wait(cwd, command, envs)
+    }
 }
 
 #[cfg(test)]
@@ -197,7 +237,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "ompweb-cmd-{tag}-{}-{:?}",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir.to_str().unwrap().to_string()

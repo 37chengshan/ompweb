@@ -283,6 +283,20 @@ function createAssistantErrorMessage(message: string, fields: { status?: number 
   };
 }
 
+/** OMP handles many slash commands entirely inside its RPC runtime. Their
+ * output is not written to the conversation JSONL, so retain a proper visible
+ * transcript row rather than downgrading it to an ephemeral toast. */
+function createAssistantCommandMessage(text: string): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    provider: "omp",
+    model: "OMP command",
+    stopReason: "command",
+    timestamp: Date.now(),
+  };
+}
+
 /** Narrow the live state's model (OmpModel: id-based) to the composer's shape. */
 function toThinkingModelMeta(model: { provider?: string; id?: string; name?: string; reasoning?: boolean; thinking?: { efforts?: string[] } } | null | undefined): ThinkingModelMeta | null {
   if (!model?.provider || !model.id) return null;
@@ -330,6 +344,8 @@ export interface CompactResultInfo {
 export interface SlashCommandInfo {
   name: string;
   description?: string;
+  /** Native OMP's own input hint, e.g. "tool" for `/force`. */
+  argumentHint?: string;
   /** ompBuiltin = full OMP registry surfaced (5.0 doc 08 Slice 1). */
   source: "extension" | "prompt" | "skill" | "ompBuiltin";
   sourceInfo?: {
@@ -601,7 +617,7 @@ function toSlashCommandInfo(command: RpcAvailableSlashCommand): SlashCommandInfo
       : command.source === "builtin"
         ? "ompBuiltin"
         : "prompt";
-  return { name: command.name, description: command.description, source };
+  return { name: command.name, description: command.description, source, ...(command.input?.hint ? { argumentHint: command.input.hint } : {}) };
 }
 
 export function useAgentSession(opts: UseAgentSessionOptions) {
@@ -1778,7 +1794,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [addNotice, opts.chatInputRef]);
 
-  const finishPromptWithoutStream = useCallback(async (sid: string | null = sessionIdRef.current, runId?: number) => {
+  const finishPromptWithoutStream = useCallback(async (sid: string | null = sessionIdRef.current, runId?: number, reloadSession = true) => {
     // Bail out before loadSession too: a stale finish for a previous run
     // must not overwrite the messages of the run currently streaming.
     if (runId !== undefined && promptRunIdRef.current !== runId) return;
@@ -1786,7 +1802,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Pass the fence into loadSession: the pre-check above only guards the
       // start — a next prompt that begins while the reload is in flight must
       // not be overwritten by the finished run's snapshot.
-      if (sid) await loadSession(sid, false, true, runId);
+      // OMP-local slash commands emit command_output but do not persist an
+      // assistant response to the JSONL. Reloading here would erase the
+      // visible command result that just arrived over SSE.
+      if (sid && reloadSession) await loadSession(sid, false, true, runId);
       const pending = pendingPromptErrorRef.current;
       if (pending && pending.sid === sid && (runId === undefined || pending.runId === runId)) {
         setMessages((prev) => {
@@ -1815,6 +1834,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // resolved BEFORE this clear — re-issue so finished runs repopulate the
       // roster (merge is idempotent).
       if (sid) void refreshSubagentHistory(sid);
+      eventCoalescerRef.current?.reset();
       dispatch({ type: "end" });
       onAgentEnd?.();
     }
@@ -2108,6 +2128,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setAdvisorActiveAt(0);
         subagentRosterGenerationRef.current += 1;
         resetSubagentActivityState();
+        eventCoalescerRef.current?.reset();
         dispatch({ type: "end" });
         if (endedSid) {
           void loadSession(endedSid, false, false, endedRunId);
@@ -2147,7 +2168,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // Fence with the current run id like agent_end does: the reload below
         // is async, and a prompt that starts while it is in flight must not be
         // overwritten by this finished run's snapshot.
-        void finishPromptWithoutStream(sessionIdRef.current, promptRunIdRef.current);
+        void finishPromptWithoutStream(sessionIdRef.current, promptRunIdRef.current, false);
         break;
       case "prompt_error":
         {
@@ -2185,7 +2206,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "command_output": {
         const text = (event.text as string | undefined)?.trim() ?? "";
         if (/^xd:\/\/:\s*mounted\s+mcp__/i.test(text)) toast.info("MCP tools updated", text, { clamp: true });
-        else if (text) addNotice({ type: "info", message: text });
+        else if (text) {
+          // Command output was previously rendered only as a short toast;
+          // users consequently saw no durable result for OMP `/model`,
+          // `/force`, `/jobs`, etc. Keep it in the active transcript.
+          setMessages((prev) => [...prev, createAssistantCommandMessage(text)]);
+        }
         break;
       }
       case "thinking_level_changed":
@@ -2500,6 +2526,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return true;
     }
 
+    eventCoalescerRef.current?.reset();
     const promptRunId = promptRunIdRef.current + 1;
 
     const { userMsg, piImages } = buildOutgoingPrompt(message, images);
@@ -2705,6 +2732,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return;
     }
     try {
+      eventCoalescerRef.current?.reset();
       await sendAgentCommand(sid, { type: "abort" });
     } catch (e) {
       console.error("Failed to abort:", e);
@@ -3235,7 +3263,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // timer is refreshed every frame, so checking it first would trap the user
     // at the bottom.
     if (!userScrollIntent && Date.now() < ignoreProgrammaticScrollUntilRef.current) return;
-    if (!userScrollIntent) return;
     const container = scrollContainerRef.current;
     const end = messagesEndRef.current;
     if (!container || !end) return;

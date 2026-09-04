@@ -19,9 +19,20 @@ use crate::ipc_server::{json_str, IpcError};
 pub const TEXT_PREVIEW_MAX_BYTES: u64 = 256 * 1024;
 
 const IGNORED_NAMES: &[&str] = &[
-    "node_modules", ".git", ".next", "dist", "build", "__pycache__",
-    ".turbo", ".cache", "coverage", ".pytest_cache", ".mypy_cache",
-    "target", "vendor", ".DS_Store",
+    "node_modules",
+    ".git",
+    ".next",
+    "dist",
+    "build",
+    "__pycache__",
+    ".turbo",
+    ".cache",
+    "coverage",
+    ".pytest_cache",
+    ".mypy_cache",
+    "target",
+    "vendor",
+    ".DS_Store",
 ];
 const IGNORED_SUFFIXES: &[&str] = &[".pyc"];
 
@@ -158,12 +169,20 @@ pub fn is_path_within_any(roots: &[String], path: &str) -> bool {
     roots.iter().any(|root| is_path_within(root, path))
 }
 
-fn base_name(path: &str) -> String {
-    path.replace('\\', "/")
-        .rsplit('/')
-        .next()
-        .unwrap_or("")
-        .to_string()
+/// Resolve both the requested existing path and each existing root before the
+/// component comparison. The HTTP adapter already applies this check, but the
+/// host is a security boundary too: a symlink *inside* an allowed directory
+/// must never be able to redirect a host-side read/list/meta request outside
+/// it.
+fn is_existing_path_within_any(roots: &[String], path: &str) -> bool {
+    let Ok(real_path) = std::fs::canonicalize(path) else {
+        return false;
+    };
+    roots.iter().any(|root| {
+        std::fs::canonicalize(root)
+            .map(|real_root| real_path.starts_with(real_root))
+            .unwrap_or(false)
+    })
 }
 
 fn is_ignored(name: &str) -> bool {
@@ -186,7 +205,11 @@ fn resolve_is_dir(dirent: &std::fs::DirEntry) -> Option<bool> {
 /// order identically, non-ASCII is a documented known divergence).
 pub fn list_entries_json(dir: &Path) -> Result<String, IpcError> {
     let read_dir = std::fs::read_dir(dir).map_err(|e| {
-        let code = if e.kind() == ErrorKind::NotFound { "file_not_found" } else { "read_failed" };
+        let code = if e.kind() == ErrorKind::NotFound {
+            "file_not_found"
+        } else {
+            "read_failed"
+        };
         IpcError::new(code, e.to_string())
     })?;
     let mut entries: Vec<(String, bool)> = Vec::new();
@@ -205,7 +228,11 @@ pub fn list_entries_json(dir: &Path) -> Result<String, IpcError> {
     }
     entries.sort_by(|a, b| {
         if a.1 != b.1 {
-            return if a.1 { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+            return if a.1 {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
         }
         a.0.cmp(&b.0)
     });
@@ -226,14 +253,21 @@ pub fn list_entries_json(dir: &Path) -> Result<String, IpcError> {
 
 fn read_ungated(path: &str) -> Result<String, IpcError> {
     let metadata = std::fs::metadata(path).map_err(|e| -> IpcError {
-        let code = if e.kind() == ErrorKind::NotFound { "file_not_found" } else { "read_failed" };
+        let code = if e.kind() == ErrorKind::NotFound {
+            "file_not_found"
+        } else {
+            "read_failed"
+        };
         IpcError::new(code, e.to_string())
     })?;
     if !metadata.is_file() {
         return Err(IpcError::new("not_a_file", "not a regular file"));
     }
     if metadata.len() > TEXT_PREVIEW_MAX_BYTES {
-        return Err(IpcError::new("file_too_large_preview", "file too large for preview (>256KB)"));
+        return Err(IpcError::new(
+            "file_too_large_preview",
+            "file too large for preview (>256KB)",
+        ));
     }
     let raw = std::fs::read(path).map_err(|e| IpcError::new("read_failed", e.to_string()))?;
     let content = String::from_utf8_lossy(&raw).into_owned();
@@ -246,32 +280,44 @@ fn read_ungated(path: &str) -> Result<String, IpcError> {
 }
 
 fn read_guarded(roots: &[String], path: &str) -> Result<String, IpcError> {
-    if !is_path_within_any(roots, path) {
+    if !is_path_within_any(roots, path) || !is_existing_path_within_any(roots, path) {
         return Err(IpcError::new("access_denied", "path outside allowed roots"));
     }
     read_ungated(path)
 }
 
 fn list_guarded(roots: &[String], path: &str) -> Result<String, IpcError> {
-    if !is_path_within_any(roots, path) {
+    if !is_path_within_any(roots, path) || !is_existing_path_within_any(roots, path) {
         return Err(IpcError::new("access_denied", "path outside allowed roots"));
     }
     // The route stats first: a non-directory target is `not_a_directory`,
     // a missing one is `file_not_found`.
     let metadata = std::fs::metadata(path).map_err(|e| -> IpcError {
-        let code = if e.kind() == ErrorKind::NotFound { "file_not_found" } else { "read_failed" };
+        let code = if e.kind() == ErrorKind::NotFound {
+            "file_not_found"
+        } else {
+            "read_failed"
+        };
         IpcError::new(code, e.to_string())
     })?;
     if !metadata.is_dir() {
         return Err(IpcError::new("not_a_directory", "not a directory"));
     }
     let entries = list_entries_json(Path::new(path))?;
-    Ok(format!("{{\"entries\":{},\"path\":{}}}", entries, json_str(path)))
+    Ok(format!(
+        "{{\"entries\":{},\"path\":{}}}",
+        entries,
+        json_str(path)
+    ))
 }
 
 fn meta_ungated(path: &str) -> Result<String, IpcError> {
     let metadata = std::fs::metadata(path).map_err(|e| -> IpcError {
-        let code = if e.kind() == ErrorKind::NotFound { "file_not_found" } else { "read_failed" };
+        let code = if e.kind() == ErrorKind::NotFound {
+            "file_not_found"
+        } else {
+            "read_failed"
+        };
         IpcError::new(code, e.to_string())
     })?;
     if !metadata.is_file() {
@@ -290,7 +336,7 @@ fn meta_ungated(path: &str) -> Result<String, IpcError> {
 }
 
 fn meta_guarded(roots: &[String], path: &str) -> Result<String, IpcError> {
-    if !is_path_within_any(roots, path) {
+    if !is_path_within_any(roots, path) || !is_existing_path_within_any(roots, path) {
         return Err(IpcError::new("access_denied", "path outside allowed roots"));
     }
     meta_ungated(path)
@@ -333,7 +379,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "ompweb-file-service-test-{}-{:?}",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -374,7 +423,11 @@ mod tests {
         let dir = temp_fixture_dir();
         let small = dir.join("main.ts");
         std::fs::write(&small, "export const x = 1;").unwrap();
-        let out = read(&[dir.to_string_lossy().into_owned()], small.to_str().unwrap()).unwrap();
+        let out = read(
+            &[dir.to_string_lossy().into_owned()],
+            small.to_str().unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             out,
             format!(
@@ -396,6 +449,28 @@ mod tests {
         let err = read(&[root.to_string()], "/etc/passwd").unwrap_err();
         assert_eq!(err.code, "access_denied");
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_rejects_symlink_that_escapes_an_allowed_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_fixture_dir();
+        let outside = temp_fixture_dir();
+        let secret = outside.join("outside.txt");
+        std::fs::write(&secret, "not reachable through root").unwrap();
+        let escaped = root.join("escaped.txt");
+        symlink(&secret, &escaped).unwrap();
+
+        let err = read(
+            &[root.to_string_lossy().into_owned()],
+            escaped.to_str().unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, "access_denied");
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&outside).ok();
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/lib/api-utils";
 import { invalidateModelsCache } from "@/lib/models-cache";
+import { pruneConfigProviderRefs } from "@/lib/omp/model-roles";
 import { disposeUtilityRpc } from "@/lib/omp/rpc-utility";
 import {
   ModelsConfigParseError,
@@ -49,6 +50,11 @@ export async function PUT(req: Request) {
       }
       throw error;
     }
+    // A provider removal must also drop config.yml entries that referenced it
+    // (model roles, fallback chains, webSearchOrder) — otherwise omp keeps
+    // resolving the deleted provider to a random/unusable model, which reads
+    // as "the CLI did not sync the deletion".
+    pruneConfigProviderRefs(Object.keys(body.providers ?? {}));
     invalidateModelsCache();
     // The utility process loads models.yml once at startup. A cache flush alone
     // would still query that stale registry after a provider was added.

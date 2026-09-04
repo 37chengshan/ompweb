@@ -1,11 +1,11 @@
 # Direct client-API call inventory (W0 baseline)
 
-Generated: 2026-09-03T15:18:20.768Z · totals: 143 calls / 29 files · http 136 (read 67 / write 76) · sse 7
+Generated: 2026-09-04T14:55:34.679Z · totals: 146 calls / 31 files · http 138 (read 69 / write 77) · sse 8
 
 | domain | calls |
 |---|---|
-| sessions | 22 |
-| agent | 11 |
+| sessions | 23 |
+| agent | 13 |
 | omp-update | 10 |
 | pair | 9 |
 | files | 9 |
@@ -23,17 +23,18 @@ Generated: 2026-09-03T15:18:20.768Z · totals: 143 calls / 29 files · http 136 
 | model-roles | 3 |
 | plugins | 3 |
 | worktrees | 3 |
-| omp-version | 2 |
 | cwd | 2 |
 | file-index | 2 |
 | git | 2 |
 | reveal | 2 |
 | models | 2 |
 | proxy | 2 |
+| omp-version | 1 |
 | web-auth | 1 |
 | providers | 1 |
 | home | 1 |
 | usage-summary | 1 |
 | provider-usage | 1 |
+| browser-proxy | 1 |
 
 Machine-readable record: `api-call-inventory.json`. Sync gate: `lib/api-inventory.test.mjs`; lint gate: `eslint.config.mjs`.

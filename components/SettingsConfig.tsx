@@ -3,10 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import dynamic from "next/dynamic";
-import { Copy, ExternalLink, RefreshCw, RotateCcw, Search, AlertCircle } from "lucide-react";
+import { Copy, ExternalLink, PanelLeftClose, PanelLeftOpen, RefreshCw, RotateCcw, Search, AlertCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useMotionPrefs } from "@/hooks/useMotionPrefs";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
+import { useResizableDialog } from "@/hooks/useResizableDialog";
+import { ResizeHandles } from "./panels/ResizeHandles";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
 import { BackendDiagnosticsBody } from "./BackendDiagnostics";
 import { useI18n } from "@/lib/i18n";
@@ -362,6 +364,56 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 }) {
   const isMobile = useIsMobile();
   const { t } = useI18n();
+  const { size: dialogSize, isResizing: isDialogResizing, onPointerDown: onDialogResize, onPointerMove: onDialogResizeMove, onPointerUp: onDialogResizeEnd } = useResizableDialog();
+  // Settings nav (left rail): collapse to icon-only + drag to resize width.
+  // Settings opens with the compact icon rail; labels remain discoverable via
+  // the native title tooltip while preserving room for the active panel.
+  const [navCollapsed, setNavCollapsed] = useState(true);
+  const [nativeWindowOpen, setNativeWindowOpen] = useState(false);
+  const [navWidth, setNavWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 230;
+    try {
+      const raw = localStorage.getItem("omp-settings-nav-width");
+      return raw ? Math.min(360, Math.max(170, Number(raw))) : 230;
+    } catch {
+      return 230;
+    }
+  });
+  const navDragRef = useRef<{ startX: number; startW: number } | null>(null);
+  const navWidthRef = useRef(navWidth);
+  navWidthRef.current = navWidth;
+  const onNavResizeStart = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    navDragRef.current = { startX: e.clientX, startW: navWidth };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  }, [navWidth]);
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const drag = navDragRef.current;
+      if (!drag) return;
+      const w = drag.startW + (e.clientX - drag.startX);
+      setNavWidth(Math.min(360, Math.max(170, w)));
+    };
+    // Write once on drag end instead of per pointermove (sync localStorage on
+    // every move stalls low-end drags); visibilitychange catches alt-tab.
+    const persist = () => {
+      try { localStorage.setItem("omp-settings-nav-width", String(navWidthRef.current)); } catch { /* best effort */ }
+    };
+    const onUp = () => {
+      navDragRef.current = null;
+      persist();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    document.addEventListener("visibilitychange", persist);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.removeEventListener("visibilitychange", persist);
+    };
+  }, []);
   const workspaceReady = cwd !== null;
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -740,7 +792,22 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent ariaLabel={t("settingsConfig.title")} style={{ width: isMobile ? "calc(100vw - 16px)" : 940, maxWidth: "calc(100vw - 16px)", height: isMobile ? "calc(100dvh - 16px)" : "82vh", maxHeight: "calc(100dvh - 16px)", padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <DialogContent
+        ariaLabel={t("settingsConfig.title")}
+        style={{
+          width: isMobile ? "calc(100vw - 16px)" : dialogSize.width,
+          maxWidth: "calc(100vw - 16px)",
+          height: isMobile ? "calc(100dvh - 16px)" : dialogSize.height,
+          maxHeight: "calc(100dvh - 16px)",
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {/* Desktop resize handles (right / bottom / corner). The DialogContent
+            is a fixed containing block, so these sit inside it. */}
+        {!isMobile && <ResizeHandles onPointerDown={onDialogResize} onPointerMove={onDialogResizeMove} onPointerUp={onDialogResizeEnd} isResizing={isDialogResizing} />}
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-panel)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <DialogTitle style={{ fontSize: 16, margin: 0, fontWeight: 600 }}>{t("settingsConfig.title")}</DialogTitle>
@@ -782,7 +849,51 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
             <SearchResultsList results={searchResults} query={searchQuery.trim()} onSelect={openSearchResult} />
           ) : (
             <SettingsHighlightContext.Provider value={highlightId}>
-              <SettingsTabs active={currentTab} onSelect={handleSelectTab} workspaceReady={workspaceReady} layout={isMobile ? "horizontal" : "vertical"} />
+              {isMobile ? (
+                <SettingsTabs active={currentTab} onSelect={handleSelectTab} workspaceReady={workspaceReady} layout="horizontal" />
+              ) : (
+                <div style={{ display: "flex", minHeight: 0, flexShrink: 0 }}>
+                  <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+                    {/* Collapse/expand toggle above the nav rail */}
+                    <button
+                      type="button"
+                      onClick={() => setNavCollapsed((v) => !v)}
+                      aria-label={navCollapsed ? "Expand settings navigation" : "Collapse settings navigation"}
+                      title={navCollapsed ? "展开设置导航" : "收起设置导航（仅图标）"}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        height: 30, margin: "6px 6px 0", padding: 0,
+                        border: "none", borderRadius: "var(--radius-control)",
+                        background: "none", color: "var(--text-muted)", cursor: "pointer",
+                        alignSelf: navCollapsed ? "center" : "flex-end",
+                        width: navCollapsed ? 36 : 30,
+                      }}
+                    >
+                      {navCollapsed ? <PanelLeftOpen size={14} strokeWidth={1.8} /> : <PanelLeftClose size={14} strokeWidth={1.8} />}
+                    </button>
+                    <SettingsTabs
+                      active={currentTab}
+                      onSelect={handleSelectTab}
+                      workspaceReady={workspaceReady}
+                      layout="vertical"
+                      width={navWidth}
+                      collapsed={navCollapsed}
+                    />
+                  </div>
+                  {/* Drag handle: resize the nav / content split */}
+                  <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    onPointerDown={onNavResizeStart}
+                    title="拖拽调整设置导航宽度"
+                    style={{
+                      width: 5, cursor: "col-resize", touchAction: "none",
+                      background: "transparent", flexShrink: 0,
+                      borderRight: "1px solid var(--border)",
+                    }}
+                  />
+                </div>
+              )}
 
               <div style={contentStyle}>
             {nativeSettingsError && (
@@ -1266,7 +1377,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
             {/* OMP NATIVE SETTINGS TAB (schema-driven, via omp CLI) */}
             {currentTab === "native" && (
               <div role="tabpanel" id="settings-panel-native" aria-labelledby="settings-tab-native" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-                <NativeSettingsPanel />
+                <NativeSettingsPanel onOpenStandalone={() => setNativeWindowOpen(true)} />
+                {nativeWindowOpen && <NativeSettingsPanel standalone onClose={() => setNativeWindowOpen(false)} />}
               </div>
             )}
 

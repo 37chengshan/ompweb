@@ -38,7 +38,9 @@ fn run_script(text: &str) -> Result<(), String> {
             }
             "snapshot" => {
                 now_ms += 10;
-                journal.snapshot(args[0], args[1].parse().unwrap(), now_ms).map_err(step)?;
+                journal
+                    .snapshot(args[0], args[1].parse().unwrap(), now_ms)
+                    .map_err(step)?;
             }
             "tail_max" => journal.set_tail_max(args[0].parse().unwrap()),
             "begin_resume" => journal.begin_resume(args[0]),
@@ -68,9 +70,12 @@ fn run_script(text: &str) -> Result<(), String> {
                 let plan = plans
                     .iter()
                     .find(|p| plan_matches(p, kind, stream))
-                    .ok_or_else(|| format!("{scenario}: expected {kind} for {stream}, got {plans:?}"))?;
+                    .ok_or_else(|| {
+                        format!("{scenario}: expected {kind} for {stream}, got {plans:?}")
+                    })?;
                 if seq_list != "-" {
-                    let expected: Vec<i64> = seq_list.split(',').map(|s| s.parse().unwrap()).collect();
+                    let expected: Vec<i64> =
+                        seq_list.split(',').map(|s| s.parse().unwrap()).collect();
                     assert_eq!(plan_seqs(plan), expected, "{scenario}: {kind} replay seqs");
                 }
             }
@@ -81,11 +86,21 @@ fn run_script(text: &str) -> Result<(), String> {
             }
             "accept" => {
                 let outcome = ledger.accept(args[0], args[1], args[2]);
-                assert_eq!(outcome, parse_outcome(args[3]), "{scenario}: accept {}", args[1]);
+                assert_eq!(
+                    outcome,
+                    parse_outcome(args[3]),
+                    "{scenario}: accept {}",
+                    args[1]
+                );
             }
             "reaccept" => {
                 let outcome = ledger.reaccept_unknown(args[0], args[1], args[2]);
-                assert_eq!(outcome, parse_outcome(args[3]), "{scenario}: reaccept {}", args[1]);
+                assert_eq!(
+                    outcome,
+                    parse_outcome(args[3]),
+                    "{scenario}: reaccept {}",
+                    args[1]
+                );
             }
             "settle" => {
                 let status = match args[2] {
@@ -118,7 +133,9 @@ fn plan_matches(plan: &ResumePlan, kind: &str, stream: &str) -> bool {
 
 fn plan_seqs(plan: &ResumePlan) -> Vec<i64> {
     match plan {
-        ResumePlan::Replay { seqs, .. } | ResumePlan::SnapshotThenReplay { seqs, .. } => seqs.clone(),
+        ResumePlan::Replay { seqs, .. } | ResumePlan::SnapshotThenReplay { seqs, .. } => {
+            seqs.clone()
+        }
         _ => Vec::new(),
     }
 }
@@ -148,7 +165,9 @@ fn file_backed_storage_survives_reopen() {
         journal
             .append("session:s1", "agent_start", EventClass::Reliable, "p1", 1)
             .unwrap();
-        journal.append("session:s1", "presence", EventClass::Ephemeral, "p2", 2).unwrap();
+        journal
+            .append("session:s1", "presence", EventClass::Ephemeral, "p2", 2)
+            .unwrap();
     }
     let mut journal = SqliteJournal::open(&db, "epoch-1").unwrap();
     // Reopen keeps the authoritative epoch and committed rows; the ephemeral

@@ -15,13 +15,13 @@
 //! `pty.write` / `pty.resize` / `pty.kill` ride the control socket.
 
 use std::collections::VecDeque;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use crate::file_service::is_path_within_any;
 use crate::ipc_server::{json_str, IpcError};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 
 const DEFAULT_COLS: u16 = 80;
 const DEFAULT_ROWS: u16 = 24;
@@ -43,6 +43,14 @@ struct PtyHandle {
     history: Mutex<VecDeque<String>>,
     history_bytes: Mutex<usize>,
     master: Mutex<Box<dyn MasterPty + Send>>,
+    // The pty master's writer is a one-shot handle: `take_writer()` can only
+    // succeed once per master, and dropping the writer sends EOF to the
+    // child. Taking it on every keystroke therefore (a) fails on the second
+    // input ("cannot take writer more than once") and (b) EOFs the shell the
+    // first time the temporary is dropped — which is exactly the observed
+    // "first input closes the terminal". The writer is taken once at spawn
+    // and kept for the session's lifetime.
+    writer: Mutex<Option<Box<dyn std::io::Write + Send>>>,
     child: Mutex<Option<Box<dyn portable_pty::Child + Send>>>,
 }
 
@@ -52,7 +60,9 @@ pub struct PtyService {
 
 impl PtyService {
     pub fn new() -> Self {
-        PtyService { sessions: Mutex::new(Vec::new()) }
+        PtyService {
+            sessions: Mutex::new(Vec::new()),
+        }
     }
 
     fn evict_if_needed(&self) {
@@ -65,7 +75,10 @@ impl PtyService {
         } // lock dropped before killing children
         for handle in evicted_handles {
             // Kill the evicted PTY's shell before dropping — otherwise the
-            // child keeps running as an invisible process leak.
+            // child keeps running as an invisible process leak. Drop the kept
+            // writer too so the master sees EOF and the process group dies
+            // even if the shell ignored SIGKILL's sibling signals.
+            handle.writer.lock().unwrap().take();
             if let Some(mut child) = handle.child.lock().unwrap().take() {
                 let _ = child.kill();
                 drop(child);
@@ -76,10 +89,21 @@ impl PtyService {
     /// Spawn an interactive shell in `cwd`. `envs` holds per-request overrides
     /// (proxy vars) merged over the host's inherited environment, then the
     /// terminal defaults are forced (Node contract order).
-    pub fn spawn(&self, cwd: &str, cols: Option<u16>, rows: Option<u16>, envs: &[(String, String)]) -> Result<String, IpcError> {
+    pub fn spawn(
+        &self,
+        cwd: &str,
+        cols: Option<u16>,
+        rows: Option<u16>,
+        envs: &[(String, String)],
+    ) -> Result<String, IpcError> {
         self.evict_if_needed();
         let pty_system = native_pty_system();
-        let size = PtySize { rows: rows.unwrap_or(DEFAULT_ROWS), cols: cols.unwrap_or(DEFAULT_COLS), pixel_width: 0, pixel_height: 0 };
+        let size = PtySize {
+            rows: rows.unwrap_or(DEFAULT_ROWS),
+            cols: cols.unwrap_or(DEFAULT_COLS),
+            pixel_width: 0,
+            pixel_height: 0,
+        };
         let pair = pty_system
             .openpty(size)
             .map_err(|e| IpcError::new("pty_open_failed", e.to_string()))?;
@@ -102,7 +126,7 @@ impl PtyService {
         cmd.env("LANG", lang);
         cmd.env("LC_ALL", lc_all);
 
-        let mut child = pair
+        let child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| IpcError::new("pty_spawn_failed", e.to_string()))?;
@@ -114,12 +138,19 @@ impl PtyService {
             .master
             .try_clone_reader()
             .map_err(|e| IpcError::new("pty_reader_failed", e.to_string()))?;
+        // Take the master writer exactly once, here at spawn, before the
+        // master moves into the handle — see the PtyHandle.writer comment.
+        let writer = pair
+            .master
+            .take_writer()
+            .map_err(|e| IpcError::new("pty_writer_failed", e.to_string()))?;
         let handle = Arc::new(PtyHandle {
             id: id.clone(),
             readers: Mutex::new(Vec::new()),
             history: Mutex::new(VecDeque::new()),
             history_bytes: Mutex::new(0),
             master: Mutex::new(pair.master),
+            writer: Mutex::new(Some(writer)),
             child: Mutex::new(Some(child)),
         });
 
@@ -149,7 +180,10 @@ impl PtyService {
                     .take()
                     .and_then(|mut child| child.wait().ok())
                     .map(|status| status.exit_code() as i32);
-                let banner = format!("\r\n\x1b[33m[Terminal closed with code {}]\x1b[0m\r\n", code.unwrap_or(0));
+                let banner = format!(
+                    "\r\n\x1b[33m[Terminal closed with code {}]\x1b[0m\r\n",
+                    code.unwrap_or(0)
+                );
                 handle_clone.push_history(banner.clone());
                 handle_clone.broadcast(PtyEvent::Data(banner));
                 handle_clone.broadcast(PtyEvent::Exited { code });
@@ -162,21 +196,36 @@ impl PtyService {
 
     pub fn write(&self, id: &str, data: &str) -> Result<(), IpcError> {
         let handle = self.find(id)?;
-        // Verbatim passthrough — the terminal protocol is authoritative.
-        let mut master = handle.master.lock().unwrap();
-        let mut writer = (*master).take_writer().map_err(|e| IpcError::new("pty_writer_failed", e.to_string()))?;
-        writer.write_all(data.as_bytes()).map_err(|e| IpcError::new("pty_write_failed", e.to_string()))?;
+        // Verbatim passthrough — the terminal protocol is authoritative. The
+        // writer was taken once at spawn and lives for the session; taking it
+        // again would error and dropping a fresh take would EOF the shell.
+        let mut writer = handle.writer.lock().unwrap();
+        let writer = writer
+            .as_deref_mut()
+            .ok_or_else(|| IpcError::new("pty_writer_failed", "terminal writer unavailable"))?;
+        writer
+            .write_all(data.as_bytes())
+            .map_err(|e| IpcError::new("pty_write_failed", e.to_string()))?;
+        writer.flush().ok();
         Ok(())
     }
 
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), IpcError> {
         if cols < 2 || rows < 1 {
-            return Err(IpcError::new("bad_params", "cols must be >= 2 and rows >= 1"));
+            return Err(IpcError::new(
+                "bad_params",
+                "cols must be >= 2 and rows >= 1",
+            ));
         }
         let handle = self.find(id)?;
-        let mut master = handle.master.lock().unwrap();
+        let master = handle.master.lock().unwrap();
         master
-            .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .map_err(|e| IpcError::new("pty_resize_failed", e.to_string()))
     }
 
@@ -197,7 +246,13 @@ impl PtyService {
     /// never both — no duplicate characters on late attach).
     pub fn attach(&self, id: &str) -> Result<(Receiver<PtyEvent>, Vec<String>), IpcError> {
         let handle = self.find(id)?;
-        let history = handle.history.lock().unwrap().iter().cloned().collect::<Vec<_>>();
+        let history = handle
+            .history
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
         let (tx, rx) = mpsc::channel();
         handle.readers.lock().unwrap().push(tx);
         Ok((rx, history))
@@ -216,7 +271,10 @@ impl PtyService {
 
 impl PtyHandle {
     fn broadcast(&self, event: PtyEvent) {
-        self.readers.lock().unwrap().retain(|tx| tx.send(event.clone()).is_ok());
+        self.readers
+            .lock()
+            .unwrap()
+            .retain(|tx| tx.send(event.clone()).is_ok());
     }
 
     fn push_history(&self, text: String) {
@@ -271,7 +329,11 @@ fn resolve_shell() -> (String, Vec<String>) {
     #[cfg(not(target_os = "windows"))]
     {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| {
-            if cfg!(target_os = "macos") { "/bin/zsh".to_string() } else { "/bin/bash".to_string() }
+            if cfg!(target_os = "macos") {
+                "/bin/zsh".to_string()
+            } else {
+                "/bin/bash".to_string()
+            }
         });
         (shell, vec!["-i".to_string()])
     }
@@ -280,7 +342,10 @@ fn resolve_shell() -> (String, Vec<String>) {
 /// Deter-ministic-ish 4-hex server-side id fragment.
 fn rand_hex() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0) as u64;
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0) as u64;
     format!("{:04x}", (nanos ^ (std::process::id() as u64)) & 0xFFFF)
 }
 
@@ -291,20 +356,20 @@ pub fn global_service() -> &'static PtyService {
     SERVICE.get_or_init(PtyService::new)
 }
 
-/// IPC arm `pty.spawn` — containment re-enforced on the host.
-pub fn spawn(roots: &[String], cwd: &str, cols: Option<u16>, rows: Option<u16>, envs: &[(String, String)]) -> Result<String, IpcError> {
-    if !is_path_within_any(roots, cwd) {
-        return Err(IpcError::new("access_denied", "cwd outside allowed roots"));
-    }
-    global_service().spawn(cwd, cols, rows, envs)
-}
-
 /// Single dispatch entry for every `pty.*` method. `cwd` containment is
 /// verified here against the Node-authorized roots BEFORE any spawn — the
 /// only path that reaches the shell is one that passed this gate.
-pub fn dispatch(method: &str, params: &crate::mini_json::JsonValue, emit: &mut dyn FnMut(&str)) -> Result<Option<String>, IpcError> {
+pub fn dispatch(
+    method: &str,
+    params: &crate::mini_json::JsonValue,
+    emit: &mut dyn FnMut(&str),
+) -> Result<Option<String>, IpcError> {
     fn str_param(params: &crate::mini_json::JsonValue, key: &str) -> String {
-        params.get(&[key]).and_then(|v| v.as_str()).unwrap_or("").to_string()
+        params
+            .get(&[key])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
     }
     fn envs_param(params: &crate::mini_json::JsonValue) -> Vec<(String, String)> {
         let mut envs = Vec::new();
@@ -321,7 +386,10 @@ pub fn dispatch(method: &str, params: &crate::mini_json::JsonValue, emit: &mut d
     match method {
         "pty.spawn" => {
             let roots: Vec<String> = match params.get(&["roots"]) {
-                Some(crate::mini_json::JsonValue::Arr(items)) => items.iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+                Some(crate::mini_json::JsonValue::Arr(items)) => items
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect(),
                 _ => Vec::new(),
             };
             let cwd = str_param(params, "cwd");
@@ -331,9 +399,17 @@ pub fn dispatch(method: &str, params: &crate::mini_json::JsonValue, emit: &mut d
             if !is_path_within_any(&roots, &cwd) {
                 return Err(IpcError::new("access_denied", "cwd outside allowed roots"));
             }
-            let cols = params.get(&["cols"]).and_then(|v| v.as_num()).map(|n| n as u16);
-            let rows = params.get(&["rows"]).and_then(|v| v.as_num()).map(|n| n as u16);
-            service.spawn(&cwd, cols, rows, &envs_param(params)).map(|body| Some(body))
+            let cols = params
+                .get(&["cols"])
+                .and_then(|v| v.as_num())
+                .map(|n| n as u16);
+            let rows = params
+                .get(&["rows"])
+                .and_then(|v| v.as_num())
+                .map(|n| n as u16);
+            service
+                .spawn(&cwd, cols, rows, &envs_param(params))
+                .map(Some)
         }
         "pty.write" => {
             let id = str_param(params, "id");
@@ -342,9 +418,19 @@ pub fn dispatch(method: &str, params: &crate::mini_json::JsonValue, emit: &mut d
         }
         "pty.resize" => {
             let id = str_param(params, "id");
-            let cols = params.get(&["cols"]).and_then(|v| v.as_num()).map(|n| n as u16).unwrap_or(0);
-            let rows = params.get(&["rows"]).and_then(|v| v.as_num()).map(|n| n as u16).unwrap_or(0);
-            service.resize(&id, cols, rows).map(|()| Some("null".into()))
+            let cols = params
+                .get(&["cols"])
+                .and_then(|v| v.as_num())
+                .map(|n| n as u16)
+                .unwrap_or(0);
+            let rows = params
+                .get(&["rows"])
+                .and_then(|v| v.as_num())
+                .map(|n| n as u16)
+                .unwrap_or(0);
+            service
+                .resize(&id, cols, rows)
+                .map(|()| Some("null".into()))
         }
         "pty.kill" => {
             let id = str_param(params, "id");
@@ -357,22 +443,34 @@ pub fn dispatch(method: &str, params: &crate::mini_json::JsonValue, emit: &mut d
             let id = str_param(params, "id");
             let (rx, history) = service.attach(&id)?;
             for frame in history {
-                emit(&format!("{{\"type\":\"data\",\"data\":{}}}", crate::ipc_server::json_str(&frame)));
+                emit(&format!(
+                    "{{\"type\":\"data\",\"data\":{}}}",
+                    crate::ipc_server::json_str(&frame)
+                ));
             }
             for event in rx.iter() {
                 match event {
                     PtyEvent::Data(data) => {
-                        emit(&format!("{{\"type\":\"data\",\"data\":{}}}", crate::ipc_server::json_str(&data)));
+                        emit(&format!(
+                            "{{\"type\":\"data\",\"data\":{}}}",
+                            crate::ipc_server::json_str(&data)
+                        ));
                     }
                     PtyEvent::Exited { code } => {
-                        emit(&format!("{{\"type\":\"exit\",\"code\":{}}}", code.map(|c| c.to_string()).unwrap_or_else(|| "null".into())));
+                        emit(&format!(
+                            "{{\"type\":\"exit\",\"code\":{}}}",
+                            code.map(|c| c.to_string()).unwrap_or_else(|| "null".into())
+                        ));
                         return Ok(Some("null".into()));
                     }
                 }
             }
             Ok(Some("null".into()))
         }
-        _ => Err(IpcError::new("unknown_method", format!("no method {method}"))),
+        _ => Err(IpcError::new(
+            "unknown_method",
+            format!("no method {method}"),
+        )),
     }
 }
 
@@ -384,7 +482,11 @@ mod tests {
     fn shell_resolution_follows_node_contract() {
         let (shell, args) = resolve_shell();
         let expected = std::env::var("SHELL").unwrap_or_else(|_| {
-            if cfg!(target_os = "macos") { "/bin/zsh".to_string() } else { "/bin/bash".to_string() }
+            if cfg!(target_os = "macos") {
+                "/bin/zsh".to_string()
+            } else {
+                "/bin/bash".to_string()
+            }
         });
         assert_eq!(shell, expected);
         assert_eq!(args, vec!["-i"]);
@@ -431,18 +533,63 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "ompweb-pty-test-{}-{:?}",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let d = dir.to_str().unwrap();
         match service.spawn(d, Some(80), Some(24), &[]) {
             Ok(body) => {
                 let start = body.find("term-").unwrap_or(0);
-                let end = body[start..].find('"').map(|i| start + i).unwrap_or(body.len());
+                let end = body[start..]
+                    .find('"')
+                    .map(|i| start + i)
+                    .unwrap_or(body.len());
                 let id = &body[start..end];
                 let _ = service.write(id, "printf ok\r");
                 let _ = service.resize(id, 100, 40);
                 let _ = service.kill(id);
+            }
+            Err(e) => panic!("pty spawn failed: {e:?}"),
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Regression (5.1 audit): the writer must be taken once per session and
+    /// kept — a second input must neither error ("cannot take writer more
+    /// than once") nor EOF the shell (dropping a take sends EOF). Two
+    /// consecutive writes must both succeed on the same live session.
+    #[test]
+    fn consecutive_writes_succeed_without_eof() {
+        let service = PtyService::new();
+        let dir = std::env::temp_dir().join(format!(
+            "ompweb-pty-write-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let d = dir.to_str().unwrap();
+        match service.spawn(d, Some(80), Some(24), &[]) {
+            Ok(body) => {
+                let start = body.find("term-").unwrap_or(0);
+                let end = body[start..]
+                    .find('"')
+                    .map(|i| start + i)
+                    .unwrap_or(body.len());
+                let id = &body[start..end];
+                // Two writes in a row: pre-fix the second failed with
+                // "cannot take writer more than once" (and the first write's
+                // dropped writer sent EOF, closing the shell).
+                service.write(id, "echo one\r").expect("first write");
+                service
+                    .write(id, "echo two\r")
+                    .expect("second write on same session");
+                service.kill(id).ok();
             }
             Err(e) => panic!("pty spawn failed: {e:?}"),
         }

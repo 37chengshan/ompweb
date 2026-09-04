@@ -19,7 +19,10 @@ const MAX_JSON_DEPTH: usize = 64;
 impl JsonValue {
     /// Parse a complete JSON document. Rejects trailing garbage.
     pub fn parse(input: &str) -> Result<JsonValue, String> {
-        let mut p = Parser { bytes: input.as_bytes(), pos: 0 };
+        let mut p = Parser {
+            bytes: input.as_bytes(),
+            pos: 0,
+        };
         p.skip_ws();
         let value = p.parse_value()?;
         p.skip_ws();
@@ -72,7 +75,9 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn skip_ws(&mut self) {
-        while self.pos < self.bytes.len() && matches!(self.bytes[self.pos], b' ' | b'\t' | b'\n' | b'\r') {
+        while self.pos < self.bytes.len()
+            && matches!(self.bytes[self.pos], b' ' | b'\t' | b'\n' | b'\r')
+        {
             self.pos += 1;
         }
     }
@@ -101,7 +106,11 @@ impl<'a> Parser<'a> {
             Some(b'f') => self.parse_literal("false", JsonValue::Bool(false)),
             Some(b'n') => self.parse_literal("null", JsonValue::Null),
             Some(c) if c == b'-' || c.is_ascii_digit() => self.parse_number(),
-            other => Err(format!("unexpected char {:?} at byte {}", other.map(|c| c as char), self.pos)),
+            other => Err(format!(
+                "unexpected char {:?} at byte {}",
+                other.map(|c| c as char),
+                self.pos
+            )),
         }
     }
 
@@ -141,9 +150,15 @@ impl<'a> Parser<'a> {
                         b'r' => out.push('\r'),
                         b't' => out.push('\t'),
                         b'u' => {
-                            let hex = self.bytes.get(self.pos..self.pos + 4).ok_or("bad unicode escape")?;
-                            let code = u32::from_str_radix(std::str::from_utf8(hex).map_err(|e| e.to_string())?, 16)
-                                .map_err(|e| e.to_string())?;
+                            let hex = self
+                                .bytes
+                                .get(self.pos..self.pos + 4)
+                                .ok_or("bad unicode escape")?;
+                            let code = u32::from_str_radix(
+                                std::str::from_utf8(hex).map_err(|e| e.to_string())?,
+                                16,
+                            )
+                            .map_err(|e| e.to_string())?;
                             self.pos += 4;
                             out.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
                         }
@@ -154,8 +169,17 @@ impl<'a> Parser<'a> {
                     // UTF-8 continuation bytes pass through as-is.
                     let start = self.pos - 1;
                     let mut len = 1;
-                    if c >= 0xF0 { len = 4; } else if c >= 0xE0 { len = 3; } else if c >= 0xC0 { len = 2; }
-                    let slice = self.bytes.get(start..start + len).ok_or("truncated utf-8")?;
+                    if c >= 0xF0 {
+                        len = 4;
+                    } else if c >= 0xE0 {
+                        len = 3;
+                    } else if c >= 0xC0 {
+                        len = 2;
+                    }
+                    let slice = self
+                        .bytes
+                        .get(start..start + len)
+                        .ok_or("truncated utf-8")?;
                     let text = std::str::from_utf8(slice).map_err(|e| e.to_string())?;
                     out.push_str(text);
                     self.pos = start + len;
@@ -166,7 +190,12 @@ impl<'a> Parser<'a> {
 
     fn parse_number(&mut self) -> Result<JsonValue, String> {
         let start = self.pos;
-        while self.pos < self.bytes.len() && matches!(self.bytes[self.pos], b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E') {
+        while self.pos < self.bytes.len()
+            && matches!(
+                self.bytes[self.pos],
+                b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E'
+            )
+        {
             self.pos += 1;
         }
         let text = std::str::from_utf8(&self.bytes[start..self.pos]).map_err(|e| e.to_string())?;
@@ -243,11 +272,16 @@ mod tests {
 
     #[test]
     fn parses_omp_session_line() {
-        let v = parse_ok(r#"{"type":"message","id":"a1b2","parentId":null,"timestamp":"2026-08-31T00:00:00Z","message":{"role":"user","content":"hello"}}"#);
+        let v = parse_ok(
+            r#"{"type":"message","id":"a1b2","parentId":null,"timestamp":"2026-08-31T00:00:00Z","message":{"role":"user","content":"hello"}}"#,
+        );
         assert_eq!(v.get(&["type"]).unwrap().as_str(), Some("message"));
         assert_eq!(v.get(&["id"]).unwrap().as_str(), Some("a1b2"));
         assert_eq!(v.get(&["message", "role"]).unwrap().as_str(), Some("user"));
-        assert_eq!(v.get(&["message", "content"]).unwrap().as_str(), Some("hello"));
+        assert_eq!(
+            v.get(&["message", "content"]).unwrap().as_str(),
+            Some("hello")
+        );
         assert_eq!(v.get(&["missing"]), None);
     }
 
@@ -276,9 +310,9 @@ mod tests {
     #[test]
     fn bounds_nesting_depth() {
         // 65 nested arrays exceed the 64-deep cap; 60 is fine.
-        let deep = format!("{}", "[".repeat(100)) + &"]".repeat(100);
+        let deep = "[".repeat(100).to_string() + &"]".repeat(100);
         assert!(JsonValue::parse(&deep).is_err());
-        let ok = format!("{}", "[".repeat(60)) + &"]".repeat(60);
+        let ok = "[".repeat(60).to_string() + &"]".repeat(60);
         assert!(JsonValue::parse(&ok).is_ok());
     }
 

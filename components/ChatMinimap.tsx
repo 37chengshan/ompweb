@@ -235,15 +235,20 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     const ro = new ResizeObserver(syncLayout);
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
+    const onResize = () => syncLayout();
+    window.addEventListener("resize", onResize);
     syncLayout();
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+    };
   }, [scrollContainer, updateScroll]);
 
   // New messages / measured group heights shift the layout — resync ratios.
   useEffect(() => {
     const t = setTimeout(updateScroll, 50);
     return () => clearTimeout(t);
-  }, [nodes, updateScroll]);
+  }, [nodes, layoutRevision, messages.length, updateScroll]);
 
   useEffect(() => () => {
     if (mouseMoveRafRef.current !== null) {
@@ -275,6 +280,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
       // 程序化滚动不保证触发原生 scroll 事件；主动派发让 ChatWindow 的
       // onScroll 同步虚拟窗口 state（虚拟化依赖 state 决定挂载哪些组）。
       el.dispatchEvent(new Event("scroll"));
+      updateScroll();
     };
     applyPointer(e.clientY);
     const onMove = (ev: MouseEvent) => {
@@ -286,17 +292,20 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
       dragListenersRef.current = null;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("blur", onUp, { once: true });
     dragListenersRef.current = { onMove, onUp };
-  }, [visible, scrollContainer]);
+  }, [visible, scrollContainer, updateScroll]);
 
   useEffect(() => () => {
     const listeners = dragListenersRef.current;
     if (listeners) {
       window.removeEventListener("mousemove", listeners.onMove);
       window.removeEventListener("mouseup", listeners.onUp);
+      window.removeEventListener("blur", listeners.onUp);
       dragListenersRef.current = null;
     }
     draggingRef.current = false;
@@ -352,9 +361,9 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         style={{
           position: "absolute",
           left: "50%",
-          transform: "translateX(-50%)",
+          transform: `translate3d(-50%, ${thumb.top}px, 0)`,
           width: 12,
-          top: thumb.top,
+          top: 0,
           height: thumb.height,
           minHeight: MIN_THUMB_HEIGHT,
           borderRadius: 6,
@@ -362,6 +371,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
           border: "1px solid color-mix(in srgb, var(--text-dim) 45%, transparent)",
           pointerEvents: "none",
           zIndex: 1,
+          willChange: "transform",
         }}
       />
 
@@ -445,7 +455,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         ));
         return (
           <div
-            key={`tt-${node.index}`}
+            key="minimap-tooltip"
             style={{
               position: "absolute",
               left: "auto",

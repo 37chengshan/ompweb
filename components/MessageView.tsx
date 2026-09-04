@@ -520,29 +520,33 @@ function AssistantMessageView({
         <div
           data-message-error="true"
           style={{
+            display: "flex",
+            alignItems: "flex-start",
+            minWidth: 0,
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
-            borderLeft: "2px solid var(--status-error)",
-            padding: "3px 7px",
-            background: "color-mix(in srgb, var(--status-error) 7%, var(--bg-panel))",
+            padding: "2px 0",
             color: "var(--status-error)",
             fontFamily: "var(--font-mono)",
             fontSize: 11,
             lineHeight: 1.35,
           }}
         >
-          <button
-            type="button"
-            onClick={() => setErrorExpanded((value) => !value)}
-            aria-expanded={errorExpanded}
-            aria-controls={entryId ? `message-error-${entryId}` : undefined}
-            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: 0, border: "none", background: "transparent", color: "inherit", cursor: "pointer", textAlign: "left", font: "inherit" }}
-          >
-            {errorExpanded ? <ChevronDown size={11} aria-hidden="true" /> : <ChevronRight size={11} aria-hidden="true" />}
-            <span style={{ fontWeight: 650 }}>Error: {status}</span>
-            {!errorExpanded && <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-muted)" }}>{summary}</span>}
-          </button>
-          {errorExpanded && <div id={entryId ? `message-error-${entryId}` : undefined} style={{ marginTop: 5, color: "var(--status-error)" }}>{detail}</div>}
+          <CircleAlert size={13} strokeWidth={1.8} aria-hidden="true" style={{ flexShrink: 0, margin: "1px 6px 0 0" }} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <button
+              type="button"
+              onClick={() => setErrorExpanded((value) => !value)}
+              aria-expanded={errorExpanded}
+              aria-controls={entryId ? `message-error-${entryId}` : undefined}
+              style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: 0, border: "none", background: "transparent", color: "inherit", cursor: "pointer", textAlign: "left", font: "inherit" }}
+            >
+              {errorExpanded ? <ChevronDown size={11} aria-hidden="true" /> : <ChevronRight size={11} aria-hidden="true" />}
+              <span style={{ fontWeight: 650, flexShrink: 0 }}>Error: {status}</span>
+              {!errorExpanded && <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-muted)" }}>{summary}</span>}
+            </button>
+            {errorExpanded && <div id={entryId ? `message-error-${entryId}` : undefined} style={{ marginTop: 5, color: "var(--status-error)", overflowWrap: "anywhere" }}>{detail}</div>}
+          </div>
         </div>
       </div>
     );

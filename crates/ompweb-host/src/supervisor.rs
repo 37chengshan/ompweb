@@ -29,7 +29,10 @@ pub enum SessionEvent {
     /// A complete logical RPC frame (JSON text) from the child.
     Frame(String),
     /// Child exited (after restarts exhausted or graceful).
-    Exited { code: Option<i32>, signal: Option<i32> },
+    Exited {
+        code: Option<i32>,
+        signal: Option<i32>,
+    },
 }
 
 struct Session {
@@ -75,13 +78,20 @@ impl Supervisor {
     /// Spawn `omp --mode rpc-ui` for one session. Returns (pid, restarts).
     /// `extra_args` mirror the Node spawn order (--resume/--tools/--advisor/
     /// ... appended after `--cwd`); replayed verbatim on crash restart.
-    pub fn spawn(self: &Arc<Self>, session_id: &str, cwd: &str, extra_args: &[String]) -> Result<(u32, u32), String> {
+    pub fn spawn(
+        self: &Arc<Self>,
+        session_id: &str,
+        cwd: &str,
+        extra_args: &[String],
+    ) -> Result<(u32, u32), String> {
         let mut guard = self.sessions.lock().unwrap();
         if let Some(existing) = guard.get(session_id) {
             // Alive already — idempotent spawn.
             return Ok((existing.child.id(), existing.restarts));
         }
-        let mut child = self.spawn_child(cwd, extra_args).map_err(|e| format!("spawn omp: {e}"))?;
+        let mut child = self
+            .spawn_child(cwd, extra_args)
+            .map_err(|e| format!("spawn omp: {e}"))?;
         let pid = child.id();
         let stdin = child.stdin.take().ok_or("child stdin unavailable")?;
         let (reader_tx, rx) = channel();
@@ -138,7 +148,9 @@ impl Supervisor {
         let lines = encode_rpc_frames(frame_json).map_err(|e| e.to_string())?;
         let stdin = &mut session.stdin;
         for line in &lines {
-            stdin.write_all(line.as_bytes()).map_err(|e| format!("stdin: {e}"))?;
+            stdin
+                .write_all(line.as_bytes())
+                .map_err(|e| format!("stdin: {e}"))?;
         }
         stdin.flush().map_err(|e| format!("flush: {e}"))?;
         Ok(())
@@ -242,7 +254,10 @@ impl Supervisor {
             // resumes the same conversation (--resume etc. — route 4 parity).
             let restart_args = {
                 let guard = self.sessions.lock().unwrap();
-                guard.get(&session_id).map(|s| s.args.clone()).unwrap_or_default()
+                guard
+                    .get(&session_id)
+                    .map(|s| s.args.clone())
+                    .unwrap_or_default()
             };
             if let Ok(new_child) = self.spawn_child(&cwd, &restart_args) {
                 let new_pid = new_child.id();
@@ -271,7 +286,9 @@ impl Supervisor {
     fn broadcast(&self, session_id: &str, event: SessionEvent) {
         let mut guard = self.sessions.lock().unwrap();
         if let Some(session) = guard.get_mut(session_id) {
-            session.subscribers.retain(|sub| sub.send(event.clone()).is_ok());
+            session
+                .subscribers
+                .retain(|sub| sub.send(event.clone()).is_ok());
             if let SessionEvent::Frame(frame) = &event {
                 if session.ring.len() >= 64 {
                     session.ring.pop_front();
@@ -289,7 +306,6 @@ impl Supervisor {
             None => Vec::new(),
         }
     }
-
 }
 
 fn signal_of(status: &std::process::ExitStatus) -> Option<i32> {
@@ -309,7 +325,11 @@ fn signal_of(status: &std::process::ExitStatus) -> Option<i32> {
 /// Byte-based (no UTF-8 validation per segment): pipe reads can split a
 /// multi-byte character, and a String-based accumulator would fail on the
 /// boundary and stall the whole stream.
-fn read_line_capped(reader: &mut BufReader<std::process::ChildStdout>, line: &mut Vec<u8>, cap: usize) -> std::io::Result<usize> {
+fn read_line_capped(
+    reader: &mut BufReader<std::process::ChildStdout>,
+    line: &mut Vec<u8>,
+    cap: usize,
+) -> std::io::Result<usize> {
     let mut total = 0usize;
     loop {
         let buf = reader.fill_buf()?;
@@ -320,7 +340,10 @@ fn read_line_capped(reader: &mut BufReader<std::process::ChildStdout>, line: &mu
             Some(idx) => {
                 let take = idx + 1;
                 if total + take > cap {
-                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "rpc line exceeds 1MiB"));
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "rpc line exceeds 1MiB",
+                    ));
                 }
                 line.extend_from_slice(&buf[..take]);
                 reader.consume(take);
@@ -329,7 +352,10 @@ fn read_line_capped(reader: &mut BufReader<std::process::ChildStdout>, line: &mu
             }
             None => {
                 if total + buf.len() > cap {
-                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "rpc line exceeds 1MiB"));
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "rpc line exceeds 1MiB",
+                    ));
                 }
                 line.extend_from_slice(buf);
                 let len = buf.len();
@@ -364,19 +390,44 @@ impl FrameReassembler {
 
     fn push_line(&mut self, line: &str) -> Result<Option<String>, String> {
         let value = JsonValue::parse(line.trim()).map_err(|e| e.to_string())?;
-        let kind = value.get(&["type"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let kind = value
+            .get(&["type"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         if kind != "rpc_chunk" {
             if self.pending_chunk_id.is_some() {
                 return Err("chunk sequence interrupted".into());
             }
             return Ok(Some(line.trim().to_string()));
         }
-        let chunk_id = value.get(&["chunkId"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let index = value.get(&["index"]).and_then(|v| v.as_str()).and_then(|s| s.parse::<usize>().ok()).unwrap_or(usize::MAX);
-        let count = value.get(&["count"]).and_then(|v| v.as_str()).and_then(|s| s.parse::<usize>().ok()).unwrap_or(usize::MAX);
-        let byte_length = value.get(&["byteLength"]).and_then(|v| v.as_str()).and_then(|s| s.parse::<usize>().ok()).unwrap_or(usize::MAX);
+        let chunk_id = value
+            .get(&["chunkId"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let index = value
+            .get(&["index"])
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(usize::MAX);
+        let count = value
+            .get(&["count"])
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(usize::MAX);
+        let byte_length = value
+            .get(&["byteLength"])
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(usize::MAX);
         let data = value.get(&["data"]).and_then(|v| v.as_str()).unwrap_or("");
-        if chunk_id.is_empty() || chunk_id.len() > 128 || count < 2 || index >= count || byte_length > MAX_RPC_REASSEMBLED_BYTES {
+        if chunk_id.is_empty()
+            || chunk_id.len() > 128
+            || count < 2
+            || index >= count
+            || byte_length > MAX_RPC_REASSEMBLED_BYTES
+        {
             return Err("invalid chunk metadata".into());
         }
         let bytes = decode_base64(data)?;

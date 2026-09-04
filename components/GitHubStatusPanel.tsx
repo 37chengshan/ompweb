@@ -18,13 +18,12 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { toast } from "@/components/ui/toast";
 import { createOmpwebClient } from "@/lib/client";
 import type { GitHubRepoStatus } from "@/lib/github";
-import type { SlashCommandInfo } from "@/hooks/useAgentSession";
 
 // Route 1 (doc 16): git domain calls go through the OmpWebClient facade
 // (legacy-http adapter today; route 10 swaps the backing to the Rust host).
 const client = createOmpwebClient("legacy-http");
 
-type GitHubStatusPanelProps = { cwd: string | null; slashCommands?: SlashCommandInfo[]; onInsertCommand?: (command: string) => void };
+type GitHubStatusPanelProps = { cwd: string | null };
 
 function statusColor(state: string | undefined): string {
   if (state === "failure") return "var(--status-error)";
@@ -42,7 +41,7 @@ function gitBranch(status: GitHubRepoStatus | null): string {
  * and footer stay fixed while the status list scrolls, matching the compact
  * Codex-style workspace panel with explicit commit/push actions.
  */
-export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: GitHubStatusPanelProps) {
+export function GitHubStatusPanel({ cwd }: GitHubStatusPanelProps) {
   const { t } = useI18n();
   const [status, setStatus] = useState<GitHubRepoStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -263,19 +262,6 @@ export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: 
             {hasChanges && <span className="github-status-change-count">{files.length}</span>}
           </div>
         </section>
-
-        {slashCommands.length > 0 && (
-          <section className="github-status-section" aria-labelledby="github-shortcuts">
-            <div className="github-status-section-title" id="github-shortcuts"><GitCommitHorizontal size={14} aria-hidden="true" />{t("githubPanel.shortcuts")}<span className="github-status-section-count">{slashCommands.length}</span></div>
-            <div className="github-status-shortcuts">
-              {slashCommands.slice(0, 12).map((command) => (
-                <button key={command.name} type="button" className="github-status-shortcut" onClick={() => onInsertCommand?.(`/${command.name}`)} title={command.description || command.name}>
-                  <code>/{command.name}</code><span>{command.description || t("githubPanel.noShortcutDescription")}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
 
         <section className="github-status-section" aria-labelledby="github-pr-status">
           <div className="github-status-section-title" id="github-pr-status">

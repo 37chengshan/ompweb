@@ -16,14 +16,16 @@ const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const { StartupTracker, createHealthProbe } = require("./startup");
+const { isLoopbackHost } = require("../bin/network-addresses");
 
 // Internal port for the hosted server (dev 30178 / cli 30177 stay free).
 const APP_PORT = Number(process.env.OMP_WEB_APP_PORT || 30179);
-// Listening on 0.0.0.0 is what makes phone/PC pairing work over the LAN;
-// the pairing gate (proxy.ts) denies every remote /api request without a
-// paired-device cookie, and token issuance is loopback-only, so exposing
-// the port is safe.
-const HOST = "0.0.0.0";
+// The desktop shell is private by default. A Next middleware cannot obtain a
+// trustworthy raw peer address on every runtime, so it must never be the only
+// boundary protecting an unauthenticated wildcard listener. Advanced users
+// may deliberately opt into a LAN bind, but that mode requires the normal web
+// password gate as a second, independently-enforced boundary.
+const HOST = process.env.OMP_WEB_APP_HOST || "127.0.0.1";
 const APP_URL = `http://127.0.0.1:${APP_PORT}`;
 
 const pkgDir = path.join(__dirname, "..");
@@ -248,6 +250,13 @@ function resolveOmpBin() {
 /** Start the Next standalone server (self-contained server.js + node_modules). */
 async function startServer() {
   serverReady = false;
+  if (!isLoopbackHost(HOST) && !process.env.OMP_WEB_PASSWORD) {
+    failStartup(
+      "unsafe-network-bind",
+      "局域网访问需要同时设置 OMP_WEB_APP_HOST 与 OMP_WEB_PASSWORD；默认仅监听本机。",
+    );
+    return;
+  }
   const standaloneDir = app.isPackaged
     ? path.join(process.resourcesPath, "standalone")
     : path.join(pkgDir, ".next", "standalone");

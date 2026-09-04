@@ -51,7 +51,12 @@ fn classify(kind: &str) -> EventClass {
 
 /// Replay one JSONL file into the journal. Stream id is the file's relative
 /// path (stable across re-runs for the same root). Returns events appended.
-pub fn shadow_file(journal: &mut SqliteJournal, path: &Path, stream: &str, now_ms: i64) -> Result<(usize, usize), String> {
+pub fn shadow_file(
+    journal: &mut SqliteJournal,
+    path: &Path,
+    stream: &str,
+    now_ms: i64,
+) -> Result<(usize, usize), String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let mut appended = 0usize;
     let mut skipped = 0usize;
@@ -66,11 +71,23 @@ pub fn shadow_file(journal: &mut SqliteJournal, path: &Path, stream: &str, now_m
                 continue;
             }
         };
-        let kind = value.get(&["type"]).and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
-        let event_id = value.get(&["id"]).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let kind = value
+            .get(&["type"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let event_id = value
+            .get(&["id"])
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         // Truncate payloads to a bounded window — the journal must not grow
         // without bound on enormous messages (v4 R6 exit gate).
-        let payload = if line.len() > 65_536 { &line[..65_536] } else { line };
+        let payload = if line.len() > 65_536 {
+            &line[..65_536]
+        } else {
+            line
+        };
         let seq = journal
             .append(stream, &kind, classify(&kind), payload, now_ms)
             .map_err(|e| format!("append {}:{}: {e}", path.display(), line_no))?;

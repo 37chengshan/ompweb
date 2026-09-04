@@ -8,12 +8,11 @@ import { countToolCallBlocks, getDisplayableAssistantBlocks, splitFinalAssistant
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ExtensionDialog } from "./ExtensionDialog";
-import { SubagentTranscriptDialog } from "./SubagentTranscriptDialog";
 import { ChatMinimap } from "./ChatMinimap";
 import { ComposerPanels } from "./ComposerPanels";
-import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
+import { CHAT_COLUMN_GUTTER, CHAT_COLUMN_MAX_WIDTH, CHAT_MINIMAP_RAIL_GUTTER } from "@/lib/chat-layout";
 import { EmptyChatHero } from "./EmptyChatHero";
-import { useAgentSession, type AgentPhase, type NoticeItem, type SlashCommandInfo, type SubagentInfo } from "@/hooks/useAgentSession";
+import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentInfo } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -51,11 +50,12 @@ interface Props {
   onModelCapacityChange?: (capacity: { contextWindow?: number; maxTokens?: number } | null) => void;
   onOpenFile?: (filePath: string) => void;
   onGenerationSpeedChange?: (speed: GenerationSpeedInfo | null) => void;
-  terminalOpen?: boolean;
-  onCloseTerminal?: () => void;
   /** Open the session's plan document in the right sidebar panel. */
   onOpenPlan?: () => void;
-  onSlashCommandsChange?: (commands: SlashCommandInfo[], loading: boolean) => void;
+  /** Push the live subagent roster up to AppShell for the Agents panel.
+   *  Called with the latest roster array reference on every change and with
+   *  null when this session view unmounts (session switch). */
+  onSubagentsChange?: (roster: SubagentInfo[] | null) => void;
 }
 
 function phaseLabel(phase: AgentPhase): string {
@@ -70,7 +70,6 @@ function phaseLabel(phase: AgentPhase): string {
   return translate("chatWindow.thinking");
 }
 
-const CHAT_COLUMN_PADDING = 16;
 // Trigger the next history page while the sentinel is still this far below
 // the top edge, so a normal upward scroll seamlessly continues into the newly
 // loaded messages. Triggering only at the very top made the load invisible:
@@ -136,29 +135,6 @@ function withAssistantBlocks(
   return next;
 }
 
-function OmpRuntimeVersion() {
-  const { t } = useI18n();
-  const [version, setVersion] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/omp-version")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { version: string | null } | null) => {
-        // omp reports "omp/17.1.3"; show just the number next to the label.
-        if (!cancelled && data?.version) setVersion(data.version.replace(/^omp\//, ""));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return (
-    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-      omp <span style={{ color: "var(--text)" }}>{version ? `v${version}` : t("chatWindow.versionNotFound")}</span>
-    </span>
-  );
-}
-
 function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messageCount: number; toolCallCount: number; children: ReactNode }) {
   const { t, tn } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -221,7 +197,6 @@ interface CommittedTranscriptProps {
   layout: GroupHeightCache;
   /** Scroll window over groups, computed from scrollTop + viewport. */
   window: VirtualWindow;
-  scrollContainer: React.RefObject<HTMLDivElement | null>;
   /** Fired when measured group heights change the layout (window re-derive). */
   onLayoutChanged?: () => void;
 }
@@ -235,9 +210,8 @@ interface CommittedTranscriptProps {
 const CommittedTranscript = memo(function CommittedTranscript({
   messages, entryIds, conversationMeta, messageRefs, isStreaming, sessionBusy, isNew, forkingEntryId,
   handleFork, handleNavigate, handleEditContent, modelNames, messageCwd, onOpenFile, sessionId,
-  toolCallsDefaultCollapsed, thinkingDisplayMode, groups, layout, window: win, scrollContainer, onLayoutChanged,
+  toolCallsDefaultCollapsed, thinkingDisplayMode, groups, layout, window: win, onLayoutChanged,
 }: CommittedTranscriptProps) {
-  const { t } = useI18n();
   const { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage } = conversationMeta;
 
   const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
@@ -302,6 +276,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
   // 触发测量，补偿 scrollTop 又会触发新的窗口和测量，形成上下滚动的
   // 反馈环。会话恢复/跟随逻辑是滚动位置的唯一权威，测量只重算窗口。
   const measuredGroupsRef = useRef(new Map<number, HTMLDivElement>());
+  const pendingResizeHeightsRef = useRef(new Map<number, number>());
   const groupRefCallbacksRef = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
   const measureRafRef = useRef<number | null>(null);
   const winRef = useRef(win);
@@ -315,28 +290,59 @@ const CommittedTranscript = memo(function CommittedTranscript({
   const flushMeasurements = useCallback(() => {
     measureRafRef.current = null;
     let changed = false;
+    const pendingHeights = pendingResizeHeightsRef.current;
     for (const [groupIdx, el] of measuredGroupsRef.current) {
       // Callback refs normally remove recycled nodes. isConnected is a
       // defensive final guard for a React/ResizeObserver ordering race.
       if (!el.isConnected) {
         groupRoRef.current?.unobserve(el);
         measuredGroupsRef.current.delete(groupIdx);
+        pendingHeights.delete(groupIdx);
         continue;
       }
-      const height = el.offsetHeight;
+      // Prefer zero-reflow measurement directly from ResizeObserver entry
+      let height = pendingHeights.get(groupIdx);
+      if (height === undefined) {
+        if (layoutRef.current.isMeasured(groupIdx)) {
+          continue;
+        }
+        height = el.offsetHeight;
+      }
       const delta = layoutRef.current.measure(groupIdx, height);
       if (delta !== 0) {
         changed = true;
       }
     }
+    pendingHeights.clear();
     if (changed) onLayoutChangedRef.current?.();
   }, []);
 
   const scheduleMeasurement = useCallback(() => {
     if (measureRafRef.current === null) {
-      measureRafRef.current = requestAnimationFrame(flushMeasurements);
+      measureRafRef.current = typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(flushMeasurements)
+        : window.setTimeout(flushMeasurements, 0);
     }
   }, [flushMeasurements]);
+
+  const handleGroupResize = useCallback((entries: ResizeObserverEntry[]) => {
+    for (const entry of entries) {
+      const target = entry.target as HTMLElement;
+      const groupIdxStr = target.getAttribute("data-vg");
+      if (groupIdxStr == null) continue;
+      const groupIdx = Number(groupIdxStr);
+      let height = 0;
+      if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
+        height = entry.borderBoxSize[0].blockSize;
+      } else {
+        height = entry.contentRect.height;
+      }
+      if (height > 0) {
+        pendingResizeHeightsRef.current.set(groupIdx, Math.round(height));
+      }
+    }
+    scheduleMeasurement();
+  }, [scheduleMeasurement]);
 
   // Keep one callback per group index. A newly-created callback every render
   // makes React detach and re-attach every visible group, which turns a simple
@@ -353,13 +359,19 @@ const CommittedTranscript = memo(function CommittedTranscript({
         return;
       }
       measuredGroupsRef.current.set(groupIdx, el);
-      const ro = groupRoRef.current ?? (groupRoRef.current = new ResizeObserver(scheduleMeasurement));
-      ro.observe(el);
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = groupRoRef.current ?? (groupRoRef.current = new ResizeObserver(handleGroupResize));
+        ro.observe(el);
+      }
+      // Some embedded/webview runtimes do not expose ResizeObserver. The
+      // rAF fallback still captures the initial box and prevents estimated
+      // heights from poisoning the bottom anchor (later user scrolls trigger
+      // another render/measurement).
       scheduleMeasurement();
     };
     groupRefCallbacksRef.current.set(groupIdx, callback);
     return callback;
-  }, [scheduleMeasurement]);
+  }, [handleGroupResize, scheduleMeasurement]);
 
   // A session switch can reuse an existing group wrapper at the same index.
   // Ensure its new layout receives one measurement even if its box size is
@@ -368,11 +380,39 @@ const CommittedTranscript = memo(function CommittedTranscript({
     if (measuredGroupsRef.current.size > 0) scheduleMeasurement();
   }, [layout, scheduleMeasurement]);
 
+  // Ref callbacks are allowed to run before or after effects depending on
+  // the renderer. Re-schedule after every virtual-window change as a
+  // defensive fallback so an initial mount cannot remain on estimates.
+  useEffect(() => {
+    scheduleMeasurement();
+  }, [win.startGroup, win.endGroup, scheduleMeasurement]);
+
+  // Last-resort initial measurement for constrained embedded browsers. Some
+  // WebViews expose neither ResizeObserver nor a functional callback-ref
+  // scheduling path; without a synchronous post-paint probe, their large
+  // text estimates become permanent spacers and the conversation appears
+  // blank. This query only touches the 3–7 virtualized groups, never the
+  // full transcript.
+  useEffect(() => {
+    if (typeof ResizeObserver !== "undefined") return;
+    let changed = false;
+    for (const node of document.querySelectorAll<HTMLElement>("[data-vg]")) {
+      const rawIndex = node.dataset.vg;
+      const groupIdx = rawIndex === undefined ? Number.NaN : Number(rawIndex);
+      if (!Number.isInteger(groupIdx)) continue;
+      if (layout.measure(groupIdx, node.offsetHeight) !== 0) changed = true;
+    }
+    if (changed) onLayoutChangedRef.current?.();
+  }, [layout, win.startGroup, win.endGroup]);
+
   useEffect(() => () => {
     groupRoRef.current?.disconnect();
     measuredGroupsRef.current.clear();
     groupRefCallbacksRef.current.clear();
-    if (measureRafRef.current !== null) cancelAnimationFrame(measureRafRef.current);
+    if (measureRafRef.current !== null) {
+      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(measureRafRef.current);
+      else clearTimeout(measureRafRef.current);
+    }
   }, []);
 
   // --- 组渲染计划（T2.1：只为窗口内组构造 JSX）---
@@ -436,7 +476,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
   const windowGroups: ReactNode[] = [];
   for (let g = win.startGroup; g < win.endGroup; g++) {
     windowGroups.push(
-      <div key={virtualKeyPrefix + "-vg-" + g} data-vg={g} ref={attachGroupRef(g)}>
+      <div key={virtualKeyPrefix + "-vg-" + g} data-vg={g} data-committed="true" ref={attachGroupRef(g)}>
         {renderGroup(groups[g])}
       </div>,
     );
@@ -450,9 +490,15 @@ const CommittedTranscript = memo(function CommittedTranscript({
     </>
   );
 });
-export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile, terminalOpen = false, onCloseTerminal, onOpenPlan, onSlashCommandsChange }: Props) {
+export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, thinkingDisplayMode = "auto", onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile, onOpenPlan, onSubagentsChange }: Props) {
   const { t, tn } = useI18n();
   const isMobile = useIsMobile();
+  // The minimap sits over the transcript's right edge on desktop. Reserve its
+  // full rail width in the column geometry rather than letting long lines run
+  // behind it; mobile has no minimap and stays symmetric.
+  const chatColumnPadding = isMobile
+    ? `0 ${CHAT_COLUMN_GUTTER}`
+    : `0 calc(${CHAT_COLUMN_GUTTER} + ${CHAT_MINIMAP_RAIL_GUTTER}) 0 ${CHAT_COLUMN_GUTTER}`;
   const { playDoneSound, unlockAudio } = useAudio();
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
@@ -495,9 +541,6 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
     onOpenFile,
   });
-  useEffect(() => {
-    onSlashCommandsChange?.(slashCommands, slashCommandsLoading);
-  }, [onSlashCommandsChange, slashCommands, slashCommandsLoading]);
   const sessionBusy = agentRunning || bashRunning;
   const modelCapacity = useMemo(() => {
     if (!displayModelValue) return null;
@@ -665,6 +708,22 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
       setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
     });
   }, [scrollContainerRef]);
+  // `onScroll` is not guaranteed to fire when the first session render sets
+  // scrollTop programmatically. Seed the viewport dimensions immediately and
+  // keep them in sync with the chat column so the virtual window can detect
+  // the real bottom instead of retaining a giant bottom spacer.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const syncViewport = () => {
+      setScrollTop((prev) => (prev === el.scrollTop ? prev : el.scrollTop));
+      setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
+    };
+    syncViewport();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncViewport);
+    observer?.observe(el);
+    return () => observer?.disconnect();
+  }, [loading, session?.id]);
   // 测量落定后按意图校正滚动位置：打开会话时锚定到底部、minimap 节点
   // 跳转时锚定到目标组。测量在多次 rAF 批次中逐批落定（每次滚动暴露的
   // 新组才被实测），因此锚定保持存活、每次 layoutRevision 都用最新缓存
@@ -681,29 +740,33 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     if (!anchor) return;
     const el = scrollContainerRef.current;
     if (anchor.kind === "bottom") {
-      const end = messagesEndRef.current;
-      if (!el || !end) return;
-      // 真实底部 = messagesEnd 可见；落定后仍差 >4px 就再拉一次。
-      const gap = end.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom;
+      if (!el) return;
+      // The sentinel sits after the virtualized bottom spacer. It can be
+      // visible while the viewport is still thousands of pixels above the
+      // real bottom, so its rect is not a reliable anchor for virtualization.
+      // Always use the scroll container's actual maximum offset.
       const scrollHeight = el.scrollHeight;
       // 程序化滚动不一定触发 scroll 事件（部分环境/动画路径）；滚动可能由
       // useAgentSession 的 scrollToBottom 或上一次应用完成，因此这里无条件
       // 同步 state——否则虚拟窗口停留在旧滚动位置（视口显示空白 spacer）。
       setScrollTop((prev) => (prev === el.scrollTop ? prev : el.scrollTop));
       setViewportHeight((prev) => (prev === el.clientHeight ? prev : el.clientHeight));
-      // 必须同时满足：gap 已归零 且 内容高度在两次应用间不再变化
-      // （尾部组实测高度分批落定会让 scrollHeight 继续增长——锚定过早
-      // 消费正是"打开会话停在最后一条上方一点"的根因）。
-      if (Math.abs(gap) <= 4 && lastBottomScrollHeightRef.current !== null
+      const target = Math.max(0, scrollHeight - el.clientHeight);
+      if (Math.abs(el.scrollTop - target) > 4) {
+        el.scrollTop = target;
+        setScrollTop((prev) => (prev === el.scrollTop ? prev : el.scrollTop));
+      }
+      // Require both a real bottom offset and a stable scrollHeight across
+      // applications. Group measurements can grow the virtualized content in
+      // several ResizeObserver batches; keeping the anchor pending until the
+      // height settles prevents the blank tail seen after opening a session.
+      if (Math.abs(el.scrollTop - target) <= 4 && lastBottomScrollHeightRef.current !== null
         && Math.abs(scrollHeight - lastBottomScrollHeightRef.current) < 2) {
         pendingAnchorRef.current = null;
         lastBottomScrollHeightRef.current = null;
         return;
       }
       lastBottomScrollHeightRef.current = scrollHeight;
-      if (Math.abs(gap) > 4) {
-        end.scrollIntoView({ block: "nearest", behavior: "instant" });
-      }
       return;
     }
     if (!el || anchor.groupIndex >= layout.count) return;
@@ -813,8 +876,6 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
       window.removeEventListener("keydown", cancelOnKey);
     };
   }, []);
-  const [selectedSubagent, setSelectedSubagent] = useState<SubagentInfo | null>(null);
-
   const generationSpeedKey = generationSpeed
     ? `${generationSpeed.current ?? "null"}|${generationSpeed.average ?? "null"}`
     : null;
@@ -851,6 +912,16 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     onSessionStatsChange?.(sessionStatsRef.current);
   }, [statsKey, onSessionStatsChange]);
   useEffect(() => () => { onSessionStatsChange?.(null); }, [onSessionStatsChange]);
+
+  // Push the live subagent roster up for the Agents panel. The hook updates
+  // the roster with fresh array references on SSE frames (progress ~10Hz),
+  // so a plain reference dependency stays current without polling.
+  const subagentsRef = useRef(subagents);
+  subagentsRef.current = subagents;
+  useEffect(() => {
+    onSubagentsChange?.(subagentsRef.current);
+  }, [subagents, onSubagentsChange]);
+  useEffect(() => () => { onSubagentsChange?.(null); }, [onSubagentsChange]);
 
   // Push context usage up to AppShell as well.
   const ctxKey = contextUsage
@@ -1088,14 +1159,6 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
         </div>
       )}
 
-      <SubagentTranscriptDialog
-        subagent={selectedSubagent}
-        sessionId={session?.id ?? sessionIdRef.current ?? null}
-        transcriptVersion={selectedSubagent ? (subagentTranscriptVersions[selectedSubagent.id] ?? 0) : 0}
-        events={selectedSubagent ? (subagentEvents[selectedSubagent.id] ?? []) : undefined}
-        onClose={() => setSelectedSubagent(null)}
-      />
-
       {extensionCustomUi && (
         <ExtensionCustomPanel
           request={extensionCustomUi}
@@ -1123,7 +1186,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
             left: 0,
             right: 0,
             zIndex: 40,
-            padding: `0 ${CHAT_COLUMN_PADDING}px`,
+            padding: chatColumnPadding,
             pointerEvents: "none",
           }}
         >
@@ -1137,7 +1200,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
             Firefox-only; .chat-scroll-view also kills the WebKit/WKWebView
             scrollbar that otherwise overlaps the minimap. */}
         <div ref={scrollContainerRef} onScroll={handleScroll} className={`flex-1 overflow-y-auto pt-6` + (isMobile ? "" : " chat-scroll-view")}>
-          <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
+          <div style={{ padding: chatColumnPadding }}>
             <div style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH, margin: "0 auto" }}>
               <ExtensionStatusBar statuses={extensionStatuses} />
               <ExtensionWidgets widgets={aboveEditorWidgets} />
@@ -1192,7 +1255,6 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               groups={groups}
               layout={layout}
               window={win}
-              scrollContainer={scrollContainerRef}
               onLayoutChanged={() => setLayoutRevision((v) => v + 1)}
             />
             {streamState.isStreaming && streamState.streamingMessage && (
@@ -1290,7 +1352,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
       <div className="relative" style={{ flexShrink: 0 }}>
         <div
           style={{
-            padding: `0 ${CHAT_COLUMN_PADDING}px`,
+            padding: chatColumnPadding,
           }}
         >
           <div style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH, margin: "0 auto" }}>
@@ -1305,8 +1367,6 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
             )}
             <ComposerPanels
               todoPhases={todoPhases}
-              subagents={subagents}
-              onSelectSubagent={setSelectedSubagent}
               // Hide the todo grid only while a plan is actively being
               // produced; a historical plan document (planInfo) must not
               // suppress the task list of a plain run.

@@ -38,13 +38,19 @@ export interface MarkdownPlugins {
   remarkPlugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
   rehypePlugins: NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 }
-
 // Math-free pipeline used until math syntax is detected. The math pipeline is
 // built from these same arrays, so the sanitize schema cannot drift between
 // the two.
 const baseMarkdownPlugins: MarkdownPlugins = {
   remarkPlugins: [[remarkGfm, remarkGfmOptions], remarkPathLinks],
   rehypePlugins: [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]],
+};
+
+/** Lightweight pipeline for in-flight streaming tokens: skips expensive rehypeRaw
+ *  and deep rehypeSanitize passes on incomplete HTML fragments. */
+export const streamingMarkdownPlugins: MarkdownPlugins = {
+  remarkPlugins: [[remarkGfm, remarkGfmOptions], remarkPathLinks],
+  rehypePlugins: [],
 };
 
 let mathMarkdownPlugins: MarkdownPlugins | null = null;
@@ -93,8 +99,8 @@ export function loadMathMarkdownPlugins(): Promise<MarkdownPlugins> {
  * the math-free pipeline and never fetch the KaTeX chunk; the first document
  * containing math triggers the lazy load and re-renders when it lands.
  */
-export function useMarkdownPlugins(markdown: string): MarkdownPlugins {
-  const hasMath = containsMathSyntax(markdown);
+export function useMarkdownPlugins(markdown: string, isStreaming = false): MarkdownPlugins {
+  const hasMath = !isStreaming && containsMathSyntax(markdown);
   const [, setLoadedVersion] = useState(0);
 
   useEffect(() => {
@@ -110,6 +116,7 @@ export function useMarkdownPlugins(markdown: string): MarkdownPlugins {
     };
   }, [hasMath]);
 
+  if (isStreaming) return streamingMarkdownPlugins;
   return hasMath && mathMarkdownPlugins ? mathMarkdownPlugins : baseMarkdownPlugins;
 }
 

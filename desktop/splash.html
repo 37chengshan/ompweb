@@ -3,6 +3,29 @@
 <head>
 <meta charset="utf-8">
 <style>
+  /* Standalone splash page — theme is applied from the app's own
+     localStorage keys (omp-theme = warm-ember/nord/oled/…, omp-motion-prefs
+     = {"enabled":false}), with a warm-paper default matching the app's light
+     theme, so dark-theme users do not get a light flash before the app
+     paints its dark BootSkeleton. */
+  html[data-splash-theme="dark"] body,
+  html[data-splash-theme="dark"] #overlay,
+  html[data-splash-theme="dark"] #error-panel { background: #1b1916; color: #ebe6dc; }
+  html[data-splash-theme="dark"] #overlay .bar { background: #3a362f; }
+  html[data-splash-theme="dark"] #overlay .hint { color: #a29b8f; }
+  html[data-splash-theme="dark"] #error-panel p { color: #b3ada2; }
+  html[data-splash-theme="dark"] #error-panel button { border-color: #c9c2b6; background: #3a362f; color: #ebe6dc; }
+  html[data-splash-theme="codex"] body,
+  html[data-splash-theme="codex"] #overlay,
+  html[data-splash-theme="codex"] #error-panel { background: #000000; color: #ffffff; }
+  html[data-splash-theme="codex"] #overlay .logo span { color: #ffffff; }
+  html[data-splash-theme="codex"] #overlay .bar { background: #27272a; }
+  html[data-splash-theme="codex"] #overlay .bar i { background: #ffffff; }
+  html[data-splash-theme="codex"] #overlay .hint { color: #a1a1aa; }
+  html[data-splash-theme="codex"] #error-panel p { color: #a1a1aa; }
+  html[data-splash-theme="codex"] #error-panel code { color: #ffffff; }
+  html[data-splash-theme="codex"] #error-panel button { border-color: #3f3f46; background: #18181b; color: #ffffff; }
+  html[data-splash-theme="codex"] #error-panel button.primary { background: #ffffff; border-color: #ffffff; color: #000000; }
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #faf9f6; overflow: hidden; }
   video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   /* Startup overlay shown as soon as the video ends: logo + progress bar on
@@ -40,6 +63,14 @@
   #error-panel button:disabled { opacity: 0.5; cursor: default; }
   /* Fade-out transition into the app UI */
   body.fade { opacity: 0; transition: opacity 0.55s ease-in-out; }
+  /* Motion preferences: the app-level animation switch (omp-motion-prefs)
+     and the OS reduced-motion setting both stop the launch shimmer; the app
+     itself honors the same signals after navigation. */
+  html[data-splash-motion="off"] #overlay .bar i { animation: none; }
+  @media (prefers-reduced-motion: reduce) {
+    #overlay .bar i { animation: none; }
+    #overlay, body { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -59,6 +90,33 @@
     <button id="error-quit">退出</button>
   </div>
 </div>
+<script>
+  // Apply the app's theme + motion preference BEFORE first paint so the
+  // splash never flashes the wrong colors/animations for the current user.
+  // Keys match the app (hooks/useTheme.ts: "omp-theme", SettingsConfig motion
+  // switch: "omp-motion-prefs" JSON {"enabled":…}). A parse failure just keeps
+  // the warm-paper default — the splash is a short-lived loading surface.
+  (function () {
+    var root = document.documentElement;
+    try {
+      var theme = localStorage.getItem("omp-theme");
+      if (theme === "codex") {
+        root.setAttribute("data-splash-theme", "codex");
+      } else {
+        var dark = theme && /ember|nord|dracula|oled|pine|navy|aurora|titanium/i.test(theme);
+        if (!theme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          dark = true;
+        }
+        if (dark) root.setAttribute("data-splash-theme", "dark");
+      }
+      var motion = localStorage.getItem("omp-motion-prefs");
+      if (motion) {
+        var prefs = JSON.parse(motion);
+        if (prefs && prefs.enabled === false) root.setAttribute("data-splash-motion", "off");
+      }
+    } catch (e) { /* file:// or disabled storage — defaults apply */ }
+  })();
+</script>
 <script>
   const video = document.getElementById("splash");
   const overlay = document.getElementById("overlay");
@@ -80,21 +138,31 @@
     if (faded) return;
     faded = true;
     document.body.classList.add("fade");
+    const isReduced = (document.documentElement.getAttribute("data-splash-motion") === "off") ||
+      (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     setTimeout(() => {
       if (appUrl) location.href = appUrl;
       else window.close();
-    }, 560);
+    }, isReduced ? 20 : 560);
   }
 
   function showOverlay(immediate = false) {
     if (videoEnded) return;
     videoEnded = true;
     video.pause();
-    video.style.visibility = "hidden";
-    if (immediate) overlay.style.transition = "none";
-    overlay.classList.add("show");
-    overlayShownAt = performance.now();
-    if (immediate) requestAnimationFrame(() => { overlay.style.transition = ""; });
+    if (immediate) {
+      video.style.visibility = "hidden";
+      overlay.style.transition = "none";
+      overlay.classList.add("show");
+      overlayShownAt = performance.now();
+      requestAnimationFrame(() => { overlay.style.transition = ""; });
+    } else {
+      overlay.classList.add("show");
+      overlayShownAt = performance.now();
+      setTimeout(() => {
+        video.style.visibility = "hidden";
+      }, 350);
+    }
   }
 
   function tryGo() {
@@ -165,8 +233,11 @@
     playStarted = true;
     setTimeout(showOverlay, (d / video.playbackRate) * 1000 + 150);
   });
-  video.addEventListener("ended", showOverlay);
-  video.addEventListener("error", () => console.log("splash video error: " + (video.error ? video.error.code : "?")));
+  video.addEventListener("ended", () => showOverlay(false));
+  video.addEventListener("error", () => {
+    console.log("splash video error: " + (video.error ? video.error.code : "?"));
+    showOverlay(true);
+  });
 
   // Warm the app UI while the video plays: the standalone server's first
   // request does one-time initialization, and the JS/CSS bundles need to be
@@ -192,7 +263,18 @@
     }
   }
   void warmUp();
-  video.play().catch((e) => console.log("splash play rejected: " + e));
+
+  const prefersReduced = (document.documentElement.getAttribute("data-splash-motion") === "off") ||
+    (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (prefersReduced) {
+    skipRequested = true;
+    showOverlay(true);
+  } else {
+    video.play().catch((e) => {
+      console.log("splash play rejected: " + e);
+      showOverlay(true);
+    });
+  }
 
   // Hard fallbacks end the video but still wait for the server: the loading
   // layer must remain visible rather than navigating to a blank/error page.

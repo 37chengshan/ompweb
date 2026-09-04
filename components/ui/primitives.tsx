@@ -82,36 +82,47 @@ export const DialogClose = BaseDialog.Close;
 
 /* ---------------------------------- Tooltip -------------------------------- */
 
+export function TooltipProvider({ children, delay = 400, closeDelay = 50 }: {
+  children: React.ReactNode;
+  delay?: number;
+  closeDelay?: number;
+}) {
+  return (
+    <BaseTooltip.Provider delay={delay} closeDelay={closeDelay}>
+      {children}
+    </BaseTooltip.Provider>
+  );
+}
+
 export function Tooltip({ content, children, side = "top" }: {
   content: React.ReactNode;
   children: React.ReactElement;
   side?: "top" | "bottom" | "left" | "right";
 }) {
   return (
-    <BaseTooltip.Provider delay={350} closeDelay={0}>
-      <BaseTooltip.Root>
-        <BaseTooltip.Trigger render={children} />
-        <BaseTooltip.Portal>
-          <BaseTooltip.Positioner side={side} sideOffset={6} style={{ zIndex: 1100 }}>
-            <BaseTooltip.Popup
-              style={{
-                background: "var(--bg-panel)",
-                color: "var(--text)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-control)",
-                boxShadow: "var(--shadow-pop)",
-                padding: "4px 9px",
-                fontSize: 12,
-                lineHeight: 1.4,
-                maxWidth: 260,
-              }}
-            >
-              {content}
-            </BaseTooltip.Popup>
-          </BaseTooltip.Positioner>
-        </BaseTooltip.Portal>
-      </BaseTooltip.Root>
-    </BaseTooltip.Provider>
+    <BaseTooltip.Root>
+      <BaseTooltip.Trigger render={children} />
+      <BaseTooltip.Portal>
+        <BaseTooltip.Positioner side={side} sideOffset={6} style={{ zIndex: 1100 }}>
+          <BaseTooltip.Popup
+            style={{
+              background: "var(--bg-panel)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-control)",
+              boxShadow: "var(--shadow-pop)",
+              padding: "4px 9px",
+              fontSize: 12,
+              lineHeight: 1.4,
+              maxWidth: 260,
+              pointerEvents: "none",
+            }}
+          >
+            {content}
+          </BaseTooltip.Popup>
+        </BaseTooltip.Positioner>
+      </BaseTooltip.Portal>
+    </BaseTooltip.Root>
   );
 }
 

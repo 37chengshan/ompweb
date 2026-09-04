@@ -51,10 +51,22 @@ pub struct ClientCursor {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResumePlan {
     FullSnapshot,
-    ProtocolError { stream: String, head_seq: i64 },
-    SnapshotThenReplay { stream: String, snapshot_seq: i64, seqs: Vec<i64> },
-    Replay { stream: String, seqs: Vec<i64> },
-    NoChange { stream: String },
+    ProtocolError {
+        stream: String,
+        head_seq: i64,
+    },
+    SnapshotThenReplay {
+        stream: String,
+        snapshot_seq: i64,
+        seqs: Vec<i64>,
+    },
+    Replay {
+        stream: String,
+        seqs: Vec<i64>,
+    },
+    NoChange {
+        stream: String,
+    },
 }
 
 struct StreamState {
@@ -128,7 +140,9 @@ impl Journal {
     }
 
     fn stream(&mut self, id: &str) -> &mut StreamState {
-        self.streams.entry(id.to_string()).or_insert_with(StreamState::new)
+        self.streams
+            .entry(id.to_string())
+            .or_insert_with(StreamState::new)
     }
 
     pub fn head_seq(&mut self, stream: &str) -> i64 {
@@ -164,11 +178,11 @@ impl Journal {
             return;
         }
         if event.class == EventClass::Coalesced && !buffering {
-            if let Some(idx) = s
-                .events
-                .iter()
-                .position(|e| e.kind == event.kind && e.class == EventClass::Coalesced && e.cursor.seq > s.compacted_through)
-            {
+            if let Some(idx) = s.events.iter().position(|e| {
+                e.kind == event.kind
+                    && e.class == EventClass::Coalesced
+                    && e.cursor.seq > s.compacted_through
+            }) {
                 s.events[idx] = std::mem::replace(&mut event, dummy_event());
                 return;
             }
@@ -268,7 +282,11 @@ impl Journal {
 
     /// Journal view (seqs) — conformance helper.
     pub fn view_seqs(&mut self, stream: &str) -> Vec<i64> {
-        self.stream(stream).events.iter().map(|e| e.cursor.seq).collect()
+        self.stream(stream)
+            .events
+            .iter()
+            .map(|e| e.cursor.seq)
+            .collect()
     }
 
     /// Head seq per stream (all streams) — RemoteRuntime sync_complete heads.

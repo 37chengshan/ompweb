@@ -20,3 +20,9 @@ test("Pull Request creation is an editable, confirmed flow", () => {
   assert.match(source, /pulls\/new\?/);
   assert.match(source, /确认创建 Pull Request/);
 });
+
+test("Git status does not duplicate the composer slash-command palette", () => {
+  assert.doesNotMatch(source, /github-status-shortcuts/);
+  assert.doesNotMatch(source, /slashCommands/);
+  assert.doesNotMatch(source, /onInsertCommand/);
+});

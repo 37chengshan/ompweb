@@ -189,7 +189,12 @@ class RustHostManager {
     // a silent Node fallback. Throws RuntimeUnavailableError with remediation.
     const hostResolution = assertHostAvailable({ moduleDir: MODULE_DIR });
     this.bootPromise = new Promise<void>((resolve, reject) => {
-      const child = spawn(hostResolution.path, ["--ipc"], { stdio: ["ignore", "pipe", "inherit"] });
+      // The supervisor is intentionally kept warm after the last session.
+      // Do not inherit stderr here: Node's test runner (and other short-lived
+      // callers) keeps an inherited child stdio handle live until the child
+      // exits, defeating the unref'd idle lifecycle.  Host failures still
+      // surface through the IPC disconnect/error path below.
+      const child = spawn(hostResolution.path, ["--ipc"], { stdio: ["ignore", "pipe", "ignore"] });
       // The host is a workhorse for this process: it must never keep the
       // process alive (tests, short-lived scripts). teardown() owns its
       // lifecycle while the process runs.
@@ -254,7 +259,7 @@ class RustHostManager {
       this.control.unref();
       this.control.on("data", (chunk: Buffer) => this.handleControlData(chunk));
       await new Promise<void>((resolve, reject) => {
-        this.control!.once("connect", () => resolve());
+      this.control!.once("connect", () => resolve());
         this.control!.once("error", reject);
       });
       await this.controlRequestRaw("hello", { token: this.token });
@@ -430,6 +435,16 @@ export class RustRpcProcess {
   private attachClosed: Promise<void> | null = null;
   private onExit?: (info: { stderrTail: string }) => void;
   private nextId = 1;
+  // Keep the manager subscription scoped to this session. A long-lived
+  // server can create/dispose hundreds of sessions; retaining every closure
+  // would both leak memory and fan a host-disconnect event out to dead
+  // sessions. `released` also makes error + explicit-dispose races harmless.
+  private unsubscribeHost: (() => void) | null = null;
+  private released = false;
+  private disposePromise: Promise<void> | null = null;
+  private readyTimer: ReturnType<typeof setTimeout> | null = null;
+  private readyReject: ((reason?: unknown) => void) | null = null;
+  private readyListener: RpcFrameHandler | null = null;
 
   constructor(options: RustRpcProcessOptions) {
     this.cwd = options.cwd;
@@ -437,11 +452,20 @@ export class RustRpcProcess {
     this.extraArgs = options.extraArgs ?? [];
     this.onExit = options.onExit;
     hostManager.acquire();
-    hostManager.subscribe((frame) => {
+    this.unsubscribeHost = hostManager.subscribe((frame) => {
       if (frame.type === "host_disconnected") {
         if (!this.exited) {
           this.exited = true;
           this.exitInfo = { code: null, signal: null };
+          this.readyTimer && clearTimeout(this.readyTimer);
+          this.readyTimer = null;
+          this.readyListener && this.frameListeners.delete(this.readyListener);
+          this.readyListener = null;
+          this.readyReject?.(new Error("ompweb-host disconnected"));
+          this.readyReject = null;
+          this.detach?.();
+          this.detach = null;
+          this.releaseHost();
           this.onExit?.({ stderrTail: "ompweb-host disconnected" });
         }
         return;
@@ -449,14 +473,30 @@ export class RustRpcProcess {
       for (const listener of this.frameListeners) listener(frame);
     });
     this.readyPromise = new Promise<RpcFrameRecord>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Rust supervisor ready timeout")), READY_TIMEOUT_MS);
+      this.readyReject = reject;
+      this.readyTimer = setTimeout(() => {
+        this.readyTimer = null;
+        if (this.readyListener) {
+          this.frameListeners.delete(this.readyListener);
+          this.readyListener = null;
+        }
+        this.readyReject = null;
+        reject(new Error("Rust supervisor ready timeout"));
+      }, READY_TIMEOUT_MS);
+      // A failed/short-lived caller should not be held open by a readiness
+      // guard after the host boot path has already failed.
+      this.readyTimer.unref?.();
       const onFrame = (frame: RpcFrameRecord) => {
         if (frame.type === "ready") {
-          clearTimeout(timer);
+          if (this.readyTimer) clearTimeout(this.readyTimer);
+          this.readyTimer = null;
+          this.readyReject = null;
+          this.readyListener = null;
           this.frameListeners.delete(onFrame);
           resolve(frame);
         }
       };
+      this.readyListener = onFrame;
       this.frameListeners.add(onFrame);
     });
     // Boot the host + spawn the session eagerly (constructor parity with
@@ -475,8 +515,24 @@ export class RustRpcProcess {
     } catch (error) {
       if (!this.exited) {
         this.exited = true;
+        this.readyTimer && clearTimeout(this.readyTimer);
+        this.readyTimer = null;
+        this.readyListener && this.frameListeners.delete(this.readyListener);
+        this.readyListener = null;
+        this.readyReject?.(error instanceof Error ? error : new Error(String(error)));
+        this.readyReject = null;
+        this.releaseHost();
         this.onExit?.({ stderrTail: error instanceof Error ? error.message : String(error) });
       }
+    }
+  }
+
+  private releaseHost(): void {
+    this.unsubscribeHost?.();
+    this.unsubscribeHost = null;
+    if (!this.released) {
+      this.released = true;
+      hostManager.release();
     }
   }
 
@@ -543,26 +599,42 @@ export class RustRpcProcess {
   }
 
   async dispose(): Promise<void> {
-    if (this.exited) return;
-    try {
-      await hostManager.kill(this.sessionId);
-    } catch {
-      // kill on a dead session is fine
-    }
-    // Wait for the omp child to actually exit (the supervisor broadcasts
-    // exit only after the child is gone) so its agent.db lock is released
-    // before the next session spawns.
-    if (this.attachClosed) {
-      await Promise.race([
-        this.attachClosed,
-        new Promise((resolve) => setTimeout(resolve, 3000)),
-      ]);
-    }
-    this.detach?.();
-    this.exited = true;
-    this.exitInfo = { code: 0, signal: null };
-    hostManager.release();
-    this.onExit?.({ stderrTail: "" });
+    if (this.disposePromise) return this.disposePromise;
+    this.disposePromise = (async () => {
+      if (!this.exited) {
+        try {
+          await hostManager.kill(this.sessionId);
+        } catch {
+          // kill on a dead session is fine
+        }
+      }
+      // Wait for the omp child to actually exit (the supervisor broadcasts
+      // exit only after the child is gone) so its agent.db lock is released
+      // before the next session spawns.
+      if (this.attachClosed) {
+        await Promise.race([
+          this.attachClosed,
+          new Promise((resolve) => {
+            const timer = setTimeout(resolve, 3000);
+            timer.unref?.();
+          }),
+        ]);
+      }
+      this.detach?.();
+      this.detach = null;
+      if (!this.exited) {
+        this.exited = true;
+        this.exitInfo = { code: 0, signal: null };
+        this.onExit?.({ stderrTail: "" });
+      }
+      this.readyTimer && clearTimeout(this.readyTimer);
+      this.readyTimer = null;
+      this.readyListener && this.frameListeners.delete(this.readyListener);
+      this.readyListener = null;
+      this.readyReject = null;
+      this.releaseHost();
+    })();
+    return this.disposePromise;
   }
 }
 

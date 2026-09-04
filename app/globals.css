@@ -209,6 +209,37 @@ html[data-theme="oled"], html.theme-oled {
   --omp-p: #34D399;
 }
 
+/* 1.5b 极简黑白 (Codex Monochrome) */
+html[data-theme="codex"], html.theme-codex {
+  --bg: #000000;
+  --bg-panel: #09090B;
+  --bg-hover: #18181B;
+  --bg-selected: #27272A;
+  --border: #27272A;
+  --text: #EDEDED;
+  --text-muted: #A1A1AA;
+  --text-dim: #71717A;
+  --accent: #FFFFFF;
+  --accent-strong: #E4E4E7;
+  --accent-hover: #F4F4F5;
+  --user-bg: #121214;
+  --tool-bg: #09090B;
+  --bg-subtle: rgba(255,255,255,0.035);
+  --status-error: #EF4444;
+  --status-success: #22C55E;
+  --status-warning: #EAB308;
+  --status-modified: #FACC15;
+  --status-renamed: #A1A1AA;
+  --on-accent: #000000;
+  --overlay-backdrop: rgba(0, 0, 0, 0.75);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.08);
+  --shadow-pop: 0 4px 16px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.12);
+  --shadow-modal: 0 12px 48px rgba(0,0,0,0.98), 0 0 0 1px rgba(255,255,255,0.16);
+  --omp-o: #FFFFFF;
+  --omp-m: #A1A1AA;
+  --omp-p: #71717A;
+}
+
 /* 1.6 暗夜余烬 (Warm Ember) */
 html.dark:not([data-theme]), html[data-theme="dark"], html.theme-dark {
   --bg: #1B1916;
@@ -599,15 +630,15 @@ html.dark {
 /* Theme toggle: circular wipe via View Transitions API.
    Disable the UA cross-fade; the actual clip-path animation is driven by
    Element.animate() in hooks/useTheme.ts after transition.ready resolves. */
-::view-transition-old(root),
-::view-transition-new(root) {
+html.theme-transition::view-transition-old(root),
+html.theme-transition::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
 }
-::view-transition-old(root) {
+html.theme-transition::view-transition-old(root) {
   z-index: 1;
 }
-::view-transition-new(root) {
+html.theme-transition::view-transition-new(root) {
   z-index: 2;
 }
 
@@ -618,6 +649,7 @@ html.dark {
 html {
   /* Respect prefers-reduced-motion via the media query at the bottom. */
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 html, body {
@@ -1900,7 +1932,7 @@ span.token.table {
 }
 .github-fixed-trigger {
   position: fixed;
-  top: 50%;
+  top: 72px;
   z-index: 510;
   display: inline-flex;
   align-items: center;
@@ -1914,14 +1946,15 @@ span.token.table {
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-pop);
   cursor: pointer;
-  transform: translateY(-50%);
-  transition: color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), width var(--dur-fast) var(--ease-out-warm), transform var(--dur-fast) var(--ease-out-warm);
+  touch-action: none;
+  transform: none;
+  transition: color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), width var(--dur-fast) var(--ease-out-warm), transform var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm);
 }
 .github-fixed-trigger:hover, .github-fixed-trigger[aria-pressed="true"], .github-fixed-trigger:focus-visible {
   width: 34px;
   color: var(--accent-strong);
   background: var(--bg-selected);
-  transform: translate(-2px, -50%);
+  transform: translateX(-2px);
 }
 .github-status-popover {
   transform-origin: top right;
@@ -1931,11 +1964,8 @@ span.token.table {
   from { opacity: 0; transform: translateY(-6px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-@media (max-width: 640px) {
-  .github-fixed-trigger { top: auto; right: 48px !important; bottom: 52px; width: 38px; height: 38px; border-radius: 50%; transform: none; }
-}
 @media (prefers-reduced-motion: reduce) {
-  .top-panel-animated, .github-fixed-trigger, .github-status-popover { animation: none; transition: none; }
+  .top-panel-animated, .github-fixed-trigger, .github-status-popover, .settings-nav-indicator { animation: none; transition: none !important; }
 }
 .github-status-shell {
   display: flex;
@@ -2046,11 +2076,6 @@ span.token.table {
 .github-status-ci { display: inline-flex; align-items: center; justify-content: center; width: 18px; flex-shrink: 0; }
 .github-status-ci-dot { width: 8px; height: 8px; border: 2px solid currentColor; border-radius: 50%; }
 .github-status-muted { padding: 6px 0; color: var(--text-dim); font-size: 11px; }
-.github-status-shortcuts { display: grid; gap: 4px; }
-.github-status-shortcut { display: flex; align-items: baseline; gap: 7px; width: 100%; padding: 5px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; text-align: left; font-size: 10.5px; }
-.github-status-shortcut:hover, .github-status-shortcut:focus-visible { background: var(--bg-hover); color: var(--text); }
-.github-status-shortcut code { color: var(--accent-strong); font-family: var(--font-mono); font-size: 10.5px; }
-.github-status-shortcut span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .github-status-action-error, .github-status-action-notice { padding: 6px 10px; font-size: 10.5px; line-height: 1.35; overflow-wrap: anywhere; }
 .github-status-action-error { color: var(--status-error); background: color-mix(in srgb, var(--status-error) 8%, var(--bg-panel)); }
 .github-status-action-notice { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 8%, var(--bg-panel)); }
@@ -2345,6 +2370,11 @@ html.dark .dropdown-surface :is(select, option) {
               box-shadow var(--dur-fast) var(--ease-out-warm),
               transform var(--dur-fast) var(--ease-out-warm);
 }
+/* Committed turns re-mounted by the virtual transcript must not replay the
+   entrance animation, which produces flashing and 7px jumps during fast scrolling. */
+[data-committed="true"] .chat-message-card {
+  animation: none;
+}
 .chat-message-card:hover {
   border-color: color-mix(in srgb, var(--accent) 22%, var(--border)) !important;
   box-shadow: var(--shadow-card) !important;
@@ -2363,7 +2393,8 @@ html.dark .dropdown-surface :is(select, option) {
 }
 .toast-card {
   animation: toast-in var(--dur-med) var(--ease-out-warm) both;
-  transition: transform var(--dur-fast) var(--ease-out-warm),
+  transition: opacity var(--dur-fast) var(--ease-out-warm),
+              transform var(--dur-fast) var(--ease-out-warm),
               border-color var(--dur-fast) var(--ease-out-warm),
               box-shadow var(--dur-fast) var(--ease-out-warm);
 }
@@ -2720,12 +2751,14 @@ html.dark .dropdown-surface :is(select, option) {
   }
 }
 
-/* Smooth Collapsible Animated Wrapper for Activity Rows & Thinking */
+/* Smooth Collapsible Animated Wrapper for Activity Rows & Thinking.
+   Height transition is deliberately avoided here: variable-height animation inside
+   virtualized message groups triggers 60Hz ResizeObserver reflow storms. */
 .activity-collapsible-wrapper {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
+  transition: opacity 160ms var(--ease-out-warm);
 }
 
 .activity-collapsible-wrapper[data-open="true"] {
@@ -2739,9 +2772,12 @@ html.dark .dropdown-surface :is(select, option) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .omp-bouncing-letter,
+  .omp-solo-o,
+  .omp-solo-m,
+  .omp-solo-p,
   .thinking-icon-active {
-    animation: none;
+    animation: none !important;
+    transform: none !important;
   }
   .activity-collapsible-wrapper {
     transition: none;
@@ -2912,27 +2948,33 @@ html.dark .dropdown-surface :is(select, option) {
 }
 
 
-/* Right panel: animate width */
+/* Right workbench rail.  It has one stable home; the only split is the
+   explicit upper/lower divider inside the workbench itself. */
+.right-panel-container {
+  overflow: hidden;
+  flex-shrink: 0;
+  will-change: opacity;
+  transition: width var(--dur-med) var(--ease-out-warm),
+    min-width var(--dur-med) var(--ease-out-warm),
+    opacity var(--dur-fast) var(--ease-out-warm);
+}
+.right-panel-container.right-panel-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.right-panel-container.right-panel-closed {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Maintain a stable minimum layout width inside the rail during open/close
+   animation to eliminate text-reflow churn across the 220ms transition. */
 @media (min-width: 641px) {
-  .right-panel-container {
-    overflow: hidden;
-    transition: width var(--dur-med) var(--ease-out-warm), min-width var(--dur-med) var(--ease-out-warm);
-    flex-shrink: 0;
-  }
-  .right-panel-container.right-panel-open {
-    width: 42%;
-    min-width: 300px;
-  }
-  .right-panel-container.right-panel-closed {
-    width: 0;
-    min-width: 0;
-    border-left: none !important;
-  }
-  /* keep inner content at the container width so it doesn't reflow during
-     animation and follows the draggable/max-width-constrained panel */
   .right-panel-container > * {
     width: 100%;
-    min-width: 0;
+    min-width: 280px;
   }
 }
 
@@ -2960,19 +3002,16 @@ html.dark .dropdown-surface :is(select, option) {
   }
 
   .right-panel-container {
-    overflow: hidden;
-    transition: width var(--dur-med) var(--ease-out-warm), min-width var(--dur-med) var(--ease-out-warm);
-    flex-shrink: 0;
+    max-width: 100vw !important;
   }
   .right-panel-container.right-panel-open {
-    width: 100%;
-    min-width: 0;
+    width: 100% !important;
+    min-width: 0 !important;
   }
   .right-panel-container.right-panel-closed {
     width: 0 !important;
     min-width: 0 !important;
     border-left: none !important;
-    display: none !important;
   }
   .directory-picker-back,
   .directory-picker-entry,
@@ -2998,7 +3037,9 @@ html.dark .dropdown-surface :is(select, option) {
 }
 
 .chat-input-shell-streaming {
-  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-card) !important;
+  box-shadow: 0 0 16px -2px color-mix(in srgb, var(--accent) 24%, transparent),
+              inset 0 0 8px -2px color-mix(in srgb, var(--accent) 14%, transparent),
+              var(--shadow-card) !important;
 }
 
 .chat-input-beam-svg {
@@ -3010,12 +3051,13 @@ html.dark .dropdown-surface :is(select, option) {
   border-radius: var(--radius-card);
   overflow: visible;
   z-index: 5;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .chat-input-beam-rect {
   animation: omp-beam-clockwise var(--omp-beam-speed, 5.5s) linear infinite;
-  filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--accent) 70%, transparent));
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 @keyframes omp-beam-clockwise {
@@ -3027,13 +3069,20 @@ html.dark .dropdown-surface :is(select, option) {
   }
 }
 
+/* Background power saving: suspend continuous looping animations when tab is hidden */
+html[data-hidden="true"] :is(.chat-input-beam-rect, .icon-spin, .animate-spin, [class*="-spin"], [class*="-pulse"], .skeleton-shimmer, [class*="omp-solo-jump"]) {
+  animation-play-state: paused !important;
+}
+
 /* Master Animation Disable */
+html[data-animations="false"],
 html[data-animations="false"] *,
 html[data-animations="false"] *::before,
 html[data-animations="false"] *::after {
   animation-duration: 0.001ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }
 
 /* Granular Animation Disables */

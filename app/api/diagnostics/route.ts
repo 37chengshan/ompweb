@@ -39,7 +39,6 @@ export async function GET() {
   // can still hold session locks even though the current App runs on 30179.
   for (const port of [30177, 30178, 30179, 30180]) {
     if (port === selfPort) continue;
-    // eslint-disable-next-line no-await-in-loop
     otherInstances.push({ port, alive: await probeOmpWebPort(port) });
   }
 
@@ -115,13 +114,16 @@ export async function POST(req: Request) {
   }
 }
 
-/** 探测本机另一端口上是否有 ompweb 服务（快速 GET，1s 超时）。 */
+/** 探测本机另一端口上是否有 ompweb 服务（快速 GET，1s 超时）。
+ * Use the non-recursive health endpoint: probing /api/diagnostics here would
+ * make two ompweb instances call each other's diagnostics routes recursively,
+ * multiplying latency whenever both dev and packaged App are running. */
 async function probeOmpWebPort(port: number): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1000);
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/api/diagnostics`, { signal: controller.signal });
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: controller.signal });
       return res.ok;
     } finally {
       clearTimeout(timer);

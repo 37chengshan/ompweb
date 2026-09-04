@@ -59,6 +59,13 @@ export interface HostClientSurface {
     /** Sequence numbers persisted for a stream (tail oracle for resume). */
     view(stream: string): Promise<number[]>;
   };
+  settings: {
+    /** Raw schema object from `omp config list --json`; OMP remains authority. */
+    list(): Promise<Record<string, unknown>>;
+    path(): Promise<string | null>;
+    set(key: string, value: string): Promise<{ output: string }>;
+    reset(key: string): Promise<{ output: string }>;
+  };
   files: {
     /** Directory listing mirror of /api/files?type=list (doc 16 route 9). */
     list(roots: string[], path: string): Promise<{ entries: Array<{ name: string; isDir: boolean }>; path: string }>;
@@ -158,6 +165,27 @@ export const hostClient: HostClientSurface = {
     view: async (stream) => {
       const raw = await hostRequest("journal.view", { stream });
       return Array.isArray(raw) ? (raw as number[]) : [];
+    },
+  },
+  settings: {
+    list: async () => {
+      const raw = await hostRequest("settings.list", {});
+      if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+      throw new Error(`settings.list: unexpected response ${JSON.stringify(raw)}`);
+    },
+    path: async () => {
+      const raw = await hostRequest("settings.path", {});
+      return typeof raw === "string" && raw ? raw : null;
+    },
+    set: async (key, value) => {
+      const raw = await hostRequest("settings.set", { key, value });
+      if (raw !== null && typeof raw === "object" && typeof (raw as { output?: unknown }).output === "string") return raw as { output: string };
+      throw new Error(`settings.set: unexpected response ${JSON.stringify(raw)}`);
+    },
+    reset: async (key) => {
+      const raw = await hostRequest("settings.reset", { key });
+      if (raw !== null && typeof raw === "object" && typeof (raw as { output?: unknown }).output === "string") return raw as { output: string };
+      throw new Error(`settings.reset: unexpected response ${JSON.stringify(raw)}`);
     },
   },
   host: {

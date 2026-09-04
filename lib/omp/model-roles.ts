@@ -52,6 +52,86 @@ export function readDisabledProviders(): Set<string> {
   return new Set(data.disabledProviders.filter((provider): provider is string => typeof provider === "string"));
 }
 
+/**
+ * Drop config.yml entries that reference a provider that no longer exists.
+ *
+ * Deleting a provider from models.yml leaves the runtime list clean (the
+ * models PUT invalidates the cache and recycles the utility process), but
+ * config.yml can keep pointing at it: `modelRoles.*` role selectors,
+ * `retry.fallbackChains.*` model selectors and `providers.webSearchOrder`
+ * entries. omp resolves a role selector by fuzzy-matching provider/model
+ * names, so a dangling entry does not hard-fail — it silently resolves to an
+ * unrelated model (or an unusable one) instead of the deleted provider's
+ * models, which reads as "omp did not sync the deletion".
+ *
+ * Called after every models.yml provider removal with the full provider-name
+ * list that remains. Only exact provider-name prefixes are pruned (a model id
+ * like `org/model` under a still-live provider is never touched). Writes are
+ * skipped when nothing changed so user files stay byte-identical.
+ */
+export function pruneConfigProviderRefs(remainingProviders: readonly string[]): void {
+  const path = configPath();
+  if (!existsSync(path)) return;
+  const source = readFileSync(path, "utf8");
+  const doc = parseDocument(source);
+  if (doc.errors.length > 0 || !isMap(doc.contents)) return;
+  const data = doc.toJS();
+  if (!isRecord(data)) return;
+
+  const live = new Set(remainingProviders);
+  const refsDeletedProvider = (selector: string): boolean => {
+    if (!selector) return false;
+    const providerPart = selector.split("/")[0];
+    if (!providerPart || live.has(providerPart)) return false;
+    // Bare model selectors without a provider part are omp-inferred — keep.
+    return providerPart !== selector || selector.includes("/");
+  };
+
+  let changed = false;
+  const roles = isRecord(data.modelRoles) ? data.modelRoles : {};
+  const roleEntries = Object.entries(roles).filter((entry): entry is [string, string] =>
+    typeof entry[1] === "string" && entry[1].length > 0);
+  const keptRoles = roleEntries.filter(([, selector]) => !refsDeletedProvider(selector));
+  if (keptRoles.length !== roleEntries.length) {
+    if (keptRoles.length === 0) doc.delete("modelRoles");
+    else doc.set("modelRoles", Object.fromEntries(keptRoles));
+    changed = true;
+  }
+
+  const retry = isRecord(data.retry) ? data.retry : {};
+  if (isRecord(retry.fallbackChains)) {
+    const chains = Object.entries(retry.fallbackChains).filter((entry): entry is [string, string[]] =>
+      typeof entry[0] === "string" && Array.isArray(entry[1]) && entry[1].every((v): v is string => typeof v === "string"));
+    let chainsChanged = false;
+    const nextChains = Object.fromEntries(chains.map(([roleName, chain]) => {
+      const next = chain.filter((selector) => !refsDeletedProvider(selector));
+      if (next.length !== chain.length) chainsChanged = true;
+      return [roleName, next];
+    }));
+    if (chainsChanged) {
+      if (Object.keys(nextChains).length === 0) doc.deleteIn(["retry", "fallbackChains"]);
+      else doc.setIn(["retry", "fallbackChains"], nextChains);
+      changed = true;
+    }
+  }
+
+  const providers = isRecord(data.providers) ? data.providers : {};
+  if (Array.isArray(providers.webSearchOrder) && providers.webSearchOrder.length > 0) {
+    const order = providers.webSearchOrder.filter((value): value is string => typeof value === "string");
+    const next = order.filter((name) => live.has(name));
+    if (next.length !== order.length) {
+      if (next.length === 0) doc.deleteIn(["providers", "webSearchOrder"]);
+      else doc.setIn(["providers", "webSearchOrder"], next);
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(temp, doc.toString(), "utf8");
+  renameSync(temp, path);
+}
+
 /** Re-enable a provider after a successful native OMP login. */
 export function enableProvider(provider: string): void {
   const path = configPath();

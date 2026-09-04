@@ -16,11 +16,28 @@ interface Props {
   /** A shell command to run on next connect (quick-script "run in terminal").
    *  The panel writes it to the fresh PTY once the session is live. */
   runCommand?: { text: string; nonce: number } | null;
+  /** Keep the backend PTY alive while hidden (multi-tab terminal). The panel
+   *  instance stays mounted; hiding only closes the SSE stream, the session id
+   *  survives and reconnects on the next open. False (default) preserves the
+   *  old drawer behavior: hiding reaps the session. */
+  preserveSession?: boolean;
+  /** Optional host-controlled drawer height (used by the multi-tab bottom drawer). */
+  heightOverride?: number;
+  onHeightChange?: (height: number) => void;
+  /** Fill a docked workbench pane. The host owns the pane splitter in this mode. */
+  embedded?: boolean;
 }
 
-export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
+export function TerminalPanel({ open, onClose, cwd, runCommand, preserveSession = false, heightOverride, onHeightChange, embedded = false }: Props) {
   const { t } = useI18n();
   const { isDark, preference } = useTheme();
+  // True between mount and unmount — lets the stream cleanup distinguish a
+  // hide (open false, still mounted → park) from a real unmount (→ reap).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [height, setHeight] = useState<number>(() => {
     if (typeof window === "undefined") return 280;
     try {
@@ -88,16 +105,6 @@ export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
   // may be opening, reconnecting, or already live when runCommand arrives).
   const queuedCommandRef = useRef<string | null>(null);
 
-  /** Write a command line to the live PTY (queued when no session yet). */
-  const injectCommand = useCallback((text: string) => {
-    const sid = sessionIdRef.current;
-    if (sid) {
-      sendTerminalInput(sid, `${text}\r`);
-    } else {
-      queuedCommandRef.current = text;
-    }
-  }, [sendTerminalInput]);
-
   // Initialize terminal session on backend
   const initSession = useCallback(async () => {
     try {
@@ -147,15 +154,16 @@ export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
         xtermInstanceRef.current.dispose();
       }
       const isOled = preference === "oled";
+      const isCodex = preference === "codex";
       const isNord = preference === "nord";
       const isDracula = preference === "dracula";
       const isPine = preference === "pine";
       const isNavy = preference === "navy";
       const isAurora = preference === "aurora-flow";
 
-      const bg = isOled ? "#000000" : isDracula ? "#282A36" : isNord ? "#2E3440" : isPine ? "#121B17" : isNavy ? "#0F172A" : isAurora ? "#0c1417" : isDark ? "#1B1916" : "#FAF9F6";
-      const fg = isOled ? "#F8FAFC" : isDark ? "#EBE6DC" : "#2B2823";
-      const cursorColor = isOled ? "#38BDF8" : isDracula ? "#BD93F9" : isNord ? "#88C0D0" : isPine ? "#52B788" : isNavy ? "#60A5FA" : isAurora ? "#34d399" : "var(--accent)";
+      const bg = (isOled || isCodex) ? "#000000" : isDracula ? "#282A36" : isNord ? "#2E3440" : isPine ? "#121B17" : isNavy ? "#0F172A" : isAurora ? "#0c1417" : isDark ? "#1B1916" : "#FAF9F6";
+      const fg = isCodex ? "#EDEDED" : isOled ? "#F8FAFC" : isDark ? "#EBE6DC" : "#2B2823";
+      const cursorColor = isCodex ? "#FFFFFF" : isOled ? "#38BDF8" : isDracula ? "#BD93F9" : isNord ? "#88C0D0" : isPine ? "#52B788" : isNavy ? "#60A5FA" : isAurora ? "#34d399" : "var(--accent)";
 
       const term = new Terminal({
         cursorBlink: true,
@@ -314,6 +322,11 @@ export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
       cancelled = true;
       controller.abort();
       if (retryTimer) clearTimeout(retryTimer);
+      // preserveSession (multi-tab): a hide only parks the stream — the PTY
+      // stays alive server-side (30 min TTL reaps it) and the next open
+      // reconnects to the same session id with history replay. A real
+      // unmount (tab closed) still reaps, exactly like the drawer default.
+      if (preserveSession && mountedRef.current) return;
       // Reap the server-side session when the panel closes or the component
       // unmounts — never leave a PTY + SSE stream attached to a hidden panel.
       void fetch(`/api/terminal/session?id=${encodeURIComponent(sessionId)}`, {
@@ -325,7 +338,7 @@ export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
       setSessionId(null);
       sessionIdRef.current = null;
     };
-  }, [sessionId, open]);
+  }, [sessionId, open, preserveSession]);
 
   // Handle auto-fit on resize or when drawer opens
   useEffect(() => {
@@ -346,7 +359,7 @@ export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     isDraggingRef.current = true;
     startYRef.current = e.clientY;
-    startHeightRef.current = height;
+    startHeightRef.current = heightOverride ?? height;
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!isDraggingRef.current) return;
@@ -357,6 +370,7 @@ export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
       } else {
         const clamped = Math.max(140, Math.min(window.innerHeight * 0.85, newHeight));
         setHeight(clamped);
+        onHeightChange?.(clamped);
         try {
           localStorage.setItem("omp-terminal-height", String(clamped));
         } catch {}
@@ -372,7 +386,9 @@ export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [height, onClose]);
+  }, [height, heightOverride, onClose, onHeightChange]);
+
+  const effectiveHeight = heightOverride ?? height;
 
   const handleClear = useCallback(() => {
     xtermInstanceRef.current?.clear();
@@ -415,22 +431,25 @@ export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
       style={{
         position: "relative",
         width: "100%",
-        height: open ? (maximized ? "calc(100% - 40px)" : `${height}px`) : 0,
-        maxHeight: "85vh",
+        // preserveSession: the instance is a keep-mounted multi-tab terminal —
+        // it always renders at its own height and visibility is driven by the
+        // tab host's display, never by collapsing to zero here.
+        height: embedded ? "100%" : (open || preserveSession) ? (maximized ? "calc(100% - 40px)" : `${effectiveHeight}px`) : 0,
+        maxHeight: embedded ? "none" : "85vh",
         display: "flex",
         flexDirection: "column",
         background: "var(--bg-panel)",
-        borderTop: open ? "1.5px solid var(--border)" : "none",
-        boxShadow: open ? "0 -4px 18px rgba(0,0,0,0.14)" : "none",
+        borderTop: embedded ? "none" : (open || preserveSession) ? "1.5px solid var(--border)" : "none",
+        boxShadow: embedded ? "none" : (open || preserveSession) ? "0 -4px 18px rgba(0,0,0,0.14)" : "none",
         zIndex: 45,
         overflow: "hidden",
-        transition: isDraggingRef.current ? "none" : "height 240ms cubic-bezier(0.22, 1, 0.36, 1)",
-        pointerEvents: open ? "auto" : "none",
-        visibility: open ? "visible" : "hidden",
+        transition: embedded || isDraggingRef.current ? "none" : "height 240ms cubic-bezier(0.22, 1, 0.36, 1)",
+        pointerEvents: (open || preserveSession) ? "auto" : "none",
+        visibility: (open || preserveSession) ? "visible" : "hidden",
       }}
     >
       {/* Top drag handle */}
-      {open && (
+      {!embedded && (open || preserveSession) && (
         <div
           onMouseDown={handleMouseDown}
           title="拖拽调节终端高度，向下拉到底可收起"

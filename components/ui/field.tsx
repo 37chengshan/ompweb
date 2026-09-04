@@ -185,6 +185,8 @@ interface TextInputProps {
   invalid?: boolean;
   error?: string | null;
   onBlurValidate?: () => void;
+  /** Extra blur handler (runs after validation) — e.g. commit-on-blur. */
+  onBlur?: () => void;
   disabled?: boolean;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
   autoComplete?: string;
@@ -200,6 +202,7 @@ export function TextInput({
   invalid,
   error,
   onBlurValidate,
+  onBlur: onBlurExtra,
   disabled,
   onKeyDown,
   autoComplete,
@@ -223,6 +226,7 @@ export function TextInput({
       onBlur={() => {
         setFocused(false);
         onBlurValidate?.();
+        onBlurExtra?.();
       }}
       style={{
         ...inputShellStyle({ invalid: isInvalid }),

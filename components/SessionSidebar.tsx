@@ -11,15 +11,18 @@ import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { Tooltip } from "./ui/primitives";
 import { toast } from "./ui/toast";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { clearLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
+import { clearLastOpenSession, getLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
 import { groupSessionsByProject, projectActivityCounts, sortManagedProjects } from "@/lib/project-ordering";
 import { comparableProjectPath } from "@/lib/comparable-path";
-import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Smartphone, Trash2, Upload, Wrench } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronRight, FileUp, Folder, FolderSearch, GitBranch, LoaderCircle, MoreHorizontal, PanelsTopLeft, Play, Plus, RefreshCw, Rocket, Search, Settings2, SlidersHorizontal, Smartphone, Trash2, Upload, Wrench } from "lucide-react";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 import { UsageSidebarPanel } from "./UsageSidebarPanel";
 
 declare global {
   interface Window {
+    ompWebDesktop?: {
+      openSessionWindow?: (sessionId: string) => Promise<{ ok: boolean; reason?: string }>;
+    };
     piDesktop?: {
       selectDirectory: () => Promise<string | null>;
     };
@@ -53,6 +56,9 @@ interface Props {
   updateAvailable?: boolean;
   /** Opens the archived sessions browser. */
   onOpenArchive?: () => void;
+  /** Run a project quick script inside the terminal drawer instead of the
+   *  silent wait/toast path (AppShell owns the TerminalPanel). */
+  onRunScriptInTerminal?: (projectPath: string, command: string) => void;
 }
 
 interface WorktreeEntry {
@@ -90,8 +96,12 @@ function normalizeProjectKey(value: string): string {
 // Bounded retry window for restoring a brand-new session from its URL before
 // omp flushes the JSONL (typically appears within a second or two of the
 // first prompt, so 8 × 1s covers it without hanging a dead link forever).
-const INITIAL_RESTORE_RETRY_MS = 1000;
-const INITIAL_RESTORE_MAX_ATTEMPTS = 8;
+// A just-created URL session may need a brief moment before its JSONL appears,
+// but keeping the whole desktop shell behind the boot overlay for eight
+// seconds makes a stale URL look like a hung frontend. Four short retries
+// still cover the flush race without turning normal startup into a long wait.
+const INITIAL_RESTORE_RETRY_MS = 350;
+const INITIAL_RESTORE_MAX_ATTEMPTS = 4;
 
 const UNREAD_SESSIONS_STORAGE_KEY = "omp-web:unread-session-ids";
 
@@ -218,7 +228,7 @@ const SCRIPT_ICON_MAP = {
   wrench: Wrench,
 } as const;
 
-function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPath: string; anchor: React.RefObject<HTMLElement | null>; open: boolean; onClose: () => void }) {
+function ProjectScriptsMenu({ projectPath, anchor, open, onClose, onRunInTerminal }: { projectPath: string; anchor: React.RefObject<HTMLElement | null>; open: boolean; onClose: () => void; onRunInTerminal?: (projectPath: string, command: string) => void }) {
   const { t } = useI18n();
   const [scripts, setScripts] = useState<{ name: string; command: string; description?: string; icon?: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -240,12 +250,23 @@ function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPat
   }, [open, reload]);
 
   const runScript = useCallback(async (s: { name: string; command: string }) => {
+    // 5.1: prefer running the script in the terminal drawer — the output is
+    // visible and interactive, not a silent toast. Without a host (web
+    // fallback) the old wait/toast path still applies.
+    if (onRunInTerminal) {
+      onRunInTerminal(projectPath, s.command);
+      onClose();
+      return;
+    }
     setBusy(s.name);
     try {
       const res = await fetch("/api/scripts/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: projectPath, command: s.command, mode: "wait" }),
+        // Only the script NAME travels on the wire — the server reads the
+        // command from the local registry, so the body never carries
+        // executable text.
+        body: JSON.stringify({ cwd: projectPath, name: s.name, mode: "wait" }),
       });
       const data = await res.json() as { output?: string; exitCode?: number | null; timedOut?: boolean; error?: string };
       if (!res.ok) {
@@ -262,7 +283,7 @@ function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPat
     } finally {
       setBusy(null);
     }
-  }, [projectPath, t]);
+  }, [projectPath, t, onRunInTerminal, onClose]);
 
   const addScript = useCallback(async () => {
     if (!newName.trim() || !newCommand.trim()) return;
@@ -626,6 +647,13 @@ function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
   return roots;
 }
 
+function mostRecentSessionForWorkspace(sessions: SessionInfo[], workspace: string): SessionInfo | undefined {
+  const comparableWorkspace = comparableProjectPath(workspace);
+  return sessions
+    .filter((session) => comparableProjectPath(workspaceKeyOf(session)) === comparableWorkspace)
+    .sort((a, b) => b.modified.localeCompare(a.modified))[0];
+}
+
 const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
 
 function useScramble(target: string, running: boolean, reducedMotion: boolean): string {
@@ -728,7 +756,7 @@ function OmpWebTitle() {
     </button>
   );
 }
-export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions, onOpenSettings, onOpenRemote, onOpenArchive, updateAvailable }: Props) {
+export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions, onOpenSettings, onOpenRemote, onOpenArchive, updateAvailable, onRunScriptInTerminal }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -840,9 +868,14 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
       const data = await res.json() as { projects?: ManagedProject[] };
       setProjects(data.projects ?? []);
       setProjectsError(null);
-      projectsLoadedRef.current = true;
     } catch (e) {
       setProjectsError(t("projects.loadFailed", { detail: e instanceof Error ? e.message : String(e) }));
+    } finally {
+      // Project discovery enriches grouping but must not be a permanent gate
+      // for session restoration. On failure the sidebar can still restore a
+      // session from /api/sessions (which already includes cwd/projectRoot)
+      // and show the project error in its normal surface.
+      projectsLoadedRef.current = true;
     }
   }, [t]);
 
@@ -1293,14 +1326,22 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
     }
   }, []);
 
-  // Auto-select cwd and restore session from URL on first load
+  // Restore URL state first, then the remembered session for the default
+  // workspace. Only after that decision may the parent expose an empty chat.
   useEffect(() => {
     if (skipInitialProjectSelection) return;
+    if (restoredRef.current || loading || !projectsLoadedRef.current) return;
 
-    // If restoring a session, set cwd to match that session
-    if (initialSessionId && !restoredRef.current) {
-      if (allSessions.length === 0) return; // wait for sessions to load
-      const target = allSessions.find((s) => s.id === initialSessionId);
+    // Prefer a project that actually has sessions. A recently-added empty
+    // project must not hide the user's existing workspace during startup.
+    const defaultWorkspace = sortedProjects.find((project) =>
+      allSessions.some((session) => comparableProjectPath(workspaceKeyOf(session)) === comparableProjectPath(project.path)),
+    )?.path ?? sortedProjects[0]?.path ?? null;
+    const rememberedSessionId = initialSessionId || (defaultWorkspace ? getLastOpenSession(defaultWorkspace) : null);
+    const rememberedTargetExists = Boolean(rememberedSessionId && allSessions.some((session) => session.id === rememberedSessionId));
+
+    if (rememberedSessionId) {
+      const target = allSessions.find((s) => s.id === rememberedSessionId);
       if (target) {
         restoreRetryRef.current = 0;
         restoredRef.current = true;
@@ -1309,7 +1350,9 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         onSelectSession(target, true);
         return;
       }
-      if (restoreRetryRef.current < INITIAL_RESTORE_MAX_ATTEMPTS) {
+      // A URL may identify a just-started session whose JSONL has not flushed
+      // yet. A stale remembered id is discarded immediately instead.
+      if (initialSessionId && restoreRetryRef.current < INITIAL_RESTORE_MAX_ATTEMPTS) {
         restoreRetryRef.current += 1;
         if (restoreRetryTimerRef.current) {
           clearTimeout(restoreRetryTimerRef.current);
@@ -1321,22 +1364,45 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
         }, INITIAL_RESTORE_RETRY_MS);
         return;
       }
+      if (!initialSessionId && defaultWorkspace) clearLastOpenSession(defaultWorkspace);
+      // A stale remembered id must fall through to the workspace fallback;
+      // otherwise the app incorrectly exposes the empty “开始使用” state.
       restoreRetryRef.current = 0;
+    }
+    if (!rememberedSessionId || !rememberedTargetExists) {
+      // A fresh desktop install (or cleared localStorage) still has a useful
+      // session list. Leaving the main pane on the empty "开始使用" screen
+      // while the first project already contains sessions makes startup look
+      // broken. Restore the most recent session in the default workspace as a
+      // deterministic fallback; explicit URL/remembered-session choices above
+      // still take precedence.
+      const fallback = defaultWorkspace ? mostRecentSessionForWorkspace(allSessions, defaultWorkspace) : undefined;
+      if (fallback) {
+        restoredRef.current = true;
+        setSelectedCwd(fallback.cwd);
+        expandProject(workspaceKeyOf(fallback));
+        onSelectSession(fallback, true);
+        return;
+      }
       restoredRef.current = true;
-      // Session not found — notify parent so it can show the placeholder
       onInitialRestoreDone?.();
     }
-    // No restore target: activate the top project (most recently added) so New
-    // Session and Explorer have a context. When projects have not loaded yet
-    // the ordering is provisional — re-pick once they arrive, unless the user
-    // already activated a project by hand.
+    // A stale deep link should not strand the app on a blank pane. Once the
+    // bounded restore retries are exhausted, the workspace fallback above is
+    // safer and more useful than an empty screen.
+    if (initialSessionId && rememberedSessionId && !rememberedTargetExists) {
+      restoredRef.current = true;
+      onInitialRestoreDone?.();
+    }
+    // No restored session: activate the top project for browsing, without
+    // implicitly opening a blank conversation.
     if (selectedCwd !== null && !provisionalSelectionRef.current) return;
     const top = sortedProjects[0];
     if (!top) return;
     setSelectedCwd(top.path);
     expandProject(top.path);
     provisionalSelectionRef.current = allSessions.length === 0;
-  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone, sortedProjects, expandProject, loadSessions]);
+  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, loading, onSelectSession, onInitialRestoreDone, sortedProjects, expandProject, loadSessions]);
 
   // Default expansion: when the user has never stored an expansion choice,
   // expand only the active project.
@@ -1948,6 +2014,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
                 worktreeOpen={isActive ? wtDropdownOpen : false}
                 onToggleWorktrees={isActive ? toggleWorktrees : undefined}
                 homeDir={homeDir}
+                onRunScriptInTerminal={onRunScriptInTerminal}
               />
             );
           })}
@@ -2194,6 +2261,7 @@ interface ProjectRowProps {
   worktreeOpen?: boolean;
   onToggleWorktrees?: () => void;
   homeDir: string;
+  onRunScriptInTerminal?: (projectPath: string, command: string) => void;
 }
 
 /** One project in the sidebar: a card row matching the session items' visual
@@ -2228,6 +2296,7 @@ function ProjectRow({
   worktreeToggleRef,
   worktreeOpen,
   onToggleWorktrees,
+  onRunScriptInTerminal,
 }: ProjectRowProps) {
   const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
@@ -2517,6 +2586,7 @@ function ProjectRow({
             anchor={actionButtonRef}
             open={scriptsMenuOpen}
             onClose={() => setScriptsMenuOpen(false)}
+            onRunInTerminal={onRunScriptInTerminal}
           />
         </div>
         <button
@@ -3134,6 +3204,19 @@ const SessionItem = memo(function SessionItem({
     }
   }, [session.id, onDeleted, t]);
 
+  const handleOpenInNewWindow = useCallback(async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setActionMenuOpen(false);
+    try {
+      const result = await window.ompWebDesktop?.openSessionWindow?.(session.id);
+      if (!result?.ok) throw new Error(result?.reason ?? "desktop bridge unavailable");
+    } catch {
+      toast.error(t("sessionSidebar.openInNewWindowFailed"));
+    }
+  }, [session.id, t]);
+
+  const canOpenInNewWindow = typeof window !== "undefined" && typeof window.ompWebDesktop?.openSessionWindow === "function";
+
  const closeConfirmation = useCallback(() => {
  setConfirmArchive(false);
  setConfirmDelete(false);
@@ -3226,6 +3309,7 @@ const SessionItem = memo(function SessionItem({
                   <MoreHorizontal size={14} strokeWidth={2} aria-hidden="true" />
                 </button>
                 <SidebarPortalMenu anchor={menuButtonRef} open={actionMenuOpen} onClose={() => setActionMenuOpen(false)} placement="above" minWidth={128}>
+                  {canOpenInNewWindow && <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { void handleOpenInNewWindow(event); }} style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}><PanelsTopLeft size={12} strokeWidth={1.9} aria-hidden="true" />{t("sessionSidebar.openInNewWindow")}</button>}
  <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmArchive(true); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: hasChildren ? "var(--text-dim)" : "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", textAlign: "left", fontSize: 11, opacity: hasChildren ? 0.55 : 1 }}>{t("sessionSidebar.archive")}</button>
                   <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { startRename(event); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.rename")}</button>
                   <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmDelete(true); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.delete")}</button>

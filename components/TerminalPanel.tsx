@@ -13,9 +13,12 @@ interface Props {
   open: boolean;
   onClose: () => void;
   cwd?: string | null;
+  /** A shell command to run on next connect (quick-script "run in terminal").
+   *  The panel writes it to the fresh PTY once the session is live. */
+  runCommand?: { text: string; nonce: number } | null;
 }
 
-export function TerminalPanel({ open, onClose, cwd }: Props) {
+export function TerminalPanel({ open, onClose, cwd, runCommand }: Props) {
   const { t } = useI18n();
   const { isDark, preference } = useTheme();
   const [height, setHeight] = useState<number>(() => {
@@ -31,6 +34,9 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
   const [sessionCwd, setSessionCwd] = useState<string>(cwd || "");
+  // Ref mirror of sessionId so queued/injected commands never read a stale
+  // closure (runCommand effects run outside the render that created the id).
+  const sessionIdRef = useRef<string | null>(null);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermInstanceRef = useRef<Terminal | null>(null);
@@ -78,6 +84,19 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
   // replays session history immediately on connect) races the dynamic xterm
   // import, and the banner + shell prompt are dropped — the panel looks dead.
   const pendingOutputRef = useRef<string>("");
+  // A quick-script command queued to run on the next live session (the panel
+  // may be opening, reconnecting, or already live when runCommand arrives).
+  const queuedCommandRef = useRef<string | null>(null);
+
+  /** Write a command line to the live PTY (queued when no session yet). */
+  const injectCommand = useCallback((text: string) => {
+    const sid = sessionIdRef.current;
+    if (sid) {
+      sendTerminalInput(sid, `${text}\r`);
+    } else {
+      queuedCommandRef.current = text;
+    }
+  }, [sendTerminalInput]);
 
   // Initialize terminal session on backend
   const initSession = useCallback(async () => {
@@ -91,6 +110,7 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
       const data = await res.json();
       if (res.ok && data.sessionId) {
         setSessionId(data.sessionId);
+        sessionIdRef.current = data.sessionId as string;
         setSessionCwd(data.cwd || cwd || "");
       } else {
         setStatus("disconnected");
@@ -228,6 +248,7 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
               if (cancelled || !openRef.current) return;
               inputChainRef.current = Promise.resolve();
               setSessionId(null);
+              sessionIdRef.current = null;
             }, retryDelay);
             retryDelay = Math.min(retryDelay * 2, 8000);
           } else {
@@ -238,6 +259,13 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
         }
         if (!res.ok || !res.body) throw new Error(`terminal stream failed: ${res.status}`);
         setStatus("connected");
+        // History replay has flushed to xterm — now run any queued quick
+        // script (it arrived before this session became live).
+        if (queuedCommandRef.current) {
+          const text = queuedCommandRef.current;
+          queuedCommandRef.current = null;
+          sendTerminalInput(sessionId, `${text}\r`);
+        }
         retryDelay = 1000;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -295,6 +323,7 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
       // Drop the id so the next OPEN re-creates the session instead of
       // reconnecting to a reaped one. Harmless on unmount (React ignores it).
       setSessionId(null);
+      sessionIdRef.current = null;
     };
   }, [sessionId, open]);
 
@@ -358,9 +387,27 @@ export function TerminalPanel({ open, onClose, cwd }: Props) {
     // new session's input.
     inputChainRef.current = Promise.resolve();
     setSessionId(null);
+    sessionIdRef.current = null;
     xtermInstanceRef.current?.clear();
     await initSession();
   }, [sessionId, initSession]);
+
+  // Quick-script "run in terminal": when a new runCommand arrives (nonce
+  // bumps) and the panel is live, type the command + Enter; otherwise queue
+  // it — the stream-connected flush or the next open runs it.
+  const lastRunNonceRef = useRef(0);
+  useEffect(() => {
+    if (!runCommand || !open) return;
+    if (runCommand.nonce === lastRunNonceRef.current) return;
+    lastRunNonceRef.current = runCommand.nonce;
+    const sid = sessionIdRef.current;
+    if (sid && xtermInstanceRef.current) {
+      queuedCommandRef.current = null;
+      sendTerminalInput(sid, `${runCommand.text}\r`);
+    } else {
+      queuedCommandRef.current = runCommand.text;
+    }
+  }, [runCommand, open, sendTerminalInput]);
 
   return (
     <div

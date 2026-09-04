@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
+import { BackendHealthBanner } from "./BackendDiagnostics";
 import { ToastProvider } from "./ui/toast";
 import { toast } from "./ui/toast";
 import { ChatWindow } from "./ChatWindow";
@@ -14,10 +15,11 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Check, CircleCheck, FolderGit2, History, Menu, Moon, PanelLeft, Search, Sun, Terminal, TerminalSquare, Wand2, X } from "lucide-react";
 import { ThemePicker } from "./ThemePicker";
 import { DesktopUpdateBanner } from "./DesktopUpdateBanner";
+import { OmpSetupWizard } from "./OmpSetupWizard";
 import { TerminalPanel } from "./TerminalPanel";
 import { useTheme } from "@/hooks/useTheme";
 import { formatCompactNumber, formatPercent, getCacheHitRate } from "@/lib/format";
-import { translate, useI18n } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
@@ -29,6 +31,7 @@ import { showCompletionNotification } from "@/lib/browser-notifications";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
+import type { SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
 import { ArchiveBrowser } from "./ArchiveBrowser";
@@ -36,6 +39,7 @@ import { GitHubStatusPanel } from "./GitHubStatusPanel";
 import { UpdateNoticeDialog } from "./UpdateNoticeDialog";
 import { recordCurrentVersion, isUpdateNoticeEnabled } from "@/lib/update-notice";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
+import { removeBootSkeleton } from "@/lib/boot-skeleton";
 // The settings shell is part of the app bundle so opening it does not fetch or compile a modal chunk. The file viewer remains on demand.
 const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer), {
   ssr: false,
@@ -81,6 +85,40 @@ function PanelLoadingFallback() {
   );
 }
 
+function UpdateToast({ currentVersion, availableVersion, command }: {
+  currentVersion: string | null | undefined;
+  availableVersion: string;
+  command: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <>
+      <div>{t("appShell.updateVersion", { current: currentVersion ?? "?", available: availableVersion })}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+          {command}
+        </code>
+        <button
+          type="button"
+          onClick={() => {
+            void copyText(command)
+              .then(() => toast.success(t("appShell.commandCopied")))
+              .catch(() => toast.error(t("appShell.commandCopyFailed")));
+          }}
+          style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
+        >
+          {t("appShell.copyCommand")}
+        </button>
+      </div>
+    </>
+  );
+}
+
+function UpdateToastTitle({ product }: { product: "app" | "omp" }) {
+  const { t } = useI18n();
+  return t(product === "app" ? "appShell.appUpdateAvailable" : "appShell.ompUpdateAvailable");
+}
+
 
 type SessionCopyField = "file" | "id";
 type AutoNameStatus =
@@ -117,6 +155,17 @@ export function AppShell() {
   const [thinkingDisplayMode, setThinkingDisplayMode] = useState<ThinkingDisplayMode>("auto");
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  // Quick-script "run in terminal": { text, nonce } bumps trigger the terminal
+  // to type the command + Enter once the panel session is live.
+  const [terminalRunCommand, setTerminalRunCommand] = useState<{ text: string; nonce: number } | null>(null);
+  const terminalRunNonceRef = useRef(0);
+  const openTerminalWithCommand = useCallback((cwd: string | null, command: string) => {
+    // Route the run to the terminal drawer: if the drawer was closed, opening
+    // it with cwd spawns a fresh PTY there; the command queues until live.
+    setTerminalRunCommand({ text: command, nonce: ++terminalRunNonceRef.current });
+    setTerminalOpen(true);
+    void cwd;
+  }, []);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
     if (typeof window === "undefined") return 480;
     try {
@@ -160,11 +209,10 @@ export function AppShell() {
   const sidebarContainerRef = useRef<HTMLDivElement>(null);
   const pendingSidebarWidthRef = useRef<number>(SIDEBAR_DEFAULT_WIDTH);
   useEffect(() => {
-    // Remove the pre-hydration skeleton (app/layout.tsx) once the app shell
-    // is mounted; until this effect runs the body would otherwise show the
-    // static boot text even after the UI is interactive.
-    document.getElementById("boot-skeleton")?.remove();
     setSidebarWidth(loadSidebarWidth());
+    // T1.3: first interactive frame mounted → shell_mounted stage for the
+    // desktop startup timeline (no-op in plain browsers).
+    (window as { ompWebDesktop?: { startupStage?: (stage: string) => void } }).ompWebDesktop?.startupStage?.("shell_mounted");
     try {
       setToolCallsDefaultCollapsed(window.localStorage.getItem(TOOL_CALLS_COLLAPSED_STORAGE_KEY) !== "false");
     } catch {
@@ -213,6 +261,7 @@ export function AppShell() {
   const [ompUpdateAvailable, setOmpUpdateAvailable] = useState(false);
   const [ompMissing, setOmpMissing] = useState(false);
   const [ompMissingDismissed, setOmpMissingDismissed] = useState(false);
+  const [ompSetupOpen, setOmpSetupOpen] = useState(false);
   const [updateNoticeVersion, setUpdateNoticeVersion] = useState<string | null>(null);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
@@ -249,26 +298,9 @@ export function AppShell() {
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "omp update";
         toast.info(
-          translate("appShell.ompUpdateAvailable"),
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-            <div>{translate("appShell.updateVersion", { current: data.currentVersion ?? "?", available: data.availableVersion })}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-                {cmd}
-              </code>
-              <button
-                type="button"
-                onClick={() => {
-                  void copyText(cmd)
-                    .then(() => toast.success(translate("appShell.commandCopied")))
-                    .catch(() => toast.error(translate("appShell.commandCopyFailed")));
-                }}
-                style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
-              >
-                {translate("appShell.copyCommand")}
-              </button>
-            </div>
-          </div>
+          <UpdateToastTitle product="omp" />,
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}><UpdateToast currentVersion={data.currentVersion} availableVersion={data.availableVersion} command={cmd} /></div>,
+          { variant: "update" },
         );
       })
       .catch(() => {});
@@ -280,7 +312,9 @@ export function AppShell() {
     void fetch("/api/omp-version")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { version?: string | null } | null) => {
-        setOmpMissing(!data?.version);
+        const missing = !data?.version;
+        setOmpMissing(missing);
+        setOmpSetupOpen(missing);
       })
       .catch(() => {});
   }, []);
@@ -299,26 +333,9 @@ export function AppShell() {
         if (!data?.updateAvailable || !data.availableVersion) return;
         const cmd = data.updateCommand || "npm install -g @37chengshan/ompweb";
         toast.info(
-          translate("appShell.appUpdateAvailable"),
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-            <div>{translate("appShell.updateVersion", { current: data.currentVersion ?? "?", available: data.availableVersion })}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-                {cmd}
-              </code>
-              <button
-                type="button"
-                onClick={() => {
-                  void copyText(cmd)
-                    .then(() => toast.success(translate("appShell.commandCopied")))
-                    .catch(() => toast.error(translate("appShell.commandCopyFailed")));
-                }}
-                style={{ padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
-              >
-                {translate("appShell.copyCommand")}
-              </button>
-            </div>
-          </div>
+          <UpdateToastTitle product="app" />,
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}><UpdateToast currentVersion={data.currentVersion} availableVersion={data.availableVersion} command={cmd} /></div>,
+          { variant: "update" },
         );
       })
       .catch(() => {});
@@ -337,26 +354,6 @@ export function AppShell() {
     setBranchActiveLeafId(activeLeafId);
     branchLeafChangeFnRef.current = onLeafChange;
   }, []);
-  const handleOpenTerminal = useCallback(async () => {
-    const cwd = selectedSession?.cwd ?? newSessionCwd ?? initialNavigation.requestedCwd;
-    try {
-      const res = await fetch("/api/terminal/open", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        toast.info(t("appShell.terminalOpened") || `已在 ${data.terminal ?? "终端"} 打开工作区`);
-      } else {
-        toast.error(data.error || "打开终端失败");
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "打开终端请求失败";
-      toast.error(msg);
-    }
-  }, [selectedSession?.cwd, newSessionCwd, initialNavigation.requestedCwd, t]);
-
   const handleBranchLeafChange = useCallback((leafId: string | null) => {
     branchLeafChangeFnRef.current?.(leafId);
   }, []);
@@ -367,6 +364,7 @@ export function AppShell() {
   const systemPromptLoadIdRef = useRef(0);
   const systemBtnRef = useRef<HTMLButtonElement>(null);
   const sessionStatsBtnRef = useRef<HTMLButtonElement>(null);
+  const githubBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleSystemPromptChange = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
@@ -533,7 +531,11 @@ export function AppShell() {
     update();
     const ro = new ResizeObserver(update);
     ro.observe(topBarRef.current);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
   }, [activeTopPanel]);
 
   // Dismiss the system/session dropdowns on outside click or Escape. The
@@ -547,6 +549,10 @@ export function AppShell() {
       if (event.target instanceof Element && event.target.closest("[data-top-panel]")) return;
       if (systemBtnRef.current?.contains(event.target as Node)) return;
       if (sessionStatsBtnRef.current?.contains(event.target as Node)) return;
+      if (githubBtnRef.current?.contains(event.target as Node)) return;
+      // GitHub status is a pinned workspace panel. It remains open while the
+      // user inspects files or messages and closes only from its trigger or Esc.
+      if (activeTopPanel === "github") return;
       setActiveTopPanel(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -567,6 +573,14 @@ export function AppShell() {
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
+  // Keep the GitHub status trigger on the chat side of the file viewer.  A
+  // persisted width can be larger than the available viewport, so use the
+  // same CSS clamp as the viewer instead of allowing the button to disappear
+  // behind the preview panel.
+  const rightPanelInset = rightPanelOpen && !isMobile
+    ? `clamp(0px, ${rightPanelWidth}px, calc(100vw - 360px))`
+    : "0px";
+
   // Same @mention format as the chat input's @ autocomplete, so the agent's
   // read tool resolves it the same way (it strips the @ prefix).
   const handleAtMention = useCallback((relativePath: string, isDir: boolean) => {
@@ -584,8 +598,10 @@ export function AppShell() {
 
   const initialSessionId = initialNavigation.sessionId;
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
-  // True once the initial ?session= URL param has been resolved (or confirmed absent)
-  const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
+  const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
+  // The boot gate stays closed until the sidebar has either restored a URL /
+  // remembered session or conclusively found no session to restore.
+  const [initialSessionRestored, setInitialSessionRestored] = useState(false);
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
   const suppressCwdBumpRef = useRef(false);
 
@@ -614,11 +630,13 @@ export function AppShell() {
         suppressCwdBumpRef.current = true;
         setNewSessionCwd(data.cwd);
         setInitialCwdStatus("ready");
+        setInitialSessionRestored(true);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setInitialCwdError(error instanceof Error ? error.message : String(error));
         setInitialCwdStatus("error");
+        setInitialSessionRestored(true);
       });
 
     return () => controller.abort();
@@ -702,6 +720,7 @@ export function AppShell() {
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
+    setInitialSessionRestored(true);
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -735,8 +754,8 @@ export function AppShell() {
     const targetSession = selectedSession;
     const notify = () => {
       showCompletionNotification(
-        targetSession?.name ?? translate("appShell.sessionComplete"),
-        translate("appShell.taskFinished"),
+        targetSession?.name ?? t("appShell.sessionComplete"),
+        t("appShell.taskFinished"),
         () => {
           window.focus();
           if (targetSession) handleSelectSession(targetSession);
@@ -747,7 +766,7 @@ export function AppShell() {
     else if (Notification.permission === "default") {
       void Notification.requestPermission().then((permission) => { if (permission === "granted") notify(); });
     }
-  }, [handleSelectSession, selectedSession]);
+  }, [handleSelectSession, selectedSession, t]);
 
   const handleAutoName = useCallback(async () => {
     const sessionId = selectedSession?.id;
@@ -914,11 +933,21 @@ export function AppShell() {
     );
   }, [selectedSession]);
 
-  // Show chat area if a session is selected, or if we have a cwd to start a new session in
-  const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
+  // A project selection is not an intent to start a conversation. Only an
+  // explicit user action (or a validated ?cwd= launch request) sets this.
+  const effectiveNewSessionCwd = newSessionCwd;
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
+
+  useEffect(() => {
+    if (initialSessionRestored) removeBootSkeleton({ fade: true });
+  }, [initialSessionRestored]);
+
+  useEffect(() => {
+    if (!initialSessionRestored) return;
+    (window as { ompWebDesktop?: { startupStage?: (stage: string) => void } }).ompWebDesktop?.startupStage?.("session_interactive");
+  }, [initialSessionRestored]);
 
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
   const windowTitle = activeCwdName ? `${activeCwdName} - omp web` : "omp web";
@@ -964,6 +993,7 @@ export function AppShell() {
         onOpenRemote={() => setSettingsTab("remote")}
         onOpenArchive={() => setArchiveBrowserOpen(true)}
         updateAvailable={appUpdateAvailable || ompUpdateAvailable}
+        onRunScriptInTerminal={(projectPath, command) => openTerminalWithCommand(projectPath, command)}
       />
     </>
   );
@@ -1100,18 +1130,23 @@ export function AppShell() {
           <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 14px", background: "color-mix(in srgb, var(--status-warning) 12%, var(--bg-panel))", borderBottom: "1px solid color-mix(in srgb, var(--status-warning) 35%, var(--border))", fontSize: 12, color: "var(--text)", flexShrink: 0 }}>
             <span style={{ flex: 1, minWidth: 0 }}>
               {t("appShell.ompMissing")}
-              <code style={{ marginLeft: 8, padding: "1px 6px", borderRadius: 4, background: "var(--bg)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
-                curl -fsSL https://omp.sh/install | sh
-              </code>
             </span>
-            <button type="button" className="shell-toolbar-btn ui-focus-ring" title={t("appShell.ompInstallDocs")} aria-label={t("appShell.ompInstallDocs")} onClick={() => window.open("https://github.com/can1357/oh-my-pi", "_blank", "noopener,noreferrer")} style={{ width: 24, height: 24, borderRadius: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 700 }}>?</span>
+            <button type="button" className="shell-toolbar-btn ui-focus-ring" title={t("appShell.ompSetup")} aria-label={t("appShell.ompSetup")} onClick={() => setOmpSetupOpen(true)} style={{ height: 26, padding: "0 9px", borderRadius: 6, fontSize: 11, fontWeight: 650 }}>
+              {t("appShell.ompSetup")}
             </button>
             <button type="button" className="shell-toolbar-btn ui-focus-ring" title={t("appShell.dismiss")} aria-label={t("appShell.dismiss")} onClick={() => setOmpMissingDismissed(true)} style={{ width: 24, height: 24, borderRadius: 6 }}>
               <X size={13} strokeWidth={2} />
             </button>
           </div>
         )}
+        <OmpSetupWizard
+          open={ompSetupOpen}
+          onOpenChange={setOmpSetupOpen}
+          onDetected={() => {
+            setOmpMissing(false);
+            setOmpSetupOpen(false);
+          }}
+        />
         {/* Top bar: compact icon-led control bar */}
         <div ref={topBarRef} className="shell-topbar" style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: isMobile ? 44 : 36, background: "var(--bg-panel)" }}>
         {/* Utility group: sidebar, theme, language */}
@@ -1397,20 +1432,31 @@ export function AppShell() {
               an empty fixed layer for it (it would sit over the top-bar
               region and swallow clicks). */}
           {(activeTopPanel === "system" || activeTopPanel === "session" || activeTopPanel === "github") && topPanelPos && (
-            <div data-top-panel className="dropdown-surface" style={{
+            <div
+              id={activeTopPanel === "github" ? "github-status-panel" : undefined}
+              data-top-panel
+              className={`dropdown-surface top-panel-animated${activeTopPanel === "github" ? " github-status-popover" : ""}`}
+              role={activeTopPanel === "github" ? "dialog" : undefined}
+              aria-label={activeTopPanel === "github" ? t("appShell.githubStatus") : undefined}
+              style={{
               position: "fixed",
               top: topPanelPos.top,
               // Right-aligned, width auto based on content — prevents cut-off and lets the window resize with its content
-              right: 12,
+              // Keep this surface entirely in the chat column.  The file
+              // preview is a flex sibling, so the right inset must match its
+              // rendered (clamped) width or the GitHub popover will cover the
+              // preview on narrow windows.
+              right: `calc(${rightPanelInset} + 12px)`,
               left: "auto",
-              width: "auto",
-              minWidth: 360,
-              maxWidth: "min(680px, calc(100vw - 24px))",
+              minWidth: activeTopPanel === "github" || isMobile ? 0 : 360,
+              width: activeTopPanel === "github" ? "min(320px, calc(100vw - 24px))" : "auto",
+              maxWidth: activeTopPanel === "github" ? "min(320px, calc(100vw - 24px))" : "min(680px, calc(100vw - 24px))",
               maxHeight: `min(70vh, calc(100dvh - ${topPanelPos.top}px - 12px))`,
-              overflowY: "auto",
+              overflow: "hidden",
               overflowX: "hidden",
               zIndex: 500,
-            }}>
+              }}
+            >
               {activeTopPanel === "system" && (
                 <div style={{
                   background: "var(--bg-panel)",
@@ -1441,8 +1487,8 @@ export function AppShell() {
                 </div>
               )}
               {activeTopPanel === "github" && (
-                <div style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)", boxShadow: "var(--shadow-pop)", maxHeight: "min(60vh, calc(100dvh - 200px))", overflowY: "auto" }}>
-                  <GitHubStatusPanel cwd={activeCwd ?? selectedSession?.cwd ?? null} />
+                <div style={{ background: "var(--bg-panel)", boxShadow: "var(--shadow-pop)" }}>
+                  <GitHubStatusPanel cwd={activeCwd ?? selectedSession?.cwd ?? null} slashCommands={slashCommands} onInsertCommand={(command) => chatInputRef.current?.insertText(command)} />
                 </div>
               )}
               {activeTopPanel === "session" && (
@@ -1609,6 +1655,10 @@ export function AppShell() {
 
         </div>
 
+        {/* Backend health banner: appears only when the omp backend is
+            abnormal, with refresh/restart actions + inline diagnostics. */}
+        <BackendHealthBanner />
+
         {/* Chat content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
           {showChat ? (
@@ -1635,6 +1685,7 @@ export function AppShell() {
               terminalOpen={terminalOpen}
               onCloseTerminal={() => setTerminalOpen(false)}
               onOpenPlan={() => selectedSession && handleOpenPlan(selectedSession.id)}
+              onSlashCommandsChange={setSlashCommands}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -1697,6 +1748,7 @@ export function AppShell() {
           open={terminalOpen}
           onClose={() => setTerminalOpen(false)}
           cwd={activeCwd ?? undefined}
+          runCommand={terminalRunCommand}
         />
       </main>
 
@@ -1790,6 +1842,27 @@ export function AppShell() {
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
+    {/* GitHub status trigger — pinned in the foreground so the workspace panel
+        can be reopened without relying on the transient top-bar layout.
+        Chat view offsets past the ChatMinimap rail (36px wide at right:8) so
+        the scrollbar stays clickable; file view has no rail and hugs the edge. */}
+    {(showChat || activeCwd) && (
+      <button
+        ref={githubBtnRef}
+        type="button"
+        onClick={() => toggleTopPanel("github")}
+        title={t("appShell.githubStatus")}
+        aria-label={t("appShell.githubStatus")}
+        aria-pressed={activeTopPanel === "github"}
+        aria-haspopup="dialog"
+        aria-controls="github-status-panel"
+        className="github-fixed-trigger ui-focus-ring"
+        data-github-status-trigger
+        style={{ right: `calc(${rightPanelInset} + ${showChat ? 48 : 4}px)` }}
+      >
+        <FolderGit2 size={16} strokeWidth={1.8} aria-hidden="true" />
+      </button>
+    )}
     {updateNoticeVersion && (
       <UpdateNoticeDialog version={updateNoticeVersion} onClose={() => setUpdateNoticeVersion(null)} />
     )}

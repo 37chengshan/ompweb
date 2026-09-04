@@ -29,13 +29,24 @@ function readEntries(storage: StorageLike): Record<string, string> {
   }
 }
 
+/** Treat legacy path spellings as aliases during workspace restoration. */
+function comparableWorkspaceKey(value: string): string {
+  const normalized = value.replace(/\\/g, "/").replace(/\/{2,}/g, "/").replace(/\/+$/, "");
+  const windowsForm = /^[a-zA-Z]:\//.test(normalized) || normalized.startsWith("//");
+  return windowsForm ? normalized.toLowerCase() : normalized;
+}
+
 export function workspaceKeyOf(session: Pick<SessionInfo, "cwd" | "projectRoot" | "projectKey">): string {
   return session.projectKey ?? session.projectRoot ?? session.cwd;
 }
 
 export function getLastOpenSession(workspace: string, storage: StorageLike | null = browserStorage()): string | null {
   if (!storage) return null;
-  return readEntries(storage)[workspace] ?? null;
+  const entries = readEntries(storage);
+  if (entries[workspace]) return entries[workspace];
+  const comparable = comparableWorkspaceKey(workspace);
+  const alias = Object.entries(entries).find(([key]) => comparableWorkspaceKey(key) === comparable);
+  return alias?.[1] ?? null;
 }
 
 export function setLastOpenSession(workspace: string, sessionId: string, storage: StorageLike | null = browserStorage()): void {
@@ -53,8 +64,10 @@ export function clearLastOpenSession(workspace: string, storage: StorageLike | n
   if (!storage) return;
   try {
     const entries = readEntries(storage);
-    if (!(workspace in entries)) return;
-    delete entries[workspace];
+    const comparable = comparableWorkspaceKey(workspace);
+    const keys = Object.keys(entries).filter((key) => comparableWorkspaceKey(key) === comparable);
+    if (keys.length === 0) return;
+    keys.forEach((key) => delete entries[key]);
     if (Object.keys(entries).length === 0) storage.removeItem(STORAGE_KEY);
     else storage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch {

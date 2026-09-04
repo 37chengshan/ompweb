@@ -90,3 +90,8 @@ dist-desktop/
 
 # security scanner workspace (never commit)
 .mimosa/
+
+# rust build artifacts
+crates/target/
+# staged host binary for desktop packaging (scripts/stage-host.mjs)
+build-resources/

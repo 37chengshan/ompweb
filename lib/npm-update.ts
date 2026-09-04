@@ -105,19 +105,23 @@ export function detectInstallMethod(packageDir: string): "bun" | "npm" {
 export async function runNpmUpdate(): Promise<string> {
   const packageDir = process.env.OMP_WEB_PACKAGE_DIR ?? process.cwd();
   const method = detectInstallMethod(packageDir);
-  const bin = method === "bun" ? "bun" : "npm";
-  // npm refuses to overwrite an existing global bin shim (EEXIST) after a
-  // manual install; --force makes re-running the updater idempotent.
-  const args = method === "bun" ? ["add", "-g", NPM_PACKAGE] : ["install", "-g", "--force", NPM_PACKAGE];
+  // Literal executables + literal argv only — the method is a fixed enum, so
+  // no externally influenced string reaches execFile.
+  if (method !== "bun" && method !== "npm") throw new Error(`Unknown install method: ${String(method)}`);
   const { promise, resolve, reject } = Promise.withResolvers<string>();
-  execFile(bin, args, {
+  const execOptions = {
     timeout: 600_000,
     maxBuffer: 2 * 1024 * 1024,
     windowsHide: true,
-  }, (error, stdout, stderr) => {
+  };
+  const callback = (error: Error | null, stdout: string, stderr: string) => {
     if (error) reject(new Error((stderr || stdout || error.message).trim().slice(-1000)));
     else resolve(`${stdout}\n${stderr}`.trim());
-  });
+  };
+  // npm refuses to overwrite an existing global bin shim (EEXIST) after a
+  // manual install; --force makes re-running the updater idempotent.
+  if (method === "bun") execFile("bun", ["add", "-g", NPM_PACKAGE], execOptions, callback);
+  else execFile("npm", ["install", "-g", "--force", NPM_PACKAGE], execOptions, callback);
   return promise;
 }
 

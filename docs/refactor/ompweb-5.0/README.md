@@ -10,6 +10,9 @@
 
 - **W0/M0 + 01 Slice 1：已完成（2026-08-30）。** 产物与验收对照见 [`baseline/README.md`](./baseline/README.md)；ADR 草案见 [`adr/README.md`](./adr/README.md)。
 - 下一波次：W1（01 Slice 2 Client Facade + 02 Event/Resume oracle）——进入前须有 W0 的 Go/No-Go 证据。
+- **外部评审（GPT）收敛计划：已落地（2026-08-31）。** 评审判定当前为「4.0.12 增强版 / 中期候选，非 5.0 完成版」；三轮收敛行动见 [`14-gpt-review-action-plan.md`](./14-gpt-review-action-plan.md)，正式执行未开始；S-1/S-2 核心修复已先行落地于工作树（未过门），其余待 Go/No-Go。
+- **v4 生产切换主计划：已落地（2026-08-31）。** `ompweb_5.0_master_upgrade_plan_v4_production_cutover.md` 已对照当前工作树落为 [`15-v4-production-cutover.md`](./15-v4-production-cutover.md)——Rust Production Backend Cutover 为 5.0 硬性完成条件（当前仍为「仓库里有 Rust」，六条硬性定义未达成）；执行未开始，第一批只读/影子切片见 15 号文档 §8。
+- **24 路线 Rust Production Cutover 主计划：已安装（2026-09-02）。** 5.0.0 发布（3/9 域 rust）后重启完整 9 域收尾的路线图 [`16-rust-production-cutover-routes.md`](./16-rust-production-cutover-routes.md)——含安装时状态对照（路线 ↔ doc15 R ↔ yaml 域）；逐路线执行与门禁证据以 PROGRESS.md 为准。
 
 原始 v3 计划的产品方向可以保留，但不能直接按原来的 26 个 PR 执行。本目录把它改写成有依赖门禁、可回滚、可验证的实施计划。原始文档只作为待审材料；本目录才是后续实施基线。
 
@@ -42,6 +45,9 @@
 | [11-mobile-and-push.md](./11-mobile-and-push.md) | Mobile + Push | 客户端选型、离线快照、通知注意面 | 03、04、05 |
 | [12-performance-quality-migration-release.md](./12-performance-quality-migration-release.md) | Quality + Delivery | 性能预算、测试矩阵、迁移波次、发布门 | 贯穿全部 |
 | [13-execution-handoff.md](./13-execution-handoff.md) | 执行交接 | 给实施 Agent 的目标、首批范围与禁止事项 | 阅读全部计划 |
+| [14-gpt-review-action-plan.md](./14-gpt-review-action-plan.md) | 评审收敛 | GPT 评审落地：启动/长对话/后端三轮行动 + 发布门 | 阅读全部计划 |
+| [15-v4-production-cutover.md](./15-v4-production-cutover.md) | 生产切换 | v4 主计划落地：Ownership Matrix、R0–R23 路线对照、里程碑与门禁 | 阅读全部计划 |
+| [16-rust-production-cutover-routes.md](./16-rust-production-cutover-routes.md) | 生产切换（重启） | 24 路线主计划：Client SDK/HostClient/二进制定位 + 9 域 Rust Authority 收尾 | 阅读全部计划 |
 
 ## 依赖主线
 

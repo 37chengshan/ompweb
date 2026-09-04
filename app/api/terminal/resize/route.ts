@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { resizeTerminal } from "@/lib/terminal-session-manager";
+import * as nodeManager from "@/lib/terminal-session-manager";
+import * as hostManager from "@/lib/terminal-host-session";
+import { rustBackendActive } from "@/lib/omp/host-client";
 
 export const dynamic = "force-dynamic";
+
+// Doc 16 route 8: backend-selected like the sibling terminal routes.
+const manager = () => (rustBackendActive() ? hostManager : nodeManager);
 
 /** POST /api/terminal/resize  body: { id, cols, rows } — sync the PTY size. */
 export async function POST(req: Request) {
@@ -16,7 +21,7 @@ export async function POST(req: Request) {
     if (!Number.isFinite(c) || !Number.isFinite(r) || c < 2 || r < 1) {
       return NextResponse.json({ error: "Invalid cols/rows" }, { status: 400 });
     }
-    const ok = resizeTerminal(id, Math.floor(c), Math.floor(r));
+    const ok = manager().resizeTerminal(id, Math.floor(c), Math.floor(r));
     return NextResponse.json({ ok });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to resize terminal";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, RotateCcw, X } from "lucide-react";
+import { Download, ExternalLink, RotateCcw, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
 type UpdateStatus = { status: string; version?: string; percent?: number; message?: string };
@@ -36,10 +36,15 @@ export function DesktopUpdateBanner() {
   const bridge = (window as { ompWebDesktop?: DesktopBridge }).ompWebDesktop;
   if (!bridge?.isDesktop || dismissed) return null;
 
-  if (state.status !== "available" && state.status !== "downloading" && state.status !== "downloaded") return null;
+  if (state.status !== "available" && state.status !== "downloading" && state.status !== "downloaded" && state.status !== "error") return null;
 
   const downloading = state.status === "downloading";
   const downloaded = state.status === "downloaded";
+  const failed = state.status === "error";
+  const manualUrl = "https://github.com/37chengshan/ompweb/releases/latest";
+  const failedText = state.message
+    ? t("desktopUpdate.downloadFailed") + "：" + state.message
+    : t("desktopUpdate.downloadFailed");
 
   return (
     <div
@@ -62,38 +67,55 @@ export function DesktopUpdateBanner() {
         color: "var(--text)",
       }}
     >
-      {downloaded ? (
-        <RotateCcw size={14} style={{ color: "var(--accent)", flexShrink: 0 }} aria-hidden="true" />
-      ) : (
-        <Download size={14} style={{ color: "var(--accent)", flexShrink: 0 }} aria-hidden="true" />
-      )}
+      {failed ? (<Download size={14} style={{ color: "var(--status-error)", flexShrink: 0 }} aria-hidden="true" />) : downloaded ? (<RotateCcw size={14} style={{ color: "var(--accent)", flexShrink: 0 }} aria-hidden="true" />) : (<Download size={14} style={{ color: "var(--accent)", flexShrink: 0 }} aria-hidden="true" />)}
       <span style={{ flex: 1, minWidth: 0, lineHeight: 1.4 }}>
-        {downloaded
-          ? t("desktopUpdate.ready", { version: state.version ?? "?" })
-          : downloading
-            ? `${t("desktopUpdate.downloading")} ${state.percent ?? 0}%`
-            : t("desktopUpdate.available", { version: state.version ?? "?" })}
+        {failed ? failedText : downloaded ? t("desktopUpdate.ready", { version: state.version ?? "?" }) : downloading ? t("desktopUpdate.downloading") + " " + (state.percent ?? 0) + "%" : t("desktopUpdate.available", { version: state.version ?? "?" })}
       </span>
-      <button
-        type="button"
-        onClick={() => {
-          if (downloaded) void bridge.updateApply?.();
-          else void bridge.updateDownload?.();
-        }}
-        style={{
-          flexShrink: 0,
-          padding: "5px 10px",
-          border: "1px solid var(--accent)",
-          borderRadius: "var(--radius-control)",
-          background: "var(--accent)",
-          color: "var(--bg)",
-          cursor: "pointer",
-          fontSize: 11,
-          fontWeight: 600,
-        }}
-      >
-        {downloaded ? t("desktopUpdate.restart") : downloading ? t("desktopUpdate.downloadingShort") : t("desktopUpdate.download")}
-      </button>
+      {failed ? (
+        <a
+          href={manualUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "5px 10px",
+            border: "1px solid var(--accent)",
+            borderRadius: "var(--radius-control)",
+            background: "var(--accent)",
+            color: "var(--bg)",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          <ExternalLink size={12} aria-hidden="true" /> {t("desktopUpdate.manualDownload")}
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            if (downloaded) void bridge.updateApply?.();
+            else void bridge.updateDownload?.();
+          }}
+          style={{
+            flexShrink: 0,
+            padding: "5px 10px",
+            border: "1px solid var(--accent)",
+            borderRadius: "var(--radius-control)",
+            background: "var(--accent)",
+            color: "var(--bg)",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 600,
+          }}
+        >
+          {downloaded ? t("desktopUpdate.restart") : downloading ? t("desktopUpdate.downloadingShort") : t("desktopUpdate.download")}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setDismissed(true)}

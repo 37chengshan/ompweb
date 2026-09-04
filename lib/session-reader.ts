@@ -65,7 +65,16 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
     }));
   }
 
-  return ompSessions.map((s) => {
+  // An ensure_session call creates a metadata-only JSONL before the first
+  // prompt is persisted. Do not surface that transient artifact as a real
+  // “(no messages)” conversation after restart; it was never user-visible
+  // content and otherwise steals the last-session restore target.
+  return ompSessions
+    // Metadata-only ensure_session files are internal placeholders, not
+    // user-visible conversations. Keep titled/real-message sessions only so
+    // they cannot appear as a misleading `(no messages)` row.
+    .filter(isUserVisibleSession)
+    .map((s) => {
     cacheSessionPath(s.id, s.path);
     const project = s.cwd ? projectByCwd.get(s.cwd) : undefined;
     return {
@@ -88,6 +97,15 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       ...(project?.isWorktree && project.branch ? { worktreeBranch: project.branch } : {}),
     };
   });
+}
+
+/** Metadata-only ensure_session files are placeholders, not conversations. */
+export function isUserVisibleSession(session: Pick<OmpSessionInfo, "messageCount" | "title" | "firstMessage">): boolean {
+  const firstMessage = session.firstMessage?.trim() ?? "";
+  // A title can survive on a metadata-only file after a failed first send;
+  // only a persisted message count or a real opening message makes it a
+  // selectable conversation.
+  return session.messageCount > 0 || (firstMessage.length > 0 && firstMessage !== "(no messages)");
 }
 
 export async function listAllSessions(): Promise<SessionInfo[]> {

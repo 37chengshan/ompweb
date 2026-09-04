@@ -29,6 +29,7 @@ export interface GitHubRepoStatus {
   repo: string;
   url: string;
   pulls: GitHubPull[];
+  git?: { branch: string | null; upstream: string | null; ahead: number; behind: number; files: Array<{ filePath: string; status: string; code: string }> };
 }
 
 const API_BASE = "https://api.github.com";

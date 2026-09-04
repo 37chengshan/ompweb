@@ -8,6 +8,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useMotionPrefs } from "@/hooks/useMotionPrefs";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
+import { BackendDiagnosticsBody } from "./BackendDiagnostics";
 import { useI18n } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
 
@@ -20,6 +21,7 @@ const SkillsConfig = dynamic(() => import("./SkillsConfig").then((module) => mod
 const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => module.PluginsConfig), { loading: SettingsTabLoading, ssr: false });
 const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading, ssr: false });
 const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading, ssr: false });
+const NativeSettingsPanel = dynamic(() => import("./NativeSettingsPanel").then((module) => module.NativeSettingsPanel), { loading: SettingsTabLoading, ssr: false });
 const RemoteAccessSetting = dynamic(() => import("./RemoteAccessSetting").then((module) => module.RemoteAccessSetting), { loading: SettingsTabLoading, ssr: false });
 import { NetworkProxyConfig } from "./NetworkProxyConfig";
 import { SplashAnimationSetting } from "./SplashAnimationSetting";
@@ -477,7 +479,15 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
         setUpdatingApp(false);
         // Keep the installed version visible and mark the CHECK as failed
         // instead of falling back to "version unavailable".
-        setAppUpdate({ currentVersion: localVersion, availableVersion: null, updateAvailable: false, updateCommand: "", checkError: true });
+        setAppUpdate((prev) => {
+          // A check that already produced a good answer must not be clobbered
+          // by a later straggler error (this caused the "shows latest for a
+          // second, then flashes back to unavailable" flicker: the fast local
+          // registry check succeeded, then the slow native GitHub check
+          // errored and overwrote the good state).
+          if (prev && prev.currentVersion) return prev;
+          return { currentVersion: localVersion, availableVersion: null, updateAvailable: false, updateCommand: "", checkError: true };
+        });
         setMessage(status.message ?? t("settingsConfig.desktopUpdateFailed"));
       }
       if (status.status === "available" || status.status === "downloaded") {
@@ -508,7 +518,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       setAppUpdateOutput(null);
       setAppUpdated(false);
       try {
-        await desktop.updateDownload?.();
+        const ok = await desktop.updateDownload?.();
+        if (ok === false) throw new Error(t("settingsConfig.desktopUpdateFailed"));
         // The updater broadcasts status events; the downloaded state flips
         // the button into "Restart to apply".
         setDesktopUpdateState((prev) => ({ ...prev, downloading: true }));
@@ -540,11 +551,40 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
     setOmpUpdateOutput(null);
     setOmpUpdated(false);
     try {
-      const response = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
-      const data = (await response.json()) as { success?: boolean; output?: string; error?: string };
-      if (!response.ok || !data.success) throw new Error(data.error ?? `HTTP ${response.status}`);
-      setOmpUpdateOutput(data.output ?? null);
+      const response = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", stream: true }) });
+      if (!response.ok || !response.body) throw new Error("HTTP " + response.status);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let output = "";
+      let exitCode = -1;
+      let failedMessage = null as string | null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        for (const line of text.split("\n")) {
+          if (!line.trim()) continue;
+          let event: { type?: string; text?: string; exitCode?: number; message?: string } | null = null;
+          try { event = JSON.parse(line) as { type?: string; text?: string; exitCode?: number; message?: string }; } catch { /* plain output tail */ }
+          if (event && event.type === "out" && typeof event.text === "string") {
+            output = (output + event.text + "\n").slice(-4000);
+            setOmpUpdateOutput(output);
+          } else if (event && event.type === "done") {
+            exitCode = event.exitCode ?? 0;
+          } else if (event && event.type === "error") {
+            failedMessage = event.message ?? "omp update failed";
+            break;
+          } else if (!event) {
+            output = (output + line + "\n").slice(-4000);
+            setOmpUpdateOutput(output);
+          }
+        }
+        if (failedMessage) break;
+      }
+      if (failedMessage) throw new Error(failedMessage);
+      if (exitCode !== 0) throw new Error(output.trim().slice(-500) || "omp update exit " + String(exitCode));
       setOmpUpdated(true);
+      setOmpUpdateOutput(output);
       onOmpUpdateAvailabilityChange(false);
       setUpdate((prev) => (prev ? { ...prev, updateAvailable: false } : prev));
     } catch (error) {
@@ -574,11 +614,23 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   }, [onOmpUpdateAvailabilityChange]);
 
   const checkForAppUpdate = useCallback(async (force = false) => {
-    // Desktop app: ask the native updater (GitHub releases feed) instead of
-    // the npm registry; its status events drive the card and the badge.
+    // Desktop app: the native updater (GitHub releases feed) drives the
+    // download/apply flow, but GitHub is unreachable on some networks — the
+    // card must never hang on "version unavailable" waiting for it. Always
+    // populate from the embedded server's registry check first, then let the
+    // native check refine it (its status events still drive download state).
     const desktop = (window as { ompWebDesktop?: { updateCheck?: () => Promise<unknown> } }).ompWebDesktop;
     if (desktop?.updateCheck) {
       setCheckingAppUpdate(true);
+      try {
+        const registry = await fetch(force ? "/api/app-update?force=1" : "/api/app-update");
+        const data = (await registry.json()) as UpdateState & { error?: string };
+        if (registry.ok && !data.error) {
+          setAppUpdate((prev) => (prev?.updateAvailable ? prev : data));
+        }
+      } catch {
+        // Registry unreachable: keep whatever the native events provided.
+      }
       try {
         await desktop.updateCheck();
       } catch {
@@ -694,7 +746,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
             <DialogTitle style={{ fontSize: 16, margin: 0, fontWeight: 600 }}>{t("settingsConfig.title")}</DialogTitle>
             {nativeSavesInFlight > 0 ? (
               <span style={{ fontSize: 11, color: "var(--accent)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <RefreshCw size={11} className="spin" aria-hidden="true" /> {t("settingsConfig.saving")}
+                <RefreshCw size={11} className="icon-spin" aria-hidden="true" /> {t("settingsConfig.saving")}
               </span>
             ) : (
               <span style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)" }}>
@@ -1211,6 +1263,13 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
               </div>
             )}
 
+            {/* OMP NATIVE SETTINGS TAB (schema-driven, via omp CLI) */}
+            {currentTab === "native" && (
+              <div role="tabpanel" id="settings-panel-native" aria-labelledby="settings-tab-native" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+                <NativeSettingsPanel />
+              </div>
+            )}
+
             {/* SYSTEM & UPDATES TAB */}
             {currentTab === "system" && (
               <div role="tabpanel" id="settings-panel-system" aria-labelledby="settings-tab-system" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
@@ -1231,6 +1290,12 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                     <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate} aria-label={t("settingsConfig.checkAppUpdates")} style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checkingAppUpdate ? "wait" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
                       <RefreshCw size={13} aria-hidden="true" /> {t("settingsConfig.refresh")}
                     </button>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-muted)" }}>
+                    <span>{appUpdate?.checkError || desktopUpdateState.status === "error" ? t("settingsConfig.manualDownloadFallbackHint") : t("settingsConfig.manualDownloadHint")}</span>
+                    <a href="https://github.com/37chengshan/ompweb/releases/latest" target="_blank" rel="noreferrer" style={{ color: "var(--accent)", textDecoration: "underline", cursor: "pointer", fontWeight: 500 }}>
+                      {t("settingsConfig.manualDownload")}
+                    </a>
                   </div>
                   {appUpdate?.updateAvailable && (
                     <div style={{ marginTop: 6, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1253,7 +1318,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                               disabled={updatingApp}
                               style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--bg)", cursor: updatingApp ? "wait" : "pointer", fontSize: 11, fontWeight: 600, flexShrink: 0 }}
                             >
-                              <RefreshCw size={12} aria-hidden="true" className={updatingApp ? "spin" : undefined} /> {updatingApp ? t("settingsConfig.updating") : desktopUpdateState.status === "downloading" ? `${t("settingsConfig.downloading")} ${desktopUpdateState.percent ?? 0}%` : t("settingsConfig.updateNow")}
+                              <RefreshCw size={12} aria-hidden="true" className={updatingApp ? "icon-spin" : undefined} /> {updatingApp ? t("settingsConfig.updating") : desktopUpdateState.status === "downloading" ? `${t("settingsConfig.downloading")} ${desktopUpdateState.percent ?? 0}%` : t("settingsConfig.updateNow")}
                             </button>
                           )
                         ) : (
@@ -1263,7 +1328,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                             disabled={updatingApp}
                             style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--bg)", cursor: updatingApp ? "wait" : "pointer", fontSize: 11, fontWeight: 600, flexShrink: 0 }}
                           >
-                            <RefreshCw size={12} aria-hidden="true" className={updatingApp ? "spin" : undefined} /> {updatingApp ? t("settingsConfig.updating") : t("settingsConfig.updateNow")}
+                            <RefreshCw size={12} aria-hidden="true" className={updatingApp ? "icon-spin" : undefined} /> {updatingApp ? t("settingsConfig.updating") : t("settingsConfig.updateNow")}
                           </button>
                         )}
                         <button
@@ -1323,7 +1388,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                           disabled={updatingOmp}
                           style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--bg)", cursor: updatingOmp ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
                         >
-                          <RefreshCw size={12} aria-hidden="true" className={updatingOmp ? "spin" : undefined} /> {updatingOmp ? t("settingsConfig.updating") : t("settingsConfig.updateNow")}
+                          <RefreshCw size={12} aria-hidden="true" className={updatingOmp ? "icon-spin" : undefined} /> {updatingOmp ? t("settingsConfig.updating") : t("settingsConfig.updateNow")}
                         </button>
                       </div>
                       {ompUpdateOutput && (
@@ -1351,9 +1416,31 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                     >
                       <ExternalLink size={13} aria-hidden="true" /> {t("settingsConfig.changelog")}
                     </a>
+                    <a
+                      href="https://github.com/can1357/oh-my-pi/releases/latest"
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", border: "1px solid var(--accent)", borderRadius: "var(--radius-control)", color: "var(--accent)", textDecoration: "none", fontSize: 12 }}
+                    >
+                      <ExternalLink size={13} aria-hidden="true" /> {t("settingsConfig.manualDownloadOmp")}
+                    </a>
                   </div>
                   {message && <p role="status" style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{message}</p>}
                 </section>
+              </div>
+            )}
+
+            {/* DIAGNOSTICS & RECOVERY TAB */}
+            {currentTab === "diagnostics" && (
+              <div role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
+                <div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>诊断与恢复</h3>
+                  <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>集中检查 OMP、Rust host、会话锁、网络代理和其他 ompweb 实例，并执行安全的恢复操作。</p>
+                </div>
+                <section style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", padding: 10, maxWidth: 560 }}>
+                  <BackendDiagnosticsBody />
+                </section>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>诊断请求不会读取提示词、会话正文或 API 密钥；重启操作只针对当前 ompweb 管理的服务进程。</div>
               </div>
             )}
 

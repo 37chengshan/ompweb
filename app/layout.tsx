@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Mono, Noto_Serif_SC, Source_Serif_4 } from "next/font/google";
+import { BootSkeleton } from "@/components/BootSkeleton";
 import "./globals.css";
 
 const notoSansMono = Noto_Sans_Mono({
@@ -29,6 +30,17 @@ const notoSerifSC = Noto_Serif_SC({
 export const metadata: Metadata = {
   title: "omp web",
   description: "Web UI for the oh-my-pi (omp) coding agent",
+  // App icon (brand) everywhere: the favicon serves the PNG-compressed ICO
+  // fallback (app/favicon.ico) while modern tabs prefer the SVG source. Same
+  // artwork as the desktop Dock/tray icons (public/icon.*).
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    shortcut: "/icon.png",
+    apple: "/icon.png",
+  },
   // PWA-like behavior on iOS: standalone chrome, no telephone autodetect.
   appleWebApp: {
     capable: true,
@@ -77,24 +89,9 @@ export default function RootLayout({
       <body translate="no" className="notranslate" style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
         {/* Pre-hydration skeleton: page.tsx mounts AppShell via dynamic(ssr:false),
             so before hydration the body is empty and cold starts show pure
-            white. AppShell removes this node on mount. */}
-        <div
-          id="boot-skeleton"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            background: "#faf9f6",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#8a867e",
-            fontSize: 13,
-            fontFamily: "system-ui, sans-serif",
-          }}
-        >
-          正在启动…
-        </div>
+            white. BootSkeleton removes itself through React after AppShell
+            confirms restoration is ready. */}
+        <BootSkeleton />
         {children}
       </body>
     </html>

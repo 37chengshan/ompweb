@@ -145,10 +145,18 @@ function installDesktopApp() {
     process.exit(1);
   }
   const target = path.join(process.env.HOME || "", "Applications", "OmpWeb.app");
+  // Guard the codesign sink: the target is a fixed layout under HOME and must
+  // stay a normalized absolute path inside it.
+  const homeRoot = path.resolve(process.env.HOME || "");
+  if (!path.resolve(target).startsWith(homeRoot + path.sep)) {
+    console.error("Refusing to install outside the home directory.");
+    process.exit(1);
+  }
   fs.rmSync(target, { recursive: true, force: true });
   fs.cpSync(template, target, { recursive: true });
   // Ad-hoc sign so macOS Gatekeeper does not quarantine the launcher.
-  try { execFileSync("codesign", ["--force", "--sign", "-", target], { stdio: "ignore" }); } catch { /* best effort */ }
+  // Constant argv; `--` ends options so the path can never be read as one.
+  try { execFileSync("codesign", ["--force", "--sign", "-", "--", target], { stdio: "ignore" }); } catch { /* best effort */ }
   console.log(`Installed OmpWeb.app → ${target}`);
   console.log("Double-click it to start omp-web (or run: open " + target + ")");
 }

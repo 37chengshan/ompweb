@@ -20,11 +20,14 @@ type ToastKind = "success" | "error" | "info";
 
 interface ToastData {
   kind?: ToastKind;
+  variant?: "update";
   /** Clamp the description to 2 lines; click the description to expand it. */
   clamp?: boolean;
 }
 
 interface ToastOptions {
+  /** Adds the update-specific arrival/exit treatment. */
+  variant?: "update";
   /** Clamp the description to 2 lines; click the description to expand it. */
   clamp?: boolean;
 }
@@ -36,7 +39,7 @@ function add(kind: ToastKind, title: React.ReactNode, description?: React.ReactN
     title,
     description,
     type: kind,
-    data: { kind, clamp: options?.clamp },
+    data: { kind, clamp: options?.clamp, variant: options?.variant },
   });
 }
 
@@ -126,7 +129,7 @@ function Toaster() {
           <Toast.Root
             key={t.id}
             toast={t}
-            className="toast-card"
+            className={`toast-card${t.data?.variant === "update" ? " toast-update" : ""}`}
             style={{
               pointerEvents: "auto",
               display: "flex",

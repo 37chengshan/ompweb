@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["ompweb-protocol", "ompweb-storage", "ompweb-host"]
+
+# Zero external dependencies for now (doc 06: coarse crates first; rusqlite /
+# tokio / ws land only when their ADR decision gates open). This keeps the
+# workspace buildable offline and the conformance surface small.
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+strip = true

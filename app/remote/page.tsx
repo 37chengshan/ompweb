@@ -3,7 +3,8 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, LoaderCircle, Smartphone, XCircle } from "lucide-react";
-import { useI18n } from "@/lib/i18n";
+import { translateForLocale, useI18n } from "@/lib/i18n";
+import { removeBootSkeleton } from "@/lib/boot-skeleton";
 
 type PairState = "pairing" | "paired" | "failed" | "network-error";
 
@@ -12,7 +13,18 @@ function RemotePairContent() {
   const { t } = useI18n();
   const [state, setState] = useState<PairState>("pairing");
   const [deviceName, setDeviceName] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const started = useRef(false);
+
+  // The document's language preference is restored before React hydrates,
+  // while server rendering always starts in English. Keep the first client
+  // render aligned with that server snapshot, then switch to the preferred
+  // locale after mount without rebuilding the route for a text mismatch.
+  const pairText = useCallback(
+    (key: string, vars?: Record<string, string>) =>
+      hydrated ? t(key, vars) : translateForLocale("en", key, vars),
+    [hydrated, t],
+  );
 
   const attemptPair = useCallback(() => {
     setState("pairing");
@@ -36,6 +48,10 @@ function RemotePairContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    // This route renders without AppShell, so the pre-hydration boot
+    // skeleton (app/layout.tsx) would cover the pairing page forever.
+    removeBootSkeleton();
+    setHydrated(true);
     if (started.current) return;
     started.current = true;
     attemptPair();
@@ -60,25 +76,25 @@ function RemotePairContent() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Smartphone size={28} strokeWidth={1.8} style={{ color: "var(--accent)" }} aria-hidden="true" />
-        <span style={{ fontSize: 18, fontWeight: 600 }}>{t("remote.pairingTitle")}</span>
+        <span style={{ fontSize: 18, fontWeight: 600 }}>{pairText("remote.pairingTitle")}</span>
       </div>
 
       {state === "pairing" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)", fontSize: 14 }}>
           <LoaderCircle size={18} className="spin" aria-hidden="true" />
-          {t("remote.pairingInProgress")}
+          {pairText("remote.pairingInProgress")}
         </div>
       )}
 
       {state === "paired" && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
           <CheckCircle2 size={40} strokeWidth={1.6} style={{ color: "var(--status-ok, #2e9e5b)" }} aria-hidden="true" />
-          <span style={{ fontSize: 15, fontWeight: 500 }}>{t("remote.pairedSuccess", { device: deviceName ?? "?" })}</span>
+          <span style={{ fontSize: 15, fontWeight: 500 }}>{pairText("remote.pairedSuccess", { device: deviceName ?? "?" })}</span>
           <a
             href={base}
             style={{ padding: "10px 18px", borderRadius: "var(--radius-control)", background: "var(--accent)", color: "var(--bg)", textDecoration: "none", fontSize: 14, fontWeight: 600 }}
           >
-            {t("remote.openApp")}
+            {pairText("remote.openApp")}
           </a>
         </div>
       )}
@@ -87,14 +103,14 @@ function RemotePairContent() {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
           <XCircle size={40} strokeWidth={1.6} style={{ color: "var(--status-error)" }} aria-hidden="true" />
           <span style={{ fontSize: 14, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.5 }}>
-            {state === "network-error" ? t("remote.networkError") : t("remote.pairingFailed")}
+            {state === "network-error" ? pairText("remote.networkError") : pairText("remote.pairingFailed")}
           </span>
           <button
             type="button"
             onClick={attemptPair}
             style={{ padding: "9px 16px", borderRadius: "var(--radius-control)", border: "1px solid var(--border)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 13 }}
           >
-            {t("remote.retry")}
+            {pairText("remote.retry")}
           </button>
         </div>
       )}

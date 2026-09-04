@@ -35,12 +35,12 @@ export async function sendAgentCommand<T = unknown>(
     error?: string;
     code?: string;
   };
-  if (!res.ok || body.error) {
-    // Routes attach a stable `code` for well-known failures; these messages are
-    // surfaced to the user as notices, so localize before throwing.
-    throw new Error(
-      body.error || body.code ? formatApiError(body) : `HTTP ${res.status}`,
-    );
-  }
+ if (!res.ok || body.error) {
+   // Routes attach a stable `code` for well-known failures; these messages are
+   // surfaced to the user as notices, so localize before throwing.
+    const error = new Error(body.error || body.code ? formatApiError(body) : `HTTP ${res.status}`) as Error & { code?: string };
+    if (typeof body.code === "string") error.code = body.code;
+    throw error;
+ }
   return body.data as T;
 }

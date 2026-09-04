@@ -13,14 +13,17 @@
       "pulse": "100e7a34069fcdf6",
       "skeleton-shimmer": "1f7abe517872db4a",
       "ui-fade-in": "188080960d3b7889",
+      "slide": "9053e43c6741eaa7",
       "ui-scale-in": "d93b0d3a8c92c5fa",
       "ui-slide-down": "ddeb72c660ef8403",
       "ui-slide-up": "2f57f2adb19e6ac2",
       "ui-slide-down-out": "d29c36aa47187658",
       "dialog-backdrop-in": "754e283fde0c5e24",
       "dialog-pop-in": "2439483a20f1ee73",
+      "github-status-popover-in": "56d20d87d9ad44e4",
       "chat-message-in": "4c59260c24dee34f",
       "toast-in": "cafee66b25a05878",
+      "update-toast-in": "ed1fd994928bd260",
       "live-dot-pulse": "e904cd95bd53b7bc",
       "activity-row-spin": "f0c34b0cef0f4276",
       "omp-solo-jump-o": "182500f560f30031",
@@ -40,31 +43,43 @@
       "dur:dur-slow": "320ms",
       "dur:dur-theme": "450ms"
     },
-    "transitionDeclarations": 29,
+    "transitionDeclarations": 35,
     "reducedMotionBlocks": [
       {
-        "line": 1670,
+        "line": 1684,
         "rules": 1,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2394,
+        "line": 1937,
         "rules": 1,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2497,
+        "line": 2105,
+        "rules": 1,
+        "disables": []
+      },
+      {
+        "line": 2638,
+        "rules": 1,
+        "disables": [
+          "none"
+        ]
+      },
+      {
+        "line": 2741,
         "rules": 2,
         "disables": [
           "none"
         ]
       },
       {
-        "line": 2600,
+        "line": 2844,
         "rules": 4,
         "disables": [
           "none"
@@ -88,11 +103,14 @@
     "components/ArchiveBrowser.tsx": {
       "inlineTransitions": 4
     },
+    "components/BootSkeleton.tsx": {
+      "inlineTransitions": 1
+    },
     "components/BranchNavigator.tsx": {
       "inlineTransitions": 2
     },
     "components/ChatInput.tsx": {
-      "inlineTransitions": 18
+      "inlineTransitions": 17
     },
     "components/ChatMinimap.tsx": {
       "inlineTransitions": 2
@@ -149,6 +167,12 @@
         "omp-solo-jump-m": "9b1693b7e7239381",
         "omp-solo-jump-p": "ae3157ed0772b229"
       }
+    },
+    "components/OmpSetupWizard.tsx": {
+      "inlineTransitions": 0,
+      "inlineAnimations": [
+        "state"
+      ]
     },
     "components/PluginsConfig.tsx": {
       "inlineTransitions": 2

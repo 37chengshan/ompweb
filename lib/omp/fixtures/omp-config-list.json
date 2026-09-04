@@ -1,0 +1,29 @@
+{
+  "comment": "Frozen fixture of `omp config list --json` (OMP 18.0.10 schema-driven output shape). Covers booleans, numbers, enums, arrays and a redacted credential (upstream deletes the value and flags redacted). Regenerate deliberately when pinning a new OMP baseline.",
+  "model": "claude-sonnet-4-5",
+  "theme": "dark",
+  "reasoningEffort": "high",
+  "maxTokens": 8192,
+  "skills": ["commit", "review"],
+  "providerApiKey": {
+    "redacted": true,
+    "type": "string",
+    "description": "API key for the default provider"
+  },
+  "streamIdleTimeoutMs": {
+    "value": 30000,
+    "type": "number",
+    "description": "Idle timeout for streamed responses"
+  },
+  "chatTemplate": {
+    "value": "default",
+    "type": "string_enum",
+    "description": "Prompt template id",
+    "options": ["default", "compact"]
+  },
+  "enabledTools": {
+    "value": ["bash", "read"],
+    "type": "array",
+    "description": "Tool allowlist"
+  }
+}

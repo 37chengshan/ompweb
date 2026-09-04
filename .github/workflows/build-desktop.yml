@@ -31,11 +31,23 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust host
+        run: cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build web app
         run: npm run build
+
+      # Route 3 (doc 16): stage the cargo-built host into build-resources/host;
+      # electron-builder ships it at <Resources>/bin/ompweb-host and
+      # desktop/main.js injects OMPWEB_HOST_BIN for the standalone server.
+      - name: Stage Rust host for packaging
+        run: npm run host:stage
 
       - name: Package desktop app
         run: npx electron-builder --publish ${{ github.ref_type == 'tag' && 'always' || 'never' }}

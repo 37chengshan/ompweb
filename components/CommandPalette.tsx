@@ -7,12 +7,16 @@ import { Moon, Plus, Sun, MessageSquare } from "lucide-react";
 import type { SessionInfo } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
+import { createOmpwebClient } from "@/lib/client";
 
 type Props = {
   onSelectSession: (session: SessionInfo) => void;
   onNewSession: () => void;
   currentModel?: string | null;
 };
+// Route 1 (doc 16): business calls go through the OmpWebClient facade; the
+// transport is chosen by adapter kind (legacy-http today).
+const client = createOmpwebClient("legacy-http");
 
 function relativeTime(value: string, locale: string): string {
   const diff = Date.now() - new Date(value).getTime();
@@ -41,11 +45,12 @@ export function CommandPalette({ onSelectSession, onNewSession, currentModel }: 
 
   const loadSessions = useCallback(() => {
     setLoading(true);
-    void fetch("/api/sessions")
-      .then((response) => response.ok ? response.json() as Promise<{ sessions: SessionInfo[] }> : Promise.reject(new Error("request failed")))
-      .then((data) => setSessions(data.sessions))
-       .catch(() => setSessions([]))
-       .finally(() => setLoading(false));
+    // Facade path: HttpSessionClient.list maps the raw route body and marks
+    // the request no-store (fresher palette entries than a cacheable GET).
+    void client.sessions.list()
+      .then((sessions) => setSessions(sessions))
+      .catch(() => setSessions([]))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {

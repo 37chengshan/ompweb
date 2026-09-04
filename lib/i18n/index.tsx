@@ -80,13 +80,17 @@ export function setLocale(locale: Locale): void {
 }
 
 /** Translate outside React (toasts, error helpers). Falls back key → en → key. */
-export function translate(key: string, vars?: Record<string, string | number>): string {
-  const locale = state.locale ?? (typeof window !== "undefined" ? detectLocale() : "en");
+export function translateForLocale(locale: Locale, key: string, vars?: Record<string, string | number>): string {
   const template = dictionaries[locale]?.[key] ?? dictionaries.en[key] ?? key;
   if (!vars) return template;
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>
     name in vars ? String(vars[name]) : match,
   );
+}
+
+export function translate(key: string, vars?: Record<string, string | number>): string {
+  const locale = state.locale ?? (typeof window !== "undefined" ? detectLocale() : "en");
+  return translateForLocale(locale, key, vars);
 }
 
 /** Plural-aware translate: resolves `<key>.one` for count===1, `<key>.other`

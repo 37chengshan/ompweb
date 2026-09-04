@@ -1,0 +1,93 @@
+# Backend Ownership Manifest (doc 15 / v4 PR-C02, P38)
+#
+# 每个 Domain 的权威实现归属。`authority` 只允许 node | rust。
+# 迁移规则（v4 P9 Cutover State Machine）：
+#   - 每域从 node → rust 必须经历 shadow → canary → cutover → legacy adapter → delete；
+#   - 迁移期用 feature flag backend.<domain>=rust 单模块切换（P38）；
+#   - Stable 5.0 要求全部 rust 并移除用户可见 fallback switch；
+#   - Node 实现只允许作为 Compatibility Adapter（无 Domain Authority）。
+# `evidence` 指向当前权威实现的关键代码位置；`migrate` 指向落地计划中的 R 步骤。
+# 校验：node scripts/audit-backend-ownership.mjs --check（npm test 已接入）。
+
+domains:
+  agent:
+    authority: rust
+    fallback: node
+    evidence:
+      - crates/ompweb-host/src/supervisor.rs
+      - lib/omp/rust-rpc-process.ts
+      - lib/rpc-manager.ts
+    migrate: R8
+  event:
+    authority: rust
+    fallback: node
+    evidence:
+      - lib/omp/rust-rpc-process.ts
+      - lib/rpc-manager.ts
+      - lib/session-change-bus.ts
+    migrate: R9
+  session:
+    authority: rust
+    fallback: node
+    evidence:
+      - crates/ompweb-host/src/session_scan.rs
+      - lib/omp/rust-rpc-process.ts
+      - lib/omp/session-files.ts
+    migrate: R7/R10
+  pty:
+    authority: rust
+    evidence:
+      - crates/ompweb-host/src/pty_service.rs
+      - lib/terminal-host-session.ts
+      - app/api/terminal/* (双后端，rust 默认)
+    fallback: node
+    migrate: R11  # 显式回滚 = OMPWEB_BACKEND=node → lib/terminal-session-manager.ts + node-pty
+  files:
+    authority: rust
+    evidence:
+      - crates/ompweb-host/src/file_service.rs
+      - app/api/files/[...path]/route.ts
+      - lib/file-access.ts
+    fallback: node
+    migrate: R12  # list/read(文本≤256KiB)/meta 走 host；显式豁免 Node：二进制流/下载（1MiB IPC 帧上限 + 无二进制通道）、docx preview（mammoth 纯 JS 零 Rust 等价）、multipart upload（Next 层）、SSE watch（流式）——见 file_service.rs 模块头
+  git:
+    authority: rust
+    evidence:
+      - crates/ompweb-host/src/git_service.rs
+      - app/api/git/branches/route.ts
+      - app/api/git/checkout/route.ts
+      - app/api/git/commit/route.ts
+      - app/api/git/push/route.ts
+      - app/api/github/status/route.ts
+      - app/api/git/status/route.ts
+    fallback: node
+    migrate: R12  # status/branches/checkout/commit/push/diff 走 host；worktree list/add/remove 显式豁免 Node（编排 in-memory file-root allowlist + 项目缓存，Node 为根集权威）
+  settings:
+    authority: node
+    evidence:
+      - lib/omp/settings-service.ts
+      - app/api/omp-settings
+    migrate: R13
+  commands:
+    authority: rust
+    evidence:
+      - crates/ompweb-host/src/command_service.rs
+      - app/api/scripts/run/route.ts
+    fallback: node
+    migrate: R14  # run wait/detach 走 host；显式豁免 Node：脚本注册表读取（quick scripts 在磁盘由 Node 读）、ui-request 生命周期（omp extension_ui_request 帧流 + React UI 渲染）、slash 注册（权威在 omp get_available_commands，Node 仅转译）——见 command_service.rs 模块头
+  remote:
+    authority: rust
+    evidence:
+      - crates/ompweb-storage/src/device_registry.rs
+      - crates/ompweb-host/src/device_service.rs
+      - crates/ompweb-host/src/remote_runtime.rs
+      - app/api/pair/* (HTTP adapter over device.* IPC)
+    fallback: node
+    migrate: R15/R16  # 显式回滚 + 遗留：pair cookie/HTTP 适配层；E2EE 依赖 ADR-005 冻结
+
+meta:
+  version: 1
+  updated: 2026-08-31
+  gates:
+    - production_node_domain_request_count = 0 (Stable 5.0)
+    - No Hidden Fallback: 迁移域禁止静默回退 Node 权威实现

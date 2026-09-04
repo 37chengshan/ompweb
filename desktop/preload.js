@@ -5,14 +5,19 @@
  * renderer. The web UI itself is the same omp-web app (no bridge API
  * needed for its existing features).
  */
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("ompWebDesktop", {
   isDesktop: true,
-  version: process.env.npm_package_version || "",
+  // In packaged builds process.env.npm_package_version is NOT set (the
+  // renderer then shows "version unavailable"); ask the main process for
+  // app.getVersion() instead. sendSync is fine for this one immutable value.
+  version: ipcRenderer.sendSync("desktop-app-version") || "",
   minimize: () => ipcRenderer.send("window-control", "minimize"),
   maximize: () => ipcRenderer.send("window-control", "maximize"),
   close: () => ipcRenderer.send("window-control", "close"),
+  // Real filesystem path of a dropped/picked File (drag-to-insert-path).
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   // Self-update bridge (packaged builds only; dev resolves to no-ops via
   // invoke rejection, which the renderer treats as "not supported").
   updateCheck: () => ipcRenderer.invoke("desktop-update-check"),
@@ -30,6 +35,27 @@ contextBridge.exposeInMainWorld("ompWebDesktop", {
     ipcRenderer.on("server-ready", listener);
     return () => ipcRenderer.removeListener("server-ready", listener);
   },
+  // `server-ready` can arrive before splash.html installs its listener. Read
+  // the latched state once after subscribing so a fast server never leaves
+  // the splash waiting for an event it missed.
+  isServerReady: () => ipcRenderer.invoke("desktop-server-ready-state"),
+  // Terminal startup failure (doc 14 T1.4): splash shows an in-page panel
+  // with the reason, log location, retry and quit.
+  onServerError: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("server-error", listener);
+    return () => ipcRenderer.removeListener("server-error", listener);
+  },
+  // Re-run the standalone server after a failure (max 3 retries).
+  retryStartup: () => ipcRenderer.invoke("startup-retry"),
+  // Renderer-reported startup stages (T1.3): assets_warmed (splash),
+  // shell_mounted / session_interactive (Web UI).
+  startupStage: (stage) => ipcRenderer.send("startup-stage", stage),
+  getStartupReport: () => ipcRenderer.invoke("get-startup-report"),
+  // Opens another Electron renderer on the same hosted Next service. The
+  // server is never spawned per window, so active RPC/terminal state is
+  // shared with the originating session window.
+  openSessionWindow: (sessionId) => ipcRenderer.invoke("open-session-window", sessionId),
 });
 
 // Native folder picker bridge (SessionSidebar's DirectoryPicker prefers it
@@ -39,4 +65,6 @@ contextBridge.exposeInMainWorld("piDesktop", {
   selectDirectory: () => ipcRenderer.invoke("select-directory"),
   getSplashPref: () => ipcRenderer.invoke("get-splash-pref"),
   setSplashPref: (mode) => ipcRenderer.invoke("set-splash-pref", mode),
+  getAutoLaunch: () => ipcRenderer.invoke("get-auto-launch"),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke("set-auto-launch", enabled),
 });

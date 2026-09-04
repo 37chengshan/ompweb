@@ -1,14 +1,14 @@
 {
   "name": "@37chengshan/ompweb",
-  "version": "4.0.12",
+  "version": "5.1.0",
   "description": "Web UI for the oh-my-pi (omp) coding agent",
-  "homepage": "https://github.com/kahme247/ompweb#readme",
+  "homepage": "https://github.com/37chengshan/ompweb#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/37chengshan/ompweb.git"
   },
   "bugs": {
-    "url": "https://github.com/kahme247/ompweb/issues"
+    "url": "https://github.com/37chengshan/ompweb/issues"
   },
   "license": "MIT",
   "engines": {
@@ -36,19 +36,21 @@
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 30178",
     "dev:lan": "next dev -H 0.0.0.0 -p 30178",
-    "build": "next build --webpack",
+    "build": "next build --webpack && node scripts/postbuild-static.mjs",
     "start": "next start -H 127.0.0.1 -p 30177",
     "start:lan": "next start -H 0.0.0.0 -p 30177",
-    "test": "node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs lib/contracts/*.test.mjs components/*.test.mjs components/ui/*.test.mjs hooks/*.test.mjs bin/*.test.mjs",
+    "test": "node scripts/audit-client-api.mjs && node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs lib/contracts/*.test.mjs components/*.test.mjs components/ui/*.test.mjs hooks/*.test.mjs bin/*.test.mjs desktop/*.test.mjs",
     "bench:session": "node scripts/perf-session-bench.mjs",
+    "host:build": "cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host",
+    "host:stage": "node scripts/stage-host.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "prepack": "npm run build",
     "release:check": "npm run typecheck && npm run lint && npm test && npm run build",
     "desktop:start": "electron .",
-    "desktop:build": "electron-builder --mac",
-    "desktop:build:win": "electron-builder --win",
-    "desktop:build:all": "electron-builder -mwl"
+    "desktop:build": "npm run host:build && npm run host:stage && electron-builder --mac",
+    "desktop:build:win": "npm run host:build && npm run host:stage && electron-builder --win",
+    "desktop:build:all": "npm run host:build && npm run host:stage && electron-builder -mwl"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -65,6 +67,7 @@
     "react-dom": "^19.2.4",
     "react-syntax-highlighter": "^16.1.1",
     "undici": "8.10.0",
+    "ws": "^8.21.3",
     "yaml": "^2"
   },
   "devDependencies": {
@@ -73,6 +76,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/ws": "^8.18.1",
     "electron": "^44.0.0",
     "electron-builder": "^26.15.3",
     "eslint": "^9",
@@ -125,6 +129,7 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "runAfterFinish": true,
       "shortcutName": "OmpWeb",
       "artifactName": "OmpWeb-Setup-${version}.${ext}"
     },
@@ -141,8 +146,22 @@
         "to": "standalone",
         "filter": [
           "**/*",
-          "!**/node_modules/**"
+          "!**/node_modules/**",
+          "!**/dist-desktop/**",
+          "!**/win-arm64-unpacked/**"
         ]
+      },
+      {
+        "from": ".next/standalone/.next",
+        "to": "standalone/.next"
+      },
+      {
+        "from": ".next/standalone/.omp",
+        "to": "standalone/.omp"
+      },
+      {
+        "from": ".next/standalone/crates",
+        "to": "standalone/crates"
       },
       {
         "from": ".next/standalone/node_modules",
@@ -159,6 +178,10 @@
       {
         "from": "templates/desktop/splash.mp4",
         "to": "splash.mp4"
+      },
+      {
+        "from": "build-resources/host",
+        "to": "bin"
       }
     ],
     "publish": [

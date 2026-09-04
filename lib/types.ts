@@ -79,6 +79,11 @@ export interface AssistantMessage {
   model: string;
   provider: string;
   stopReason?: string;
+  /** Provider/API failure metadata. omp persists failed assistant turns with
+   * an empty content array and these fields populated. */
+  errorStatus?: number | string;
+  errorCode?: string;
+  errorId?: string;
   errorMessage?: string;
   timestamp?: number;
   usage?: {

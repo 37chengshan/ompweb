@@ -18,9 +18,12 @@ function lcg(seed) {
 }
 
 function padTitleLine(obj) {
+  // omp slots are JSON + pad spaces within 255 bytes; the entry join adds the
+  // trailing "\n" so the newline lands at offset 255 — inside the 256-byte
+  // window readTitleSlot scans (JSON + pad + "\n" = exactly 256 bytes).
   const json = JSON.stringify(obj);
-  if (json.length >= 256) return json.slice(0, 256);
-  return json + " ".repeat(256 - json.length);
+  if (json.length >= 255) return json.slice(0, 255);
+  return json + " ".repeat(255 - json.length);
 }
 
 function entryId(counter) {

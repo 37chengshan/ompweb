@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo, useReducer } from "react";
 import type {
   AgentMessage,
+  AssistantMessage,
   CustomMessage,
   ExtensionStatusItem,
   ExtensionUiRequest,
@@ -13,6 +14,7 @@ import type {
 import { normalizeToolCalls } from "@/lib/normalize";
 import type { ThinkingModelMeta } from "@/lib/thinking-levels";
 import { sendAgentCommand, setSessionAdvisorSpawn } from "@/lib/agent-client";
+import { createHttpSseClient, type OmpwebClient, type EventSubscription } from "@/lib/client";
 import { translate } from "@/lib/i18n";
 import { toast } from "@/components/ui/toast";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
@@ -23,7 +25,9 @@ import { expandWebSlashCommand } from "@/lib/web-slash-commands";
 import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } from "@/lib/web-mode-state";
 import type { HostToolDefinition, HostUriSchemeDefinition, RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 import { isRecord } from "@/lib/type-guards";
-import { subscribeSessionsChanged } from "@/lib/session-change-bus";
+
+// Stable across renders and HMR: the default transport for every hook instance.
+const defaultHttpClient: OmpwebClient = createHttpSseClient();
 import {
   parseSubagentActivityEvent,
   parseSubagentLifecycle,
@@ -264,6 +268,21 @@ function normalizeThinkingLevel(level: string | undefined): ThinkingLevelOption 
   return level as ThinkingLevelOption;
 }
 
+function parseErrorStatus(message: string): number | undefined {
+  const match = message.match(/\b(?:HTTP\s*)?([45]\d{2})\b/i);
+  return match ? Number(match[1]) : undefined;
+}
+
+function createAssistantErrorMessage(message: string, fields: { status?: number | string; code?: string } = {}): AssistantMessage {
+  const status = fields.status ?? parseErrorStatus(message);
+  return {
+    role: "assistant", content: [], provider: "", model: "", stopReason: "error",
+    ...(status !== undefined ? { errorStatus: status } : {}),
+    ...(fields.code ? { errorCode: fields.code } : {}),
+    errorMessage: message, timestamp: Date.now(),
+  };
+}
+
 /** Narrow the live state's model (OmpModel: id-based) to the composer's shape. */
 function toThinkingModelMeta(model: { provider?: string; id?: string; name?: string; reasoning?: boolean; thinking?: { efforts?: string[] } } | null | undefined): ThinkingModelMeta | null {
   if (!model?.provider || !model.id) return null;
@@ -311,7 +330,8 @@ export interface CompactResultInfo {
 export interface SlashCommandInfo {
   name: string;
   description?: string;
-  source: "extension" | "prompt" | "skill";
+  /** ompBuiltin = full OMP registry surfaced (5.0 doc 08 Slice 1). */
+  source: "extension" | "prompt" | "skill" | "ompBuiltin";
   sourceInfo?: {
     path: string;
     source: string;
@@ -342,6 +362,8 @@ export interface UseAgentSessionOptions {
   setToolPreset?: (preset: "none" | "default" | "full") => void;
   /** Opens a file in the web UI's file viewer (used by the open_file host tool). */
   onOpenFile?: (filePath: string, name: string, sessionId?: string) => void;
+  /** Transport override (tests / future LocalHost adapter). Defaults to HTTP+SSE. */
+  client?: OmpwebClient;
 }
 
 export type ThinkingLevelOption = string;
@@ -369,7 +391,7 @@ type EventStreamConnectionStatus = "connected" | "timeout" | "closed";
 
 type EventStreamConnectionResult = {
   status: EventStreamConnectionStatus;
-  source: EventSource;
+  source: EventSubscription;
 };
 
 class EventStreamConnectionError extends Error {
@@ -567,16 +589,18 @@ type SlashCommandsResponse = {
   commands?: RpcAvailableSlashCommand[];
 };
 
-// Map omp's slash-command sources onto the palette's grouping. Builtins are
-// skipped: the client intercepts its own builtin set, and other omp builtins
-// still work when typed (omp executes them via the prompt command).
+// Map omp's slash-command sources onto the palette's grouping. 5.0 doc 08
+// Slice 1: the full OMP registry is surfaced — builtins land in the
+// ompBuiltin group (ChatInput remaps + dedups names the client intercepts),
+// so newly installed OMP commands appear without an ompweb release.
 function toSlashCommandInfo(command: RpcAvailableSlashCommand): SlashCommandInfo | null {
-  if (command.source === "builtin") return null;
   const source: SlashCommandInfo["source"] = command.source === "extension"
     ? "extension"
     : command.source === "skill"
       ? "skill"
-      : "prompt";
+      : command.source === "builtin"
+        ? "ompBuiltin"
+        : "prompt";
   return { name: command.name, description: command.description, source };
 }
 
@@ -586,6 +610,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
     onOpenFile,
   } = opts;
+  // 5.0 doc 01 Slice 2: the hook consumes the transport-agnostic client
+  // interface; HttpSseAdapter is the default so behavior is unchanged.
+  const client = useMemo(() => opts.client ?? defaultHttpClient, [opts.client]);
   const reducedMotion = usePrefersReducedMotion();
   const isNew = session === null && newSessionCwd !== null;
 
@@ -625,6 +652,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [steeringMode, setSteeringMode] = useState<"all" | "one-at-a-time">("all");
   const [followUpMode, setFollowUpMode] = useState<"all" | "one-at-a-time">("all");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
+  const retryInfoRef = useRef(retryInfo);
+  retryInfoRef.current = retryInfo;
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [forkingEntryId, setForkingEntryId] = useState<string | null>(null);
@@ -663,7 +692,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const activeSubagentCount = subagents.filter((subagent) => subagent.source !== "history" && subagent.status === "started").length;
 
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<EventSubscription | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
   // Guards stale branch/leaf context responses: two rapid navigate clicks must
@@ -726,6 +755,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // invalidated on terminal.
   const subagentRosterGenerationRef = useRef(0);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
+  // A provider can acknowledge `prompt` and then reject it asynchronously.
+  // Keep that failure until the authoritative session reload completes; some
+  // omp versions persist the failed assistant turn, while older ones do not.
+  const pendingPromptErrorRef = useRef<{ sid: string | null; runId: number; message: string } | null>(null);
   // True once this mount has persisted a non-empty queue: gates removal so a
   // just-mounted empty state cannot wipe a stored queue before restore runs.
   const queuePersistDirtyRef = useRef(false);
@@ -1248,10 +1281,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const loadSystemPrompt = useCallback(async () => {
     const sid = sessionIdRef.current ?? await ensureNewSession();
     if (!sid) return;
-
-    const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
-    if (!hookAliveRef.current || sessionIdRef.current !== sid) return;
-    setSystemPrompt(state.systemPrompt ?? "");
+    try {
+      const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
+      if (!hookAliveRef.current || sessionIdRef.current !== sid) return;
+      setSystemPrompt(state.systemPrompt ?? "");
+    } catch (e) {
+      // 会话被其他实例占用等 RPC 失败不能静默：系统提示读取失败要告知用户。
+      console.error("Failed to load system prompt:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
+    }
   }, [ensureNewSession]);
 
   const loadSlashCommands = useCallback(async () => {
@@ -1270,6 +1308,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return commands;
     } catch (e) {
       console.error("Failed to load slash commands:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
       setSlashCommands([]);
       return [] as SlashCommandInfo[];
     } finally {
@@ -1281,13 +1320,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // its turns, so reload the transcript when the watcher reports that this
   // session's file grew. Skipped while an event stream is attached: that
   // stream is already the authority and a reload would fight it.
+  // 5.0 W1: the channel is reached through the client interface so adapters
+  // own the transport (the HTTP adapter delegates to the local bus).
   useEffect(() => {
-    return subscribeSessionsChanged((sessionIds) => {
+    return client.system.subscribeSessionsChanged((sessionIds) => {
       const sid = sessionIdRef.current;
       if (!sid || eventSourceRef.current || !sessionIds.includes(sid)) return;
       void loadSession(sid);
     });
-  }, [loadSession]);
+  }, [client, loadSession]);
 
   // Reconnect actions captured after their definitions (host-tool and URI
   // registrations are per-wrapper and are not persisted by omp, and the
@@ -1302,64 +1343,63 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     // A pending coalesced update belongs to the stream being replaced.
     eventCoalescer.reset();
-    const es = new EventSource(`/api/agent/${encodeURIComponent(sid)}/events`);
-    eventSourceRef.current = es;
-
-    return new Promise((resolve) => {
-      let settled = false;
-      const settle = (status: EventStreamConnectionStatus) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        resolve({ status, source: es });
-      };
-      const timeout = setTimeout(() => settle("timeout"), EVENT_STREAM_CONNECT_TIMEOUT_MS);
-
-      // The stream is live as soon as the response headers land, whether or not
-      // the server also sends an explicit `connected` frame.
-      es.onopen = () => settle("connected");
-
-      es.onmessage = (e) => {
-        try {
-          const event = JSON.parse(e.data) as AgentEvent;
-          if (event.type === "connected") settle("connected");
-          // message_update frames arrive at network rate (often 30-100+/s);
-          // the coalescer buffers the latest one and dispatches at display
-          // rate, flushing synchronously before any other event type.
-          eventCoalescer.push(event);
-        } catch {
-          // ignore
+    const { promise, resolve } = Promise.withResolvers<EventStreamConnectionResult>();
+    let settled = false;
+    const timeout: ReturnType<typeof setTimeout> | undefined = setTimeout(
+      () => settle("timeout"),
+      EVENT_STREAM_CONNECT_TIMEOUT_MS,
+    );
+    const settle = (status: EventStreamConnectionStatus) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve({ status, source: subscription });
+    };
+    const subscription = client.agent.subscribeSessionEvents(sid, {
+      // The stream is live as soon as the response headers land, whether or
+      // not the server also sends an explicit `connected` frame.
+      onOpen: () => settle("connected"),
+      onConnected: (frame) => {
+        settle("connected");
+        eventCoalescer.push(frame as unknown as AgentEvent);
+      },
+      onEvent: (frame) => {
+        // message_update frames arrive at network rate (often 30-100+/s);
+        // the coalescer buffers the latest one and dispatches at display
+        // rate, flushing synchronously before any other event type.
+        eventCoalescer.push(frame as unknown as AgentEvent);
+      },
+      onDestroyed: (frame) => eventCoalescer.push(frame as unknown as AgentEvent),
+      onDown: ({ fatal }) => {
+        if (!fatal) return;
+        // Fatal error (404/500/content-type mismatch): browser won't
+        // auto-reconnect. Settle the Promise and manually reconnect for
+        // already-running sessions. Keep the timer in a ref so unmount or a
+        // session switch cancels it — otherwise an orphaned stream respawns
+        // (and can 404-loop) after the hook is torn down.
+        settle("closed");
+        if (eventSourceRef.current === subscription && agentRunningRef.current) {
+          eventSourceRef.current = null;
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            if (agentRunningRef.current && sessionIdRef.current === sid) {
+              void connectEvents(sid);
+              // The reconnect restores the event stream, but host tools, URI
+              // schemes, and the subagent roster were registered on the old
+              // connection — re-register them so the agent keeps working.
+              reconnectActionsRef.current?.(sid);
+            }
+          }, 1000);
         }
-      };
-      es.onerror = () => {
-        if (es.readyState === EventSource.CLOSED) {
-          // Fatal error (404/500/content-type mismatch): browser won't
-          // auto-reconnect. Settle the Promise and manually reconnect for
-          // already-running sessions. Keep the timer in a ref so unmount or a
-          // session switch cancels it — otherwise an orphaned stream respawns
-          // (and can 404-loop) after the hook is torn down.
-          settle("closed");
-          if (eventSourceRef.current === es && agentRunningRef.current) {
-            eventSourceRef.current = null;
-            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-            reconnectTimerRef.current = setTimeout(() => {
-              reconnectTimerRef.current = null;
-              if (agentRunningRef.current && sessionIdRef.current === sid) {
-                void connectEvents(sid);
-                // The reconnect restores the event stream, but host tools, URI
-                // schemes, and the subagent roster were registered on the old
-                // connection — re-register them so the agent keeps working.
-                reconnectActionsRef.current?.(sid);
-              }
-            }, 1000);
-          }
-        }
-        // Recoverable errors (CONNECTING): let EventSource auto-reconnect.
+        // Recoverable errors (CONNECTING): let the adapter auto-reconnect.
         // The timeout above resolves only to let callers decide whether this
         // connection must be ready before they continue.
-      };
+      },
     });
-  }, [eventCoalescer]);
+    eventSourceRef.current = subscription;
+    return promise;
+  }, [client, eventCoalescer]);
 
   const respondToExtensionUi = useCallback(async (
     request: ExtensionUiDialogRequest,
@@ -1378,6 +1418,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     } catch (e) {
       console.error("Failed to send extension UI response:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
     } finally {
       // OMP commonly emits the next Ask select immediately after this response.
       // Keep the current panel mounted for a short hand-off window so the composer
@@ -1477,6 +1518,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     } catch (e) {
       console.error("Failed to send host tool result:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
     }
   }, []);
 
@@ -1539,6 +1581,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       await sendAgentCommand(sid, { type: "host_uri_result", id, ...frame });
     } catch (e) {
       console.error("Failed to send host URI result:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
     }
   }, []);
 
@@ -1588,6 +1631,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     } catch (e) {
       console.error("Failed to send extension custom UI input:", e);
+      toast.error(translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }));
     }
   }, []);
 
@@ -1628,11 +1672,33 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       clearTimeout(slowNotice);
     }
-    if (result.status === "connected" || result.source.readyState === EventSource.OPEN) return;
+    if (result.status === "connected" || result.source.isOpen) return;
     if (eventSourceRef.current === result.source) eventSourceRef.current = null;
     result.source.close();
     throw new EventStreamConnectionError(result.status);
   }, [addNotice, connectEvents]);
+
+  // The diagnostics panel can restart all RPC wrappers. Reconnect the active
+  // chat immediately and reload authoritative disk state after recovery.
+  useEffect(() => {
+    const onRestarted = () => {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+      void (async () => {
+        try {
+          await sendAgentCommand(sid, { type: "get_state" });
+          await ensureEventsConnected(sid);
+          await loadSession(sid, false, true);
+          addNotice({ type: "success", message: translate("agentSession.reconnected") });
+        } catch (error) {
+          addNotice({ type: "error", message: translate("agentSession.reconnectFailed", { detail: error instanceof Error ? error.message : String(error) }) });
+        }
+      })();
+    };
+    window.addEventListener("omp-rpc-restarted", onRestarted);
+    return () => window.removeEventListener("omp-rpc-restarted", onRestarted);
+  }, [addNotice, ensureEventsConnected, loadSession]);
+
 
   const handleExtensionUiRequest = useCallback((request: IncomingExtensionUiRequest) => {
     switch (request.method) {
@@ -1721,6 +1787,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // start — a next prompt that begins while the reload is in flight must
       // not be overwritten by the finished run's snapshot.
       if (sid) await loadSession(sid, false, true, runId);
+      const pending = pendingPromptErrorRef.current;
+      if (pending && pending.sid === sid && (runId === undefined || pending.runId === runId)) {
+        setMessages((prev) => {
+          const hasError = prev.some((message) => message.role === "assistant"
+            && (message as AssistantMessage).stopReason === "error"
+            && (message as AssistantMessage).errorMessage === pending.message);
+          return hasError ? prev : [...prev, createAssistantErrorMessage(pending.message)];
+        });
+        pendingPromptErrorRef.current = null;
+      }
     } finally {
       if (runId !== undefined && promptRunIdRef.current !== runId) return;
       optimisticUserMessageKeyRef.current = null;
@@ -2016,7 +2092,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         agentRunningRef.current = false;
         setAgentRunning(false);
         setAgentPhase(null);
+        // 运行在自动重试进行中结束（重试耗尽或中止）——正常完成路径会先收
+        // 到 auto_retry_end 清空 retryInfo；这里仍非空说明回合失败，明确提示
+        // 用户，避免"输出一半就停了但没有报错"的困惑。
+        const endedWhileRetrying = retryInfoRef.current;
         setRetryInfo(null);
+        if (endedWhileRetrying) {
+          addNotice({
+            type: "error",
+            message: translate("agentSession.runEndedAfterRetries", { attempts: endedWhileRetrying.attempt })
+              + (endedWhileRetrying.errorMessage ? ` — ${endedWhileRetrying.errorMessage}` : ""),
+          });
+        }
         setSubagents([]);
         setAdvisorActiveAt(0);
         subagentRosterGenerationRef.current += 1;
@@ -2063,7 +2150,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         void finishPromptWithoutStream(sessionIdRef.current, promptRunIdRef.current);
         break;
       case "prompt_error":
-        addNotice({ type: "error", message: (event.errorMessage as string | undefined) ?? translate("agentSession.commandFailed") });
+        {
+          const errorMessage = (event.errorMessage as string | undefined)?.trim() || translate("agentSession.commandFailed");
+          pendingPromptErrorRef.current = { sid: sessionIdRef.current, runId: promptRunIdRef.current, message: errorMessage };
+          const errorEntry = createAssistantErrorMessage(errorMessage, {
+            status: typeof event.errorStatus === "number" || typeof event.errorStatus === "string" ? event.errorStatus : undefined,
+            code: typeof event.errorCode === "string" ? event.errorCode : undefined,
+          });
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant" && (last as AssistantMessage).stopReason === "error" && (last as AssistantMessage).errorMessage === errorMessage) return prev;
+            return [...prev, errorEntry];
+          });
+          addNotice({ type: "error", message: errorMessage });
+        }
         // A failed prompt is terminal: no agent_end follows it. Without this the
         // spinner and the locked input wait for the 15s reconcile poll. Fenced
         // with the run id for the same reason as prompt_result above.
@@ -2417,8 +2517,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // not a request to stop following the response that this prompt starts.
     userScrollIntentUntilRef.current = 0;
 
+    let sentSessionId: string | null = null;
     try {
-      let sentSessionId: string | null = null;
       if (isNew && newSessionCwd) {
         const selectedModel = newSessionModel;
         const existingSid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
@@ -2464,22 +2564,49 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return true;
     } catch (e) {
       console.error("Failed to send message:", e);
-      // Every failure here (stream connect, startup, set_model, or the prompt
-      // POST itself) means the prompt never started, so roll back the optimistic bubble.
-      const optimisticKey = optimisticUserMessageKeyRef.current;
-      if (optimisticKey) {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          return last?.role === "user" && userMessageKey(last) === optimisticKey
-            ? prev.slice(0, -1)
-            : prev;
-        });
+      // A split resume is recoverable when the competing process is an
+      // orphaned OmpWeb Rust host. Repair only those exact orphan hosts, then
+      // recreate the wrapper and retry this prompt once. Terminal omp
+      // processes are intentionally never touched by the repair endpoint.
+      const errorCode = (e as Error & { code?: string })?.code;
+      if (errorCode === "session_split" && sentSessionId) {
+        try {
+          const repair = await fetch("/api/omp-update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "restart" }),
+          });
+          if (!repair.ok) throw new Error(`repair HTTP ${repair.status}`);
+          await sendAgentCommand(sentSessionId, { type: "get_state" });
+          await ensureEventsConnected(sentSessionId);
+          void refreshSubagentRoster(sentSessionId);
+          void registerHostTools(sentSessionId);
+          void registerHostUriSchemes(sentSessionId);
+          await sendAgentCommand(sentSessionId, {
+            type: "prompt",
+            message,
+            ...(piImages?.length ? { images: piImages } : {}),
+          });
+          if (isSlashCommandPrompt) void waitForPromptSettlement(sentSessionId, promptRunId);
+          return true;
+        } catch (repairError) {
+          console.error("Automatic OMP repair failed:", repairError);
+        }
       }
+      // Keep the prompt and add an assistant error row, matching ompcli.
+      // Removing the optimistic user bubble made failed turns look as if the
+      // app had silently ignored them and left no retry context.
+      const errorMessage = e instanceof EventStreamConnectionError
+        ? e.message
+        : translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) });
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && (last as AssistantMessage).stopReason === "error" && (last as AssistantMessage).errorMessage === errorMessage) return prev;
+        return [...prev, createAssistantErrorMessage(errorMessage)];
+      });
       addNotice({
         type: "error",
-        message: e instanceof EventStreamConnectionError
-          ? e.message
-          : translate("agentSession.sendFailed", { detail: e instanceof Error ? e.message : String(e) }),
+        message: errorMessage,
       });
       // Restore the user's text into the input instead of losing it. Mirrors the
       // shell-command recovery in executeBash; insertIfEmpty avoids clobbering
@@ -3051,6 +3178,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       await sendAgentCommand(sid, { type: "abort_compaction" });
     } catch (e) {
       console.error("Failed to abort compaction:", e);
+      toast.error(translate("chatInput.abortFailed"));
     }
   }, []);
 

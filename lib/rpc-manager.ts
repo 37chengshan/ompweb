@@ -1,8 +1,10 @@
 import { existsSync } from "fs";
 import { homedir } from "os";
+import { clearBackendErrors, recordBackendError, recentBackendErrors } from "./backend-errors";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { RpcCommandError, RpcProcess, type RpcFrame } from "./omp/rpc-process";
+import { createRpcProcess, type RpcProcessLike } from "./omp/rust-rpc-process";
 import { readNativeSettings } from "./omp/settings-config";
 import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
 import { PRESET_FULL } from "./tool-presets";
@@ -38,6 +40,26 @@ interface CompactionResultLike {
 const IDLE_DESTROY_MS = 10 * 60 * 1000;
 const READY_TIMEOUT_MS = 120_000;
 const MCP_LIST_TIMEOUT_MS = 15_000;
+
+// ── RPC 健康信号 ──────────────────────────────────────────────────────────
+// 记录 omp 子进程异常退出与"会话分裂"（--resume 后 omp 返回了不同的会话，
+// 说明会话文件正被其他 omp/ompweb 实例占用——旧实例扰乱新实例的典型症状）。
+// /api/diagnostics 与顶栏健康指示据此反映"消息能否真正发出"。
+// 实现收编在 lib/backend-errors.ts（Phase 1）：RPC 失败只是后端错误的一种
+// kind，host 不可用/崩溃/session 扫描失败同样入环，App 级横幅据此可见。
+export function recordRpcFailure(detail: string): void {
+  recordBackendError("rpc_failure", detail);
+}
+
+/** 最近 windowMs 内的 RPC 失败（默认 60s，供健康指示使用）。 */
+export function recentRpcFailures(windowMs = 60_000): Array<{ at: number; detail: string }> {
+  return recentBackendErrors(windowMs, "rpc_failure");
+}
+
+/** Clear failures after an explicit recovery action succeeded. */
+export function clearRpcFailures(): void {
+  clearBackendErrors();
+}
 
 const RESTARTING_MESSAGE = "This session is restarting — retry in a moment.";
 const BASH_EXCLUDE_MESSAGE =
@@ -232,7 +254,7 @@ export class AgentSessionWrapper {
   private _sessionId = "";
   private _sessionFile = "";
   private _sessionName: string | undefined;
-  private proc: RpcProcess;
+  private proc: RpcProcessLike;
   readonly cwd: string;
   /** Whether the child was spawned with --advisor. The flag is spawn-time
    * only (no runtime RPC toggles it), so applying a changed advisor setting
@@ -245,7 +267,7 @@ export class AgentSessionWrapper {
 
   // Plain field assignments (not TS parameter properties) keep this module
   // runnable under Node's strip-only TypeScript mode for probes/tests.
-  constructor(proc: RpcProcess, cwd: string, recordedCwd?: string | null, advisorSpawned = false) {
+  constructor(proc: RpcProcessLike, cwd: string, recordedCwd?: string | null, advisorSpawned = false) {
     this.proc = proc;
     this.cwd = cwd;
     this.recordedCwd = recordedCwd ?? null;
@@ -318,6 +340,13 @@ export class AgentSessionWrapper {
     // A restart disposes the old child on purpose — not a crash.
     if (!this._alive || this.restarting) return;
     const detail = stderrTail.trim().split("\n").pop() ?? "";
+    // RustRpcProcess synthesizes this tail when the ompweb-host process itself
+    // died (vs the supervised omp child): record the specific kind so the
+    // diagnostics panel can name "host crash" instead of a generic RPC failure.
+    if (stderrTail.includes("ompweb-host disconnected")) {
+      recordBackendError("host_crash", `ompweb-host exited${detail ? `: ${detail}` : ""}`);
+    }
+    recordRpcFailure(`omp process exited unexpectedly${detail ? `: ${detail}` : ""}`);
     this.emit({
       type: "notice",
       level: "error",
@@ -396,7 +425,12 @@ export class AgentSessionWrapper {
         // reuses the original command id after the immediate ack).
         if (event.success === false && event.command === "prompt") {
           this.promptRunning = false;
-          this.emit({ type: "prompt_error", errorMessage: (event.error as string) ?? "Prompt failed" });
+          this.emit({
+            type: "prompt_error",
+            errorMessage: (event.error as string) ?? "Prompt failed",
+            ...(typeof event.code === "string" ? { errorCode: event.code } : {}),
+            ...(typeof event.status === "number" || typeof event.status === "string" ? { errorStatus: event.status } : {}),
+          });
           notifyRunningChange();
           return;
         }
@@ -824,13 +858,24 @@ export class AgentSessionWrapper {
       this.streaming = false;
       this.compacting = false;
 
-      const proc = new RpcProcess({
-        cwd: this.cwd,
-        extraArgs: buildSessionSpawnArgs(resumable ? sessionFile : ""),
-        onExit: ({ stderrTail }) => {
-          if (this.proc === proc) this.handleProcessExit(stderrTail);
-        },
-      });
+      let proc: RpcProcessLike;
+      try {
+        proc = await createRpcProcess({
+          cwd: this.cwd,
+          sessionId: this.sessionId,
+          extraArgs: buildSessionSpawnArgs(resumable ? sessionFile : ""),
+          onExit: ({ stderrTail }) => {
+            if (this.proc === proc) this.handleProcessExit(stderrTail);
+          },
+        });
+      } catch (error) {
+        // Same classification as startRpcSession: in Rust mode a spawn failure
+        // means the host is unavailable — make it App-visible.
+        if (process.env.OMPWEB_BACKEND !== "node") {
+          recordBackendError("host_unavailable", `session restart failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        throw error;
+      }
       this.proc = proc;
       this.unsubscribeFrames = proc.onFrame((frame) => this.handleFrame(frame));
       try {
@@ -1276,11 +1321,22 @@ export async function startRpcSession(
     // The wrapper needs the process and the process's onExit needs the wrapper;
     // the holder breaks that cycle (onExit only fires once the child dies).
     const holder: { wrapper?: AgentSessionWrapper } = {};
-    const proc = new RpcProcess({
-      cwd,
-      extraArgs: buildSessionSpawnArgs(sessionFile, toolNames, advisor === true),
-      onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
-    });
+    let proc: RpcProcessLike;
+    try {
+      proc = await createRpcProcess({
+        cwd,
+        sessionId: sessionId ?? `session-${Math.random().toString(36).slice(2, 10)}`,
+        extraArgs: buildSessionSpawnArgs(sessionFile, toolNames, advisor === true),
+        onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
+      });
+    } catch (error) {
+      // Rust 后端下启动失败 = host 不可用（二进制缺失/启动超时/IPC 失败），
+      // 记入后端错误环让横幅可见；node 显式回滚模式不计入 host 故障。
+      if (process.env.OMPWEB_BACKEND !== "node") {
+        recordBackendError("host_unavailable", `session start failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      throw error;
+    }
     const created = new AgentSessionWrapper(proc, cwd, recordedCwd, advisor === true);
     holder.wrapper = created;
     created.start();
@@ -1296,6 +1352,19 @@ export async function startRpcSession(
     }
 
     const realSessionId = created.sessionId;
+    // 会话分裂检测：--resume <file> 后 omp 返回了不同的会话 id，说明该会话
+    // 文件正被另一个 omp/ompweb 实例占用（旧实例的孤儿进程持有锁/待定工具
+    // 调用）——继续发消息会落到新会话里，UI 看不到任何响应。此时明确报错，
+    // 并计入 RPC 健康信号，让顶栏横幅提示用户清理旧实例。
+    if (sessionId && realSessionId && realSessionId !== sessionId) {
+      const detail = `session split: requested ${sessionId}, omp resumed as ${realSessionId}`;
+      recordRpcFailure(detail);
+      await created.destroyAndWait();
+      throw new WebRpcError(
+        "该会话正被另一个 omp 实例占用，无法恢复。请先关闭其他 ompweb/omp 实例（顶部「服务异常」横幅可一键清理），再重试。",
+        "session_split",
+      );
+    }
     created.onDestroy(() => {
       if (registry.get(created.sessionId) === created) registry.delete(created.sessionId);
       if (registry.get(realSessionId) === created) registry.delete(realSessionId);

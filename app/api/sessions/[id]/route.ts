@@ -22,12 +22,27 @@ import {
   readSessionHeader,
 } from "@/lib/session-reader";
 import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
+import { recordBackendError } from "@/lib/backend-errors";
 import { sessionPathKey } from "@/lib/paths";
+import { hostClient, rustBackendActive } from "@/lib/omp/host-client";
+import { getAgentDir } from "@/lib/omp/paths";
 import { getRpcSession } from "@/lib/rpc-manager";
 
 // BranchNavigator still traverses recursively, so keep the response tree shallow.
 const MAX_PROJECTED_TREE_DEPTH = 200;
 const MAX_BRANCH_PREVIEW_LENGTH = 40;
+
+/** Rethrow a Rust-domain failure as a structured error, preserving the source
+ * code (e.g. `runtime_unavailable`) when present. Phase 1 "No Hidden
+ * Fallback": in Rust mode the host is the session-domain authority — a failed
+ * mutation is an error response, never a silent Node-authority write. */
+function rustAuthorityError(kind: string, error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const sourceCode = (error as { code?: unknown } | null)?.code;
+  return Object.assign(new Error(`Rust session service unavailable: ${message}`), {
+    code: typeof sourceCode === "string" ? sourceCode : kind,
+  });
+}
 
 function branchPreviewForEntry(entry: { id?: string; type?: string; message?: unknown }): { role?: "user" | "assistant"; text: string } | undefined {
   if (entry.type !== "message" || !entry.message || typeof entry.message !== "object" || Array.isArray(entry.message)) return undefined;
@@ -253,15 +268,26 @@ export async function PATCH(
       try {
         await rpc.send({ type: "set_session_name", name: name.trim() });
         renamed = true;
-      } catch {
-        // Fall back to the on-disk title slot below.
+      } catch (error) {
+        // The on-disk rename below is the authority; a live-process title
+        // update failing must not pass silently.
+        console.warn("[ompweb] set_session_name RPC failed — falling through to on-disk rename:", error instanceof Error ? error.message : error);
       }
     }
     if (!renamed) {
       const resolved = await resolveSessionPathOr404(id);
       if ("response" in resolved) return resolved.response;
       const filePath = resolved.filePath;
-      setSessionTitle(filePath, name.trim(), "user");
+      if (rustBackendActive()) {
+        try {
+          await hostClient.sessions.rename(join(getAgentDir(), "sessions"), filePath, name.trim());
+        } catch (error) {
+          recordBackendError("session_rename_failed", `Rust session.rename failed: ${error instanceof Error ? error.message : String(error)}`);
+          throw rustAuthorityError("session_rename_failed", error);
+        }
+      } else {
+        setSessionTitle(filePath, name.trim(), "user");
+      }
     }
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
@@ -393,7 +419,18 @@ export async function DELETE(
     // Await the child's exit before unlinking: omp flushes session state on
     // shutdown and would recreate the file if it were still running.
     await getRpcSession(id)?.destroyAndWait?.();
-    deleteSessionFileWithArtifacts(filePath);
+    if (rustBackendActive()) {
+      try {
+        await hostClient.sessions.delete(join(getAgentDir(), "sessions"), filePath);
+      } catch (error) {
+        // No Hidden Fallback (Phase 1): the Node file deletion exists only in
+        // the explicit OMPWEB_BACKEND=node rollback mode.
+        recordBackendError("session_delete_failed", `Rust session.delete failed: ${error instanceof Error ? error.message : String(error)}`);
+        throw rustAuthorityError("session_delete_failed", error);
+      }
+    } else {
+      deleteSessionFileWithArtifacts(filePath);
+    }
     invalidateSessionPathCache(id);
     invalidateSessionListCache();
     return NextResponse.json({

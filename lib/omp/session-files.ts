@@ -22,6 +22,7 @@ import * as fsRuntime from "fs";
 import * as path from "path";
 import { StringDecoder } from "string_decoder";
 import { gunzipSync, gzipSync } from "zlib";
+import { recordBackendError } from "../backend-errors";
 import { isRecord } from "../type-guards";
 
 // Keep user-session directory traversal out of Next's static NFT globbing.
@@ -640,6 +641,10 @@ export interface OmpSessionInfo {
 }
 
 const SESSION_LIST_PREFIX_BYTES = 4096;
+// When session_init/system prompts dominate the head, the first user message
+// can start after the 4 KiB prefix. Bounded one-shot extension only for files
+// whose prefix carried no message — never for the common small-head case.
+const SESSION_LIST_EXTEND_BYTES = 64 * 1024;
 const SESSION_LIST_SUFFIX_BYTES = 32_768;
 
 function decodeJsonStringFragment(value: string): string {
@@ -909,12 +914,30 @@ export function scanSessionInfo(filePath: string, withStatus = true): OmpSession
     }
 
     firstMessage ||= extractFirstDisplayMessageFromPrefix(content) ?? "";
+    // Extend the head window once (bounded) to find the first message when
+    // the 4 KiB prefix ended before it (huge session_init system prompts).
+    if (!firstMessage && size > SESSION_LIST_PREFIX_BYTES) {
+      const [extended] = readTextSlices(filePath, SESSION_LIST_PREFIX_BYTES + SESSION_LIST_EXTEND_BYTES, 0);
+      const extendedEntries = parseJsonlLenient<Record<string, unknown>>(extended);
+      for (let i = 1; i < extendedEntries.length; i++) {
+        const entry = extendedEntries[i] as { type?: string; message?: { role?: string; content?: unknown } };
+        if (entry.type === "message" && entry.message?.role === "user") {
+          firstMessage = extractTextFromContent(entry.message.content);
+          if (firstMessage) break;
+        }
+      }
+      firstMessage ||= extractFirstDisplayMessageFromPrefix(extended) ?? "";
+    }
     const messageCount = Math.max(parsedMessageCount, countMessageMarkers(content));
+    // Display title: the title slot wins; auto/task summaries come next;
+    // otherwise inject the opening message so the sidebar never shows a bare
+    // "(no messages)" row for a session that did have a first prompt.
+    const derivedTitle = (header.title ?? "").trim() || (shortSummary ?? "") || (firstMessage ? firstMessage.slice(0, 120) : undefined);
     return {
       path: filePath,
       id: header.id,
       cwd: header.cwd ?? "",
-      title: header.title ?? shortSummary,
+      title: derivedTitle,
       parentSessionPath: header.parentSession,
       created: new Date(header.timestamp ?? ""),
       modified: mtime,
@@ -984,9 +1007,10 @@ function scanSessionInfoCached(filePath: string): OmpSessionInfo | undefined {
 
 /**
  * List all sessions across all project subdirectories (newest first). Only
- * `<sessionsDir>/<projectDir>/*.jsonl` files are scanned — per-session
- * artifacts directories (session file name minus .jsonl) are skipped because
- * the walk only descends one level and only accepts regular files.
+ * `<sessionsDir>/<projectDir>/*.jsonl` files are scanned. Subdirectories named
+ * like a session file (the per-session artifacts directories omp creates
+ * next to every session) are skipped entirely — they hold subagent
+ * transcripts, bash/eval logs, and markdown sidecars, which are not sessions.
  *
  * The directory walk itself is cached on the sessions root's mtimeMs: creating
  * or deleting any session changes that parent directory's mtime, so the cache
@@ -996,6 +1020,39 @@ function scanSessionInfoCached(filePath: string): OmpSessionInfo | undefined {
  */
 export async function listAllSessionInfos(): Promise<OmpSessionInfo[]> {
   const sessionsRoot = getSessionsDir();
+  // R10 read path: the Rust host is the session-projection authority when the
+  // Rust backend is active (default). Phase 1 "No Hidden Fallback": a failed
+  // scan is a recorded, structured error — the Node scanner only runs in the
+  // explicit OMPWEB_BACKEND=node rollback mode, never as a silent fallback.
+  if (process.env.OMPWEB_BACKEND !== "node") {
+    try {
+      // Route 2 (doc 16): the host is reachable only through the typed
+      // HostClient boundary (host-client.ts).
+      const { hostClient } = await import("./host-client");
+      const projections = await hostClient.sessions.scan(sessionsRoot);
+      const sessions: OmpSessionInfo[] = projections.map((p) => ({
+        path: p.path,
+        id: p.id,
+        cwd: p.cwd,
+        title: p.title || undefined,
+        parentSessionPath: p.parentSession || undefined,
+        created: p.created ? new Date(p.created) : new Date(p.mtime_ms),
+        modified: new Date(p.mtime_ms),
+        messageCount: p.messages,
+        size: p.bytes,
+        firstMessage: p.firstMessage,
+      }));
+      sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+      return sessions;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      recordBackendError("session_scan_failed", `Rust session scan failed: ${message}`);
+      const sourceCode = (error as { code?: unknown } | null)?.code;
+      throw Object.assign(new Error(`Rust session service unavailable: ${message}`), {
+        code: typeof sourceCode === "string" ? sourceCode : "session_scan_failed",
+      });
+    }
+  }
   const files = await listSessionFiles(sessionsRoot);
 
   const sessions: OmpSessionInfo[] = [];
@@ -1059,6 +1116,10 @@ async function listSessionFiles(sessionsRoot: string): Promise<string[]> {
   let subMaxMtimeMs = 0;
   try {
     for (const dirent of readDirectorySyncRuntime(sessionsRoot, { withFileTypes: true })) {
+      if (dirent.isFile() && dirent.name.endsWith(".jsonl")) {
+        files.push(path.join(sessionsRoot, dirent.name));
+        continue;
+      }
       if (!dirent.isDirectory()) continue;
       subMaxMtimeMs = Math.max(subMaxMtimeMs, statSync(path.join(sessionsRoot, dirent.name)).mtimeMs);
     }
@@ -1072,6 +1133,13 @@ function collectSessionFiles(sessionsRoot: string): string[] {
   try {
     for (const dirent of readDirectorySyncRuntime(sessionsRoot, { withFileTypes: true })) {
       if (!dirent.isDirectory()) continue;
+      // omp's artifacts directory for a session is literally the session
+      // file name minus `.jsonl` — it must never be scanned as a project
+      // dir, because its subagent transcripts (`<subagent-id>.jsonl`, e.g.
+      // `CodeQualityReview.jsonl`) are NOT sessions. Real project slugs are
+      // cwd encodings (e.g. `-code-ompweb`, `-private-tmp`) and never match
+      // this timestamp+uuid shape.
+      if (isOmpSessionFileName(dirent.name + ".jsonl")) continue;
       const dirPath = path.join(sessionsRoot, dirent.name);
       let inner: Dirent[];
       try {
@@ -1080,7 +1148,7 @@ function collectSessionFiles(sessionsRoot: string): string[] {
         continue;
       }
       for (const file of inner) {
-        if (file.isFile() && file.name.endsWith(".jsonl")) {
+        if (file.isFile() && (isOmpSessionFileName(file.name) || isSessionHeaderFile(path.join(dirPath, file.name)))) {
           files.push(path.join(dirPath, file.name));
         }
       }
@@ -1089,6 +1157,46 @@ function collectSessionFiles(sessionsRoot: string): string[] {
     return [];
   }
   return files;
+}
+
+/** Accept legacy/imported session files with non-standard names only when
+ * their bounded prefix proves they contain a session header. */
+function isSessionHeaderFile(filePath: string): boolean {
+  try {
+    const fd = openSync(filePath, "r");
+    try {
+      const buffer = Buffer.allocUnsafe(8192);
+      const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+      for (const line of buffer.subarray(0, bytes).toString("utf8").split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        try {
+          const value = JSON.parse(line) as Record<string, unknown>;
+          return value.type === "session" && typeof value.id === "string" && value.id.length > 0;
+        } catch {
+          return false;
+        }
+      }
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+/**
+ * True when a file name matches omp's session naming convention
+ * `<timestamp>_<uuid>.jsonl`. Subagent transcripts and other artifacts
+ * (plain `<name>.jsonl`) do not match, so session listings can exclude them
+ * without touching their actual content.
+ */
+export function isOmpSessionFileName(fileName: string): boolean {
+  // omp session files are `<timestamp>_<uuid>.jsonl`. Both the ISO-dash
+  // form (`2026-08-27T16-58-53-862Z_<uuid>.jsonl`) and the compact form
+  // (`20260103T030000_<uuid>.jsonl`) exist in the wild. Subagent transcripts
+  // and other artifacts never match.
+  return /^(?:\d{4}-\d{2}-\d{2}T\d{2}(?:-\d{2}){2}(?:-\d{3})?Z|\d{8}T\d{6})_[0-9A-Za-z-]+\.jsonl$/.test(fileName);
 }
 
 // ============================================================================

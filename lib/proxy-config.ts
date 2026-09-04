@@ -123,14 +123,16 @@ function readSystemProxy(): Array<{ url: string; source: string }> {
 /** Auto-detect a local proxy: system proxy first, then common local ports. */
 export async function detectProxy(): Promise<ProxyDetection> {
   const candidates: Array<{ url: string; source: string }> = [];
-  for (const entry of readSystemProxy()) {
-    if (await isPortOpen(Number(new URL(entry.url).port))) candidates.push(entry);
-  }
-  for (const port of COMMON_PORTS) {
-    if (await isPortOpen(port)) {
-      const url = `http://127.0.0.1:${port}`;
-      if (!candidates.some((c) => c.url === url)) candidates.push({ url, source: "local-port" });
-    }
+  const systemEntries = readSystemProxy();
+  const systemResults = await Promise.all(systemEntries.map(async (entry) =>
+    (await isPortOpen(Number(new URL(entry.url).port))) ? entry : null,
+  ));
+  candidates.push(...systemResults.filter((entry): entry is { url: string; source: string } => entry !== null));
+  const localResults = await Promise.all(COMMON_PORTS.map(async (port) =>
+    (await isPortOpen(port)) ? `http://127.0.0.1:${port}` : null,
+  ));
+  for (const url of localResults) {
+    if (url && !candidates.some((c) => c.url === url)) candidates.push({ url, source: "local-port" });
   }
   const manual = readProxyConfig();
   let manualReachable = false;

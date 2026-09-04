@@ -1,24 +1,23 @@
 {
-  "comment": "Legacy direct /api fetch + EventSource call sites (5.0 doc 01 Slice 1). Counts are enforced against the live tree by lib/api-inventory.test.mjs \u2014 regenerate with: node scripts/audit-client-api.mjs --update-allowlist. Files leave this list only by migrating to lib/client adapters. W1 note: lib/client adapter files themselves will be exempted via a dedicated 'adapters' section once Slice 2 lands; UI components never get exempted.",
+  "comment": "Legacy direct /api fetch + EventSource call sites (5.0 doc 01 Slice 1). Counts are enforced against the live tree by lib/api-inventory.test.mjs — regenerate with: node scripts/audit-client-api.mjs --update-allowlist. Files leave this list only by migrating to lib/client adapters.",
   "files": {
     "app/remote/page.tsx": 1,
     "components/AgentsConfig.tsx": 5,
-    "components/AppShell.tsx": 9,
+    "components/AppShell.tsx": 8,
     "components/ArchiveBrowser.tsx": 2,
-    "components/BackendDiagnostics.tsx": 3,
+    "components/BackendDiagnostics.tsx": 7,
     "components/ChatInput.tsx": 4,
     "components/ChatWindow.tsx": 2,
-    "components/CommandPalette.tsx": 1,
     "components/DirectoryPicker.tsx": 1,
     "components/FileExplorer.tsx": 4,
     "components/FileViewer.tsx": 7,
-    "components/GitHubStatusPanel.tsx": 1,
     "components/LoginForm.tsx": 1,
     "components/McpConfig.tsx": 5,
     "components/MessageView.tsx": 2,
     "components/ModelCatalogPicker.tsx": 1,
     "components/ModelsConfig.tsx": 18,
     "components/NetworkProxyConfig.tsx": 2,
+    "components/OmpSetupWizard.tsx": 1,
     "components/PluginsConfig.tsx": 3,
     "components/RemoteAccessSetting.tsx": 7,
     "components/SessionSidebar.tsx": 20,
@@ -29,6 +28,7 @@
     "components/UpdateNoticeDialog.tsx": 1,
     "components/UsageSidebarPanel.tsx": 2,
     "hooks/useAgentSession.ts": 15,
-    "lib/agent-client.ts": 1
+    "lib/agent-client.ts": 1,
+    "lib/client/http-sse-adapter.ts": 3
   }
 }

@@ -1,12 +1,18 @@
 "use client";
 
 import { LockKeyhole } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { removeBootSkeleton } from "@/lib/boot-skeleton";
 
 export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    // /login renders without AppShell — clear the pre-hydration skeleton.
+    removeBootSkeleton();
+  }, []);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

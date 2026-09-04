@@ -8,15 +8,9 @@ import type { ActiveGoal, ActivePlan } from "@/lib/web-mode-state";
 import { formatGoalElapsed } from "@/lib/web-mode-state";
 import { toast } from "@/components/ui/toast";
 import { formatCompactNumber } from "@/lib/format";
-import { clearDraft, getDraft, setDraft, type ChatDraftFile, type ChatDraftImage } from "@/lib/draft-store";
+import { clearDraft, getDraft, setDraft, type ChatDraftImage } from "@/lib/draft-store";
 import { WEB_SLASH_COMMANDS, expandWebSlashCommand, extractSlashQuery, type SlashQueryMatch } from "@/lib/web-slash-commands";
 import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
-import {
-  composeMessageWithTextAttachments,
-  MAX_ATTACHED_TEXT_BYTES,
-  MAX_ATTACHED_TEXT_FILES,
-  type AttachedTextFileData,
-} from "@/lib/chat-attachments";
 import {
   MAX_ATTACHED_IMAGE_BYTES,
   MAX_ATTACHED_IMAGES,
@@ -36,8 +30,6 @@ export interface AttachedImage {
   mimeType: string;
   previewUrl: string; // object URL for display
 }
-
-export type AttachedTextFile = AttachedTextFileData;
 
 interface ModelOption {
   provider: string;
@@ -218,19 +210,6 @@ function draftImagesToAttachedImages(images: ChatDraftImage[] | undefined): Atta
     .filter(isBase64ImageWithinLimits)
     .slice(0, MAX_ATTACHED_IMAGES)
     .map(draftImageToAttachedImage);
-}
-function textFileToDraftFile(file: AttachedTextFile): ChatDraftFile {
-  return { name: file.name, mimeType: file.mimeType, content: file.content, size: file.size };
-}
-
-function draftFilesToAttachedFiles(files: ChatDraftFile[] | undefined): AttachedTextFile[] {
-  return (files ?? [])
-    .filter((file) => typeof file.name === "string"
-      && typeof file.mimeType === "string"
-      && typeof file.content === "string"
-      && Number.isFinite(file.size)
-      && file.size <= MAX_ATTACHED_TEXT_BYTES)
-    .slice(0, MAX_ATTACHED_TEXT_FILES);
 }
 
 function revokeImagePreview(image: AttachedImage): void {
@@ -443,12 +422,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
-  const [attachedTextFiles, setAttachedTextFiles] = useState<AttachedTextFile[]>(() => (
-    draftKey ? draftFilesToAttachedFiles(getDraft(draftKey)?.files) : []
-  ));
   const [attachError, setAttachError] = useState<string | null>(null);
   const trimmedValue = value.trimStart();
-  const bashMode = attachedImages.length === 0 && attachedTextFiles.length === 0 && trimmedValue.startsWith("!");
+  const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
   const bashExcluded = bashMode && trimmedValue.startsWith("!!");
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
@@ -479,15 +455,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const draftKeyRef = useRef(draftKey);
   const valueRef = useRef(value);
   const attachedImagesRef = useRef(attachedImages);
-  const attachedTextFilesRef = useRef(attachedTextFiles);
   // Bumped whenever the user clears/sends the composer: in-flight FileReader
-  // and file.text() reads must not re-append their results afterwards.
+  // reads must not re-append their results afterwards.
   const attachmentRevisionRef = useRef(0);
   const pendingImageCountRef = useRef(0);
-  const pendingTextFileCountRef = useRef(0);
   valueRef.current = value;
   attachedImagesRef.current = attachedImages;
-  attachedTextFilesRef.current = attachedTextFiles;
 
   useImperativeHandle(ref, () => ({
     insertIfEmpty(text: string) {
@@ -551,6 +524,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     },
   }));
 
+
   const processImageFiles = useCallback(async (files: File[]) => {
     const remaining = Math.max(
       0,
@@ -612,71 +586,46 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     }
   }, []);
 
-  const processTextFiles = useCallback(async (files: File[]) => {
-    const remaining = Math.max(
-      0,
-      MAX_ATTACHED_TEXT_FILES - attachedTextFilesRef.current.length - pendingTextFileCountRef.current,
-    );
-    const textFiles = files
-      .filter((file) => file.size <= MAX_ATTACHED_TEXT_BYTES)
-      .slice(0, remaining);
-    if (!textFiles.length) {
-      if (files.length > 0) {
-        setAttachError(
-          remaining === 0
-            ? `Maximum of ${MAX_ATTACHED_TEXT_FILES} text files reached.`
-            : `${files.length} file(s) skipped: files up to ${Math.round(MAX_ATTACHED_TEXT_BYTES / 1024)} KB are supported.`,
-        );
-      }
-      return;
-    }
-    const revision = attachmentRevisionRef.current;
-    pendingTextFileCountRef.current += textFiles.length;
-    try {
-      const readFiles = await Promise.all(
-        textFiles.map(async (file): Promise<AttachedTextFile> => ({
-          name: file.name,
-          mimeType: file.type,
-          content: await file.text(),
-          size: file.size,
-        })),
-      );
-      // The composer was cleared/sent while the reads were in flight —
-      // drop the batch instead of re-appending stale attachments.
-      if (attachmentRevisionRef.current !== revision) return;
-      // Binary content cannot be inlined into the prompt: NUL bytes, or
-      // U+FFFD replacement characters left by mis-decoded binary (e.g.
-      // UTF-16 text read as UTF-8).
-      const newFiles = readFiles.filter(
-        (file) => !file.content.includes("\u0000") && !file.content.includes("\uFFFD"),
-      );
-      const skipped = textFiles.length - newFiles.length;
-      setAttachedTextFiles((prev) => [
-        ...prev,
-        ...newFiles.slice(0, Math.max(0, MAX_ATTACHED_TEXT_FILES - prev.length)),
-      ]);
-      if (skipped > 0) {
-        setAttachError(`${skipped} file(s) skipped: binary or non-text files cannot be attached.`);
-      } else {
-        setAttachError(null);
-      }
-    } catch {
-      setAttachError("One or more files could not be read. Try a different file.");
-    } finally {
-      pendingTextFileCountRef.current -= textFiles.length;
-    }
-  }, []);
+  // 拖入/选择的普通文件：只插入路径文本（桌面端经 preload 取真实绝对路径，
+  // 浏览器回退文件名），不读取内容、无大小限制——agent 用自己的工具读文件。
+  function resolveDroppedFilePath(file: File): string {
+    const desktop = (window as { ompWebDesktop?: { getPathForFile?: (file: File) => string } }).ompWebDesktop;
+    const path = desktop?.getPathForFile?.(file) ?? (file as { path?: unknown }).path;
+    return typeof path === "string" && path.length > 0 ? path : file.name;
+  }
+
+  function quotePathIfNeeded(path: string): string {
+    return /[\s"\\]/.test(path) ? `"${path.replace(/"/g, '\\"')}"` : path;
+  }
+
+  const insertFilePaths = useCallback((files: File[]) => {
+    const paths = files.map((file) => quotePathIfNeeded(resolveDroppedFilePath(file))).filter(Boolean);
+    if (paths.length === 0) return;
+    const ta = textareaRef.current;
+    const caret = ta?.selectionStart ?? value.length;
+    const text = `${paths.join(" ")} `;
+    const newValue = `${value.slice(0, caret)}${text}${value.slice(caret)}`;
+    setValue(newValue);
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      const pos = caret + text.length;
+      ta.setSelectionRange(pos, pos);
+    });
+  }, [value]);
 
   const processFiles = useCallback((files: File[]) => {
-    if (isStreaming) {
-      setAttachError("Attachments are disabled while the agent is running.");
-      return;
-    }
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
     const otherFiles = files.filter((file) => !file.type.startsWith("image/"));
-    void processImageFiles(imageFiles);
-    void processTextFiles(otherFiles);
-  }, [isStreaming, processImageFiles, processTextFiles]);
+    // 普通文件只插路径，任何时刻都允许（不影响运行中的 agent）。
+    if (otherFiles.length > 0) insertFilePaths(otherFiles);
+    if (imageFiles.length > 0) {
+      if (isStreaming) {
+        setAttachError("Attachments are disabled while the agent is running.");
+        return;
+      }
+      void processImageFiles(imageFiles);
+    }
+  }, [isStreaming, processImageFiles, insertFilePaths]);
 
   const removeImage = useCallback((index: number) => {
     setAttachedImages((prev) => {
@@ -688,20 +637,11 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     setAttachError(null);
   }, []);
 
-  const removeTextFile = useCallback((index: number) => {
-    setAttachedTextFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
-    setAttachError(null);
-  }, []);
-
   const clearImages = useCallback(() => {
     setAttachedImages((prev) => {
       prev.forEach(revokeImagePreview);
       return [];
     });
-  }, []);
-
-  const clearTextFiles = useCallback(() => {
-    setAttachedTextFiles([]);
   }, []);
 
   const clearInput = useCallback(() => {
@@ -712,22 +652,20 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     if (draftKey) clearDraft(draftKey);
     if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
     clearImages();
-    clearTextFiles();
     // Invalidate any attachment reads still in flight.
     attachmentRevisionRef.current += 1;
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [clearImages, clearTextFiles, draftKey]);
+  }, [clearImages, draftKey]);
 
   useEffect(() => {
     if (!draftKey || draftKeyRef.current !== draftKey) return;
     setDraft(draftKey, {
       value,
       images: attachedImages.map(imageToDraftImage),
-      files: attachedTextFiles.map(textFileToDraftFile),
     });
-  }, [attachedImages, attachedTextFiles, draftKey, value]);
+  }, [attachedImages, draftKey, value]);
 
   useEffect(() => {
     const previousDraftKey = draftKeyRef.current;
@@ -737,7 +675,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       setDraft(previousDraftKey, {
         value: valueRef.current,
         images: attachedImagesRef.current.map(imageToDraftImage),
-        files: attachedTextFilesRef.current.map(textFileToDraftFile),
       });
     }
 
@@ -751,7 +688,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       prev.forEach(revokeImagePreview);
       return draftImagesToAttachedImages(draft?.images);
     });
-    setAttachedTextFiles(draftFilesToAttachedFiles(draft?.files));
   }, [draftKey]);
 
   useEffect(() => {
@@ -769,20 +705,19 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
 
   const handleSend = useCallback(async () => {
     const msg = value.trim();
-    if (!msg && !attachedImages.length && !attachedTextFiles.length) return;
+    if (!msg && !attachedImages.length) return;
     if (isStreaming) return;
     onAudioUnlock?.();
-    const composedMessage = composeMessageWithTextAttachments(msg, attachedTextFiles);
-    if (!attachedImages.length && !attachedTextFiles.length && msg.startsWith("/") && onBuiltinCommand) {
+    if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
       const result = await onBuiltinCommand(msg);
       if (result.handled) {
         if (!result.error && !result.retainInput) clearInput();
         return;
       }
     }
-    onSend(composedMessage, attachedImages.length ? attachedImages : undefined);
+    onSend(msg, attachedImages.length ? attachedImages : undefined);
     clearInput();
-  }, [value, attachedImages, attachedTextFiles, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   // Slash token follows the caret, not the input start: typing a slash after
   // real text must still open the palette (see extractSlashQuery).
@@ -1069,8 +1004,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
 
   const sendQueued = useCallback((mode: "steer" | "followup") => {
     const msg = value.trim();
-    if (!msg && !attachedImages.length && !attachedTextFiles.length) return;
-    if (attachedImages.length || attachedTextFiles.length) return;
+    if (!msg && !attachedImages.length) return;
+    if (attachedImages.length) return;
     onAudioUnlock?.();
     const streamingBehavior = mode === "steer" ? "steer" : "followUp";
     if (msg.startsWith("/") && onPromptWithStreamingBehavior) {
@@ -1108,7 +1043,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       onFollowUp(msg, attachedImages.length ? attachedImages : undefined);
     }
     clearInput();
-  }, [value, attachedImages, attachedTextFiles, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t, advisorEnabled]);
+  }, [value, attachedImages, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t, advisorEnabled]);
   // Stop must stay reachable WHILE a run is active: the primary button is
   // always Stop when streaming (queued follow-ups are still submitted via
   // Enter / the queued-follow-up bar). Previously a typed message replaced
@@ -1117,7 +1052,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     !isStreaming
     && Boolean(value.trim())
     && attachedImages.length === 0
-    && attachedTextFiles.length === 0
     && Boolean(onFollowUp);
 
   // ── Queued follow-up bar ────────────────────────────────────────────────
@@ -1625,63 +1559,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
-                >
-                  <svg width="9" height="9" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <line x1="1" y1="1" x2="7" y2="7" /><line x1="7" y1="1" x2="1" y2="7" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        {attachedTextFiles.length > 0 && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-            {attachedTextFiles.map((file, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex", alignItems: "center", gap: 7,
-                  maxWidth: 260, height: 30,
-                  padding: "0 6px 0 9px",
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  background: "var(--bg-panel)",
-                  fontSize: 12,
-                  color: "var(--text)",
-                }}
-              >
-                <span style={{ flexShrink: 0, display: "flex", color: "var(--text-muted)" }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                    <polyline points="14 2 14 8 20 8" />
-                  </svg>
-                </span>
-                <span
-                  title={file.name}
-                  style={{
-                    minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    fontFamily: "var(--font-mono)", fontSize: 11.5,
-                  }}
-                >
-                  {file.name}
-                </span>
-                <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-dim)" }}>
-                  {file.size < 1024 ? `${file.size} B` : `${Math.round(file.size / 1024)} KB`}
-                </span>
-                <button
-                  onClick={() => removeTextFile(i)}
-                  title="Remove file"
-                  aria-label="Remove file"
-                  style={{
-                    flexShrink: 0, width: 18, height: 18,
-                    borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "transparent", border: "none",
-                    cursor: "pointer", padding: 0, color: "var(--text-muted)",
-                    transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "transparent"; }}
                 >
                   <svg width="9" height="9" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <line x1="1" y1="1" x2="7" y2="7" /><line x1="7" y1="1" x2="1" y2="7" />
@@ -2310,7 +2187,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 width: 28, height: 28, padding: 0,
                 background: "none", border: "none",
                 borderRadius: 7,
-                color: (attachedImages.length || attachedTextFiles.length) ? "var(--accent)" : "var(--text-muted)",
+                color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
                 cursor: isStreaming ? "not-allowed" : "pointer",
                 opacity: isStreaming ? 0.5 : 1,
                 transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
@@ -2318,11 +2195,11 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               onMouseEnter={(e) => {
                 if (isStreaming) return;
                 e.currentTarget.style.background = "var(--bg-hover)";
-                e.currentTarget.style.color = (attachedImages.length || attachedTextFiles.length) ? "var(--accent)" : "var(--text)";
+                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = "none";
-                e.currentTarget.style.color = (attachedImages.length || attachedTextFiles.length) ? "var(--accent)" : "var(--text-muted)";
+                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text-muted)";
               }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -2694,19 +2571,19 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={!value.trim() && !attachedImages.length && !attachedTextFiles.length}
+                disabled={!value.trim() && !attachedImages.length}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   height: 28,
                   padding: "0 14px",
-                  background: (value.trim() || attachedImages.length || attachedTextFiles.length) ? "var(--accent-strong)" : "var(--bg-panel)",
+                  background: (value.trim() || attachedImages.length) ? "var(--accent-strong)" : "var(--bg-panel)",
                   border: "none",
                   borderRadius: 8,
-                  color: (value.trim() || attachedImages.length || attachedTextFiles.length) ? "var(--on-accent)" : "var(--text-dim)",
-                  cursor: (value.trim() || attachedImages.length || attachedTextFiles.length) ? "pointer" : "not-allowed",
+                  color: (value.trim() || attachedImages.length) ? "var(--on-accent)" : "var(--text-dim)",
+                  cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
                   fontSize: 12,
                   fontWeight: 600,
-                  boxShadow: (value.trim() || attachedImages.length || attachedTextFiles.length) ? "var(--shadow-card)" : "none",
+                  boxShadow: (value.trim() || attachedImages.length) ? "var(--shadow-card)" : "none",
                   transition: "background var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm)",
                 }}
               >

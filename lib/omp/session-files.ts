@@ -22,6 +22,7 @@ import * as fsRuntime from "fs";
 import * as path from "path";
 import { StringDecoder } from "string_decoder";
 import { gunzipSync, gzipSync } from "zlib";
+import { recordBackendError } from "../backend-errors";
 import { isRecord } from "../type-guards";
 
 // Keep user-session directory traversal out of Next's static NFT globbing.
@@ -1020,8 +1021,9 @@ function scanSessionInfoCached(filePath: string): OmpSessionInfo | undefined {
 export async function listAllSessionInfos(): Promise<OmpSessionInfo[]> {
   const sessionsRoot = getSessionsDir();
   // R10 read path: the Rust host is the session-projection authority when the
-  // Rust backend is active (default). The Node scanner remains the explicit
-  // fallback — visible via OMPWEB_BACKEND=node, never silent.
+  // Rust backend is active (default). Phase 1 "No Hidden Fallback": a failed
+  // scan is a recorded, structured error — the Node scanner only runs in the
+  // explicit OMPWEB_BACKEND=node rollback mode, never as a silent fallback.
   if (process.env.OMPWEB_BACKEND !== "node") {
     try {
       // Route 2 (doc 16): the host is reachable only through the typed
@@ -1043,9 +1045,12 @@ export async function listAllSessionInfos(): Promise<OmpSessionInfo[]> {
       sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
       return sessions;
     } catch (error) {
-      // Rust projection unavailable (host crash, IPC failure): degrade to the
-      // Node scanner loudly, never silently.
-      console.warn("[ompweb] Rust session scan failed, falling back to Node scanner:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      recordBackendError("session_scan_failed", `Rust session scan failed: ${message}`);
+      const sourceCode = (error as { code?: unknown } | null)?.code;
+      throw Object.assign(new Error(`Rust session service unavailable: ${message}`), {
+        code: typeof sourceCode === "string" ? sourceCode : "session_scan_failed",
+      });
     }
   }
   const files = await listSessionFiles(sessionsRoot);

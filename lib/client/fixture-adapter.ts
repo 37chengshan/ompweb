@@ -165,10 +165,29 @@ export function createFixtureClient(initialSessions: SessionInfo[] = []): { clie
       }
       return { branch: "fixture-branch" };
     },
+    async branches() {
+      return [{ name: "fixture-branch", current: true }, { name: "main", current: false }];
+    },
+    async checkout() {
+      return { branch: "fixture-branch" };
+    },
+  };
+
+  // Fixture native settings: no network — render tests only need the surface.
+  const nativeSettings = {
+    async list() {
+      return { settings: [], path: null };
+    },
+    async set() {
+      return { ok: true };
+    },
+    async reset() {
+      return { ok: true };
+    },
   };
 
   return {
-    client: { agent, sessions: sessionApi, system, git },
+    client: { agent, sessions: sessionApi, system, git, nativeSettings },
     fixtures,
   };
 }

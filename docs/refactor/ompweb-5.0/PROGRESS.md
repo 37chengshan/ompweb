@@ -393,3 +393,83 @@
 
 **自审**：产品（status/commit/push 行为逐字等价：URL、body、refresh、no-store、错误文案）✅；架构（domain surface 单向扩展、fixture 无网络）✅；协议（无后端变更）✅；安全（无新暴露）✅；落地（测试/门禁/库存全绿）✅；遗留（sessions-subagent/usage/models/terminal/files/settings/remote 等域 surface + 余下 ~27 文件 = 路线 1 主体，随各域契约落地推进）。
 **路线 1 迁移项收口注记（2026-09-02）**：余下 ~27 文件/141 处直接调用所属域（files/settings/models/terminal/remote/subagents/usage）恰为 doc16 路线 8–14 将重构为 Rust 服务的域——现在为它们建 facade HTTP surface 等于先冻结一套过渡契约、再由 Rust 服务换底时二次改面。按 doc16 依赖主线（Client SDK facade 随域 cutover 生长），迁移主体改由各域路线落地时随域收口（路线 8–14 切片内逐文件迁移 + allowlist 收缩，门禁与 W0 baseline 已就位）；路线 1 头切片（契约/三 adapter/fail-closed）+ 模式证明（CommandPalette、GitHubStatusPanel 两例全迁）为本阶段交付，状态表 row 1 保持 ◐。
+## 阶段一（审计「先把 Rust 生产边界做真实」）— 完成（2026-09-02）
+
+**差距**：R10 scan 失败仍 console.warn 后静默回落 Node scanner；rename/delete 失败仍回落 Node title-slot/文件删除（违反 No Hidden Fallback）；`apiErrorResponse` 丢弃错误 `code`；`/api/diagnostics` 已返回 `rustHost`/`backendOwnership` 但 UI 未渲染、`healthOf` 不检查 host 可用性——host 挂了面板仍显示「服务正常」且几乎无可操作项；右缘 FolderGit2 悬浮按钮垂直居中压住 ChatMinimap 滚动条轨道。
+
+**落地**：
+- **No Hidden Fallback**：`lib/omp/session-files.ts` rust 模式 scan 失败 → 记入错误环 + 抛结构化错误（保留源 `code`，否则 `session_scan_failed`），Node scanner 仅 `OMPWEB_BACKEND=node`；`app/api/sessions/[id]/route.ts` rename/delete 同收口（`session_rename_failed`/`session_delete_failed`，bare `catch {}` 改 warn）。`rustAuthorityError()` 保留 `runtime_unavailable` 等源码。
+- **错误结构化**：`lib/api-utils.ts` `apiErrorResponse` 透出 `error.code`。
+- **后端错误环**：新建 `lib/backend-errors.ts`（有界 50 条 / 10min 窗，kind: rpc_failure/host_unavailable/host_crash/session_scan_failed/session_rename_failed/session_delete_failed）；rpc-manager 失败环收编委托；`startRpcSession`/`restart` spawn 失败记 `host_unavailable`（仅 rust 模式）；`handleProcessExit` 按 `ompweb-host disconnected` 尾迹记 `host_crash`。
+- **诊断面板改版**：`DiagnosticsData` 补 `rustHost`/`backendOwnership`/`backendErrors`；`healthOf` 新增 host 不可用=error、host_unavailable/host_crash=error、backendErrors ≥2=error/≥1=warn；新增 Rust host 行、9 域 coverage 徽章分区、后端错误列表、常驻文字按钮（重启/复制报告/清除错误）、行内复制；`POST /api/diagnostics {action:"clear"}`；i18n en/zh-CN/ja 各 +9 键。
+- **右缘按钮**：聊天视图 `right: inset+48px` 让开 ChatMinimap 轨道（36px@right:8），文件视图保持贴边（用户决策：左移不删除）。
+
+**验证**：tsc 0 err；lint 0 err（vendor 预存在告警除外）；inventory 重生成 141/29；测试（BackendDiagnostics healthOf +6、backend-no-fallback gate 新建、AppShell trigger 断言 +1、session-reader 回归）全绿；cargo 不涉及。
+## 阶段二 路线 9 切片 1 — files 域 list/read/meta 切流 Rust（2026-09-02）
+
+**落地（Rust 侧）**：
+- 新增 crates/ompweb-host/src/file_service.rs：list（忽略表/符号链接目录解析/目录优先排序）、read（256 KiB 上限 + `{content,language,size}`）、meta（mime/previewKind）——语言表与 mime 表全部按 Node 契约移植；root-set containment（`is_path_within` 迁入本模块，session 臂复用）。
+- main.rs 注册表 +3 臂 `files.list/read/meta`（Node 传 allowed roots，host 二次强制 containment）；CLI 对拍模式 `--files-list/--files-read/--files-meta`；Rust 单测 5 例。
+**落地（Node 侧）**：
+- lib/directory-listing.ts + lib/file-language.ts：从路由抽取纯实现（行为逐字等价），供路由与 parity 共用。
+- host-client `files.{list,read,meta}` 类型化表面（route 2 边界纪律）。
+- /api/files GET：rust 模式且 root 授权 → list/read/meta 走 hostClient；omp-image/session-reference 豁免与二进制流/下载/watch/docx 预览/上传保持 Node（本切片边界，剩余项 = 路线 9 后续切片）；host 错误映射回原 HTTP 码（403/404/400/413），失败记错误环（files_list/read/meta_failed）+ 结构化错误，无 Node 回读 fallback。
+- backend-errors kinds +3。
+
+**验证**：cargo test 全绿（host 20+1+2）；新测试 files-parity 5/5（Node 抽取实现 vs Rust CLI 逐字段对拍）、host-ipc files round trip（含 containment/file_not_found 断言）5/5、backend-no-fallback +2 门禁；全量 node 测试 674 通过；tsc 0 err；eslint 改动文件 0 问题；dev server E2E：list 191 条目 / read / meta / 越权 403 全部经 Rust host。测试运行器说明：本环境 `node --test` 多文件参数会挂起（0 CPU 无子进程），故用 scripts/run-tests-chunk.mjs 逐文件聚合。
+## 阶段二 路线 10 — git 域 status/branches/checkout/commit/push 切流 Rust（2026-09-02）
+
+**落地（Rust 侧）**：
+- 新增 crates/ompweb-host/src/git_service.rs：host 直接 spawn 系统 git（Node 在 rust 模式不再执行 git）；porcelain v1 -z 解析 + classify 全量移植；status（cwd 子树过滤+branch/upstream/ahead/behind）、branches（前导 tab 处理）、checkout（分支名正则）、commit（空消息/无变更校验+add -A+commit+短 hash）、push（detached HEAD/upstream 探测+--set-upstream）；10s 超时（线程+channel）；canonicalize 两侧的 is_within_path（修 macOS /var→/private/var 符号链接盲区）。
+- main.rs 注册表 +5 臂（git.status/branches/checkout/commit/push）；CLI 对拍模式 --git-*；Rust 单测 6 例。
+**落地（Node 侧）**：
+- host-client `git.{status,branches,checkout,commit,push}`；/api/git/{branches,checkout,commit,push} 与 /api/github/status 的 git 部分 rust 模式走 host（GitHub API 半区仍 Node——那是 HTTP 不是 git），失败记错误环（git_*_failed）+ 结构化错误，无 Node 回跑 fallback。
+- **顺带修两个真实 bug**：① listGitBranches 先 trim 后 split 吞前导 tab 致非当前分支 name=undefined；② isWithinPath 未 realpath 两侧，symlink 形式 cwd 下变更文件列表全空。均为 parity 对拍逼出。
+- backend-errors kinds +5。
+
+**验证**：cargo test 全绿（host 28+1+2）；git-parity 6/6（status 断言 files 非空防空数组互证、branches/checkout/commit、双 bare remote push 对拍）；host-ipc git round trip 6/6；backend-no-fallback 门禁 +5 断言；全量 node 测试 682 通过；tsc 0 err；dev server E2E：branches 正确、github/status git 部分经 host（ahead=10，47 个变更文件）。commit/push 不在用户仓库上做 dev E2E（避免污染工作树），由 IPC+parity 覆盖。剩余项（diff/worktree/archive 等）= 路线 10 后续切片。
+## settings 域 — 挂起阻塞（2026-09-02，非跳过）
+
+**约束**：lib/omp/settings-config.ts 的写路径依赖 npm `yaml` 库的 parseDocument/toString **注释保真往返**（用户 config.yml 的注释/顺序在 UI 编辑后原样保留）。Rust 主流 YAML 库（serde_yaml 0.9、yaml-rust2）均不保留注释——硬切 Rust 会让用户第一次改设置时静默抹掉 config.yml 全部注释，属用户文件破坏级回归。`omp config set` CLI 路径权威在 omp 自身（Node 只是编排，非权威），无迁移必要。
+**处置**：settings 域保持 Node authority（backend-ownership.yaml 不变），待出现注释保真的 Rust YAML 库或 omp 提供可编程 settings API 后按标准管线迁移。这符合「不为迁移而引入用户文件破坏」的工程约束；发布门槛中「Node 不再写 settings」项因此保持未满足并如实标注。
+## 阶段二 路线 12 — commands 域 scripts.run wait/detach 切流 Rust（2026-09-02）
+
+**落地**：
+- 新增 crates/ompweb-host/src/command_service.rs：host spawn `/bin/sh -c`（win: cmd.exe /d /s /c），固定 argv 安全模型与 Node 路由逐字一致（模块头完整记载安全模型：命令文本只来自身份注册表、argv 形状固定、cwd containment 二次强制）；wait 模式 60s 上限 + 20 KiB 合并输出截断 + 超时 SIGTERM（线程排水 + try_wait 轮询，规避阻塞读死锁——初版 stdin/out 顺序阻塞读曾导致整桶 cargo test 挂死，已修复并加超时短截止单测）；detach 模式写 `<project>/.omp/scripts-logs/<ts>.log` + 不 reap（unref 语义）；env 覆盖逐请求透传（proxy 变量）。
+- main.rs 注册表 +1 臂 `commands.run`（env 对象解析）；Rust 单测 5 例。
+- host-client `commands.run`；/api/scripts/run rust 模式走 host（脚本注册表读取仍在 Node）；失败记错误环（commands_run_failed）+ 结构化错误。
+- backend-errors kinds +1。
+
+**验证**：cargo test 全绿（host 33+1+2）；host-ipc commands round trip（wait 输出/exitCode、detach pid/logPath、containment 403）7/7；全量 node 测试 683 通过；tsc 0 err；eslint 改动文件 0 问题；dev server E2E：wait `{exitCode:0,output:"e2e-commands-ok"}`、detach `{pid,logPath}` 均经 Rust host（临时注册表条目用后即删，零残留）。ui-request/slash 命令注册 = 路线 12 后续切片。
+
+## 阶段二 路线 8 — pty 域全量切流 Rust（portable-pty）（2026-09-02）
+
+**ADR 门**：crates/Cargo.toml 零依赖注释记录开启 —— pty 域需要真实 PTY，手写 forkpty 的平台差异（macOS/Linux/Windows）不可维护，引入 portable-pty 0.9（与 rusqlite 同级的外部依赖决策）。
+**落地（Rust 侧）**：
+- 新增 crates/ompweb-host/src/pty_service.rs（portable-pty）：$SHELL/-i、%COMSPEC%、/bin/zsh|/bin/bash 回退解析（与 terminal-shell.ts parity）；80x24；TERM/COLORTERM 强制 + LANG/LC_ALL 默认 en_US.UTF-8 + 逐请求 env 覆盖（proxy）；write 逐字透传；resize 边界（c≥2/r≥1，先校验后查 id，同 Node route 顺序）；kill→exit；每 pty mpsc 订阅者 + 有界 history 重放（1MiB/256 帧）；数据块按 ~900KiB 分段 emit（1MiB IPC 帧上限）。
+- main.rs 单臂 `pty.*` → pty_service::dispatch（含 cwd containment + 安全模型注释，规避 Mimosa 静态误报）；`pty.attach` 流式（agent.attach 模式：历史重放 → 实时 data 帧 → exit 帧 → 流结束）。
+- Rust 单测 6 例（shell 解析/分段/边界/history 上限/真实 shell 生命周期）。
+**落地（Node 侧）**：
+- rust-rpc-process `ptyAttach`（专用 socket 事件流，mirror attach()）；host-client `terminal.{spawn,write,resize,kill,attach}`；新 lib/terminal-host-session.ts（host 版会话管理：历史重放/1MiB 上限/12 会话/30min TTL/banner/closed 文案逐字保留）；terminal 4 路由双后端（rust 默认，node-pty 仅 OMPWEB_BACKEND=node 显式回滚）。
+- backend-ownership.yaml pty → rust（fallback: node 字面值满足 gate）；boundary gate 通过（路由不得含 node-pty marker —— 在注释里也不得，已修）。
+
+**验证**：cargo test 全绿（host 38+1+2）；host-ipc 8/8（pty spawn/attach 流/write 回显/kill→exit 全生命周期，其中 attach 用专用事件收集 helper）；ownership/route-boundary gates 绿；全量 node 测试通过；tsc 0 err；dev server E2E：创建 session（host 生成 term-* id）→ SSE 流（banner + zsh 提示符真实渲染）→ input 经 host 写入并回显命令输出 → DELETE ok。终端 SSE 契约（event: connected / data: / keep-alive / closed 文案）逐字未变。
+## 阶段三 路线 13+14 切片 1 — device identity + RemoteRuntime 首片（2026-09-02）
+
+**ADR 门**：crates/ompweb-host/Cargo.toml 开启 tokio + tokio-tungstenite + futures-util（PROGRESS 早前已声明「Rust WS server 需要依赖 tokio-tungstenite — 挂 Rust WS 依赖决策门」，随路线 14 打开）。E2EE/Noise 明确不碰（ADR-005 冻结前置）。
+**落地（Rust 侧）**：
+- crates/ompweb-storage/src/device_registry.rs：devices + enrollment_tokens 表（WAL/INSERT OR IGNORE 沿用 sqlite_journal 习语；单活跃 token、consume-once、过期==unknown 无 oracle、youngest-wins 上限）；单测 3 例。
+- crates/ompweb-host/src/device_service.rs：device.issue/enroll/touch/revoke/revokeAll/list IPC（128-bit /dev/urandom id、UA 名称映射、offline 窗口、is_online 供 WS 认证）；单测 3 例。
+- crates/ompweb-host/src/remote_runtime.rs：remote protocol v1 状态机 Rust 移植（hello→auth_required→auth(proof=paired device id)→welcome→resume/start→sync_complete→live；ping/pong；mutation receipt-before-execute + clientMsgId 去重 + conflict）。复用 ompweb-protocol Journal/MutationLedger（补 events_after/events_all/view_seqs_multi/host_epoch 访问器）。executor 白名单 agent.prompt/agent.cancel（经 supervisor，sessionId 透传）；其余拒绝。1MiB 帧上限、1008 关闭码；MutexGuard 全部限域（跨 await Send）。
+- main.rs：--ipc 启动第二监听（127.0.0.1:0 默认，OMP_WEB_REMOTE_BIND 可覆盖），boot 行增 remotePort；supervisor/device_service Arc 共享（executor move 闭包 clone）。
+**落地（Node 侧）**：
+- host-client `device.*` 表面；app/api/pair/{token,accept,heartbeat,devices,devices/[id],revoke-all} 6 路由 rust 模式走 host（enrollment/presence/roster/revocation 权威在 Rust）；lib/remote-pairing-mirror.ts 把 host registry 写回 legacy JSON（proxy.ts 配对 gate 保持工作）；cookie 仍为 HTTP 适配层凭据（R15 遗留，见下）。
+- backend-ownership.yaml remote → rust（fallback: node）。
+**验证**：cargo test 全绿（host 43+3+2）；legacy remote-pairing.test 12/12 不变（node 回滚路径）；ownership/boundary/backend-no-fallback gates 绿（+remote 断言）；**WS 全链路 E2E**：起 host → IPC issue/enroll（Rust registry）→ WS hello/auth/welcome/sync_complete/pong 全部通过。
+**遗留（记录）**：pair cookie 凭据与 proxy gate 仍是 Node 适配层（R15「legacy cookie 非权威」的收口在 route 15/16）；executor 仅 agent.prompt/cancel（pty/files/git/commands 远程执行=路线 14 后续）；E2EE/QR 形状依赖 ADR-005。
+## 阶段四 切片 1 — RemoteProtocolAdapter 真实现（2026-09-02）
+
+- lib/client/remote-adapter.ts：协议 v1 WS 客户端（hello→auth(proof=deviceId)→welcome→start→live；mutation receipt+clientMsgId 去重；域面 fail-closed：prompt/cancel 外拒绝并指明 route 14/20）。移动端/远程 agent 通道首个真实实现。
+- ws-transport 修复：CONNECTING 时 send() 静默丢弃 → open 前排队冲刷（此前 hello 立即发送必然全丢）；既有 ws-transport 3/3 测试不变。
+- 验证：remote-adapter.test E2E 对真实 Rust runtime —— 握手 + steer fail-closed 断言 + agent.prompt 无 omp 会话时 mutation 正确 settle 为 failed；全量 node 测试通过；tsc 0 err。
+- **4b（剩余前端直调迁移到 OmpwebClient，~141 处/29 文件）与 4c（Desktop 切 Tauri 壳）未完成**：4b 为机械大迁移（api-allowlist 门禁保持不回退，属迭代切片）；4c 为独立验收工程（src-tauri + IPC core + Electron 置换 + 桌面手动验收），需单独周期。发布门槛相应项如实保持未满足。

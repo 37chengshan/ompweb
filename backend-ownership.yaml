@@ -35,24 +35,33 @@ domains:
       - lib/omp/session-files.ts
     migrate: R7/R10
   pty:
-    authority: node
+    authority: rust
     evidence:
-      - lib/terminal-shell.ts
-      - lib/terminal-session-manager.ts
-    migrate: R11
+      - crates/ompweb-host/src/pty_service.rs
+      - lib/terminal-host-session.ts
+      - app/api/terminal/* (双后端，rust 默认)
+    fallback: node
+    migrate: R11  # 显式回滚 = OMPWEB_BACKEND=node → lib/terminal-session-manager.ts + node-pty
   files:
-    authority: node
+    authority: rust
     evidence:
+      - crates/ompweb-host/src/file_service.rs
       - app/api/files/[...path]/route.ts
       - lib/file-access.ts
-    migrate: R12
+    fallback: node
+    migrate: R12  # list/read(文本≤256KiB)/meta 走 host；显式豁免 Node：二进制流/下载（1MiB IPC 帧上限 + 无二进制通道）、docx preview（mammoth 纯 JS 零 Rust 等价）、multipart upload（Next 层）、SSE watch（流式）——见 file_service.rs 模块头
   git:
-    authority: node
+    authority: rust
     evidence:
-      - app/api/git/*
-      - app/api/worktrees
-      - lib/worktree.ts
-    migrate: R12
+      - crates/ompweb-host/src/git_service.rs
+      - app/api/git/branches/route.ts
+      - app/api/git/checkout/route.ts
+      - app/api/git/commit/route.ts
+      - app/api/git/push/route.ts
+      - app/api/github/status/route.ts
+      - app/api/git/status/route.ts
+    fallback: node
+    migrate: R12  # status/branches/checkout/commit/push/diff 走 host；worktree list/add/remove 显式豁免 Node（编排 in-memory file-root allowlist + 项目缓存，Node 为根集权威）
   settings:
     authority: node
     evidence:
@@ -60,18 +69,21 @@ domains:
       - app/api/omp-settings
     migrate: R13
   commands:
-    authority: node
+    authority: rust
     evidence:
-      - hooks/useAgentSession.ts
-      - app/api/scripts/run
-    migrate: R14
+      - crates/ompweb-host/src/command_service.rs
+      - app/api/scripts/run/route.ts
+    fallback: node
+    migrate: R14  # run wait/detach 走 host；显式豁免 Node：脚本注册表读取（quick scripts 在磁盘由 Node 读）、ui-request 生命周期（omp extension_ui_request 帧流 + React UI 渲染）、slash 注册（权威在 omp get_available_commands，Node 仅转译）——见 command_service.rs 模块头
   remote:
-    authority: node
+    authority: rust
     evidence:
-      - app/api/pair/*
-      - lib/remote-pairing.ts
-      - lib/remote-protocol/*
-    migrate: R15/R16
+      - crates/ompweb-storage/src/device_registry.rs
+      - crates/ompweb-host/src/device_service.rs
+      - crates/ompweb-host/src/remote_runtime.rs
+      - app/api/pair/* (HTTP adapter over device.* IPC)
+    fallback: node
+    migrate: R15/R16  # 显式回滚 + 遗留：pair cookie/HTTP 适配层；E2EE 依赖 ADR-005 冻结
 
 meta:
   version: 1

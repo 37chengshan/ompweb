@@ -26,7 +26,7 @@ v4 规定 5.0.0 stable 必须六条全部成立，当前工作树前五条全部
 | 3 | Mutation Ownership：Prompt/Cancel/Approval/Settings/Commands/PTY/File/Git 修改全经 Rust | ◐ session mutation（rename/delete）经 Rust；Prompt/Cancel/Approval 经 Rust RPC 通道；其余域仍 Node（R11-R23 决策门） |
 | 4 | Remote Ownership：手机正式远控直连 Rust Remote Runtime | ❌ Remote v1 只有 TS 协议层 + 内存 pipe，无真实端点 |
 | 5 | Desktop Node Independence：Node 不存在时 Desktop 完整工作 | ❌ Desktop 启动 `.next/standalone/server.js`，依赖 Node |
-| 6 | No Hidden Fallback：Rust 失败不能静默切回 Node | ✅ 默认 rust；回滚=显式 `OMPWEB_BACKEND=node`；host 缺失大声 console.warn 降级（能力缺失≠静默）；R10 读路径失败显式 warn 回退 |
+| 6 | No Hidden Fallback：Rust 失败不能静默切回 Node | ✅ 默认 rust；回滚=显式 `OMPWEB_BACKEND=node`；host 缺失 fail-closed 抛 `RuntimeUnavailableError`（路线 3，2026-09-02）；R10 scan/rename/delete 隐藏回退已删除（Phase 1，2026-09-02）——rust 模式失败=记入后端错误环+结构化错误，Node 权威仅显式回滚模式可用 |
 
 **一句话判定（2026-08-31 更新）**：3/9 域完成生产切流（agent/event/session，各含 shadow→canary→primary→回滚路径）；「仓库里已经有 Rust」阶段结束，进入「部分 Authority 已切流、剩余域挂决策门」阶段；v4 六条硬性定义：#1 达成、#6 达成、#2/#3 部分、#4/#5 未动。
 

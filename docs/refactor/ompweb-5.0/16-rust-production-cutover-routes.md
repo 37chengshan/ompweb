@@ -18,14 +18,14 @@
 | 4 | 完整接管 Agent | R8（agent=rust） | ◐ 默认 rust 切流（R8.7）✅；**首切片实测发现并修复 --resume 传递缺陷（2026-09-02，P1）**；utility RPC / auth login / env 传递未收口 = 本路线其余切片；Node spawn 删除 = 路线 21 |
 | 5 | Event Authority 迁 Rust | R9（event=rust） | ✅ 切流（attach→SSE adapter）；journal 生产写入 = 路线 6 |
 | 6 | Journal / Snapshot / Resume | R6/R9 | ◐ SQLite journal 端点就绪（append/view）；生产接线、RESUME、client_msg_id 幂等未做 |
-| 7 | Session Authority 迁 Rust | R7/R10（session=rust） | ✅ scan/rename/delete 切流；完整 SessionService（context/tree/blob/archive/search…）未做 |
-| 8 | PTY 迁 Rust | R11（pty=node） | ⬜ node-pty（lib/terminal-shell.ts 等） |
-| 9 | Files 迁 Rust | R12（files=node） | ⬜ app/api/files/* + lib/file-access.ts |
-| 10 | Git 迁 Rust | R12（git=node） | ⬜ app/api/git/*、lib/git-*.ts、lib/worktree.ts |
+| 7 | Session Authority 迁 Rust | R7/R10（session=rust） | ✅ scan/rename/delete 切流；完整 SessionService（context/tree/blob/archive/search…）未做；**Phase 1（2026-09-02）：三处隐藏 Node fallback 已删除**——rust 模式失败=记入 backend-errors 环+结构化错误（`session_scan_failed`/`session_rename_failed`/`session_delete_failed`），Node 权威仅 `OMPWEB_BACKEND=node`；诊断面板显示 rustHost/9 域 coverage/backendErrors |
+| 8 | PTY 迁 Rust | R11（pty=node） | ✅ 全量切流（2026-09-02）：portable-pty（ADR 门开启）+ pty.spawn/write/resize/kill/attach 流式帧 + host 会话管理适配器；node-pty 仅 OMPWEB_BACKEND=node 显式回滚 |
+| 9 | Files 迁 Rust | R12（files=node） | ◐ 切片 1（2026-09-02）：list/read（文本 <256KiB）/meta 切流 Rust host（files.* IPC + HostClient + parity 对拍 + 错误环；二进制流/下载/watch/docx 预览/上传仍 Node = 切片 2+） |
+| 10 | Git 迁 Rust | R12（git=node） | ◐ 切片 1+2（2026-09-02）：status/branches/checkout/commit/push 切流 Rust host（host spawn git + porcelain 移植 + parity 对拍 + 错误环）；diff/worktree/archive 仍 Node（切片 3+） |
 | 11 | Settings 迁 Rust | R13（settings=node） | ⬜ lib/omp/settings-service.ts、app/api/omp-settings |
-| 12 | Commands 迁 Rust | R14（commands=node） | ⬜ toSlashCommandInfo、app/api/scripts/run、ui-request |
-| 13 | 统一 Device Identity | R15（remote=node） | ⬜ ADR-005 冻结（Noise_XX + SAS，Rust snow）；pairing cookie 权威未动 |
-| 14 | Remote 迁 Rust | R16 | ⬜ ws 依赖决策已落（Node 真 WS 端点）；Rust RemoteRuntime 未做 |
+| 12 | Commands 迁 Rust | R14（commands=node） | ◐ 切片 1（2026-09-02）：scripts.run wait/detach 切流 Rust host（同安全模型 argv 固定 + parity + E2E）；ui-request/slash 注册仍 Node（切片 2） |
+| 13 | 统一 Device Identity | R15（remote=node） | ◐ 切片 1（2026-09-02）：device registry + enroll/presence/revoke 迁 Rust（runtime.db devices 表 + device.* IPC）；pair cookie 凭据与 proxy gate 仍为 Node 适配层（R15 收口遗留）；ADR-005 冻结前置未动 |
+| 14 | Remote 迁 Rust | R16 | ◐ 切片 1（2026-09-02）：Rust RemoteRuntime WS 端点（tokio-tungstenite 门开）+ protocol v1 状态机移植 + device-proof 认证 + mutation 框架（agent.prompt/cancel 经 supervisor）；pty/files/git/commands 远程执行与 E2EE = 后续切片 |
 | 15 | 多路径 Remote | 04/05 | ⬜ |
 | 16 | Rust Relay | R17 | ⬜ 行为层 simulator 已落地；真实 relay 未做 |
 | 17 | Headless Rust Host | P3.2 | ◐ ompweb-host 骨架（--ipc/supervisor/journal/session.scan）；完整 Host Runtime 未做 |

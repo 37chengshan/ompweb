@@ -8,6 +8,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useMotionPrefs } from "@/hooks/useMotionPrefs";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
+import { BackendDiagnosticsBody } from "./BackendDiagnostics";
 import { useI18n } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
 
@@ -20,6 +21,7 @@ const SkillsConfig = dynamic(() => import("./SkillsConfig").then((module) => mod
 const PluginsConfig = dynamic(() => import("./PluginsConfig").then((module) => module.PluginsConfig), { loading: SettingsTabLoading, ssr: false });
 const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.McpConfig), { loading: SettingsTabLoading, ssr: false });
 const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading, ssr: false });
+const NativeSettingsPanel = dynamic(() => import("./NativeSettingsPanel").then((module) => module.NativeSettingsPanel), { loading: SettingsTabLoading, ssr: false });
 const RemoteAccessSetting = dynamic(() => import("./RemoteAccessSetting").then((module) => module.RemoteAccessSetting), { loading: SettingsTabLoading, ssr: false });
 import { NetworkProxyConfig } from "./NetworkProxyConfig";
 import { SplashAnimationSetting } from "./SplashAnimationSetting";
@@ -1261,6 +1263,13 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
               </div>
             )}
 
+            {/* OMP NATIVE SETTINGS TAB (schema-driven, via omp CLI) */}
+            {currentTab === "native" && (
+              <div role="tabpanel" id="settings-panel-native" aria-labelledby="settings-tab-native" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+                <NativeSettingsPanel />
+              </div>
+            )}
+
             {/* SYSTEM & UPDATES TAB */}
             {currentTab === "system" && (
               <div role="tabpanel" id="settings-panel-system" aria-labelledby="settings-tab-system" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
@@ -1418,6 +1427,20 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                   </div>
                   {message && <p role="status" style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{message}</p>}
                 </section>
+              </div>
+            )}
+
+            {/* DIAGNOSTICS & RECOVERY TAB */}
+            {currentTab === "diagnostics" && (
+              <div role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
+                <div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>诊断与恢复</h3>
+                  <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>集中检查 OMP、Rust host、会话锁、网络代理和其他 ompweb 实例，并执行安全的恢复操作。</p>
+                </div>
+                <section style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", padding: 10, maxWidth: 560 }}>
+                  <BackendDiagnosticsBody />
+                </section>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>诊断请求不会读取提示词、会话正文或 API 密钥；重启操作只针对当前 ompweb 管理的服务进程。</div>
               </div>
             )}
 

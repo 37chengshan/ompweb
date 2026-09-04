@@ -123,6 +123,10 @@ impl Journal {
         self.tail_buffer_max = max;
     }
 
+    pub fn host_epoch(&self) -> &str {
+        &self.host_epoch
+    }
+
     fn stream(&mut self, id: &str) -> &mut StreamState {
         self.streams.entry(id.to_string()).or_insert_with(StreamState::new)
     }
@@ -266,6 +270,32 @@ impl Journal {
     pub fn view_seqs(&mut self, stream: &str) -> Vec<i64> {
         self.stream(stream).events.iter().map(|e| e.cursor.seq).collect()
     }
+
+    /// Head seq per stream (all streams) — RemoteRuntime sync_complete heads.
+    pub fn view_seqs_multi(&mut self) -> Vec<(String, i64)> {
+        let mut out = Vec::new();
+        for (stream, state) in &mut self.streams {
+            out.push((stream.clone(), state.next_seq - 1));
+        }
+        out
+    }
+
+    /// Events with seq greater than `from_seq`, oldest first — the replay
+    /// source for the RemoteRuntime resume path (protocol v1 snapshot/event
+    /// frames).
+    pub fn events_after(&mut self, stream: &str, from_seq: i64) -> Vec<Event> {
+        self.stream(stream)
+            .events
+            .iter()
+            .filter(|e| e.cursor.seq > from_seq)
+            .cloned()
+            .collect()
+    }
+
+    /// All events of a stream, oldest first (full-snapshot replay).
+    pub fn events_all(&mut self, stream: &str) -> Vec<Event> {
+        self.stream(stream).events.clone()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +344,12 @@ impl MutationLedger {
             retention_ms,
             tick: std::cell::Cell::new(0),
         }
+    }
+
+    /// Set the idempotency retention window (ms). The TS equivalent defaults
+    /// to 24h (lib/continuity/mutations.ts).
+    pub fn set_retention(&mut self, retention_ms: i64) {
+        self.retention_ms = retention_ms;
     }
 
     fn key(device: &str, msg_id: &str) -> String {
@@ -374,9 +410,17 @@ impl MutationLedger {
     }
 
     pub fn settle(&mut self, device: &str, msg_id: &str, status: MutationStatus) {
-        if let Some(entry) = self.entries.get_mut(&MutationLedger::key(device, msg_id)) {
+        let key = MutationLedger::key(device, msg_id);
+        if let Some(entry) = self.entries.get_mut(&key) {
             entry.record.status = status;
         }
+    }
+
+    /// Read the recorded outcome for a duplicate retry (returns None when the
+    /// receipt has aged out — callers then re-issue "unknown").
+    pub fn record(&self, device: &str, msg_id: &str) -> Option<MutationRecord> {
+        let key = MutationLedger::key(device, msg_id);
+        self.entries.get(&key).map(|entry| entry.record.clone())
     }
 
     pub fn expire(&mut self, now: i64) -> usize {

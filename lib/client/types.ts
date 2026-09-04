@@ -91,6 +91,28 @@ export interface GitClient {
   commit(cwd: string, message: string): Promise<{ hash?: string }>;
   /** POST /api/git/push — push current branch; resolves { branch? }. */
   push(cwd: string): Promise<{ branch?: string }>;
+  branches(cwd: string): Promise<{ name: string; current: boolean }[]>;
+  checkout(cwd: string, branch: string): Promise<{ branch?: string }>;
+}
+
+/** One schema-driven native setting (GET /api/native-settings). */
+export interface NativeSettingRow {
+  key: string;
+  value: unknown;
+  type: string;
+  description?: string;
+  redacted?: boolean;
+}
+
+/** Native OMP settings domain (5.1): schema-driven full config via the omp
+ *  CLI, proxied by /api/native-settings. Transport-agnostic like git above. */
+export interface NativeSettingsClient {
+  /** GET /api/native-settings — full schema + configured values. */
+  list(): Promise<{ settings: NativeSettingRow[]; path: string | null }>;
+  /** PUT /api/native-settings — write one key via `omp config set`. */
+  set(key: string, value: unknown): Promise<{ ok: boolean }>;
+  /** POST /api/native-settings — reset one key to OMP's schema default. */
+  reset(key: string): Promise<{ ok: boolean }>;
 }
 
 export interface OmpwebClient {
@@ -98,4 +120,5 @@ export interface OmpwebClient {
   sessions: SessionClient;
   system: SystemClient;
   git: GitClient;
+  nativeSettings: NativeSettingsClient;
 }

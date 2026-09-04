@@ -56,7 +56,16 @@ export function createWsClientTransport(url: string, protocols?: string[]): Mess
   const ws = new globalThis.WebSocket(url, protocols);
   const messageHandlers = new Set<(text: string) => void>();
   const closeHandlers = new Set<() => void>();
+  // Frames sent while the socket is still CONNECTING are queued and flushed
+  // on open (a client that sends hello immediately after construction must
+  // not silently drop the handshake).
+  const preOpenQueue: string[] = [];
+  let preOpen = true;
 
+  ws.addEventListener("open", () => {
+    preOpen = false;
+    for (const text of preOpenQueue.splice(0)) ws.send(text);
+  });
   ws.addEventListener("message", (event) => {
     const text = typeof event.data === "string" ? event.data : String(event.data);
     for (const handler of messageHandlers) handler(text);
@@ -68,6 +77,7 @@ export function createWsClientTransport(url: string, protocols?: string[]): Mess
   return {
     send(text) {
       if (ws.readyState === globalThis.WebSocket.OPEN) ws.send(text);
+      else if (preOpen) preOpenQueue.push(text);
     },
     onMessage(handler) {
       messageHandlers.add(handler);

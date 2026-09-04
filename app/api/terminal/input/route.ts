@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { writeToTerminal } from "@/lib/terminal-session-manager";
+import * as nodeManager from "@/lib/terminal-session-manager";
+import * as hostManager from "@/lib/terminal-host-session";
+import { rustBackendActive } from "@/lib/omp/host-client";
 
 export const dynamic = "force-dynamic";
+
+// Doc 16 route 8: backend-selected like the sibling terminal routes.
+const manager = () => (rustBackendActive() ? hostManager : nodeManager);
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +17,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
     }
 
-    const written = writeToTerminal(id, data);
+    const written = manager().writeToTerminal(id, data);
     return NextResponse.json({ ok: written });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to write input";

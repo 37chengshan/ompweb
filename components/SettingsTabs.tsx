@@ -1,7 +1,7 @@
 "use client";
 
 import { useI18n } from "@/lib/i18n";
-import { Bot, Cable, Cpu, KeyRound, RefreshCw, Settings2, ShieldCheck, Smartphone, Sparkles } from "lucide-react";
+import { Activity, Bot, Cable, Cpu, KeyRound, ListTree, RefreshCw, Settings2, ShieldCheck, Smartphone, Sparkles } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
 
 export type SettingsTab =
@@ -15,8 +15,10 @@ export type SettingsTab =
   | "mcp"
   | "skills"
   | "plugins"
+  | "native"
   | "system"
-  | "remote";
+  | "remote"
+  | "diagnostics";
 
 export interface TabItem {
   id: SettingsTab;
@@ -34,7 +36,9 @@ export const SETTINGS_CATEGORIES: TabItem[] = [
   { id: "intelligence", label: "Agent & Intelligence", description: "Advisor, memory, autolearn, compaction and retry", Icon: Sparkles },
   { id: "agents", label: "Agents", description: "Task agents, model settings, and tool policy", Icon: Bot },
   { id: "mcp", label: "Extensions & Tools", description: "MCP servers, managed skills, and OMP plugins", Icon: Cable },
+  { id: "native", label: "OMP Native Settings", description: "Schema-driven full omp config (all settings, via omp CLI)", Icon: ListTree },
   { id: "system", label: "System & Updates", description: "App updates, runtime version, and active session restart", Icon: RefreshCw },
+  { id: "diagnostics", label: "Diagnostics & Recovery", description: "Service health, session locks, Rust host and repair actions", Icon: Activity },
   { id: "remote", label: "Remote Access", description: "Pair phones/PCs over LAN or a public tunnel", Icon: Smartphone },
 ];
 

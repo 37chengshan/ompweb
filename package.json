@@ -1,6 +1,6 @@
 {
   "name": "@37chengshan/ompweb",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Web UI for the oh-my-pi (omp) coding agent",
   "homepage": "https://github.com/37chengshan/ompweb#readme",
   "repository": {
@@ -39,7 +39,7 @@
     "build": "next build --webpack && node scripts/postbuild-static.mjs",
     "start": "next start -H 127.0.0.1 -p 30177",
     "start:lan": "next start -H 0.0.0.0 -p 30177",
-    "test": "node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs lib/contracts/*.test.mjs components/*.test.mjs components/ui/*.test.mjs hooks/*.test.mjs bin/*.test.mjs desktop/*.test.mjs",
+    "test": "node scripts/audit-client-api.mjs && node --experimental-strip-types --test lib/*.test.mjs lib/omp/*.test.mjs lib/contracts/*.test.mjs components/*.test.mjs components/ui/*.test.mjs hooks/*.test.mjs bin/*.test.mjs desktop/*.test.mjs",
     "bench:session": "node scripts/perf-session-bench.mjs",
     "host:build": "cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host",
     "host:stage": "node scripts/stage-host.mjs",

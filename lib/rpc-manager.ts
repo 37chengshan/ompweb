@@ -1,5 +1,6 @@
 import { existsSync } from "fs";
 import { homedir } from "os";
+import { clearBackendErrors, recordBackendError, recentBackendErrors } from "./backend-errors";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { RpcCommandError, RpcProcess, type RpcFrame } from "./omp/rpc-process";
@@ -44,18 +45,20 @@ const MCP_LIST_TIMEOUT_MS = 15_000;
 // 记录 omp 子进程异常退出与"会话分裂"（--resume 后 omp 返回了不同的会话，
 // 说明会话文件正被其他 omp/ompweb 实例占用——旧实例扰乱新实例的典型症状）。
 // /api/diagnostics 与顶栏健康指示据此反映"消息能否真正发出"。
-const rpcFailures: Array<{ at: number; detail: string }> = [];
-
+// 实现收编在 lib/backend-errors.ts（Phase 1）：RPC 失败只是后端错误的一种
+// kind，host 不可用/崩溃/session 扫描失败同样入环，App 级横幅据此可见。
 export function recordRpcFailure(detail: string): void {
-  const now = Date.now();
-  rpcFailures.push({ at: now, detail });
-  while (rpcFailures.length > 0 && now - rpcFailures[0].at > 10 * 60_000) rpcFailures.shift();
+  recordBackendError("rpc_failure", detail);
 }
 
 /** 最近 windowMs 内的 RPC 失败（默认 60s，供健康指示使用）。 */
 export function recentRpcFailures(windowMs = 60_000): Array<{ at: number; detail: string }> {
-  const now = Date.now();
-  return rpcFailures.filter((failure) => now - failure.at <= windowMs);
+  return recentBackendErrors(windowMs, "rpc_failure");
+}
+
+/** Clear failures after an explicit recovery action succeeded. */
+export function clearRpcFailures(): void {
+  clearBackendErrors();
 }
 
 const RESTARTING_MESSAGE = "This session is restarting — retry in a moment.";
@@ -337,6 +340,12 @@ export class AgentSessionWrapper {
     // A restart disposes the old child on purpose — not a crash.
     if (!this._alive || this.restarting) return;
     const detail = stderrTail.trim().split("\n").pop() ?? "";
+    // RustRpcProcess synthesizes this tail when the ompweb-host process itself
+    // died (vs the supervised omp child): record the specific kind so the
+    // diagnostics panel can name "host crash" instead of a generic RPC failure.
+    if (stderrTail.includes("ompweb-host disconnected")) {
+      recordBackendError("host_crash", `ompweb-host exited${detail ? `: ${detail}` : ""}`);
+    }
     recordRpcFailure(`omp process exited unexpectedly${detail ? `: ${detail}` : ""}`);
     this.emit({
       type: "notice",
@@ -849,14 +858,24 @@ export class AgentSessionWrapper {
       this.streaming = false;
       this.compacting = false;
 
-      const proc = await createRpcProcess({
-        cwd: this.cwd,
-        sessionId: this.sessionId,
-        extraArgs: buildSessionSpawnArgs(resumable ? sessionFile : ""),
-        onExit: ({ stderrTail }) => {
-          if (this.proc === proc) this.handleProcessExit(stderrTail);
-        },
-      });
+      let proc: RpcProcessLike;
+      try {
+        proc = await createRpcProcess({
+          cwd: this.cwd,
+          sessionId: this.sessionId,
+          extraArgs: buildSessionSpawnArgs(resumable ? sessionFile : ""),
+          onExit: ({ stderrTail }) => {
+            if (this.proc === proc) this.handleProcessExit(stderrTail);
+          },
+        });
+      } catch (error) {
+        // Same classification as startRpcSession: in Rust mode a spawn failure
+        // means the host is unavailable — make it App-visible.
+        if (process.env.OMPWEB_BACKEND !== "node") {
+          recordBackendError("host_unavailable", `session restart failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        throw error;
+      }
       this.proc = proc;
       this.unsubscribeFrames = proc.onFrame((frame) => this.handleFrame(frame));
       try {
@@ -1302,12 +1321,22 @@ export async function startRpcSession(
     // The wrapper needs the process and the process's onExit needs the wrapper;
     // the holder breaks that cycle (onExit only fires once the child dies).
     const holder: { wrapper?: AgentSessionWrapper } = {};
-    const proc = await createRpcProcess({
-      cwd,
-      sessionId: sessionId ?? `session-${Math.random().toString(36).slice(2, 10)}`,
-      extraArgs: buildSessionSpawnArgs(sessionFile, toolNames, advisor === true),
-      onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
-    });
+    let proc: RpcProcessLike;
+    try {
+      proc = await createRpcProcess({
+        cwd,
+        sessionId: sessionId ?? `session-${Math.random().toString(36).slice(2, 10)}`,
+        extraArgs: buildSessionSpawnArgs(sessionFile, toolNames, advisor === true),
+        onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
+      });
+    } catch (error) {
+      // Rust 后端下启动失败 = host 不可用（二进制缺失/启动超时/IPC 失败），
+      // 记入后端错误环让横幅可见；node 显式回滚模式不计入 host 故障。
+      if (process.env.OMPWEB_BACKEND !== "node") {
+        recordBackendError("host_unavailable", `session start failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      throw error;
+    }
     const created = new AgentSessionWrapper(proc, cwd, recordedCwd, advisor === true);
     holder.wrapper = created;
     created.start();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveOmpBin, getOmpVersion } from "@/lib/omp/omp-cli";
 import { readProxyConfig, resolveEffectiveProxy } from "@/lib/proxy-config";
 import { recentRpcFailures } from "@/lib/rpc-manager";
+import { clearBackendErrors, recentBackendErrors } from "@/lib/backend-errors";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -75,6 +76,10 @@ export async function GET() {
       recentFailures: recentFailures.map((f) => f.detail),
       orphanRustHosts: orphanRustHostPids.length,
     },
+    // Phase 1 (doc 16): Rust-domain failures (host unavailable / host crash /
+    // session scan-rename-delete failures) recorded by lib/backend-errors.ts —
+    // the App-level visible error feed for the banner and diagnostics panel.
+    backendErrors: recentBackendErrors().map((e) => ({ at: e.at, kind: e.kind, detail: e.detail })),
     instances: {
       selfPort,
       others: otherInstances.filter((instance) => instance.alive).map((instance) => instance.port),
@@ -91,6 +96,23 @@ export async function GET() {
     // commands fail closed; no silent Node fallback).
     rustHost: hostClient.host.status(),
   });
+}
+
+/** POST /api/diagnostics  { action: "clear" } — explicit dismissal of the
+ * recorded backend errors (Phase 1). Intentionally manual: errors never clear
+ * on a timer, only after the user acknowledges or a recovery action succeeded
+ * (the restart route clears them too). */
+export async function POST(req: Request) {
+  try {
+    const body = await req.json().catch(() => ({})) as { action?: string };
+    if (body.action !== "clear") {
+      return NextResponse.json({ error: "unknown action", code: "unknown_action" }, { status: 400 });
+    }
+    clearBackendErrors();
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 500 });
+  }
 }
 
 /** 探测本机另一端口上是否有 ompweb 服务（快速 GET，1s 超时）。 */

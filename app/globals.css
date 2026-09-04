@@ -1802,6 +1802,12 @@ span.token.table {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+/* Indeterminate progress sweep shared by the boot loading layer and the
+   desktop splash overlay (desktop/splash.html defines its own copy). */
+@keyframes slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(450%); }
+}
 @keyframes ui-scale-in {
   from { opacity: 0; transform: scale(0.96) translateY(-4px); }
   to   { opacity: 1; transform: scale(1)    translateY(0); }
@@ -1899,34 +1905,42 @@ span.token.table {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 42px;
+  width: 30px;
+  height: 36px;
   padding: 0;
   color: var(--text-muted);
   background: color-mix(in srgb, var(--bg-panel) 94%, transparent);
   border: 1px solid var(--border);
-  border-right: 0;
-  border-radius: var(--radius-control) 0 0 var(--radius-control);
+  border-radius: var(--radius-control);
   box-shadow: var(--shadow-pop);
   cursor: pointer;
   transform: translateY(-50%);
-  transition: color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), width var(--dur-fast) var(--ease-out-warm);
+  transition: color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), width var(--dur-fast) var(--ease-out-warm), transform var(--dur-fast) var(--ease-out-warm);
 }
 .github-fixed-trigger:hover, .github-fixed-trigger[aria-pressed="true"], .github-fixed-trigger:focus-visible {
-  width: 38px;
+  width: 34px;
   color: var(--accent-strong);
   background: var(--bg-selected);
+  transform: translate(-2px, -50%);
+}
+.github-status-popover {
+  transform-origin: top right;
+  animation: github-status-popover-in var(--dur-med) var(--ease-out-warm) both;
+}
+@keyframes github-status-popover-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @media (max-width: 640px) {
-  .github-fixed-trigger { top: auto; right: 48px !important; bottom: 52px; width: 38px; height: 38px; border-right: 1px solid var(--border); border-radius: 50%; transform: none; }
+  .github-fixed-trigger { top: auto; right: 48px !important; bottom: 52px; width: 38px; height: 38px; border-radius: 50%; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .top-panel-animated, .github-fixed-trigger { animation: none; transition: none; }
+  .top-panel-animated, .github-fixed-trigger, .github-status-popover { animation: none; transition: none; }
 }
 .github-status-shell {
   display: flex;
   flex-direction: column;
-  width: min(340px, calc(100vw - 24px));
+  width: min(320px, calc(100vw - 24px));
   max-height: min(52vh, 500px);
   min-height: 150px;
   overflow: hidden;
@@ -2040,6 +2054,19 @@ span.token.table {
 .github-status-action-error, .github-status-action-notice { padding: 6px 10px; font-size: 10.5px; line-height: 1.35; overflow-wrap: anywhere; }
 .github-status-action-error { color: var(--status-error); background: color-mix(in srgb, var(--status-error) 8%, var(--bg-panel)); }
 .github-status-action-notice { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 8%, var(--bg-panel)); }
+.github-status-confirmation {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.github-status-confirmation strong { color: var(--text); font-weight: 650; }
+.github-status-confirmation span { overflow-wrap: anywhere; }
 .github-status-footer {
   display: flex;
   gap: 6px;

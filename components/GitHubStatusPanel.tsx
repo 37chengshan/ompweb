@@ -33,6 +33,10 @@ function statusColor(state: string | undefined): string {
   return "var(--text-dim)";
 }
 
+function gitBranch(status: GitHubRepoStatus | null): string {
+  return status?.git?.branch || "";
+}
+
 /**
  * GitHub and local Git status for the active workspace. The header
  * and footer stay fixed while the status list scrolls, matching the compact
@@ -43,10 +47,18 @@ export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: 
   const [status, setStatus] = useState<GitHubRepoStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [commitOpen, setCommitOpen] = useState(false);
-  const [pushOpen, setPushOpen] = useState(false);
+  const [actionOpen, setActionOpen] = useState(false);
+  const [actionMode, setActionMode] = useState<"commit" | "commit-push" | "push">("commit-push");
   const [commitMessage, setCommitMessage] = useState("");
-  const [action, setAction] = useState<"commit" | "push" | null>(null);
+  const [branches, setBranches] = useState<Array<{ name: string; current: boolean }>>([]);
+  const [selectedBranch, setSelectedBranch] = useState("");
+  const [confirmStep, setConfirmStep] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [prOpen, setPrOpen] = useState(false);
+  const [prConfirmStep, setPrConfirmStep] = useState(false);
+  const [prTitle, setPrTitle] = useState("");
+  const [prBody, setPrBody] = useState("");
+  const [prBaseBranch, setPrBaseBranch] = useState("main");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
@@ -71,6 +83,10 @@ export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: 
       .then((data) => {
         const repo = data.repo ?? null;
         setStatus(repo ? { ...repo, git: data.git ?? repo.git } : null);
+        void client.git.branches(cwd).then((items) => {
+          setBranches(items);
+          setSelectedBranch(items.find((item) => item.current)?.name ?? data.git?.branch ?? "");
+        }).catch(() => setBranches([]));
       })
       .catch((error) => {
         setStatus(null);
@@ -83,41 +99,86 @@ export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: 
     refresh();
   }, [refresh]);
 
-  const runCommit = useCallback(async () => {
-    if (!cwd || !commitMessage.trim()) return;
-    setAction("commit");
+  const openAction = useCallback((mode: "commit" | "commit-push" | "push") => {
     setActionError(null);
     setActionNotice(null);
-    try {
-      const data = await client.git.commit(cwd, commitMessage.trim());
-      setCommitOpen(false);
-      setCommitMessage("");
-      setActionNotice(t("githubPanel.commitSuccess", { hash: data.hash || "" }));
-      toast.success(t("githubPanel.commitSuccess", { hash: data.hash || "" }));
-      refresh(true);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setAction(null);
-    }
-  }, [commitMessage, cwd, refresh, t]);
+    setConfirmStep(false);
+    setActionMode(mode);
+    setActionOpen(true);
+  }, []);
 
-  const runPush = useCallback(async () => {
-    if (!cwd) return;
-    setAction("push");
+  const executeAction = useCallback(async () => {
+    if (!cwd || (actionMode !== "push" && !commitMessage.trim())) return;
+    setConfirming(true);
     setActionError(null);
     setActionNotice(null);
     try {
-      const data = await client.git.push(cwd);
-      setActionNotice(t("githubPanel.pushSuccess", { branch: data.branch || "" }));
-      toast.success(t("githubPanel.pushSuccess", { branch: data.branch || "" }));
+      if (selectedBranch && selectedBranch !== gitBranch(status)) await client.git.checkout(cwd, selectedBranch);
+      let commitHash = "";
+      let pushedBranch = selectedBranch || gitBranch(status) || "";
+      if (actionMode !== "push") {
+        const commitData = await client.git.commit(cwd, commitMessage.trim());
+        commitHash = commitData.hash || "";
+      }
+      if (actionMode === "commit-push" || actionMode === "push") {
+        const pushData = await client.git.push(cwd);
+        pushedBranch = pushData.branch || pushedBranch;
+      }
+      setActionOpen(false);
+      setCommitMessage("");
+      setConfirmStep(false);
+      const notice = actionMode === "push"
+        ? t("githubPanel.pushSuccess", { branch: pushedBranch })
+        : actionMode === "commit-push"
+          ? `${t("githubPanel.commitSuccess", { hash: commitHash })} · ${t("githubPanel.pushSuccess", { branch: pushedBranch })}`
+          : t("githubPanel.commitSuccess", { hash: commitHash });
+      setActionNotice(notice);
+      toast.success(notice);
       refresh(true);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
     } finally {
-      setAction(null);
+      setConfirming(false);
     }
-  }, [cwd, refresh, t]);
+  }, [actionMode, commitMessage, cwd, refresh, selectedBranch, status, t]);
+
+  const requestAction = useCallback(() => {
+    if (!cwd || (actionMode !== "push" && !commitMessage.trim())) return;
+    if (!confirmStep) {
+      setConfirmStep(true);
+      return;
+    }
+    void executeAction();
+  }, [actionMode, commitMessage, confirmStep, cwd, executeAction]);
+
+  const openPullRequest = useCallback(() => {
+    const head = selectedBranch || gitBranch(status);
+    setPrTitle(head ? `${head} → main` : "");
+    setPrBody("");
+    setPrBaseBranch(branches.some((branch) => branch.name === "main") ? "main" : branches.find((branch) => !branch.current)?.name || "main");
+    setPrConfirmStep(false);
+    setPrOpen(true);
+  }, [branches, selectedBranch, status]);
+
+  const requestPullRequest = useCallback(() => {
+    if (!prTitle.trim() || !selectedBranch) return;
+    if (!prConfirmStep) {
+      setPrConfirmStep(true);
+      return;
+    }
+    const query = new URLSearchParams({
+      head: selectedBranch,
+      base: prBaseBranch || "main",
+      title: prTitle.trim(),
+      body: prBody.trim(),
+    });
+    window.open(`${status?.url || "https://github.com"}/pulls/new?${query.toString()}`, "_blank", "noopener,noreferrer");
+    setPrOpen(false);
+    setPrConfirmStep(false);
+    const notice = "已打开 Pull Request 创建页";
+    setActionNotice(notice);
+    toast.success(notice);
+  }, [prBaseBranch, prBody, prConfirmStep, prTitle, selectedBranch, status?.url]);
 
   if (!cwd) {
     return <div className="github-status-empty">{t("githubPanel.noWorkspace")}</div>;
@@ -248,54 +309,107 @@ export function GitHubStatusPanel({ cwd, slashCommands = [], onInsertCommand }: 
       )}
 
       <div className="github-status-footer">
-        <button type="button" className="github-status-action" onClick={() => { setActionError(null); setCommitOpen(true); }} disabled={!hasChanges || action !== null} title={t("githubPanel.commitHint")}>
+        <button type="button" className="github-status-action" onClick={() => openAction("commit")} disabled={!hasChanges || confirming} title={t("githubPanel.commitHint")}>
           <GitCommitHorizontal size={14} aria-hidden="true" />
           {t("githubPanel.commit")}
           {hasChanges && <span className="github-status-action-badge">{files.length}</span>}
         </button>
-        <button type="button" className="github-status-action" onClick={() => setPushOpen(true)} disabled={!git?.branch || action !== null} title={t("githubPanel.pushHint")}>
-          {action === "push" ? <RefreshCw size={14} className="animate-spin" aria-hidden="true" /> : <CloudUpload size={14} aria-hidden="true" />}
-          {action === "push" ? t("githubPanel.working") : t("githubPanel.push")}
+        <button type="button" className="github-status-action" onClick={() => openAction(hasChanges ? "commit-push" : "push")} disabled={!git?.branch || confirming} title={t("githubPanel.pushHint")}>
+          {confirming ? <RefreshCw size={14} className="animate-spin" aria-hidden="true" /> : <CloudUpload size={14} aria-hidden="true" />}
+          {confirming ? t("githubPanel.working") : t("githubPanel.push")}
           {ahead > 0 && <span className="github-status-action-badge">{ahead}</span>}
         </button>
-        <button type="button" className="github-status-action github-status-action-primary" onClick={() => window.open(status.url + "/pulls/new", "_blank", "noopener,noreferrer")} title={t("githubPanel.createPr")}>
+        <button type="button" className="github-status-action github-status-action-primary" onClick={openPullRequest} disabled={!git?.branch} title={t("githubPanel.createPr")}>
           <GitPullRequest size={14} aria-hidden="true" />
           {t("githubPanel.createPr")}
         </button>
       </div>
 
-      <Dialog open={commitOpen} onOpenChange={setCommitOpen}>
+      <Dialog open={actionOpen} onOpenChange={(open) => { setActionOpen(open); if (!open) setConfirmStep(false); }}>
         <DialogContent ariaLabel={t("githubPanel.commitDialogTitle")} style={{ width: "min(92vw, 460px)" }}>
           <DialogTitle>{t("githubPanel.commitDialogTitle")}</DialogTitle>
-          <p style={{ margin: "0 0 12px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{t("githubPanel.commitDialogHint", { count: files.length })}</p>
+          <p style={{ margin: "0 0 12px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>
+            {actionMode === "push"
+              ? t("githubPanel.pushDialogHint", { branch: selectedBranch || gitBranch(status), count: ahead })
+              : t("githubPanel.commitDialogHint", { count: files.length })}
+          </p>
+          {!confirmStep && (
+            <label style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 10, fontSize: 12, color: "var(--text-muted)" }}>
+              操作
+              <select value={actionMode} onChange={(event) => { setConfirmStep(false); setActionMode(event.target.value as typeof actionMode); }} style={{ padding: 8, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)" }}>
+                <option value="commit" disabled={!hasChanges}>提交</option>
+                <option value="commit-push" disabled={!hasChanges || !git?.branch}>提交并推送</option>
+                <option value="push" disabled={!git?.branch}>仅推送</option>
+              </select>
+            </label>
+          )}
+          {!confirmStep && branches.length > 0 && <label style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 10, fontSize: 12, color: "var(--text-muted)" }}>分支<select value={selectedBranch} onChange={(event) => setSelectedBranch(event.target.value)} style={{ padding: 8, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)" }}>{branches.map((branch) => <option key={branch.name} value={branch.name}>{branch.name}{branch.current ? "（当前）" : ""}</option>)}</select></label>}
+          {!confirmStep && actionMode !== "push" && (
           <textarea
             autoFocus
             value={commitMessage}
             onChange={(event) => setCommitMessage(event.target.value)}
-            onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void runCommit(); } }}
+            onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); requestAction(); } }}
             placeholder={t("githubPanel.commitPlaceholder")}
             maxLength={200}
             rows={3}
             style={{ width: "100%", resize: "vertical", padding: 10, color: "var(--text)", background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", font: "inherit" }}
           />
+          )}
+          {confirmStep && (
+            <div className="github-status-confirmation" role="status">
+              <strong>请确认操作</strong>
+              <span>操作：{actionMode === "commit-push" ? "提交并推送" : actionMode === "push" ? "仅推送" : "提交"}</span>
+              <span>分支：{selectedBranch || gitBranch(status) || "未选择"}</span>
+              {actionMode !== "push" && <span>提交信息：{commitMessage.trim()}</span>}
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-            <button type="button" className="github-status-dialog-button" onClick={() => setCommitOpen(false)}>{t("githubPanel.cancel")}</button>
-            <button type="button" className="github-status-dialog-button github-status-dialog-primary" onClick={() => void runCommit()} disabled={!commitMessage.trim() || action === "commit"}>
-              {action === "commit" && <RefreshCw size={13} className="animate-spin" aria-hidden="true" />}
-              {action === "commit" ? t("githubPanel.working") : t("githubPanel.commit")}
+            <button type="button" className="github-status-dialog-button" onClick={() => confirmStep ? setConfirmStep(false) : setActionOpen(false)} disabled={confirming}>{confirmStep ? "返回修改" : t("githubPanel.cancel")}</button>
+            <button type="button" className="github-status-dialog-button github-status-dialog-primary" onClick={requestAction} disabled={(actionMode !== "push" && !commitMessage.trim()) || confirming}>
+              {confirming && <RefreshCw size={13} className="animate-spin" aria-hidden="true" />}
+              {confirming ? t("githubPanel.working") : confirmStep ? "确认并执行" : "下一步"}
             </button>
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={pushOpen} onOpenChange={setPushOpen}>
-        <DialogContent ariaLabel={t("githubPanel.pushDialogTitle")} style={{ width: "min(92vw, 440px)" }}>
-          <DialogTitle>{t("githubPanel.pushDialogTitle")}</DialogTitle>
-          <p style={{ margin: "0 0 12px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{t("githubPanel.pushDialogHint", { branch: git?.branch || "", count: ahead })}</p>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="github-status-dialog-button" onClick={() => setPushOpen(false)}>{t("githubPanel.cancel")}</button>
-            <button type="button" className="github-status-dialog-button github-status-dialog-primary" onClick={() => { setPushOpen(false); void runPush(); }} disabled={action !== null}>
-              {action === "push" && <RefreshCw size={13} className="animate-spin" aria-hidden="true" />}{t("githubPanel.push")}
-            </button>
+
+      <Dialog open={prOpen} onOpenChange={(open) => { setPrOpen(open); if (!open) setPrConfirmStep(false); }}>
+        <DialogContent ariaLabel={t("githubPanel.createPr")} style={{ width: "min(92vw, 520px)" }}>
+          <DialogTitle>{t("githubPanel.createPr")}</DialogTitle>
+          {!prConfirmStep ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <label style={{ display: "grid", gap: 5, fontSize: 12, color: "var(--text-muted)" }}>
+                源分支
+                <select value={selectedBranch} onChange={(event) => setSelectedBranch(event.target.value)} style={{ padding: 8, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)" }}>
+                  {branches.map((branch) => <option key={branch.name} value={branch.name}>{branch.name}{branch.current ? "（当前）" : ""}</option>)}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 5, fontSize: 12, color: "var(--text-muted)" }}>
+                目标分支
+                <select value={prBaseBranch} onChange={(event) => setPrBaseBranch(event.target.value)} style={{ padding: 8, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)" }}>
+                  {branches.length > 0 ? branches.map((branch) => <option key={branch.name} value={branch.name}>{branch.name}</option>) : <option value="main">main</option>}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 5, fontSize: 12, color: "var(--text-muted)" }}>
+                标题
+                <input value={prTitle} onChange={(event) => setPrTitle(event.target.value)} placeholder="Pull Request 标题" maxLength={200} style={{ padding: 9, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", font: "inherit" }} />
+              </label>
+              <label style={{ display: "grid", gap: 5, fontSize: 12, color: "var(--text-muted)" }}>
+                描述
+                <textarea value={prBody} onChange={(event) => setPrBody(event.target.value)} placeholder="描述本次变更（可选）" rows={5} maxLength={4000} style={{ width: "100%", resize: "vertical", padding: 9, border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", font: "inherit" }} />
+              </label>
+            </div>
+          ) : (
+            <div className="github-status-confirmation" role="status">
+              <strong>请确认创建 Pull Request</strong>
+              <span>{selectedBranch} → {prBaseBranch || "main"}</span>
+              <span>标题：{prTitle.trim()}</span>
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+            <button type="button" className="github-status-dialog-button" onClick={() => prConfirmStep ? setPrConfirmStep(false) : setPrOpen(false)}>{prConfirmStep ? "返回修改" : t("githubPanel.cancel")}</button>
+            <button type="button" className="github-status-dialog-button github-status-dialog-primary" onClick={requestPullRequest} disabled={!selectedBranch || !prTitle.trim()}>{prConfirmStep ? "确认并打开" : "下一步"}</button>
           </div>
         </DialogContent>
       </Dialog>

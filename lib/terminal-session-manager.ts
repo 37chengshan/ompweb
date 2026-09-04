@@ -4,10 +4,21 @@ import * as pty from "node-pty";
 import type { IPty } from "node-pty";
 import { resolveTerminalShell } from "./terminal-shell";
 import { proxyEnv } from "./proxy-config";
+import { getAllowedFileRoots } from "./file-access";
+import { hostClient, rustBackendActive } from "./omp/host-client";
+
+/** Unified process surface shared by the Rust host PTY (doc 16 route 8) and
+ *  node-pty (explicit OMPWEB_BACKEND=node rollback). */
+export interface TerminalProcessLike {
+  id?: string;
+  write(data: string): void | Promise<void>;
+  resize(cols: number, rows: number): void | Promise<void>;
+  kill(): void | Promise<void>;
+}
 
 export interface TerminalSession {
   id: string;
-  process: IPty;
+  process: TerminalProcessLike;
   cwd: string;
   createdAt: number;
   lastActivityAt: number;

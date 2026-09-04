@@ -13,7 +13,7 @@ import type {
   SystemClient,
 } from "./types";
 import { toClientError } from "./types";
-import type { GitClient, GitHubStatusPayload } from "./types";
+import type { GitClient, GitHubStatusPayload, NativeSettingsClient, NativeSettingRow } from "./types";
 import type { SessionInfo } from "@/lib/types";
 import { subscribeSessionsChanged } from "../session-change-bus";
 
@@ -210,6 +210,38 @@ class HttpGitClient implements GitClient {
       body: JSON.stringify({ cwd }),
     });
   }
+  async branches(cwd: string): Promise<{ name: string; current: boolean }[]> {
+    const body = await rawRequest<{ branches?: { name: string; current: boolean }[]; error?: string }>(`/api/git/branches?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" });
+    return body.branches ?? [];
+  }
+  async checkout(cwd: string, branch: string): Promise<{ branch?: string }> {
+    return rawRequest<{ branch?: string; error?: string }>("/api/git/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cwd, branch }) });
+  }
+}
+
+/** Schema-driven native OMP settings (5.1) — /api/native-settings proxies the
+ *  omp CLI so config.yml writes and schema validation stay in OMP. */
+class HttpNativeSettingsClient implements NativeSettingsClient {
+  async list(): Promise<{ settings: NativeSettingRow[]; path: string | null }> {
+    const body = await rawRequest<{ settings?: NativeSettingRow[]; path?: string | null; error?: string }>("/api/native-settings", { cache: "no-store" });
+    return { settings: body.settings ?? [], path: body.path ?? null };
+  }
+  async set(key: string, value: unknown): Promise<{ ok: boolean }> {
+    await rawRequest<{ error?: string }>("/api/native-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value }),
+    });
+    return { ok: true };
+  }
+  async reset(key: string): Promise<{ ok: boolean }> {
+    await rawRequest<{ error?: string }>("/api/native-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    return { ok: true };
+  }
 }
 
 export function createHttpSseClient(): OmpwebClient {
@@ -218,5 +250,6 @@ export function createHttpSseClient(): OmpwebClient {
     sessions: new HttpSessionClient(),
     system: new HttpSystemClient(),
     git: new HttpGitClient(),
+    nativeSettings: new HttpNativeSettingsClient(),
   };
 }

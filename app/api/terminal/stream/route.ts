@@ -1,6 +1,12 @@
-import { getTerminalSession, subscribeToTerminal } from "@/lib/terminal-session-manager";
+import * as nodeManager from "@/lib/terminal-session-manager";
+import * as hostManager from "@/lib/terminal-host-session";
+import { rustBackendActive } from "@/lib/omp/host-client";
 
 export const dynamic = "force-dynamic";
+
+// Doc 16 route 8: the SSE contract stays byte-identical regardless of which
+// backend owns the PTY; only the session registry differs.
+const manager = () => (rustBackendActive() ? hostManager : nodeManager);
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -10,7 +16,7 @@ export async function GET(req: Request) {
     return new Response("Missing id parameter", { status: 400 });
   }
 
-  const session = getTerminalSession(id);
+  const session = manager().getTerminalSession(id);
   if (!session) {
     return new Response("Session not found or expired", { status: 404 });
   }
@@ -35,7 +41,7 @@ export async function GET(req: Request) {
         }
       }, 15_000);
 
-      unsubscribe = subscribeToTerminal(id, (chunk: string) => {
+      unsubscribe = manager().subscribeToTerminal(id, (chunk: string) => {
         try {
           const payload = JSON.stringify({ data: chunk });
           controller.enqueue(encoder.encode(`data: ${payload}\n\n`));

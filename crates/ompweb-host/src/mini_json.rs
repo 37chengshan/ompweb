@@ -49,6 +49,20 @@ impl JsonValue {
             _ => None,
         }
     }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            JsonValue::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    pub fn as_num(&self) -> Option<f64> {
+        match self {
+            JsonValue::Num(n) => Some(*n),
+            _ => None,
+        }
+    }
 }
 
 struct Parser<'a> {

@@ -8,3 +8,13 @@ description = "ompweb 5.0 user-scoped host binary (doc 06 slice 1: health/versio
 [dependencies]
 ompweb-protocol = { path = "../ompweb-protocol" }
 ompweb-storage = { path = "../ompweb-storage" }
+# ADR 门开启（route 8，2026-09-02）：pty 域迁 Rust 需要真实 PTY——手写 forkpty 的
+# 平台差异（macOS/Linux/Windows)不可维护，引入 portable-pty（跨平台 pty 接口，
+# 依赖 winpty/ConPTY 等平台后端，与 rusqlite 同一级别的外部依赖决策）。
+portable-pty = "0.9.0"
+# ADR 门开启（route 14，2026-09-02）：Rust RemoteRuntime 需要 WS server——
+# crates/Cargo.toml 零依赖注释与 PROGRESS.md 均已声明「tokio/ws 落地 = ADR 决策门」，
+# 本门随 doc16 路线 14 打开（PROGRESS: Rust WS server 需要依赖 tokio-tungstenite）。
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"

@@ -56,6 +56,19 @@ export async function POST(request: Request) {
         reconnectRequired: true,
       });
     }
+    if (body.action === "repair") {
+      // 无损恢复动作（供自动静默修复与诊断面板「修复」按钮使用）：只清孤儿
+      // Rust host + 清错误环，绝不重启用户 RPC 会话或 stop 其他实例，因此
+      // 不会打断正在进行的对话。
+      const repair = hostClient.host.repair();
+      clearRpcFailures();
+      return NextResponse.json({
+        success: true,
+        stoppedOrphanHosts: repair.stoppedOrphanHosts,
+        orphanHostPids: repair.orphanHostPids,
+        reconnectRequired: false,
+      });
+    }
     if (body.action === "stop-instance") {
       // 关闭本机其他 ompweb 端口上的旧实例（残留的开发服务/旧 app），
       // 消除会话锁冲突。只允许关闭非自身端口。

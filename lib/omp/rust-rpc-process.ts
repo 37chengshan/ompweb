@@ -205,8 +205,17 @@ class RustHostManager {
         for (const sub of this.subscribers) sub({ type: "host_disconnected" } as RpcFrameRecord);
         this.host = null;
         this.hostDying = false;
-        this.control?.destroy();
-        this.control = null;
+        if (this.control) {
+          this.control.destroy();
+          this.control = null;
+        }
+        // Settle every in-flight control request: a host crash mid-request
+        // must reject (structured) instead of hanging the API route forever.
+        const nowPending = Array.from(this.pending.entries());
+        this.pending.clear();
+        for (const [, entry] of nowPending) {
+          entry.reject(new RpcCommandError(entry.type, "ompweb-host disconnected", "runtime_unavailable"));
+        }
       });
       const timer = setTimeout(() => {
         this.bootPromise = null;
@@ -256,8 +265,19 @@ class RustHostManager {
   private controlRequestRaw(method: string, params: Record<string, unknown>): Promise<unknown> {
     const id = `c${this.nextId++}`;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { type: method, resolve, reject });
+      let settled = false;
+      const finishResolve = (value: unknown) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } };
+      const finishReject = (error: Error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } };
+      this.pending.set(id, { type: method, resolve: finishResolve, reject: finishReject });
       this.control!.write(JSON.stringify({ id, method, params }) + "\n");
+      // Guard against a lost/hung control socket: a request that never gets a
+      // matching response must not keep the API route waiting forever.
+      const timer = setTimeout(() => {
+        const entry = this.pending.get(id);
+        if (!entry) return;
+        this.pending.delete(id);
+        entry.reject(new RpcCommandError(method, "ompweb-host control request timed out", "runtime_unavailable"));
+      }, 30_000);
     });
   }
 
@@ -334,6 +354,51 @@ class RustHostManager {
     })();
   }
 
+  /** Open a dedicated attach socket for a host-owned PTY session (doc 16
+   *  route 8). Events are `{type:"data", data}` chunks (history replay first)
+   *  and `{type:"exit", code}`; the socket closes on exit. */
+  ptyAttach(
+    id: string,
+    onEvent: (event: { type: "data"; data: string } | { type: "exit"; code: number | null }) => void,
+  ): Promise<{ detach: () => void; closed: Promise<void> }> {
+    return (async () => {
+      await this.ensure();
+      const socket = createConnection({ host: "127.0.0.1", port: this.port });
+      let buffer = "";
+      await new Promise<void>((resolve, reject) => {
+        socket.once("connect", () => resolve());
+        socket.once("error", reject);
+      });
+      socket.write(JSON.stringify({ id: "pty-hello", method: "hello", params: { token: this.token } }) + "\n");
+      socket.write(JSON.stringify({ id: "pty-attach", method: "pty.attach", params: { id } }) + "\n");
+      socket.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString();
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, idx).trim();
+          buffer = buffer.slice(idx + 1);
+          if (!line) continue;
+          let msg: { event?: { type: string; data?: unknown; code?: unknown } };
+          try {
+            msg = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          const event = msg.event;
+          if (!event) continue;
+          if (event.type === "data" && typeof event.data === "string") {
+            onEvent({ type: "data", data: event.data });
+          } else if (event.type === "exit") {
+            onEvent({ type: "exit", code: typeof event.code === "number" ? event.code : null });
+            socket.destroy();
+          }
+        }
+      });
+      const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+      return { detach: () => socket.destroy(), closed };
+    })();
+  }
+
   async spawn(cwd: string, sessionId: string, extraArgs: string[] = []): Promise<{ pid: number }> {
     // Route 4 (doc 16): spawn args travel verbatim to the supervisor
     // (--resume/--tools/--advisor/...), mirroring the Node spawn order.
@@ -350,6 +415,7 @@ class RustHostManager {
 }
 
 const hostManager = new RustHostManager();
+export { hostManager };
 
 export class RustRpcProcess {
   readonly cwd: string;

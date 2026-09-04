@@ -56,6 +56,9 @@ interface Props {
   updateAvailable?: boolean;
   /** Opens the archived sessions browser. */
   onOpenArchive?: () => void;
+  /** Run a project quick script inside the terminal drawer instead of the
+   *  silent wait/toast path (AppShell owns the TerminalPanel). */
+  onRunScriptInTerminal?: (projectPath: string, command: string) => void;
 }
 
 interface WorktreeEntry {
@@ -225,7 +228,7 @@ const SCRIPT_ICON_MAP = {
   wrench: Wrench,
 } as const;
 
-function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPath: string; anchor: React.RefObject<HTMLElement | null>; open: boolean; onClose: () => void }) {
+function ProjectScriptsMenu({ projectPath, anchor, open, onClose, onRunInTerminal }: { projectPath: string; anchor: React.RefObject<HTMLElement | null>; open: boolean; onClose: () => void; onRunInTerminal?: (projectPath: string, command: string) => void }) {
   const { t } = useI18n();
   const [scripts, setScripts] = useState<{ name: string; command: string; description?: string; icon?: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -247,6 +250,14 @@ function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPat
   }, [open, reload]);
 
   const runScript = useCallback(async (s: { name: string; command: string }) => {
+    // 5.1: prefer running the script in the terminal drawer — the output is
+    // visible and interactive, not a silent toast. Without a host (web
+    // fallback) the old wait/toast path still applies.
+    if (onRunInTerminal) {
+      onRunInTerminal(projectPath, s.command);
+      onClose();
+      return;
+    }
     setBusy(s.name);
     try {
       const res = await fetch("/api/scripts/run", {
@@ -272,7 +283,7 @@ function ProjectScriptsMenu({ projectPath, anchor, open, onClose }: { projectPat
     } finally {
       setBusy(null);
     }
-  }, [projectPath, t]);
+  }, [projectPath, t, onRunInTerminal, onClose]);
 
   const addScript = useCallback(async () => {
     if (!newName.trim() || !newCommand.trim()) return;
@@ -745,7 +756,7 @@ function OmpWebTitle() {
     </button>
   );
 }
-export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions, onOpenSettings, onOpenRemote, onOpenArchive, updateAvailable }: Props) {
+export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, explorerRefreshing, onExplorerRefreshDone, onAtMention, onAtMentions, onOpenSettings, onOpenRemote, onOpenArchive, updateAvailable, onRunScriptInTerminal }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2003,6 +2014,7 @@ export function SessionSidebar({ selectedSessionId, optimisticSession, onSelectS
                 worktreeOpen={isActive ? wtDropdownOpen : false}
                 onToggleWorktrees={isActive ? toggleWorktrees : undefined}
                 homeDir={homeDir}
+                onRunScriptInTerminal={onRunScriptInTerminal}
               />
             );
           })}
@@ -2249,6 +2261,7 @@ interface ProjectRowProps {
   worktreeOpen?: boolean;
   onToggleWorktrees?: () => void;
   homeDir: string;
+  onRunScriptInTerminal?: (projectPath: string, command: string) => void;
 }
 
 /** One project in the sidebar: a card row matching the session items' visual
@@ -2283,6 +2296,7 @@ function ProjectRow({
   worktreeToggleRef,
   worktreeOpen,
   onToggleWorktrees,
+  onRunScriptInTerminal,
 }: ProjectRowProps) {
   const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
@@ -2572,6 +2586,7 @@ function ProjectRow({
             anchor={actionButtonRef}
             open={scriptsMenuOpen}
             onClose={() => setScriptsMenuOpen(false)}
+            onRunInTerminal={onRunScriptInTerminal}
           />
         </div>
         <button

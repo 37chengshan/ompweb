@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiErrorResponse } from "@/lib/api-utils";
+import { recordBackendError } from "@/lib/backend-errors";
+import { hostClient, rustBackendActive } from "@/lib/omp/host-client";
 import fs from "fs";
 import path from "path";
 import {
@@ -22,7 +24,8 @@ import {
   getStreamSecurityHeaders,
   getVideoMime,
 } from "@/lib/file-types";
-import { resolveDirentIsDirectory } from "@/lib/file-dirent";
+import { listDirectoryEntries } from "@/lib/directory-listing";
+import { getLanguage } from "@/lib/file-language";
 import { isFilePathReferencedBySession } from "@/lib/session-file-references";
 import {
   inspectUploadTargets,
@@ -30,14 +33,6 @@ import {
   validateUploadFileNames,
 } from "@/lib/file-upload";
 import { parseFormDataWithinLimit, parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
-
-const IGNORED_NAMES = new Set([
-  "node_modules", ".git", ".next", "dist", "build", "__pycache__",
-  ".turbo", ".cache", "coverage", ".pytest_cache", ".mypy_cache",
-  "target", "vendor", ".DS_Store", ".git",
-]);
-
-const IGNORED_SUFFIXES = [".pyc"];
 
 const FILE_REQUEST_TYPES = ["list", "read", "download", "meta", "preview", "watch"] as const;
 type FileRequestType = typeof FILE_REQUEST_TYPES[number];
@@ -48,31 +43,6 @@ const MAX_UPLOAD_TOTAL_BYTES = 100 * 1024 * 1024;
 const MAX_UPLOAD_REQUEST_BYTES = MAX_UPLOAD_TOTAL_BYTES + 1024 * 1024;
 const MAX_UPLOAD_CHECK_REQUEST_BYTES = 1024 * 1024;
 
-const EXT_TO_LANGUAGE: Record<string, string> = {
-  ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
-  mjs: "javascript", cjs: "javascript", py: "python", rb: "ruby",
-  go: "go", rs: "rust", java: "java", kt: "kotlin", swift: "swift",
-  c: "c", cpp: "cpp", h: "c", hpp: "cpp", cs: "csharp",
-  html: "html", htm: "html", css: "css", scss: "css", less: "css",
-  json: "json", jsonl: "json", yaml: "yaml", yml: "yaml",
-  toml: "toml", xml: "xml", md: "markdown", mdx: "markdown",
-  sh: "bash", bash: "bash", zsh: "bash", fish: "bash",
-  sql: "sql", graphql: "graphql", gql: "graphql",
-  dockerfile: "dockerfile", tf: "hcl", hcl: "hcl",
-  env: "bash", gitignore: "bash", txt: "text",
-  pdf: "pdf", docx: "word",
-};
-
-function getLanguage(filePath: string): string {
-  const base = path.basename(filePath).toLowerCase();
-  // Special full-name matches
-  if (base === "dockerfile" || base.startsWith("dockerfile.")) return "dockerfile";
-  if (base === ".env" || base.startsWith(".env.")) return "bash";
-  if (base === "makefile" || base === "gnumakefile") return "makefile";
-  const ext = base.split(".").pop() ?? "";
-  return EXT_TO_LANGUAGE[ext] ?? "text";
-}
-
 function filePathFromSegments(segments: string[]): string {
   const joined = segments.join("/");
   const slashJoined = normalizeSlashes(joined);
@@ -82,6 +52,27 @@ function filePathFromSegments(segments: string[]): string {
 
 function parseFileRequestType(value: string): FileRequestType | null {
   return FILE_REQUEST_TYPE_SET.has(value) ? (value as FileRequestType) : null;
+}
+
+/** Map a host `files.*` IpcError code to the HTTP status the Node path used. */
+function mapFilesHostErrorStatus(error: unknown): number {
+  const code = (error as { code?: unknown } | null)?.code;
+  switch (code) {
+    case "access_denied": return 403;
+    case "file_not_found": return 404;
+    case "not_a_file":
+    case "not_a_directory": return 400;
+    case "file_too_large_preview": return 413;
+    default: return 500;
+  }
+}
+
+/** Record a Rust files-domain failure and return a structured error response
+ * (No Hidden Fallback, doc 16 route 9): in Rust mode the host is the files
+ * authority — a failed read/list/meta never degrades to a Node re-read. */
+function filesAuthorityErrorResponse(kind: "files_list_failed" | "files_read_failed" | "files_meta_failed", error: unknown): NextResponse {
+  recordBackendError(kind, error instanceof Error ? error.message : String(error));
+  return apiErrorResponse(error, mapFilesHostErrorStatus(error));
 }
 
 async function getUploadDirectory(segments: string[]): Promise<
@@ -497,6 +488,17 @@ export async function GET(
       if (stat.size > TEXT_PREVIEW_MAX_BYTES) {
         return NextResponse.json({ error: "File too large for preview (>256KB)", code: "file_too_large_preview" }, { status: 413 });
       }
+      // Doc 16 route 9: text-JSON reads run on the Rust host when the path is
+      // root-authorized. The omp-image / session-reference read exemptions are
+      // narrow Node-only escapes and keep the Node reader. Binary streaming
+      // (image/audio/video/document) also stays Node for this slice.
+      if (rustBackendActive() && allowedByRoot) {
+        try {
+          return NextResponse.json(await hostClient.files.read([...allowedRoots], filePath));
+        } catch (error) {
+          return filesAuthorityErrorResponse("files_read_failed", error);
+        }
+      }
       const content = fs.readFileSync(filePath, "utf-8");
       const language = getLanguage(filePath);
       return NextResponse.json({ content, language, size: stat.size });
@@ -518,6 +520,15 @@ export async function GET(
       const audioMime = getAudioMime(filePath);
       const videoMime = getVideoMime(filePath);
       const documentMime = getDocumentMime(filePath);
+      // Doc 16 route 9: meta runs on the Rust host when root-authorized;
+      // the session-reference exemption keeps the Node path.
+      if (rustBackendActive() && allowedByRoot) {
+        try {
+          return NextResponse.json(await hostClient.files.meta([...allowedRoots], filePath));
+        } catch (error) {
+          return filesAuthorityErrorResponse("files_meta_failed", error);
+        }
+      }
       return NextResponse.json({
         size: stat.size,
         language: getLanguage(filePath),
@@ -617,23 +628,19 @@ export async function GET(
       return NextResponse.json({ error: "Not a directory", code: "not_a_directory" }, { status: 400 });
     }
 
+    // Doc 16 route 9: listing runs on the Rust host in Rust mode (the list
+    // auth path is root-only, so every authorized list reaches the host).
+    if (rustBackendActive()) {
+      try {
+        return NextResponse.json(await hostClient.files.list([...allowedRoots], filePath));
+      } catch (error) {
+        return filesAuthorityErrorResponse("files_list_failed", error);
+      }
+    }
+
     // Avoid per-entry stat calls for normal files and directories. Symlinks and
     // filesystems without directory type information use the stat fallback.
-    const readDirectorySync = Reflect.get(fs, "readdirSync") as typeof fs.readdirSync;
-    const dirents = readDirectorySync(filePath, { withFileTypes: true });
-    const entries = dirents
-      .filter((d) => !IGNORED_NAMES.has(d.name) && !IGNORED_SUFFIXES.some((s) => d.name.endsWith(s)))
-      .flatMap((d) => {
-        const isDir = resolveDirentIsDirectory(d, path.join(filePath, d.name));
-        return isDir === null
-          ? []
-          : [{ name: d.name, isDir, size: 0, modified: "" }];
-      })
-      .sort((a, b) => {
-        // Dirs first, then files, both alphabetically
-        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
+    const entries = listDirectoryEntries(filePath);
 
     return NextResponse.json({ entries, path: filePath });
   } catch (error) {

@@ -82,7 +82,7 @@ export function BootSkeleton() {
         Omp<span style={{ color: "var(--accent, #c98a1b)" }}>Web</span>
       </div>
       <div style={{ width: 180, height: 3, borderRadius: 2, background: "var(--border, #e8e4dc)", overflow: "hidden" }}>
-        <i style={{ display: "block", width: "40%", height: "100%", borderRadius: 2, background: "var(--accent, #c98a1b)", margin: "0 auto" }} />
+        <i style={{ display: "block", width: "40%", height: "100%", borderRadius: 2, background: "var(--accent, #c98a1b)", margin: "0 auto", animation: "slide 1.1s ease-in-out infinite" }} />
       </div>
       <div style={{ fontSize: 12, color: "var(--text-muted, #8a867e)" }}>正在启动…</div>
     </div>

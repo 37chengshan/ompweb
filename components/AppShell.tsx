@@ -155,6 +155,17 @@ export function AppShell() {
   const [thinkingDisplayMode, setThinkingDisplayMode] = useState<ThinkingDisplayMode>("auto");
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  // Quick-script "run in terminal": { text, nonce } bumps trigger the terminal
+  // to type the command + Enter once the panel session is live.
+  const [terminalRunCommand, setTerminalRunCommand] = useState<{ text: string; nonce: number } | null>(null);
+  const terminalRunNonceRef = useRef(0);
+  const openTerminalWithCommand = useCallback((cwd: string | null, command: string) => {
+    // Route the run to the terminal drawer: if the drawer was closed, opening
+    // it with cwd spawns a fresh PTY there; the command queues until live.
+    setTerminalRunCommand({ text: command, nonce: ++terminalRunNonceRef.current });
+    setTerminalOpen(true);
+    void cwd;
+  }, []);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
     if (typeof window === "undefined") return 480;
     try {
@@ -520,7 +531,11 @@ export function AppShell() {
     update();
     const ro = new ResizeObserver(update);
     ro.observe(topBarRef.current);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
   }, [activeTopPanel]);
 
   // Dismiss the system/session dropdowns on outside click or Escape. The
@@ -557,6 +572,14 @@ export function AppShell() {
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+
+  // Keep the GitHub status trigger on the chat side of the file viewer.  A
+  // persisted width can be larger than the available viewport, so use the
+  // same CSS clamp as the viewer instead of allowing the button to disappear
+  // behind the preview panel.
+  const rightPanelInset = rightPanelOpen && !isMobile
+    ? `clamp(0px, ${rightPanelWidth}px, calc(100vw - 360px))`
+    : "0px";
 
   // Same @mention format as the chat input's @ autocomplete, so the agent's
   // read tool resolves it the same way (it strips the @ prefix).
@@ -970,6 +993,7 @@ export function AppShell() {
         onOpenRemote={() => setSettingsTab("remote")}
         onOpenArchive={() => setArchiveBrowserOpen(true)}
         updateAvailable={appUpdateAvailable || ompUpdateAvailable}
+        onRunScriptInTerminal={(projectPath, command) => openTerminalWithCommand(projectPath, command)}
       />
     </>
   );
@@ -1408,20 +1432,31 @@ export function AppShell() {
               an empty fixed layer for it (it would sit over the top-bar
               region and swallow clicks). */}
           {(activeTopPanel === "system" || activeTopPanel === "session" || activeTopPanel === "github") && topPanelPos && (
-            <div data-top-panel className="dropdown-surface top-panel-animated" style={{
+            <div
+              id={activeTopPanel === "github" ? "github-status-panel" : undefined}
+              data-top-panel
+              className={`dropdown-surface top-panel-animated${activeTopPanel === "github" ? " github-status-popover" : ""}`}
+              role={activeTopPanel === "github" ? "dialog" : undefined}
+              aria-label={activeTopPanel === "github" ? t("appShell.githubStatus") : undefined}
+              style={{
               position: "fixed",
               top: topPanelPos.top,
               // Right-aligned, width auto based on content — prevents cut-off and lets the window resize with its content
-              right: rightPanelOpen && !isMobile ? rightPanelWidth + 12 : 12,
+              // Keep this surface entirely in the chat column.  The file
+              // preview is a flex sibling, so the right inset must match its
+              // rendered (clamped) width or the GitHub popover will cover the
+              // preview on narrow windows.
+              right: `calc(${rightPanelInset} + 12px)`,
               left: "auto",
               minWidth: activeTopPanel === "github" || isMobile ? 0 : 360,
-              width: activeTopPanel === "github" ? "min(340px, calc(100vw - 24px))" : "auto",
-              maxWidth: activeTopPanel === "github" ? "min(340px, calc(100vw - 24px))" : "min(680px, calc(100vw - 24px))",
+              width: activeTopPanel === "github" ? "min(320px, calc(100vw - 24px))" : "auto",
+              maxWidth: activeTopPanel === "github" ? "min(320px, calc(100vw - 24px))" : "min(680px, calc(100vw - 24px))",
               maxHeight: `min(70vh, calc(100dvh - ${topPanelPos.top}px - 12px))`,
               overflow: "hidden",
               overflowX: "hidden",
               zIndex: 500,
-            }}>
+              }}
+            >
               {activeTopPanel === "system" && (
                 <div style={{
                   background: "var(--bg-panel)",
@@ -1713,6 +1748,7 @@ export function AppShell() {
           open={terminalOpen}
           onClose={() => setTerminalOpen(false)}
           cwd={activeCwd ?? undefined}
+          runCommand={terminalRunCommand}
         />
       </main>
 
@@ -1807,8 +1843,10 @@ export function AppShell() {
       </svg>
     </button>
     {/* GitHub status trigger — pinned in the foreground so the workspace panel
-        can be reopened without relying on the transient top-bar layout. */}
-    {showChat && (
+        can be reopened without relying on the transient top-bar layout.
+        Chat view offsets past the ChatMinimap rail (36px wide at right:8) so
+        the scrollbar stays clickable; file view has no rail and hugs the edge. */}
+    {(showChat || activeCwd) && (
       <button
         ref={githubBtnRef}
         type="button"
@@ -1816,8 +1854,11 @@ export function AppShell() {
         title={t("appShell.githubStatus")}
         aria-label={t("appShell.githubStatus")}
         aria-pressed={activeTopPanel === "github"}
+        aria-haspopup="dialog"
+        aria-controls="github-status-panel"
         className="github-fixed-trigger ui-focus-ring"
-        style={{ right: rightPanelOpen && !isMobile ? rightPanelWidth : 0 }}
+        data-github-status-trigger
+        style={{ right: `calc(${rightPanelInset} + ${showChat ? 48 : 4}px)` }}
       >
         <FolderGit2 size={16} strokeWidth={1.8} aria-hidden="true" />
       </button>

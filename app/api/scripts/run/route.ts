@@ -6,6 +6,8 @@ import { resolveProject } from "@/lib/worktree";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { listQuickScripts } from "@/lib/project-scripts";
 import { proxyEnv } from "@/lib/proxy-config";
+import { recordBackendError } from "@/lib/backend-errors";
+import { hostClient, rustBackendActive } from "@/lib/omp/host-client";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,23 @@ export async function POST(req: Request) {
 
     const env = { ...process.env, ...proxyEnv(process.env.OMP_WEB_PROXY_URL || null) };
     const baseOptions = { cwd: project.projectRoot, shell: false as const, env };
+
+    // Doc 16 route 12: in Rust mode the host owns script process spawning
+    // (same fixed-argv security model, same 60s/20KiB/detach semantics);
+    // the Node spawn path exists only for OMPWEB_BACKEND=node.
+    if (rustBackendActive()) {
+      try {
+        const envOverrides = Object.fromEntries(
+          Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+        );
+        const result = await hostClient.commands.run([...allowedRoots], project.projectRoot, script.command, mode === "detach", envOverrides);
+        return NextResponse.json({ ok: true, ...result });
+      } catch (error) {
+        recordBackendError("commands_run_failed", error instanceof Error ? error.message : String(error));
+        const code = typeof (error as { code?: unknown } | null)?.code === "string" ? (error as { code: string }).code : "script_run_failed";
+        return NextResponse.json({ error: error instanceof Error ? error.message : String(error), code }, { status: 500 });
+      }
+    }
 
     if (mode === "detach") {
       const logPath = join(project.projectRoot, ".omp", "scripts-logs", `${Date.now()}.log`);

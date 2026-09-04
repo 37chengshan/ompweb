@@ -171,15 +171,64 @@ npm run dev
 
 ## 🏗️ Architecture & Security
 
+```mermaid
+graph TD
+    subgraph Clients["Presentation & Clients"]
+        Browser["Web Browser<br/>(React 19 / Next.js 16)"]
+        Electron["Desktop Shell (Electron 44)<br/>Tray · Auto-update · Splash"]
+        RemoteClient["Remote Web / Mobile Client<br/>(HMAC-SHA256 Challenge-Proof)"]
+    end
+
+    subgraph WebServer["Next.js Web Server (Node.js 22+)"]
+        Routes["API Routes & Pages<br/>(/api/agent, /api/terminal, /api/native-settings)"]
+        HostClient["HostClient (IPC Client)<br/>Typed Contracts & Fail-Closed Facade"]
+        StaticCache["Session Reader & Fast Projection Cache"]
+    end
+
+    subgraph NativeDaemon["ompweb-host Native Daemon (Rust)"]
+        IPC["High-Speed Bounded IPC<br/>(Unix Domain Socket / Named Pipe)"]
+        GitService["Git Service<br/>(diff, status, commit, branches, push)"]
+        PtyService["PTY Service<br/>(Virtual Terminal, Bounded Buffer, Resizing)"]
+        SessionScan["Session Scanner & Projection<br/>(Head-Window Streaming Indexing <15ms)"]
+        SettingsService["Settings Service<br/>(OMP Config Proxy & Compact NDJSON)"]
+        RemoteRuntime["Remote Runtime & Ledger<br/>(WS Protocol v1, Mutation Ledger 24h)"]
+        Supervisor["Process Supervisor<br/>(omp Lifecycle, Crash Recovery, --resume)"]
+        StorageEngine["SQLite Journal & Device Registry<br/>(Crash-Safe Continuity)"]
+    end
+
+    subgraph Engine["OMP AI Agent Runtime"]
+        OmpBinary["omp Core Process (--mode rpc-ui)<br/>AI Tool Execution & Planning"]
+        SessionFiles["Session Store (~/.omp/agent/sessions/)<br/>(JSONL & Gzip Archives)"]
+        ModelsConfig["Models Config (~/.omp/agent/models.yml)<br/>(Anthropic, OpenAI, OpenRouter, etc.)"]
+    end
+
+    Browser -->|HTTP / SSE| Routes
+    Electron -->|Hosted Server| Routes
+    RemoteClient -->|Secure WebSocket| RemoteRuntime
+
+    Routes --> HostClient
+    Routes --> StaticCache
+    HostClient -->|Bounded NDJSON IPC| IPC
+
+    IPC --> GitService
+    IPC --> PtyService
+    IPC --> SessionScan
+    IPC --> SettingsService
+    IPC --> RemoteRuntime
+    IPC --> Supervisor
+
+    Supervisor -->|stdio RPC| OmpBinary
+    SessionScan -->|Zero-Copy Read| SessionFiles
+    StaticCache -->|Read| SessionFiles
+    SettingsService -->|Config CLI / RPC| OmpBinary
+    RemoteRuntime --> StorageEngine
+    OmpBinary --> ModelsConfig
+```
+
 > 🧭 **[Interactive Architecture Viewer (Live on GitHub Pages)](https://37chengshan.github.io/ompweb/)** · **[Local Offline HTML](docs/ompweb-architecture.html)**
 
-<p align="center">
-  <a href="https://37chengshan.github.io/ompweb/">
-    <img src="docs/architecture.png" alt="ompweb System & Runtime Architecture" width="100%" />
-  </a>
-</p>
-
-- **Data Sovereignty**: ompweb does not introduce secondary data stores or store API keys. All state is backed by the user's installed `omp` binary and `~/.omp/agent/`.
+- **Rust Native Host Authority**: Low-level high-throughput domains (Git diff/status, PTY terminal execution, session projection scanning, configuration proxying, and process supervision) are fully offloaded to the native `ompweb-host` Rust daemon for maximum memory safety and sub-millisecond execution.
+- **Data Sovereignty**: ompweb does not introduce secondary proprietary data stores or store API keys. All state is backed by the user's installed `omp` binary and `~/.omp/agent/`.
 - **Loopback-Only by Default**: Binds to `127.0.0.1` out of the box to prevent unauthorized network exposure.
 - **Password Gate**: When `OMP_WEB_PASSWORD` is configured, all routes and API endpoints require authenticated Signed Cookies.
 - **Path Whitelist Sandbox**: File viewing and terminal roots are restricted strictly to registered projects and active worktrees with canonical path resolution.

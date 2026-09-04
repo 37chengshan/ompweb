@@ -171,14 +171,63 @@ npm run dev
 
 ## 🏗️ 架构设计与安全性
 
+```mermaid
+graph TD
+    subgraph Clients["展示层与客户端"]
+        Browser["Web 浏览器<br/>(React 19 / Next.js 16)"]
+        Electron["桌面外壳 (Electron 44)<br/>系统托盘 · 自动检测更新 · 启动动画"]
+        RemoteClient["远程 Web / 移动端<br/>(HMAC-SHA256 挑战-应答认证)"]
+    end
+
+    subgraph WebServer["Next.js 应用层 (Node.js 22+)"]
+        Routes["API 路由与 SSR 页面<br/>(/api/agent, /api/terminal, /api/native-settings)"]
+        HostClient["HostClient (IPC 客户端)<br/>类型化契约 & 严格防御性门禁"]
+        StaticCache["会话快速索引与读取缓存"]
+    end
+
+    subgraph NativeDaemon["ompweb-host 原生守护进程 (Rust)"]
+        IPC["高速有界 IPC 通信<br/>(Unix Domain Socket / Windows 命名管道)"]
+        GitService["Git 核心服务<br/>(diff, status, commit, branches, push)"]
+        PtyService["PTY 终端服务<br/>(虚拟终端调度、有界缓冲、动态尺寸伸缩)"]
+        SessionScan["会话扫描与投影引擎<br/>(前缀滑动窗口流式索引 <15ms)"]
+        SettingsService["配置代理服务<br/>(485 项 OMP 配置单帧 NDJSON 通信)"]
+        RemoteRuntime["远程运行时与操作账本<br/>(WS v1 协议, 24小时幂等流水账)"]
+        Supervisor["核心进程守护者<br/>(omp 进程托管、崩溃自愈、--resume 重放)"]
+        StorageEngine["SQLite Journal 与设备注册表<br/>(崩溃安全与设备状态持久化)"]
+    end
+
+    subgraph Engine["OMP AI Agent 核心引擎"]
+        OmpBinary["omp 核心进程 (--mode rpc-ui)<br/>AI 工具执行、规划与推理"]
+        SessionFiles["本地会话目录 (~/.omp/agent/sessions/)<br/>(JSONL 对话树 & Gzip 归档)"]
+        ModelsConfig["模型配置文件 (~/.omp/agent/models.yml)<br/>(Anthropic, OpenAI, OpenRouter 等)"]
+    end
+
+    Browser -->|HTTP / SSE| Routes
+    Electron -->|托管内置服务| Routes
+    RemoteClient -->|安全 WebSocket| RemoteRuntime
+
+    Routes --> HostClient
+    Routes --> StaticCache
+    HostClient -->|有界 NDJSON IPC| IPC
+
+    IPC --> GitService
+    IPC --> PtyService
+    IPC --> SessionScan
+    IPC --> SettingsService
+    IPC --> RemoteRuntime
+    IPC --> Supervisor
+
+    Supervisor -->|stdio RPC| OmpBinary
+    SessionScan -->|零拷贝极速读取| SessionFiles
+    StaticCache -->|读取| SessionFiles
+    SettingsService -->|配置代理 CLI / RPC| OmpBinary
+    RemoteRuntime --> StorageEngine
+    OmpBinary --> ModelsConfig
+```
+
 > 🧭 **[在线交互式架构图 (GitHub Pages 实时体验)](https://37chengshan.github.io/ompweb/)** · **[本地 HTML 离线文件](docs/ompweb-architecture.html)**
 
-<p align="center">
-  <a href="https://37chengshan.github.io/ompweb/">
-    <img src="docs/architecture.png" alt="ompweb 系统与运行时架构图" width="100%" />
-  </a>
-</p>
-
+- **Rust 原生守护进程（ompweb-host）核心权能**：底层高频 I/O 与安全敏感域（Git diff/status、PTY 虚拟终端、GB 级会话投影秒级索引、原生配置代理及进程自愈守护）全面由自研 Rust 原生服务执行，内存占用极低且实现亚毫秒级响应。
 - **数据主权完全归属用户**：ompweb 不自建私有数据格式，不持久化敏感 API Key，所有对话与凭证均由已安装的 `omp` 二进制和 `~/.omp/agent/` 原生驱动。
 - **默认本地回环绑定**：默认仅监听 `127.0.0.1`，杜绝未经授权的公网暴露风险。
 - **安全密码认证**：配置 `OMP_WEB_PASSWORD` 后自动对所有前端页面及 API 开启 Signed Cookie 鉴权阻断。

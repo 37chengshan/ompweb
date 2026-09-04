@@ -29,6 +29,12 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust host
+        run: cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host
+
       - run: npm install --global npm@^11.5.1
       - run: npm ci
       - run: npm test

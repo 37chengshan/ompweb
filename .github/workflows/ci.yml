@@ -19,6 +19,12 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust host
+        run: cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host
+
       - name: Install dependencies
         run: npm ci
 

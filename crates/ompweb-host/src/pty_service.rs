@@ -119,7 +119,8 @@ impl PtyService {
         cmd.cwd(&working_directory.path);
         #[cfg(windows)]
         if let Some(unc) = &working_directory.unc {
-            cmd.args(["/d", "/v:off", "/k", "pushd \"%OMPWEB_TERMINAL_CWD%\" || exit /b 1"]);
+            cmd.args(["/d", "/v:off", "/k"]);
+            if let Some(script) = &working_directory.terminal_bootstrap { cmd.arg(script); }
             cmd.env("OMPWEB_TERMINAL_CWD", unc);
         }
         for (key, value) in envs {

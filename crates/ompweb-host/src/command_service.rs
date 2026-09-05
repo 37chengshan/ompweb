@@ -46,11 +46,14 @@ fn spawn_shell_with_env(
     let working_directory = crate::shell_cwd::ShellCwd::prepare(cwd)?;
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         let mut cmd = Command::new("cmd.exe");
         let source = if working_directory.unc.is_some() {
             format!("pushd \"%OMPWEB_COMMAND_CWD%\" || exit /b 1 & {command}")
         } else { command.to_string() };
-        cmd.args(["/d", "/v:off", "/s", "/c", &source]);
+        // CMD parses shell source itself; CRT quoting turns embedded quotes
+        // into literal backslashes and breaks both paths and user commands.
+        cmd.args(["/d", "/v:off", "/s", "/c"]).raw_arg(format!("\"{source}\""));
         cmd.current_dir(&working_directory.path)
             .env_remove("OMPWEB_PEER_SECRET")
             .env("LC_ALL", "C")

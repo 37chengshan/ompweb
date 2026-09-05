@@ -101,7 +101,7 @@ try {
   await check("explicit read ACL denial and recovery", async () => {
     const file = join(allowed, "acl.txt"); writeFileSync(file, "acl-marker");
     try {
-      ps(`$acl=Get-Acl -LiteralPath ${literal(file)}; $rule=[Security.AccessControl.FileSystemAccessRule]::new(${literal(evidence.identity.sid)},'ReadData','Deny'); $acl.AddAccessRule($rule); Set-Acl -LiteralPath ${literal(file)} -AclObject $acl`);
+      ps(`$acl=Get-Acl -LiteralPath ${literal(file)}; $rule=[Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new(${literal(evidence.identity.sid)}),'ReadData','Deny'); $acl.AddAccessRule($rule); Set-Acl -LiteralPath ${literal(file)} -AclObject $acl`);
       assert.equal((await request("files.read", { path: file, roots: [allowed] })).ok, false);
     } finally { ps(`$acl=Get-Acl -LiteralPath ${literal(file)}; $acl.Access | Where-Object {$_.AccessControlType -eq 'Deny'} | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }; Set-Acl -LiteralPath ${literal(file)} -AclObject $acl`); }
     assert.equal((await ok("files.read", { path: file, roots: [allowed] })).content, "acl-marker");
@@ -112,6 +112,21 @@ try {
     assert.equal(result.exitCode, 0, result.output);
     assert.ok(result.output.includes("correct-workspace"), result.output);
   };
+  const ptyCwd = async (cwd) => {
+    const {id} = await ok("pty.spawn", {cwd, roots:[cwd], cols:80, rows:24});
+    const file = join(cwd, `pty-${process.pid}.txt`);
+    try {
+      await ok("pty.write", {id, data:`echo terminal-marker>pty-${process.pid}.txt\r`});
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        try { if (readFileSync(file, "utf8").includes("terminal-marker")) return; } catch { /* shell starting */ }
+        await new Promise((done) => setTimeout(done, 50));
+      }
+      assert.fail("Terminal did not write inside the requested workspace");
+    } finally { await ok("pty.kill", {id}); }
+  };
+  await check("PTY Unicode cwd", () => ptyCwd(allowed));
+  await check("PTY long cwd", () => ptyCwd(long));
   await check("command Unicode cwd", () => commandCwd(allowed));
   await check("command long cwd never falls back", () => commandCwd(long));
   await check("UNC file and command cwd", async () => {
@@ -120,6 +135,7 @@ try {
     const unc = `\\\\localhost\\${share}`;
     assert.equal((await ok("files.read", { path: join(unc, "cwd-marker.txt"), roots: [unc] })).content, "correct-workspace");
     await commandCwd(unc);
+    await ptyCwd(unc);
   });
 } finally {
   socket?.destroy();

@@ -1,6 +1,6 @@
 {
   "name": "@37chengshan/ompweb",
-  "version": "5.1.6",
+  "version": "5.1.7",
   "description": "Web UI for the oh-my-pi (omp) coding agent",
   "homepage": "https://github.com/37chengshan/ompweb#readme",
   "repository": {
@@ -131,8 +131,7 @@
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
       "shortcutName": "OmpWeb",
-      "artifactName": "OmpWeb-Setup-${version}.${ext}",
-      "include": "nsis-ompweb.nsh"
+      "artifactName": "OmpWeb-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [

@@ -115,15 +115,32 @@ try {
   const ptyCwd = async (cwd) => {
     const {id} = await ok("pty.spawn", {cwd, roots:[cwd], cols:80, rows:24});
     const file = join(cwd, `pty-${process.pid}.txt`);
+    let output = "";
+    const stream = createConnection({host:"127.0.0.1", port:info.port});
+    await once(stream, "connect");
+    stream.on("error", (error) => { output += String(error); });
+    createInterface({input:stream}).on("line", (line) => {
+      const reply = JSON.parse(line);
+      if (reply.id === "auth") { stream.write(JSON.stringify({id:"attach",method:"pty.attach",params:{id}})+"\n"); return; }
+      const data = reply.event?.data;
+      if (typeof data !== "string") return;
+      output = (output + data).slice(-4000);
+      // ConPTY asks its terminal for the cursor position before CMD starts.
+      // A headless test must answer just as xterm does in the real App.
+      if (data.includes("\x1b[6n")) void ok("pty.write", {id,data:"\x1b[1;1R"}).catch(() => {});
+    });
+    stream.write(JSON.stringify({id:"auth",method:"hello",params:{token:info.token}})+"\n");
     try {
+      const readyDeadline=Date.now()+3000;
+      while (!output.includes(">") && Date.now()<readyDeadline) await new Promise((done)=>setTimeout(done,50));
       await ok("pty.write", {id, data:`echo terminal-marker>pty-${process.pid}.txt\r`});
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
         try { if (readFileSync(file, "utf8").includes("terminal-marker")) return; } catch { /* shell starting */ }
         await new Promise((done) => setTimeout(done, 50));
       }
-      assert.fail("Terminal did not write inside the requested workspace");
-    } finally { await ok("pty.kill", {id}); }
+      assert.fail(`Terminal did not write inside the requested workspace: ${output}`);
+    } finally { await ok("pty.kill", {id}); stream.destroy(); }
   };
   await check("PTY Unicode cwd", () => ptyCwd(allowed));
   await check("PTY long cwd", () => ptyCwd(long));

@@ -2,10 +2,30 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 
 const root = path.resolve(import.meta.dirname, "..");
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const desktopWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "build-desktop.yml"), "utf8");
+
+test("standalone preload is shipped outside app.asar and works with system Node", (t) => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "ompweb preload-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(dir, "scripts"));
+  fs.mkdirSync(path.join(dir, "bin"));
+  fs.mkdirSync(path.join(dir, ".next", "static"), { recursive: true });
+  fs.copyFileSync(path.join(root, "scripts", "postbuild-static.mjs"), path.join(dir, "scripts", "postbuild-static.mjs"));
+  for (const name of ["request-peer.js", "request-peer-preload.js"]) {
+    fs.copyFileSync(path.join(root, "bin", name), path.join(dir, "bin", name));
+  }
+  execFileSync(process.execPath, [path.join(dir, "scripts", "postbuild-static.mjs")]);
+  const preload = path.join(dir, ".next", "standalone", "bin", "request-peer-preload.js");
+  const output = execFileSync(process.execPath, ["--require", preload, "-e", "console.log(Boolean(process.env.OMPWEB_PEER_SECRET))"], { encoding: "utf8" });
+  assert.equal(output.trim(), "true");
+  const main = fs.readFileSync(path.join(root, "desktop", "main.js"), "utf8");
+  assert.match(main, /path\.join\(standaloneDir, "bin", "request-peer-preload\.js"\)/);
+});
 
 test("desktop packaging explicitly preserves Next's hidden runtime directory", () => {
   assert.ok(packageJson.build.extraResources.some((resource) => (

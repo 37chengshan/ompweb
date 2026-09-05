@@ -407,7 +407,9 @@ async function startServerImpl() {
   spawnEnv.OMP_WEB_PACKAGE_DIR = pkgDir;
   spawnEnv.PATH = runtimePath;
   if (ompBin) spawnEnv.OMP_WEB_OMP_BIN = ompBin;
-  serverProcess = spawn(nodeBin, ["--require", path.join(pkgDir, "bin", "request-peer-preload.js"), serverJs], {
+  // System Node cannot read app.asar. The build copies this preload beside
+  // the external standalone server so both Node and Electron can require it.
+  serverProcess = spawn(nodeBin, ["--require", path.join(standaloneDir, "bin", "request-peer-preload.js"), serverJs], {
     cwd: standaloneDir,
     // POSIX needs an isolated group for recursive shutdown. Windows uses
     // taskkill /T instead; detaching there creates a separate visible console

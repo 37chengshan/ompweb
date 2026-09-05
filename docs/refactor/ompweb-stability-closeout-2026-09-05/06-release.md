@@ -4,7 +4,7 @@
 
 ## 候选已通过
 
-- Node 22.19.0、Node 24.14.0：各 738 项测试，729 通过、9 跳过、0 失败、0 取消。
+- Node 22.19.0、Node 24.14.0：Node 22 最终 739 项（730 通过），Node 24 初次 738 项（729 通过）；另过新增打包回归；9 跳过、0 失败、0 取消。
 - Rust workspace：64 项通过；TypeScript 0 错误；ESLint 0 错误、82 个既有警告。
 - npm audit：0 漏洞；补丁更新 @humanfs/node 0.16.8、@xmldom/xmldom 0.8.15。
 - 本机 staged host：实际健康检查、IPC 鉴权、ping、中文空格路径读取、空授权根拒绝全部通过。
@@ -23,3 +23,8 @@
 
 - 候选 SHA、工作流链接、npm integrity 与桌面文件摘要在发布完成后补充。
 - Windows UAC/UNC/长路径、完整 App 人工流程与移动端键盘/弱网仍待专项验收。
+
+## 发布前补充发现
+
+- 系统 Node 无法读取 app.asar 内的 peer preload；构建时将它复制到外部 standalone/bin，桌面入口改用此路径，并通过真实 Node 加载回归。
+- 首次 main CI 发现既有 Git 测试依赖全局 user.name/email，干净 runner 提交失败；IPC 测试未提前注册清理，失败后 host 遗留导致测试挂起。现改为 fixture-local Git 身份和提前注册 cleanup；不修改用户全局 Git 配置。

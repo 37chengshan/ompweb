@@ -22,3 +22,11 @@ console.log(`postbuild: copied ${from} -> ${to}`);
 // Resources/bin, but electron-builder still declares standalone/crates as a
 // compatibility resource and warns when the source directory is absent.
 mkdirSync(join(root, ".next", "standalone", "crates"), { recursive: true });
+
+// The desktop may use a system Node executable, which cannot require files
+// from app.asar. Keep the HTTP-boundary preload in the external server tree.
+const serverBin = join(root, ".next", "standalone", "bin");
+mkdirSync(serverBin, { recursive: true });
+for (const name of ["request-peer.js", "request-peer-preload.js"]) {
+  cpSync(join(root, "bin", name), join(serverBin, name));
+}

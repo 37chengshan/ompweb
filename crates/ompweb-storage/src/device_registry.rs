@@ -49,7 +49,7 @@ impl DeviceRegistry {
     }
 
     pub fn open(path: &std::path::Path) -> rusqlite::Result<Self> {
-        let conn = Connection::open(path)?;
+        let conn = crate::open_database(path)?;
         conn.execute_batch("PRAGMA journal_mode = WAL;")?;
         init(&conn)?;
         Ok(DeviceRegistry {

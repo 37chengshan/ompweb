@@ -10,3 +10,13 @@ pub mod sqlite_journal;
 
 pub use device_registry::{DeviceRecord, DeviceRegistry};
 pub use sqlite_journal::{ClientCursor, EventClass, ResumePlan, SqliteJournal};
+
+/// Windows' default SQLite VFS limits paths independently of Rust/Win32.
+/// Keep normal locking and WAL semantics while enabling extended paths for
+/// both connections sharing runtime.db (journal and device registry).
+fn open_database(path: &std::path::Path) -> rusqlite::Result<rusqlite::Connection> {
+    #[cfg(windows)]
+    { rusqlite::Connection::open_with_flags_and_vfs(path, rusqlite::OpenFlags::default(), "win32-longpath") }
+    #[cfg(not(windows))]
+    { rusqlite::Connection::open(path) }
+}

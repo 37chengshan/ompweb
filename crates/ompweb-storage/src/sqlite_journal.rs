@@ -86,7 +86,7 @@ impl SqliteJournal {
     }
 
     pub fn open(path: &str, host_epoch: &str) -> rusqlite::Result<Self> {
-        let conn = Connection::open(path)?;
+        let conn = crate::open_database(std::path::Path::new(path))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         Self::init(conn, host_epoch)
     }

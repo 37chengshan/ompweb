@@ -52,9 +52,10 @@ try {
   assert.equal(health.status, 0, health.stderr);
   // Startup itself exercises a >260-character SQLite path.
   child = spawn(binary, ["--ipc"], { cwd: allowed, env: { ...process.env, OMPWEB_RUNTIME_DB: join(long, "runtime.db"), OMP_WEB_REMOTE_BIND: "127.0.0.1:0" }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-  child.stderr.resume();
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-4000); });
   const boot = createInterface({ input: child.stdout });
-  const [line] = await Promise.race([once(boot, "line"), once(child, "exit").then(() => { throw new Error("host exited during startup"); }), new Promise((_, reject) => setTimeout(() => reject(new Error("host startup timed out")), 12000).unref())]);
+  const [line] = await Promise.race([once(boot, "line"), once(child, "exit").then(() => { evidence.cases.push({ name: "long-path SQLite startup", status: "fail", error: stderr }); throw new Error(`host exited during startup: ${stderr}`); }), new Promise((_, reject) => setTimeout(() => reject(new Error("host startup timed out")), 12000).unref())]);
   const info = JSON.parse(line);
   socket = createConnection({ host: "127.0.0.1", port: info.port });
   await once(socket, "connect");

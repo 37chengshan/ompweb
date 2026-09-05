@@ -1369,6 +1369,7 @@
   "githubPanel.noWorkspace": "未选择工作区",
   "githubPanel.loading": "加载中…",
   "githubPanel.noRepo": "当前工作区不是 GitHub 仓库",
+  "githubPanel.workspaceNotAllowed": "工作区尚未授权（会话列表加载中），请稍后刷新",
   "githubPanel.openPrs": "{count} 个开放 PR",
   "githubPanel.noPrs": "无开放 PR",
   "githubPanel.noOpenPrs": "全部已合并或关闭",

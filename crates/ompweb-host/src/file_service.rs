@@ -150,8 +150,23 @@ fn get_preview_kind(file_path: &str) -> Option<&'static str> {
 /// Component-safe containment: `path` must live inside `root`. Prefix
 /// equality is not enough (`<root>2/…` must not pass), and any `..` segment
 /// in the remainder is rejected. Mirror of lib/file-access.ts lexical tier.
+///
+/// Windows: roots may arrive as `D:/…` while the target is `D:\…` (or vice
+/// versa) and the filesystem is case-insensitive, so normalize separators and
+/// case before the prefix comparison — otherwise every Windows request against
+/// a drive-rooted path fails with "cwd outside allowed roots".
 pub fn is_path_within(root: &str, path: &str) -> bool {
-    let Some(rest) = path.strip_prefix(root) else {
+    #[cfg(windows)]
+    fn normalize(p: &str) -> String {
+        p.replace('\\', "/").to_ascii_lowercase()
+    }
+    #[cfg(not(windows))]
+    fn normalize(p: &str) -> String {
+        p.to_string()
+    }
+    let root_n = normalize(root);
+    let path_n = normalize(path);
+    let Some(rest) = path_n.strip_prefix(&root_n) else {
         return false;
     };
     if !rest.is_empty() && !rest.starts_with('/') {

@@ -1369,6 +1369,7 @@
   "githubPanel.noWorkspace": "ワークスペース未選択",
   "githubPanel.loading": "読込中…",
   "githubPanel.noRepo": "GitHub リポジトリではありません",
+  "githubPanel.workspaceNotAllowed": "ワークスペースがまだ承認されていません（セッション一覧の読み込み中）— しばらくして更新してください",
   "githubPanel.openPrs": "{count} 件のPR",
   "githubPanel.noPrs": "PR なし",
   "githubPanel.noOpenPrs": "すべてマージ済み/クローズ",

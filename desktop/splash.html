@@ -264,16 +264,49 @@
   }
   void warmUp();
 
+  // Windows power management can reject or pause an otherwise playable
+  // muted <video> ("video-only background media was paused to save power"),
+  // which made the launch video silently disappear on desktop. Never treat a
+  // play() rejection as "no video": retry once the window is visible/focused
+  // or on the first user gesture, and only skip the video if it genuinely
+  // cannot load (notready/notsupported).
   const prefersReduced = (document.documentElement.getAttribute("data-splash-motion") === "off") ||
     (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  let playRetried = false;
+  function resumeVideo() {
+    if (prefersReduced || videoEnded || faded || skipRequested) return;
+    video.muted = true; // belt-and-braces: muted autoplay is always allowed
+    video.play().then(() => {
+      playRetried = false;
+    }).catch((e) => {
+      console.log("splash play rejected (will retry on visible/gesture): " + e);
+      // NotSupported/notready are terminal; AbortError/interrupt are transient.
+      const terminal = e && (e.name === "NotSupportedError" || e.name === "NotAllowedError");
+      if (terminal) {
+        skipRequested = true;
+        showOverlay(true);
+        tryGo();
+      }
+    });
+  }
   if (prefersReduced) {
     skipRequested = true;
     showOverlay(true);
   } else {
-    video.play().catch((e) => {
-      console.log("splash play rejected: " + e);
-      showOverlay(true);
+    resumeVideo();
+    // Power-management pause: retry when the window regains visibility.
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) resumeVideo();
     });
+    window.addEventListener("focus", resumeVideo);
+    // First user gesture is also a reliable unlock for autoplay policies.
+    const gestureUnlock = () => {
+      resumeVideo();
+      document.removeEventListener("pointerdown", gestureUnlock);
+      document.removeEventListener("keydown", gestureUnlock);
+    };
+    document.addEventListener("pointerdown", gestureUnlock);
+    document.addEventListener("keydown", gestureUnlock);
   }
 
   // Hard fallbacks end the video but still wait for the server: the loading

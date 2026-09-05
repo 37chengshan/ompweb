@@ -63,8 +63,10 @@ export function UsageDashboardModal({
   const hasDataRef = useRef(Boolean(globalCachedStatsData));
 
   const loadStats = useCallback(async (isBackground = false) => {
-    // Only show loading spinner if we don't have any cached data yet
-    if (!isBackground && !hasDataRef.current) {
+    // Manual refresh (isBackground=false) always gives visible feedback: the
+    // refresh button spins and success/failure surfaces via toast. Background
+    // polls stay silent so the auto-refresh timer never spams the user.
+    if (!isBackground) {
       setLoading(true);
     }
     try {
@@ -74,12 +76,13 @@ export function UsageDashboardModal({
       globalCachedStatsData = data;
       hasDataRef.current = true;
       setStatsData(data);
-    } catch {
-      if (!isBackground && !hasDataRef.current) {
-        toast.error("加载用量统计数据失败");
+      if (!isBackground) toast.success("用量数据已刷新");
+    } catch (error) {
+      if (!isBackground) {
+        toast.error(error instanceof Error ? `刷新失败：${error.message}` : "刷新失败，请重试");
       }
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   }, []);
 

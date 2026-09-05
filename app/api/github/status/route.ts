@@ -40,11 +40,13 @@ export async function GET(req: Request) {
     // otherwise leak repo identity + PR/CI state for arbitrary local dirs).
     const allowedRoots = await getAllowedFileRoots();
     if (!isExistingFilePathAllowed(project.projectRoot, allowedRoots)) {
-      return NextResponse.json({ repo: null, pulls: [] });
+      // Not silently empty: the frontend shows why (allowlist may not have
+      // caught up with the session list on cold start).
+      return NextResponse.json({ repo: null, pulls: [], reason: "workspace_not_allowed", projectRoot: project.projectRoot });
     }
     const ref = await resolveGitHubRepo(project.projectRoot);
     if (!ref) {
-      const data = { repo: null, pulls: [] };
+      const data = { repo: null, pulls: [], reason: "not_github" };
       getCache().set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS });
       return NextResponse.json(data);
     }

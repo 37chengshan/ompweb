@@ -81,6 +81,8 @@ export interface SystemClient {
 export interface GitHubStatusPayload {
   repo?: GitHubRepoStatus | null;
   git?: GitHubRepoStatus["git"];
+  /** Why the repo is empty: "workspace_not_allowed" | "not_github" | undefined. */
+  reason?: "workspace_not_allowed" | "not_github";
 }
 
 /** Git domain (doc 16 route 1 surface; route 10 swaps the backing to Rust). */

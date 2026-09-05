@@ -481,6 +481,9 @@ mod tests {
     #[test]
     fn shell_resolution_follows_node_contract() {
         let (shell, args) = resolve_shell();
+        #[cfg(target_os = "windows")]
+        let expected = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into());
+        #[cfg(not(target_os = "windows"))]
         let expected = std::env::var("SHELL").unwrap_or_else(|_| {
             if cfg!(target_os = "macos") {
                 "/bin/zsh".to_string()
@@ -489,6 +492,7 @@ mod tests {
             }
         });
         assert_eq!(shell, expected);
+        #[cfg(not(target_os = "windows"))]
         assert_eq!(args, vec!["-i"]);
     }
 

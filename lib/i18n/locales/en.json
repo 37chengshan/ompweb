@@ -1369,6 +1369,7 @@
   "githubPanel.noWorkspace": "No workspace selected",
   "githubPanel.loading": "Loading…",
   "githubPanel.noRepo": "Not a GitHub checkout",
+  "githubPanel.workspaceNotAllowed": "Workspace not yet authorized (session list still loading) — refresh in a moment",
   "githubPanel.openPrs": "{count} open PRs",
   "githubPanel.noPrs": "No open PRs",
   "githubPanel.noOpenPrs": "All merged or closed",

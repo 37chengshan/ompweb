@@ -126,6 +126,74 @@ let serverProcess = null;
 let serverStartPromise = null;
 let quitting = false;
 let serverReady = false;
+
+// --- Close-to-tray preference (remembered across launches) ---
+// mode: "quit" (window X fully quits, killing the hosted server tree) or
+// "tray" (window hides; OmpWeb keeps running in the system tray). The choice
+// is stored in close-pref.json under userData. First close asks the user;
+// the tray menu also exposes an explicit "Quit OmpWeb" that always kills the
+// whole tree regardless of the remembered mode.
+function closePrefPath() {
+  return path.join(app.getPath("userData"), "close-pref.json");
+}
+function readClosePref() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(closePrefPath(), "utf8"));
+    if (raw && (raw.mode === "quit" || raw.mode === "tray")) return raw.mode;
+  } catch { /* missing/corrupt */ }
+  return null;
+}
+function writeClosePref(mode) {
+  try { fs.writeFileSync(closePrefPath(), JSON.stringify({ mode }), "utf8"); } catch { /* best effort */ }
+}
+
+/** Ask the user what closing the window should do (async). */
+function askCloseBehavior(win, callback) {
+  const remembered = readClosePref();
+  if (remembered) { callback(remembered); return; }
+  const buttons = ["退出", "保留托盘"];
+  const detail = "退出：完全退出 OmpWeb（含后台服务）。\n保留托盘：继续在系统托盘运行，可随时从托盘重新打开或退出。";
+  dialog.showMessageBox(win, {
+    type: "question",
+    title: "关闭 OmpWeb 窗口后",
+    message: "关闭窗口后希望 OmpWeb 如何运行？",
+    detail,
+    buttons,
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  }).then(({ response }) => {
+    const choice = response === 1 ? "tray" : "quit";
+    writeClosePref(choice);
+    callback(choice);
+  }).catch(() => callback("quit"));
+}
+
+/**
+ * Primary-window close interception: apply the remembered close behavior, or
+ * ask on first close. "quit" lets the window close (window-all-closed then
+ * quits the app and stops the server tree); "tray" hides instead of closing.
+ */
+function applyCloseBehavior(win, event) {
+  if (quitting) return; // real quit already in progress
+  const pref = readClosePref();
+  if (pref === "tray") {
+    event.preventDefault();
+    win.hide();
+    return;
+  }
+  if (pref === "quit") return; // allow close -> window-all-closed -> app.quit()
+  // No remembered choice yet: ask before closing.
+  event.preventDefault();
+  askCloseBehavior(win, (choice) => {
+    if (choice === "tray") {
+      if (!win.isDestroyed()) win.hide();
+    } else {
+      quitting = true;
+      app.quit();
+    }
+  });
+}
 // Startup state machine (doc 14 T1.3): spawning → listening →
 // assets_warmed → shell_mounted → session_interactive, with terminal
 // failed. Every transition is stamped into omp-app.log; the report is
@@ -446,6 +514,30 @@ async function reclaimPortIfStale(port) {
   return false;
 }
 
+/**
+ * Windows proxy trap (FlClash/Clash etc. set a system proxy on 127.0.0.1:7890;
+ * Electron's global fetch honors it and can proxy even loopback requests).
+ * Startup probes to the app's own 127.0.0.1:APP_PORT server then burn 10-36s
+ * of "正在启动…" before timing out. Pin the default session to bypass loopback
+ * so startup probes and renderer fetches never traverse a proxy.
+ */
+function ensureLoopbackProxyBypass() {
+  try {
+    const { session } = require("electron");
+    const ses = session.defaultSession;
+    if (!ses || typeof ses.setProxy !== "function") return;
+    const existing = process.env.OMP_WEB_PROXY_URL || "";
+    const rules = existing ? existing : undefined;
+    ses.setProxy({
+      ...(rules ? { proxyRules: rules } : {}),
+      proxyBypassRules: "127.0.0.1,localhost,<local>,::1",
+    }).catch(() => {});
+    appLog("proxy: loopback bypass installed for default session");
+  } catch (error) {
+    appLog("proxy: loopback bypass failed: " + (error instanceof Error ? error.message : String(error)));
+  }
+}
+
 function waitForServer(loadWhenReady = true) {
   if (quitting) return;
   const probe = createHealthProbe({
@@ -587,7 +679,15 @@ function createWindow({ primary = true, sessionId = null } = {}) {
     },
   });
 
-  if (primary) mainWindow = window;
+  if (primary) {
+    mainWindow = window;
+    // Close-to-tray: remember the user's choice on first close. Secondary
+    // session windows (primary=false) close freely — they are views onto the
+    // same hosted server.
+    window.on("close", (event) => {
+      if (primary) applyCloseBehavior(window, event);
+    });
+  }
   window.setIcon?.(icon);
 
   // Open external links (github, npm, ...) in the system browser, never in-app.
@@ -663,6 +763,7 @@ function createTray() {
     image = image.resize({ width: 18, height: 18 });
     image.setTemplateImage(true);
   }
+  try { if (tray && !tray.isDestroyed()) tray.destroy(); } catch { /* first run */ }
   tray = new Tray(image);
   tray.setToolTip("OmpWeb");
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -670,7 +771,35 @@ function createTray() {
     { type: "separator" },
     { label: "在浏览器中打开", click: () => shell.openExternal(APP_URL) },
     { type: "separator" },
-    { label: "退出", click: () => { quitting = true; app.quit(); } },
+    {
+      label: readClosePref() === "quit" ? "关闭窗口时：退出" : "关闭窗口时：保留托盘",
+      enabled: false,
+    },
+    {
+      label: "切换关闭窗口行为…",
+      click: () => {
+        const remembered = readClosePref();
+        const buttons = remembered === "tray" ? ["退出", "保留托盘"] : ["退出", "保留托盘"];
+        dialog.showMessageBox({
+          type: "question",
+          title: "关闭窗口行为",
+          message: "点击窗口关闭按钮(X)后希望 OmpWeb 如何运行？",
+          detail: "退出：完全退出 OmpWeb（含后台服务）。\n保留托盘：最小化到系统托盘继续运行。",
+          buttons,
+          defaultId: remembered === "quit" ? 0 : 1,
+          cancelId: remembered === "quit" ? 0 : 1,
+          noLink: true,
+        }).then(({ response }) => {
+          const choice = response === 1 ? "tray" : "quit";
+          writeClosePref(choice);
+          // Rebuild the tray menu so the status line reflects the new choice.
+          createTray();
+        }).catch(() => {});
+      },
+    },
+    { type: "separator" },
+    // Explicit quit: always stops the hosted server tree (before-quit).
+    { label: "退出 OmpWeb", click: () => { quitting = true; app.quit(); } },
   ]));
   tray.on("click", () => {
     const window = firstLiveWindow();
@@ -727,6 +856,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    ensureLoopbackProxyBypass();
     createAppMenu();
     // Show the window BEFORE awaiting the server (T1.9): createWindow and the
     // startup page renders immediately; the standalone server cold-
@@ -756,10 +886,18 @@ if (!gotLock) {
     }
   });
 
-  // A true desktop app: closing the window quits (tray stays for convenience,
-  // but the hosted server must never outlive the app).
+  // Close-to-tray: window-all-closed keeps the app alive in the tray unless
+  // the user chose "quit" (remembered in close-pref.json via the window X
+  // flow, or explicitly via the tray "Quit OmpWeb" item which sets quitting).
   app.on("window-all-closed", () => {
-    app.quit();
+    if (quitting) { app.quit(); return; }
+    const pref = readClosePref();
+    if (pref === "quit") {
+      quitting = true;
+      app.quit();
+      return;
+    }
+    appLog("window-all-closed: keeping app alive in tray (close-pref=" + (pref || "tray") + ")");
   });
 
   let isStoppingServer = false;
@@ -772,11 +910,21 @@ if (!gotLock) {
       stopServerTree().finally(() => {
         app.quit();
       });
-      // Safety net: force exit if child takes longer than 1200ms
+      // Safety net: force exit if child takes longer than 1200ms.
+      // Windows has no process groups (negative pid is invalid there), so
+      // taskkill /T is the portable way to take the whole tree down.
       setTimeout(() => {
         if (child) {
-          try { process.kill(-child.pid, "SIGKILL"); } catch {}
-          try { child.kill("SIGKILL"); } catch {}
+          if (process.platform === "win32") {
+            try {
+              const { spawn: spawnKiller } = require("child_process");
+              const killer = spawnKiller("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+              killer.unref();
+            } catch { try { child.kill("SIGKILL"); } catch {} }
+          } else {
+            try { process.kill(-child.pid, "SIGKILL"); } catch {}
+            try { child.kill("SIGKILL"); } catch {}
+          }
         }
         app.exit(0);
       }, 1200);
@@ -795,8 +943,19 @@ if (!gotLock) {
   });
   process.on("exit", () => {
     if (serverProcess) {
-      try { process.kill(-serverProcess.pid, "SIGKILL"); } catch {}
-      try { serverProcess.kill("SIGKILL"); } catch {}
+      const child = serverProcess;
+      if (process.platform === "win32") {
+        // Windows: taskkill /T terminates the whole tree. Negative pids do
+        // not exist on win32 (process.kill(-pid) throws EINVAL).
+        try {
+          const { spawn: spawnKiller } = require("child_process");
+          const killer = spawnKiller("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+          killer.unref();
+        } catch { try { child.kill("SIGKILL"); } catch {} }
+      } else {
+        try { process.kill(-child.pid, "SIGKILL"); } catch {}
+        try { child.kill("SIGKILL"); } catch {}
+      }
     }
   });
 }

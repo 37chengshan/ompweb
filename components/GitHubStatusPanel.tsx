@@ -82,6 +82,15 @@ export function GitHubStatusPanel({ cwd }: GitHubStatusPanelProps) {
       .then((data) => {
         const repo = data.repo ?? null;
         setStatus(repo ? { ...repo, git: data.git ?? repo.git } : null);
+        if (!repo) {
+          setLoadError(
+            data.reason === "workspace_not_allowed"
+              ? t("githubPanel.workspaceNotAllowed")
+              : data.reason === "not_github"
+                ? t("githubPanel.noRepo")
+                : null,
+          );
+        }
         void client.git.branches(cwd).then((items) => {
           setBranches(items);
           setSelectedBranch(items.find((item) => item.current)?.name ?? data.git?.branch ?? "");

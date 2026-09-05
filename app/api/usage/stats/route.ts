@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { resolveOmpBin } from "@/lib/omp/omp-cli";
+import { aggregateFromStatsDb } from "@/lib/stats-aggregate";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,23 @@ interface CachedStatsData {
 
 let cachedStats: CachedStatsData | null = null;
 let inFlightPromise: Promise<Record<string, unknown>> | null = null;
+
+/**
+ * omp stats --json can return zeroed aggregates (observed with omp/18.1.2 on
+ * Windows) even when ~/.omp/stats.db holds valid rows: the sync step reports
+ * "Synced 0 new entries" and every aggregate is 0/empty. Treat that as a CLI
+ * failure and fall back to a direct read-only aggregation of the sqlite db so
+ * the usage dashboard always shows real numbers.
+ */
+function statsLookMeaningful(parsed: Record<string, unknown>): boolean {
+  const overall = parsed.overall as Record<string, unknown> | null | undefined;
+  if (!overall) return false;
+  const reqs = typeof overall.totalRequests === "number" ? overall.totalRequests : 0;
+  const inp = typeof overall.totalInputTokens === "number" ? overall.totalInputTokens : 0;
+  const out = typeof overall.totalOutputTokens === "number" ? overall.totalOutputTokens : 0;
+  const byModel = Array.isArray(parsed.byModel) ? parsed.byModel : [];
+  return reqs > 0 || inp > 0 || out > 0 || byModel.length > 0;
+}
 
 async function fetchStatsData(): Promise<Record<string, unknown>> {
   const ompBin = resolveOmpBin();
@@ -30,7 +48,7 @@ async function fetchStatsData(): Promise<Record<string, unknown>> {
   let parsedStats: Record<string, unknown> = {};
   if (statsResult.status === "fulfilled") {
     const raw = statsResult.value.stdout;
-    // Strip possible non-json log lines before '{'
+    // Strip possible non-json log lines before {
     const jsonStart = raw.indexOf("{");
     if (jsonStart >= 0) {
       try {
@@ -56,6 +74,18 @@ async function fetchStatsData(): Promise<Record<string, unknown>> {
     }
   } else {
     console.warn("Failed to run omp usage --json:", usageResult.reason);
+  }
+
+  if (!statsLookMeaningful(parsedStats)) {
+    try {
+      const db = await aggregateFromStatsDb();
+      if (db && db.overall && (db.overall.totalRequests > 0 || db.overall.totalInputTokens > 0)) {
+        console.warn("omp stats --json returned empty aggregates; fell back to stats.db aggregation");
+        parsedStats = db as unknown as Record<string, unknown>;
+      }
+    } catch (error) {
+      console.warn("stats.db fallback aggregation failed:", error);
+    }
   }
 
   return {

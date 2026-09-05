@@ -180,7 +180,7 @@ export function auditRouteBoundary({ productionRoot = root } = {}) {
     } catch {
       continue;
     }
-    const rel = file.slice(productionRoot.length + 1);
+    const rel = file.slice(productionRoot.length + 1).replaceAll("\\", "/");
     const allowlisted = ROUTE_ALLOWLIST.find((entry) => entry.file === rel);
     for (const { marker, description, pending } of ROUTE_AUTHORITY_MARKERS) {
       if (!text.includes(marker)) continue;

@@ -30,17 +30,51 @@ interface ToastOptions {
   variant?: "update";
   /** Clamp the description to 2 lines; click the description to expand it. */
   clamp?: boolean;
+  /**
+   * Wall-clock lifetime before the toast auto-dismisses. Defaults per kind:
+   * success/info 2000ms, error 3500ms. Update banners (variant: "update")
+   * stay until dismissed. Unlike the base-ui hover/focus timer, this uses a
+   * plain setTimeout so an unfocused window or hover never leaves a toast
+   * stuck on screen.
+   */
+  durationMs?: number;
 }
 
 const manager = Toast.createToastManager<ToastData>();
 
+// Default wall-clock lifetimes (ms). Kept short: these are confirmations, not
+// announcements. Errors get slightly longer so the message is readable.
+const DEFAULT_DURATION_MS: Record<ToastKind, number> = {
+  success: 2000,
+  info: 2000,
+  error: 3500,
+};
+// Backstop for the base-ui timer: it pauses on hover/window-blur, so without
+// this the toast could linger indefinitely. 30s is far beyond any default.
+const BASE_UI_BACKSTOP_MS = 30_000;
+
 function add(kind: ToastKind, title: React.ReactNode, description?: React.ReactNode, options?: ToastOptions) {
-  return manager.add({
+  const isUpdateBanner = options?.variant === "update";
+  const id = manager.add({
     title,
     description,
     type: kind,
+    // update banners are interactive announcements: keep them until the user
+    // dismisses (no base-ui auto timer). Everything else auto-dismisses on a
+    // wall clock that hover/blur cannot pause.
+    timeout: isUpdateBanner ? 0 : (options?.durationMs ?? DEFAULT_DURATION_MS[kind]),
     data: { kind, clamp: options?.clamp, variant: options?.variant },
   });
+  if (!isUpdateBanner) {
+    // Force-close on a real timer: base-ui pauses its own countdown while the
+    // toast is hovered or the window is blurred, which made toasts appear to
+    // need a manual dismiss. This guarantees the configured lifetime.
+    const lifetime = options?.durationMs ?? DEFAULT_DURATION_MS[kind];
+    window.setTimeout(() => {
+      manager.close(id);
+    }, Math.min(lifetime, BASE_UI_BACKSTOP_MS));
+  }
+  return id;
 }
 
 export const toast = {
@@ -106,22 +140,22 @@ export function ClampedDescription({ children }: { children: React.ReactNode }) 
 
 function Toaster() {
   const { toasts } = Toast.useToastManager<ToastData>();
-  const isMobile = useIsMobile();
-  // Clear the app chrome (topbar 36/44px + tab bar 36px) with a safe gap so
-  // toasts never cover the header, tabs, or chat content.
-  const topOffset = isMobile ? 88 : 80;
+  // All toasts live bottom-right, clear of the chat input bar / status area.
+  // Bottom offset 24px on desktop, slightly higher on mobile so the on-screen
+  // keyboard / input bar never covers the newest toast.
+  const bottomOffset = 24;
   return (
     <Toast.Portal>
       <Toast.Viewport
         style={{
           position: "fixed",
-          top: topOffset,
+          bottom: bottomOffset,
           right: 16,
           zIndex: 2100,
           display: "flex",
           flexDirection: "column",
           gap: 8,
-          width: "min(92vw, 360px)",
+          width: "min(84vw, 280px)",
           pointerEvents: "none",
         }}
       >
@@ -140,12 +174,12 @@ function Toaster() {
               border: "1px solid var(--border)",
               borderRadius: "var(--radius-card)",
               boxShadow: "var(--shadow-pop)",
-              padding: "10px 12px",
+              padding: "8px 10px",
             }}
           >
             <KindIcon kind={t.type as ToastKind | undefined} />
             <Toast.Content style={{ flex: 1, minWidth: 0 }}>
-              <Toast.Title className="display-serif" style={{ fontSize: 13, lineHeight: 1.4 }} />
+              <Toast.Title className="display-serif" style={{ fontSize: 12.5, lineHeight: 1.35 }} />
               {t.data?.clamp ? (
                 <Toast.Description render={<div />} style={descriptionBaseStyle}>
                   <ClampedDescription>{t.description}</ClampedDescription>
@@ -185,7 +219,7 @@ function Toaster() {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
-    <Toast.Provider toastManager={manager} timeout={4000} limit={4}>
+    <Toast.Provider toastManager={manager} timeout={30_000} limit={4}>
       {children}
       <Toaster />
     </Toast.Provider>

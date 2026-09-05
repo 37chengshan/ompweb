@@ -6,7 +6,9 @@ import { clearBackendErrors, recentBackendErrors } from "@/lib/backend-errors";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import os from "node:os";
 import { hostClient } from "@/lib/omp/host-client";
+import { getConfigRoot, getAgentDir, getSessionsDir, getSettingsPath, getModelsConfigPath } from "@/lib/omp/paths";
 import YAML from "yaml";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +88,24 @@ export async function GET() {
     web: {
       port: webPort,
       url: `http://127.0.0.1:${webPort}`,
+    },
+    system: {
+      memory: {
+        rss: process.memoryUsage().rss,
+        heapUsed: process.memoryUsage().heapUsed,
+        heapTotal: process.memoryUsage().heapTotal,
+      },
+      cpus: os.cpus()?.length ?? 1,
+      hostname: os.hostname(),
+    },
+    paths: {
+      ompBin: ompBin ?? null,
+      rustHostBin: hostClient.host.status().path || null,
+      configRoot: getConfigRoot(),
+      agentDir: getAgentDir(),
+      sessionsDir: getSessionsDir(),
+      settingsPath: getSettingsPath(),
+      modelsPath: getModelsConfigPath(),
     },
     // Backend Ownership dashboard (doc 15 / v4 P40): per-domain authority so
     // development/testing can see at a glance what has migrated to Rust.

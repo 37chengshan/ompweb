@@ -279,17 +279,31 @@ fn read_ungated(path: &str) -> Result<String, IpcError> {
     ))
 }
 
-fn read_guarded(roots: &[String], path: &str) -> Result<String, IpcError> {
-    if !is_path_within_any(roots, path) || !is_existing_path_within_any(roots, path) {
+fn check_containment(roots: &[String], path: &str) -> Result<(), IpcError> {
+    if !is_path_within_any(roots, path) {
         return Err(IpcError::new("access_denied", "path outside allowed roots"));
     }
+    match std::fs::metadata(path) {
+        Ok(_) => {
+            if !is_existing_path_within_any(roots, path) {
+                return Err(IpcError::new("access_denied", "path outside allowed roots"));
+            }
+            Ok(())
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            Err(IpcError::new("file_not_found", "file not found"))
+        }
+        Err(e) => Err(IpcError::new("read_failed", e.to_string())),
+    }
+}
+
+fn read_guarded(roots: &[String], path: &str) -> Result<String, IpcError> {
+    check_containment(roots, path)?;
     read_ungated(path)
 }
 
 fn list_guarded(roots: &[String], path: &str) -> Result<String, IpcError> {
-    if !is_path_within_any(roots, path) || !is_existing_path_within_any(roots, path) {
-        return Err(IpcError::new("access_denied", "path outside allowed roots"));
-    }
+    check_containment(roots, path)?;
     // The route stats first: a non-directory target is `not_a_directory`,
     // a missing one is `file_not_found`.
     let metadata = std::fs::metadata(path).map_err(|e| -> IpcError {
@@ -336,9 +350,7 @@ fn meta_ungated(path: &str) -> Result<String, IpcError> {
 }
 
 fn meta_guarded(roots: &[String], path: &str) -> Result<String, IpcError> {
-    if !is_path_within_any(roots, path) || !is_existing_path_within_any(roots, path) {
-        return Err(IpcError::new("access_denied", "path outside allowed roots"));
-    }
+    check_containment(roots, path)?;
     meta_ungated(path)
 }
 
@@ -449,6 +461,19 @@ mod tests {
         let err = read(&[root.to_string()], "/etc/passwd").unwrap_err();
         assert_eq!(err.code, "access_denied");
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn read_returns_file_not_found_for_missing_file_in_allowed_root() {
+        let dir = temp_fixture_dir();
+        let missing = dir.join("nope.txt");
+        let err = read(
+            &[dir.to_string_lossy().into_owned()],
+            missing.to_str().unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, "file_not_found");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[cfg(unix)]

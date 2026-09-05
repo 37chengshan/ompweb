@@ -1544,15 +1544,29 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
             {/* DIAGNOSTICS & RECOVERY TAB */}
             {currentTab === "diagnostics" && (
-              <div role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
+              <div
+                role="tabpanel"
+                id="settings-panel-diagnostics"
+                aria-labelledby="settings-tab-diagnostics"
+                style={{
+                  padding: 24,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 16,
+                  overflowY: "auto",
+                  width: "100%",
+                }}
+              >
                 <div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>诊断与恢复</h3>
-                  <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>集中检查 OMP、Rust host、会话锁、网络代理和其他 ompweb 实例，并执行安全的恢复操作。</p>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--text)" }}>系统诊断与自愈中心</h3>
+                  <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12.5, lineHeight: 1.5 }}>
+                    集中监控 OMP 引擎、Rust Host 守护进程、会话存储、网络代理与系统资源，并提供一键故障自愈与路径快速定位。
+                  </p>
                 </div>
-                <section style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", padding: 10, maxWidth: 560 }}>
-                  <BackendDiagnosticsBody />
-                </section>
-                <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>诊断请求不会读取提示词、会话正文或 API 密钥；重启操作只针对当前 ompweb 管理的服务进程。</div>
+                <BackendDiagnosticsBody variant="full" />
+                <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5, marginTop: 4 }}>
+                  诊断检测全程在本地环回执行，不采集任何提示词、会话上下文或 API 密钥；自愈操作安全受控，仅针对当前服务管理的子进程。
+                </div>
               </div>
             )}
 

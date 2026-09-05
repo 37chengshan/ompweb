@@ -558,13 +558,15 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
+            disabled={busy}
             style={{
               padding: "6px 14px",
               background: "none",
               border: "1px solid var(--border)",
               borderRadius: "var(--radius-control)",
               color: "var(--text-muted)",
-              cursor: "pointer",
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.6 : 1,
               fontSize: 13,
             }}
           >

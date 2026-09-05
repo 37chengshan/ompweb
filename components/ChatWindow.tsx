@@ -1336,7 +1336,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
           </div>
         </div>
         {isMobile ? null : (
-          <div style={{ position: "absolute", top: 0, bottom: 0, right: 8, zIndex: 30, display: "flex" }}>
+          <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, zIndex: 30, display: "flex" }}>
             <ChatMinimap
               messages={messages}
               scrollContainer={scrollContainerRef}

@@ -54,6 +54,11 @@ export function useGlobalKeyboardShortcuts(
         // Let textarea/input handle Esc internally (ChatInput menus / stop).
         if (tag === "TEXTAREA" || tag === "INPUT") return;
 
+        // If any modal dialog or popup is active, let it handle Esc to close itself;
+        // do not accidentally abort a background-running Agent task.
+        const hasOpenModal = typeof document !== "undefined" && !!document.querySelector('[role="dialog"], [aria-modal="true"], [data-state="open"]');
+        if (hasOpenModal) return;
+
         e.preventDefault();
         globalAbortHandler();
         return;

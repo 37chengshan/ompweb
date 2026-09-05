@@ -34,7 +34,6 @@
     "github_status_failed",
     "image_too_large",
     "import_cwd_not_authorized",
-    "internal_error",
     "invalid_action",
     "invalid_alias",
     "invalid_block_index",

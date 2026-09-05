@@ -8,9 +8,7 @@
  * 路线 8–14 各自 cutover 后在此扩展对应域；在 Rust 服务落地前，Node 侧保持
  * 对应域的 authority（backend-ownership.yaml 如实标注），不伪造边界。
  */
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { resolveHostBin } from "./host-bin";
+import { resolveHostBin, resolveModuleDir } from "./host-bin";
 import { cleanupOrphanRustHosts, hostRequest, hostManager, listOrphanRustHosts } from "./rust-rpc-process";
 import type { GitStatusResponse } from "../git-types";
 
@@ -44,8 +42,9 @@ export function rustBackendActive(): boolean {
   return process.env.OMPWEB_BACKEND !== "node";
 }
 
-/** Directory of this module — workspace resolution root (dev/CI). */
-const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+/** Directory of this module — workspace resolution root (dev/CI). The
+ * resolver falls back to cwd for Windows bundled non-absolute file URLs. */
+const MODULE_DIR = resolveModuleDir(import.meta.url);
 
 export interface HostClientSurface {
   sessions: {

@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, Gauge, LoaderCircle, RefreshCw, Settings2 } from "lucide-react";
+import { BarChart3, Eye, EyeOff, Gauge, LoaderCircle, RefreshCw, Settings2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { formatCompactNumber } from "@/lib/format";
 import type { ProviderUsageReport, ProviderUsageWindow } from "@/lib/provider-usage-types";
+import { prewarmStatsData } from "./usage/UsageDashboardModal";
 
 const USAGE_PANEL_OPEN_KEY = "omp-web:usage-panel-open";
 const USAGE_VISIBLE_ACCOUNTS_KEY = "omp-web:usage-visible-accounts";
@@ -59,34 +60,62 @@ export function UsageSidebarPanel() {
   const [hiddenAccounts, setHiddenAccounts] = useState<Set<string>>(new Set());
   const loadedRef = useRef(false);
 
-  const load = useCallback(() => {
-    setError(false);
-    setRefreshing(true);
+  const load = useCallback((isBackground = false) => {
+    if (!isBackground) {
+      setError(false);
+      setRefreshing(true);
+    }
     const startedAt = Date.now();
     void Promise.all([
       fetch("/api/usage-summary").then((res) => (res.ok ? res.json() as Promise<UsageSummary> : null)),
       fetch("/api/provider-usage").then((res) => (res.ok ? res.json() as Promise<{ reports: ProviderUsageReport[] }> : null)),
     ])
       .then(([sum, usage]) => {
-        setSummary(sum);
-        setReports(usage?.reports ?? null);
+        if (sum) setSummary(sum);
+        if (usage?.reports) setReports(usage.reports);
         if (sum || usage) setError(false);
         setUpdatedAt(Date.now());
       })
-      .catch(() => setError(true))
+      .catch(() => {
+        if (!isBackground) setError(true);
+      })
       .finally(() => {
-        // Keep the spinner visible long enough to be perceivable, so a manual
-        // refresh feels acknowledged instead of silently finishing.
-        const remaining = 350 - (Date.now() - startedAt);
-        window.setTimeout(() => setRefreshing(false), Math.max(0, remaining));
+        if (!isBackground) {
+          const remaining = 350 - (Date.now() - startedAt);
+          window.setTimeout(() => setRefreshing(false), Math.max(0, remaining));
+        }
       });
   }, []);
 
+  // Pre-warm stats on mount after app startup finishes
   useEffect(() => {
-    if (open && !loadedRef.current) {
-      loadedRef.current = true;
-      load();
-    }
+    const initTimer = window.setTimeout(() => {
+      prewarmStatsData();
+    }, 350);
+    return () => window.clearTimeout(initTimer);
+  }, []);
+
+  // Poll usage when sidebar panel is expanded
+  useEffect(() => {
+    if (!open) return;
+    void load(true);
+
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void load(true);
+    }, 2000);
+
+    const onVisibilityChange = () => {
+      if (!document.hidden && open) {
+        void load(true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [open, load]);
 
   useEffect(() => {
@@ -129,30 +158,59 @@ export function UsageSidebarPanel() {
 
   return (
     <div style={{ borderTop: "1px solid var(--border)" }}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        title={t("sidebar.usage")}
-        style={{
-          width: "100%",
-          height: 32,
-          display: "flex",
-          alignItems: "center",
-          gap: 9,
-          padding: "0 12px",
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          textAlign: "left",
-          fontSize: 12,
-        }}
-      >
-        <Gauge size={14} strokeWidth={2} aria-hidden="true" style={{ color: "var(--accent)", flexShrink: 0 }} />
-        <span style={{ flex: 1, minWidth: 0 }}>{t("sidebar.usage")}</span>
-        <ChevronDownIcon open={open} />
-      </button>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          title={t("sidebar.usage")}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            height: 32,
+            display: "flex",
+            alignItems: "center",
+            gap: 9,
+            padding: "0 4px 0 12px",
+            background: "none",
+            border: "none",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            textAlign: "left",
+            fontSize: 12,
+          }}
+        >
+          <Gauge size={14} strokeWidth={2} aria-hidden="true" style={{ color: "var(--accent)", flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0 }}>{t("sidebar.usage")}</span>
+          <ChevronDownIcon open={open} />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            window.dispatchEvent(new CustomEvent("omp-open-usage-dashboard", { detail: { tab: "limits" } }));
+          }}
+          onMouseEnter={() => prewarmStatsData()}
+          aria-label={t("sidebar.usageAnalytics")}
+          title={t("sidebar.usageAnalytics")}
+          style={{
+            display: "grid",
+            placeItems: "center",
+            width: 22,
+            height: 22,
+            marginRight: 10,
+            padding: 0,
+            border: "1px solid var(--border)",
+            borderRadius: 5,
+            background: "var(--bg-panel)",
+            color: "var(--text-dim)",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <BarChart3 size={12} aria-hidden="true" />
+        </button>
+      </div>
 
       {(open || closing) && (
         <div
@@ -183,6 +241,29 @@ export function UsageSidebarPanel() {
 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ flex: 1, fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>{t("sidebar.usageLimits")}</div>
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("omp-open-usage-dashboard", { detail: { tab: "limits" } }));
+              }}
+              onMouseEnter={() => prewarmStatsData()}
+              aria-label={t("sidebar.usageAnalytics")}
+              title={t("sidebar.usageAnalytics")}
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: 22,
+                height: 22,
+                padding: 0,
+                border: "1px solid var(--border)",
+                borderRadius: 5,
+                background: "var(--bg-panel)",
+                color: "var(--text-dim)",
+                cursor: "pointer",
+              }}
+            >
+              <BarChart3 size={12} aria-hidden="true" />
+            </button>
             <button type="button" onClick={() => setManageAccounts((value) => !value)} aria-expanded={manageAccounts} aria-label={t("sidebar.usageManageAccounts")} title={t("sidebar.usageManageAccounts")} style={{ display: "grid", placeItems: "center", width: 22, height: 22, padding: 0, border: "1px solid var(--border)", borderRadius: 5, background: manageAccounts ? "var(--bg-selected)" : "var(--bg-panel)", color: manageAccounts ? "var(--accent)" : "var(--text-dim)", cursor: "pointer" }}><Settings2 size={12} aria-hidden="true" /></button>
           </div>
           {manageAccounts && (reports ?? []).length > 0 && (
@@ -232,17 +313,43 @@ export function UsageSidebarPanel() {
             <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.usageAllHidden")}</span>
           )}
           {hasAny && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingTop: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => load(false)}
+                  disabled={refreshing}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "none", color: "var(--text-dim)", cursor: refreshing ? "default" : "pointer", fontSize: 11, padding: 0 }}
+                >
+                  {refreshing ? <LoaderCircle size={12} strokeWidth={2} className="icon-spin" aria-hidden="true" /> : <RefreshCw size={12} strokeWidth={2} aria-hidden="true" />}
+                  {refreshing ? t("sidebar.usageUpdating") : t("sidebar.usageRefresh")}
+                </button>
+                {updatedAt && (<span style={{ fontSize: 10, color: "var(--text-dim)" }}>{t("sidebar.usageUpdated", { time: new Date(updatedAt).toLocaleTimeString(locale) })}</span>)}
+              </div>
+
               <button
                 type="button"
-                onClick={load}
-                disabled={refreshing}
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "none", color: "var(--text-dim)", cursor: refreshing ? "default" : "pointer", fontSize: 11, padding: 0 }}
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("omp-open-usage-dashboard", { detail: { tab: "limits" } }));
+                }}
+                onMouseEnter={() => prewarmStatsData()}
+                aria-label={t("sidebar.usageAnalytics")}
+                title={t("sidebar.usageAnalytics")}
+                style={{
+                  display: "grid",
+                  placeItems: "center",
+                  width: 22,
+                  height: 22,
+                  padding: 0,
+                  borderRadius: 5,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-panel)",
+                  color: "var(--text-dim)",
+                  cursor: "pointer",
+                }}
               >
-                {refreshing ? <LoaderCircle size={12} strokeWidth={2} className="icon-spin" aria-hidden="true" /> : <RefreshCw size={12} strokeWidth={2} aria-hidden="true" />}
-                {refreshing ? t("sidebar.usageUpdating") : t("sidebar.usageRefresh")}
+                <BarChart3 size={12} aria-hidden="true" />
               </button>
-              {updatedAt && (<span style={{ fontSize: 10, color: "var(--text-dim)" }}>{t("sidebar.usageUpdated", { time: new Date(updatedAt).toLocaleTimeString(locale) })}</span>)}
             </div>
           )}
         </div>

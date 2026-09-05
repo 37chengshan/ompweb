@@ -7,8 +7,7 @@ import { invalidateSessionListCache } from "@/lib/session-reader";
 import { WebRpcError, startRpcSession } from "@/lib/rpc-manager";
 import { RpcCommandError } from "@/lib/omp/rpc-process";
 import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
-
-const MAX_NEW_AGENT_REQUEST_BYTES = 4 * 1024 * 1024;
+import { MAX_AGENT_COMMAND_REQUEST_BYTES } from "@/lib/image-attachments";
 
 function newSessionErrorResponse(error: unknown) {
   if (error instanceof RequestBodyTooLargeError) {
@@ -33,8 +32,9 @@ function newSessionErrorResponse(error: unknown) {
 // set_thinking_level (not CLI flags) so failures surface as command errors and
 // the live model catalog (incl. background discovery) is consulted.
 export async function POST(req: Request) {
+  let spawnedSession: Awaited<ReturnType<typeof startRpcSession>>["session"] | undefined;
   try {
-    const body = await parseJsonWithinLimit<{ cwd?: string; [key: string]: unknown }>(req, MAX_NEW_AGENT_REQUEST_BYTES);
+    const body = await parseJsonWithinLimit<{ cwd?: string; [key: string]: unknown }>(req, MAX_AGENT_COMMAND_REQUEST_BYTES);
     const { cwd, ...command } = body;
 
     if (!cwd || typeof cwd !== "string") {
@@ -46,6 +46,10 @@ export async function POST(req: Request) {
 
     // Use a one-time key so startRpcSession's lock doesn't conflict with real session ids
     const { provider, modelId, toolNames, thinkingLevel, advisor, ...promptCommand } = command as { provider?: string; modelId?: string; toolNames?: string[]; thinkingLevel?: string; advisor?: boolean; [key: string]: unknown };
+    // A fresh child owns the id it receives from omp. Never forward a stale or
+    // forged request id into its first command, where it could target another
+    // session after a reconnect.
+    delete promptCommand.sessionId;
     if (typeof promptCommand.type !== "string" || !promptCommand.type.trim()) {
       return NextResponse.json({ error: "command type is required", code: "command_type_required" }, { status: 400 });
     }
@@ -55,6 +59,7 @@ export async function POST(req: Request) {
     // requests in the same millisecond, merging two new sessions into one.
     const tempKey = `__new__${randomUUID()}`;
     const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, toolNames, advisor === true);
+    spawnedSession = session;
 
     // Keep the files-route allowed-roots cache (see app/api/files/[...path]/route.ts)
     // in sync so the new cwd is immediately readable via /api/files. Without this,
@@ -80,6 +85,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, sessionId: realSessionId, data: result });
   } catch (error) {
+    // Setup runs after spawn (model/thinking/first prompt) can fail. Leaving
+    // that brand-new child alive creates an orphan with no owner and can keep
+    // its session file or database lock around for the next retry.
+    await spawnedSession?.destroyAndWait().catch(() => {});
     return newSessionErrorResponse(error);
   }
 }

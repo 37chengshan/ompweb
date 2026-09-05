@@ -9,6 +9,7 @@ import { DirectoryPicker } from "./DirectoryPicker";
 import { BackendStatusButton } from "./BackendDiagnostics";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { Tooltip } from "./ui/primitives";
+import { ConfirmDialog } from "./ui/field";
 import { toast } from "./ui/toast";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { clearLastOpenSession, getLastOpenSession, setLastOpenSession, workspaceKeyOf } from "@/lib/workspace-memory";
@@ -2303,6 +2304,7 @@ function ProjectRow({
   const [focusWithin, setFocusWithin] = useState(false);
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [confirmHideOpen, setConfirmHideOpen] = useState(false);
   const [scriptsMenuOpen, setScriptsMenuOpen] = useState(false);
   const actionButtonRef = useRef<HTMLButtonElement>(null);
   const [aliasEditing, setAliasEditing] = useState(false);
@@ -2577,7 +2579,7 @@ function ProjectRow({
             <button type="button" role="menuitem" className="sidebar-menu-item" onClick={() => { setActionMenuOpen(false); void onMoveProject(project.path, 1); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>
               {t("projects.moveDown")}
             </button>
-            <button type="button" role="menuitem" className="sidebar-menu-item" disabled={removeBusy} onClick={() => { setActionMenuOpen(false); onRemoveProject(project.path); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: removeBusy ? "default" : "pointer", textAlign: "left", fontSize: 11 }}>
+            <button type="button" role="menuitem" className="sidebar-menu-item" disabled={removeBusy} onClick={() => { setActionMenuOpen(false); setConfirmHideOpen(true); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: removeBusy ? "default" : "pointer", textAlign: "left", fontSize: 11 }}>
               {t("projects.remove", { name: label })}
             </button>
           </SidebarPortalMenu>
@@ -2587,6 +2589,20 @@ function ProjectRow({
             open={scriptsMenuOpen}
             onClose={() => setScriptsMenuOpen(false)}
             onRunInTerminal={onRunScriptInTerminal}
+          />
+          <ConfirmDialog
+            open={confirmHideOpen}
+            onOpenChange={setConfirmHideOpen}
+            title={t("projects.remove", { name: label })}
+            description={t("projects.removeTitle", { name: label })}
+            confirmLabel={t("sessionSidebar.delete")}
+            cancelLabel={t("sessionSidebar.cancel")}
+            danger
+            busy={removeBusy}
+            onConfirm={async () => {
+              await onRemoveProject(project.path);
+              setConfirmHideOpen(false);
+            }}
           />
         </div>
         <button
@@ -2723,6 +2739,7 @@ function ProjectWorktreeSwitcher({
   onClose,
 }: ProjectWorktreeSwitcherProps) {
   const { t } = useI18n();
+  const [confirmDeleteWorktree, setConfirmDeleteWorktree] = useState<string | null>(null);
 
   return (
     <SidebarPortalMenu
@@ -2795,7 +2812,7 @@ function ProjectWorktreeSwitcher({
                   </button>
                   {!wt.isMain && (
                     <button
-                      onClick={() => onRemoveWorktree(wt.path, false)}
+                      onClick={() => setConfirmDeleteWorktree(wt.path)}
                       disabled={wtBusy}
                       title={t("sessionSidebar.removeWorktreeTitle", { path: wt.path })}
                       style={{
@@ -2925,6 +2942,23 @@ function ProjectWorktreeSwitcher({
               {wtError}
             </div>
           )}
+          <ConfirmDialog
+            open={Boolean(confirmDeleteWorktree)}
+            onOpenChange={(open) => { if (!open) setConfirmDeleteWorktree(null); }}
+            title={t("sessionSidebar.removeWorktreeConfirmTitle") || "Remove Worktree"}
+            description={confirmDeleteWorktree ? t("sessionSidebar.removeWorktreeTitle", { path: confirmDeleteWorktree }) : undefined}
+            confirmLabel={t("sessionSidebar.delete")}
+            cancelLabel={t("sessionSidebar.cancel")}
+            danger
+            busy={wtBusy}
+            onConfirm={async () => {
+              if (confirmDeleteWorktree) {
+                const target = confirmDeleteWorktree;
+                setConfirmDeleteWorktree(null);
+                await onRemoveWorktree(target, false);
+              }
+            }}
+          />
     </SidebarPortalMenu>
   );
 }
@@ -3226,7 +3260,7 @@ const SessionItem = memo(function SessionItem({
 
   return (
     <div
- onClick={confirmArchive || confirmDelete || renaming ? undefined : onClick}
+ onClick={confirmArchive || confirmDelete || renaming || deleting ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocusWithin(true)}

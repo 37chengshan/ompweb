@@ -159,11 +159,13 @@ export function RightWorkbench({
   cwd,
   files,
   agents,
+  requestedView,
 }: {
   storageKey?: string;
   cwd: string | null;
   files: ReactNode;
   agents: ReactNode;
+  requestedView?: { view: WorkbenchView; nonce: number } | null;
 }) {
   const { t } = useI18n();
   const [layout, setLayout] = useState<Layout>(emptyLayout);
@@ -194,6 +196,11 @@ export function RightWorkbench({
       return { ...current, panes: current.panes.map((pane, index) => index === targetIndex ? { ...pane, tabs: [...pane.tabs, view], active: view } : pane) };
     });
   }, []);
+
+  useEffect(() => {
+    if (!requestedView) return;
+    openView(requestedView.view);
+  }, [openView, requestedView]);
 
   const closeView = useCallback((paneId: string, view: WorkbenchView) => {
     setLayout((current) => {

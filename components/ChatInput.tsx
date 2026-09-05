@@ -15,6 +15,7 @@ import {
   MAX_ATTACHED_IMAGE_BYTES,
   MAX_ATTACHED_IMAGES,
   isBase64ImageWithinLimits,
+  validateOutgoingPrompt,
 } from "@/lib/image-attachments";
 import {
   buildEntriesFromFiles, buildAtInsertText, extractAtQuery, filterFileEntries,
@@ -575,6 +576,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
         newImages.forEach(revokeImagePreview);
         return;
       }
+      const attachmentError = validateOutgoingPrompt("", [...attachedImagesRef.current, ...newImages]);
+      if (attachmentError) {
+        newImages.forEach(revokeImagePreview);
+        setAttachError(attachmentError);
+        return;
+      }
       setAttachedImages((prev) => {
         const accepted = newImages.slice(0, Math.max(0, MAX_ATTACHED_IMAGES - prev.length));
         newImages.slice(accepted.length).forEach(revokeImagePreview);
@@ -709,21 +716,40 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     };
   }, []);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleSend = useCallback(async () => {
     const msg = value.trim();
     if (!msg && !attachedImages.length) return;
-    if (isStreaming) return;
+    if (isStreaming || isSubmitting) return;
     onAudioUnlock?.();
     if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
-      const result = await onBuiltinCommand(msg);
-      if (result.handled) {
-        if (!result.error && !result.retainInput) clearInput();
+      const expansion = expandWebSlashCommand(msg);
+      const validationError = validateOutgoingPrompt(expansion.kind === "expand" ? expansion.prompt : msg, attachedImages);
+      if (validationError) {
+        setAttachError(validationError);
         return;
       }
+      setIsSubmitting(true);
+      try {
+        const result = await onBuiltinCommand(msg);
+        if (result.handled) {
+          if (!result.error && !result.retainInput) clearInput();
+          return;
+        }
+      } finally {
+        setIsSubmitting(false);
+      }
     }
+    const validationError = validateOutgoingPrompt(msg, attachedImages);
+    if (validationError) {
+      setAttachError(validationError);
+      return;
+    }
+    setAttachError(null);
     onSend(msg, attachedImages.length ? attachedImages : undefined);
     clearInput();
-  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, isStreaming, isSubmitting, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   // Slash token follows the caret, not the input start: typing a slash after
   // real text must still open the palette (see extractSlashQuery).
@@ -1028,7 +1054,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       // own ACP handlers can run them.
       const expansion = expandWebSlashCommand(msg);
       if (expansion.kind === "expand") {
+        const validationError = validateOutgoingPrompt(expansion.prompt, attachedImages);
+        if (validationError) {
+          setAttachError(validationError);
+          return;
+        }
         onPromptWithStreamingBehavior(expansion.prompt, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+        setAttachError(null);
         clearInput();
         return;
       }
@@ -1039,8 +1071,19 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
         }));
         return;
       }
+      const validationError = validateOutgoingPrompt(msg, attachedImages);
+      if (validationError) {
+        setAttachError(validationError);
+        return;
+      }
       onPromptWithStreamingBehavior(msg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+      setAttachError(null);
       clearInput();
+      return;
+    }
+    const validationError = validateOutgoingPrompt(msg, attachedImages);
+    if (validationError) {
+      setAttachError(validationError);
       return;
     }
     if (mode === "steer" && onSteer) {
@@ -1048,6 +1091,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     } else if (mode === "followup" && onFollowUp) {
       onFollowUp(msg, attachedImages.length ? attachedImages : undefined);
     }
+    setAttachError(null);
     clearInput();
   }, [value, attachedImages, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, t, advisorEnabled]);
   // Stop must stay reachable WHILE a run is active: the primary button is
@@ -1194,7 +1238,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
         }
       }
 
-      if (slashMenuOpen && slashQuery !== null) {
+      if (slashMenuOpen && slashQuery !== null && !isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setSlashActiveIndex(getNextSlashIndex("down"));
@@ -2581,19 +2625,19 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={!value.trim() && !attachedImages.length}
+                disabled={(!value.trim() && !attachedImages.length) || isSubmitting}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   height: 28,
                   padding: "0 14px",
-                  background: (value.trim() || attachedImages.length) ? "var(--accent-strong)" : "var(--bg-panel)",
+                  background: (value.trim() || attachedImages.length) && !isSubmitting ? "var(--accent-strong)" : "var(--bg-panel)",
                   border: "none",
                   borderRadius: 8,
-                  color: (value.trim() || attachedImages.length) ? "var(--on-accent)" : "var(--text-dim)",
-                  cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
+                  color: (value.trim() || attachedImages.length) && !isSubmitting ? "var(--on-accent)" : "var(--text-dim)",
+                  cursor: (value.trim() || attachedImages.length) && !isSubmitting ? "pointer" : "not-allowed",
                   fontSize: 12,
                   fontWeight: 600,
-                  boxShadow: (value.trim() || attachedImages.length) ? "var(--shadow-card)" : "none",
+                  boxShadow: (value.trim() || attachedImages.length) && !isSubmitting ? "var(--shadow-card)" : "none",
                   transition: "background var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm)",
                 }}
               >

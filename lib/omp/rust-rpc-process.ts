@@ -15,11 +15,9 @@
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createConnection, type Socket } from "node:net";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { assertHostAvailable, resolveHostBin } from "./host-bin";
+import { assertHostAvailable, resolveHostBin, resolveModuleDir } from "./host-bin";
 import { RpcFrameDecoder, type RpcFrameRecord, type RpcProtocolVersion } from "./rpc-frame";
-import { RpcCommandError } from "./rpc-process";
+import { RpcCommandError, RpcCommandTimeoutError } from "./rpc-process";
 import type { RpcProcessOptions } from "./rpc-process";
 
 /**
@@ -28,7 +26,7 @@ import type { RpcProcessOptions } from "./rpc-process";
  * process (Resources/bin); standalone servers additionally resolve via their
  * cwd. Full ladder in host-bin.ts (doc 16 route 3).
  */
-const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+const MODULE_DIR = resolveModuleDir(import.meta.url);
 const READY_TIMEOUT_MS = 30_000;
 
 /** Resolved host binary (env explicit → packaged → workspace ladder). */
@@ -252,7 +250,7 @@ class RustHostManager {
     return this.bootPromise;
   }
 
-  async controlRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+  async controlRequest(method: string, params: Record<string, unknown>, timeoutMs = 30_000): Promise<unknown> {
     await this.ensure();
     if (!this.control || this.control.destroyed) {
       this.control = createConnection({ host: "127.0.0.1", port: this.port });
@@ -262,12 +260,12 @@ class RustHostManager {
       this.control!.once("connect", () => resolve());
         this.control!.once("error", reject);
       });
-      await this.controlRequestRaw("hello", { token: this.token });
+      await this.controlRequestRaw("hello", { token: this.token }, timeoutMs);
     }
-    return this.controlRequestRaw(method, params);
+    return this.controlRequestRaw(method, params, timeoutMs);
   }
 
-  private controlRequestRaw(method: string, params: Record<string, unknown>): Promise<unknown> {
+  private controlRequestRaw(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
     const id = `c${this.nextId++}`;
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -281,8 +279,9 @@ class RustHostManager {
         const entry = this.pending.get(id);
         if (!entry) return;
         this.pending.delete(id);
-        entry.reject(new RpcCommandError(method, "ompweb-host control request timed out", "runtime_unavailable"));
-      }, 30_000);
+        entry.reject(new RpcCommandTimeoutError(method, timeoutMs, "ompweb-host control request timed out"));
+      }, timeoutMs);
+      timer.unref?.();
     });
   }
 
@@ -410,8 +409,8 @@ class RustHostManager {
     return (await this.controlRequest("agent.spawn", { cwd, sessionId, args: extraArgs })) as { pid: number };
   }
 
-  async send(sessionId: string, command: Record<string, unknown>): Promise<unknown> {
-    return this.controlRequest("agent.send", { sessionId, command: JSON.stringify(command) });
+  async send(sessionId: string, command: Record<string, unknown>, timeoutMs?: number): Promise<unknown> {
+    return this.controlRequest("agent.send", { sessionId, command: JSON.stringify(command) }, timeoutMs);
   }
 
   async kill(sessionId: string): Promise<void> {
@@ -554,17 +553,20 @@ export class RustRpcProcess {
     }
   }
 
-  async sendCommand<T = unknown>(command: { type: string; [key: string]: unknown }): Promise<T> {
+  async sendCommand<T = unknown>(command: { type: string; [key: string]: unknown }, timeoutMs?: number): Promise<T> {
     if (this.exited) throw new Error("omp RPC process has exited");
     const id = `w${this.nextId++}`;
-    const result = await this.sendWithId(command, id);
+    const result = await this.sendWithId(command, id, timeoutMs);
     return result as T;
   }
 
   /** Send a command and resolve with its response frame data. */
-  private sendWithId(command: { type: string; [key: string]: unknown }, id: string): Promise<unknown> {
+  private sendWithId(command: { type: string; [key: string]: unknown }, id: string, timeoutMs = 60_000): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new RpcCommandError(command.type, "timeout", "timeout")), 60_000);
+      const timer = setTimeout(() => {
+        this.frameListeners.delete(onFrame);
+        reject(new RpcCommandTimeoutError(command.type, timeoutMs));
+      }, timeoutMs);
       timer.unref?.();
       const onFrame = (frame: RpcFrameRecord) => {
         if (frame.id !== id) return;
@@ -577,7 +579,7 @@ export class RustRpcProcess {
         }
       };
       this.frameListeners.add(onFrame);
-      void hostManager.send(this.sessionId, { ...command, id }).catch((error) => {
+      void hostManager.send(this.sessionId, { ...command, id }, timeoutMs).catch((error) => {
         clearTimeout(timer);
         this.frameListeners.delete(onFrame);
         reject(error instanceof Error ? error : new Error(String(error)));
@@ -685,7 +687,7 @@ export interface RpcProcessLike {
   waitReady(timeoutMs?: number): Promise<RpcFrameRecord>;
   onFrame(handler: RpcFrameHandler): () => void;
   negotiateProtocol(ready: RpcFrameRecord): Promise<unknown>;
-  sendCommand<T = unknown>(command: { type: string; [key: string]: unknown }): Promise<T>;
+  sendCommand<T = unknown>(command: { type: string; [key: string]: unknown }, timeoutMs?: number): Promise<T>;
   sendFrame(frame: Record<string, unknown>): void;
   dispose(): Promise<void>;
 }

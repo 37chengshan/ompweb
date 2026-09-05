@@ -103,6 +103,9 @@
     "components/ArchiveBrowser.tsx": {
       "inlineTransitions": 4
     },
+    "components/BackendDiagnostics.tsx": {
+      "inlineTransitions": 5
+    },
     "components/BootSkeleton.tsx": {
       "inlineTransitions": 1
     },
@@ -206,6 +209,31 @@
     },
     "components/ui/field.tsx": {
       "inlineTransitions": 2
+    },
+    "components/usage/UsageDashboardModal.tsx": {
+      "inlineTransitions": 2
+    },
+    "components/usage/UsageTabLogs.tsx": {
+      "inlineTransitions": 4
+    },
+    "components/usage/UsageTabModels.tsx": {
+      "inlineTransitions": 1
+    },
+    "components/usage/charts/CountUpNumber.tsx": {
+      "inlineTransitions": 0,
+      "reducedMotionHook": true
+    },
+    "components/usage/charts/SvgDonutChart.tsx": {
+      "inlineTransitions": 2,
+      "reducedMotionHook": true
+    },
+    "components/usage/charts/SvgGaugeRing.tsx": {
+      "inlineTransitions": 1,
+      "reducedMotionHook": true
+    },
+    "components/usage/charts/SvgStackedBarChart.tsx": {
+      "inlineTransitions": 2,
+      "reducedMotionHook": true
     },
     "hooks/useAgentSession.ts": {
       "inlineTransitions": 0,

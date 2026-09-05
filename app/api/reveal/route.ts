@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { spawn } from "child_process";
 import { statSync } from "fs";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { getAllowedFileRoots, isExistingFilePathAllowed, normalizeSlashes } from "@/lib/file-access";
 import { buildRevealSpawn } from "@/lib/reveal-command";
+import { getConfigRoot, getAgentDir, getSessionsDir } from "@/lib/omp/paths";
+import { resolveOmpBin } from "@/lib/omp/omp-cli";
+import { hostClient } from "@/lib/omp/host-client";
+import path from "path";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +28,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing path", code: "missing_path" }, { status: 400 });
     }
     const allowedRoots = await getAllowedFileRoots();
-    if (!isExistingFilePathAllowed(target, allowedRoots)) {
+    try {
+      allowedRoots.add(normalizeSlashes(getConfigRoot()));
+      allowedRoots.add(normalizeSlashes(getAgentDir()));
+      allowedRoots.add(normalizeSlashes(getSessionsDir()));
+    } catch {
+      // ignore path resolution failure in restricted environments
+    }
+
+    const ompBin = resolveOmpBin();
+    const rustHost = hostClient.host.status();
+    const normalizedTarget = path.resolve(target);
+    const isSpecialAllowed =
+      (ompBin && normalizedTarget === path.resolve(ompBin)) ||
+      (rustHost?.path && normalizedTarget === path.resolve(rustHost.path));
+
+    if (!isSpecialAllowed && !isExistingFilePathAllowed(target, allowedRoots)) {
       return NextResponse.json({ error: "Path not allowed", code: "path_not_allowed" }, { status: 403 });
     }
     let stat;

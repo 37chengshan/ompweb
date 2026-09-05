@@ -190,20 +190,21 @@ function stopServerTree() {
       } catch {
         try { child.kill("SIGKILL"); } catch { /* already dead */ }
       }
+      setTimeout(done, 500);
     } else {
       // macOS/Linux: the server was spawned detached into its own process
       // group; killing the group (negative pid) takes the omp RPC children
-      // with it. A plain child.kill() would orphan them — they keep session
-      // locks and break --resume for the next app launch.
+      // with it.
       try { process.kill(-child.pid, "SIGTERM"); } catch { /* not a group leader / already gone */ }
       try { child.kill("SIGTERM"); } catch { /* already dead */ }
+      // Fast SIGKILL fallback: if child hasn't exited within 500ms, force SIGKILL
+      // so the port is released before the app exits.
+      setTimeout(() => {
+        try { process.kill(-child.pid, "SIGKILL"); } catch { /* already gone */ }
+        try { child.kill("SIGKILL"); } catch { /* already dead */ }
+        done();
+      }, 500);
     }
-    // Safety net: never hang the quit/install flow on a stuck child.
-    setTimeout(() => {
-      try { process.kill(-child.pid, "SIGKILL"); } catch { /* already gone */ }
-      try { child.kill("SIGKILL"); } catch { /* already dead */ }
-      done();
-    }, 3000);
   });
 }
 
@@ -266,15 +267,18 @@ async function startServer() {
     console.error("Standalone build missing at", serverJs);
     return;
   }
-  // Port pre-check: a stale zombie process on APP_PORT used to make the app
-  // exit silently (EADDRINUSE), looking like a crash on launch.
+  // Port pre-check: reclaim any stale zombie process on APP_PORT from a
+  // previous abnormal termination instead of immediately dying with an error dialog.
   if (!(await isPortFree())) {
-    dialog.showErrorBox(
-      "端口被占用",
-      `OmpWeb 需要的内部端口 ${APP_PORT} 已被其他程序占用。\n\n请关闭占用该端口的程序后重新启动 OmpWeb。`,
-    );
-    app.quit();
-    return;
+    const reclaimed = await reclaimPortIfStale(APP_PORT);
+    if (!reclaimed) {
+      dialog.showErrorBox(
+        "端口被占用",
+        `OmpWeb 需要的内部端口 ${APP_PORT} 已被其他程序占用。\n\n请关闭占用该端口的程序后重新启动 OmpWeb。`,
+      );
+      app.quit();
+      return;
+    }
   }
   const nodeBin = resolveNodeBin();
   const nodeIsElectron = nodeBin === process.execPath;
@@ -359,6 +363,71 @@ function isPortFree() {
     socket.once("error", () => done(true));
     socket.connect(APP_PORT, "127.0.0.1");
   });
+}
+
+function killStaleProcessOnPort(port) {
+  return new Promise((resolve) => {
+    if (process.platform === "win32") {
+      const netstat = spawn("cmd.exe", ["/c", `netstat -ano | findstr :${port}`], { windowsHide: true });
+      let out = "";
+      netstat.stdout?.on("data", (d) => { out += d; });
+      netstat.on("close", () => {
+        const lines = out.split("\n");
+        const pids = new Set();
+        for (const line of lines) {
+          if (line.includes("LISTENING")) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && /^\d+$/.test(pid) && pid !== "0") pids.add(pid);
+          }
+        }
+        if (pids.size === 0) return resolve(false);
+        for (const pid of pids) {
+          try { spawn("taskkill", ["/pid", pid, "/T", "/F"], { stdio: "ignore", windowsHide: true }); } catch {}
+        }
+        resolve(true);
+      });
+      netstat.on("error", () => resolve(false));
+    } else {
+      const lsof = spawn("lsof", ["-ti", `:${port}`]);
+      let out = "";
+      lsof.stdout?.on("data", (d) => { out += d; });
+      lsof.on("close", () => {
+        const pids = out.trim().split(/\s+/).filter((p) => /^\d+$/.test(p));
+        if (pids.length === 0) return resolve(false);
+        for (const pidStr of pids) {
+          const pid = Number(pidStr);
+          if (pid === process.pid) continue;
+          try { process.kill(pid, "SIGTERM"); } catch {}
+        }
+        setTimeout(() => {
+          for (const pidStr of pids) {
+            const pid = Number(pidStr);
+            if (pid === process.pid) continue;
+            try { process.kill(pid, "SIGKILL"); } catch {}
+          }
+          resolve(true);
+        }, 300);
+      });
+      lsof.on("error", () => resolve(false));
+    }
+  });
+}
+
+async function reclaimPortIfStale(port) {
+  if (await isPortFree()) return true;
+  appLog(`Port ${port} is occupied, attempting to kill stale process...`);
+  const killed = await killStaleProcessOnPort(port);
+  if (killed) {
+    for (let i = 0; i < 15; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (await isPortFree()) {
+        appLog(`Port ${port} successfully reclaimed from stale process.`);
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function waitForServer(loadWhenReady = true) {
@@ -573,8 +642,11 @@ function createTray() {
   // Linux/Windows: template images are meaningless — use the color logo.
   const isMac = process.platform === "darwin";
   const iconPath = path.join(__dirname, "..", "public", isMac ? "trayTemplate.png" : "icon.png");
-  const image = nativeImage.createFromPath(iconPath);
-  if (isMac) image.setTemplateImage(true);
+  let image = nativeImage.createFromPath(iconPath);
+  if (isMac) {
+    image = image.resize({ width: 18, height: 18 });
+    image.setTemplateImage(true);
+  }
   tray = new Tray(image);
   tray.setToolTip("OmpWeb");
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -674,15 +746,42 @@ if (!gotLock) {
     app.quit();
   });
 
-  app.on("before-quit", () => {
+  let isStoppingServer = false;
+  app.on("before-quit", (event) => {
     quitting = true;
+    if (serverProcess && !isStoppingServer) {
+      event.preventDefault();
+      isStoppingServer = true;
+      const child = serverProcess;
+      stopServerTree().finally(() => {
+        app.quit();
+      });
+      // Safety net: force exit if child takes longer than 1200ms
+      setTimeout(() => {
+        if (child) {
+          try { process.kill(-child.pid, "SIGKILL"); } catch {}
+          try { child.kill("SIGKILL"); } catch {}
+        }
+        app.exit(0);
+      }, 1200);
+    }
   });
 
   app.on("will-quit", () => {
-    // Fire-and-forget: normal quits do not race an installer (updates never
-    // auto-install on quit), but the server tree should still not outlive
-    // the app as orphans.
     void stopServerTree();
+  });
+
+  process.on("SIGINT", () => {
+    void stopServerTree().finally(() => process.exit(0));
+  });
+  process.on("SIGTERM", () => {
+    void stopServerTree().finally(() => process.exit(0));
+  });
+  process.on("exit", () => {
+    if (serverProcess) {
+      try { process.kill(-serverProcess.pid, "SIGKILL"); } catch {}
+      try { serverProcess.kill("SIGKILL"); } catch {}
+    }
   });
 }
 

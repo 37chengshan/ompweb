@@ -3,7 +3,7 @@ import { homedir } from "os";
 import { clearBackendErrors, recordBackendError, recentBackendErrors } from "./backend-errors";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
-import { RpcCommandError, RpcProcess, type RpcFrame } from "./omp/rpc-process";
+import { RpcCommandError, RpcCommandTimeoutError, type RpcFrame } from "./omp/rpc-process";
 import { createRpcProcess, type RpcProcessLike } from "./omp/rust-rpc-process";
 import { readNativeSettings } from "./omp/settings-config";
 import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
@@ -40,6 +40,14 @@ interface CompactionResultLike {
 const IDLE_DESTROY_MS = 10 * 60 * 1000;
 const READY_TIMEOUT_MS = 120_000;
 const MCP_LIST_TIMEOUT_MS = 15_000;
+/** State reads drive UI reconciliation and must never leave a stale spinner
+ * waiting on a child that has stopped responding. */
+const GET_STATE_TIMEOUT_MS = 5_000;
+/** Prompt execution continues over frames; this cap applies only to accepting
+ * the prompt command, not to model generation. */
+const PROMPT_ACK_TIMEOUT_MS = 30_000;
+const NON_TERMINAL_CONTINUATION_GRACE_MS = 2_000;
+const AWAITING_AGENT_START_TIMEOUT_MS = 10_000;
 
 // ── RPC 健康信号 ──────────────────────────────────────────────────────────
 // 记录 omp 子进程异常退出与"会话分裂"（--resume 后 omp 返回了不同的会话，
@@ -228,6 +236,13 @@ export class AgentSessionWrapper {
   private extensionStatuses = new Map<string, string>();
   private extensionWidgets = new Map<string, ExtensionWidgetItem>();
   private promptRunning = false;
+  /** In-flight prompt acks keep reconciliation from clearing a new turn. */
+  private promptDispatchPendingCount = 0;
+  /** OMP can acknowledge just before emitting agent_start. */
+  private awaitingAgentStart = false;
+  private awaitingAgentStartDeadline = 0;
+  /** Non-terminal agent_end announces an immediate async continuation. */
+  private continuationGraceUntil = 0;
   private bashRunning = false;
   private streaming = false;
   private compacting = false;
@@ -309,7 +324,7 @@ export class AgentSessionWrapper {
     // a live subagent roster. Older omp builds may not know the command —
     // degrade silently (the UI falls back to no subagent info).
     await this.proc.sendCommand({ type: "set_subagent_subscription", level: "events" }).catch(() => {});
-    const state = await this.proc.sendCommand<RpcSessionState>({ type: "get_state" });
+    const state = await this.getStateWithTimeout();
     this.applyIdentity(state);
     // Warn when the spawn cwd differs from the session's recorded directory.
     // This happens when the recorded cwd was deleted (removed worktree, moved
@@ -378,7 +393,11 @@ export class AgentSessionWrapper {
         break;
       }
       case "agent_start":
+        this.promptRunning = true;
         this.streaming = true;
+        this.awaitingAgentStart = false;
+        this.awaitingAgentStartDeadline = 0;
+        this.continuationGraceUntil = 0;
         // The session file can appear just after the prompt acknowledgement.
         // Invalidate and signal the sidebar now rather than waiting for the
         // agent's first reply or terminal event.
@@ -398,12 +417,19 @@ export class AgentSessionWrapper {
         if (event.isTerminal !== false) {
           this.streaming = false;
           this.promptRunning = false;
+          this.awaitingAgentStart = false;
+          this.awaitingAgentStartDeadline = 0;
+          this.continuationGraceUntil = 0;
           invalidateSessionListCache();
+        } else {
+          this.continuationGraceUntil = Date.now() + NON_TERMINAL_CONTINUATION_GRACE_MS;
         }
         break;
       case "prompt_result":
         // Local-only prompt (builtin/extension slash command) — no agent run.
         this.promptRunning = false;
+        this.awaitingAgentStart = false;
+        this.awaitingAgentStartDeadline = 0;
         break;
       case "auto_compaction_start":
         this.compacting = true;
@@ -425,6 +451,8 @@ export class AgentSessionWrapper {
         // reuses the original command id after the immediate ack).
         if (event.success === false && event.command === "prompt") {
           this.promptRunning = false;
+          this.awaitingAgentStart = false;
+          this.awaitingAgentStartDeadline = 0;
           this.emit({
             type: "prompt_error",
             errorMessage: (event.error as string) ?? "Prompt failed",
@@ -773,6 +801,8 @@ export class AgentSessionWrapper {
   }
 
   private buildWebState(state: RpcSessionState): WebSessionState {
+    const wasRunning = this.isRunning();
+
     // Reconcile process-side flags with authoritative child state.
     this.streaming = state.isStreaming;
     this.compacting = state.isCompacting;
@@ -781,6 +811,31 @@ export class AgentSessionWrapper {
       this._sessionId = state.sessionId;
       this._sessionFile = state.sessionFile ?? this._sessionFile;
     }
+
+    // `get_state` is authoritative once no command or browser-owned request
+    // is still in flight. This is the recovery path for a lost terminal SSE
+    // event, while the short agent-start grace prevents it from erasing a
+    // prompt that was accepted milliseconds earlier.
+    const awaitingExpired = !this.awaitingAgentStart || Date.now() >= this.awaitingAgentStartDeadline;
+    const hasPendingWork =
+      this.promptDispatchPendingCount > 0
+      || (this.awaitingAgentStart && !awaitingExpired)
+      || this.mcpListWaiter !== null
+      || this.pendingUiRequests.size > 0
+      || this.pendingHostTools.size > 0
+      || this.pendingHostUris.size > 0;
+    if (
+      state.isStreaming === false
+      && state.isCompacting === false
+      && !hasPendingWork
+      && Date.now() >= this.continuationGraceUntil
+    ) {
+      this.promptRunning = false;
+      this.awaitingAgentStart = false;
+      this.awaitingAgentStartDeadline = 0;
+    }
+
+    if (wasRunning && !this.isRunning()) notifyRunningChange();
     return {
       sessionId: state.sessionId,
       sessionFile: state.sessionFile ?? "",
@@ -821,11 +876,15 @@ export class AgentSessionWrapper {
     };
   }
 
+  private async getStateWithTimeout(): Promise<RpcSessionState> {
+    return this.proc.sendCommand<RpcSessionState>({ type: "get_state" }, GET_STATE_TIMEOUT_MS);
+  }
+
   /** After branch/new_session/switch_session the child is on a different
    * session file — re-read identity and re-register in the registry. */
   private async refreshIdentityAfterSessionChange(): Promise<string> {
     const oldId = this._sessionId;
-    const state = await this.proc.sendCommand<RpcSessionState>({ type: "get_state" });
+    const state = await this.getStateWithTimeout();
     this.applyIdentity(state);
     if (oldId && oldId !== this._sessionId) {
       this.onIdentityChangeCallback?.(oldId, this._sessionId);
@@ -854,6 +913,10 @@ export class AgentSessionWrapper {
       this.extensionWidgets.clear();
       this.clearPendingUiRequests();
       this.promptRunning = false;
+      this.promptDispatchPendingCount = 0;
+      this.awaitingAgentStart = false;
+      this.awaitingAgentStartDeadline = 0;
+      this.continuationGraceUntil = 0;
       this.bashRunning = false;
       this.streaming = false;
       this.compacting = false;
@@ -884,7 +947,7 @@ export class AgentSessionWrapper {
         // The replacement process starts with subscriptions disabled; restore
         // the live roster/transcript event stream before reading its state.
         await proc.sendCommand({ type: "set_subagent_subscription", level: "events" }).catch(() => {});
-        const state = await proc.sendCommand<RpcSessionState>({ type: "get_state" });
+        const state = await proc.sendCommand<RpcSessionState>({ type: "get_state" }, GET_STATE_TIMEOUT_MS);
         this.applyIdentity(state);
       } catch (error) {
         // Never leave the replacement running with nobody reading its frames.
@@ -908,7 +971,7 @@ export class AgentSessionWrapper {
     this.resetIdleTimer();
     const type = command.type as string;
 
-    if (type === "prompt" || type === "steer" || type === "follow_up") {
+    if (type === "prompt" || type === "steer" || type === "follow_up" || type === "abort_and_prompt") {
       const imageError = validateAgentImages(command.images);
       if (imageError) throw new Error(imageError);
     }
@@ -924,6 +987,10 @@ export class AgentSessionWrapper {
         const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
         if (!streamingBehavior) {
           this.promptRunning = true;
+          this.promptDispatchPendingCount += 1;
+          this.awaitingAgentStart = false;
+          this.awaitingAgentStartDeadline = 0;
+          this.continuationGraceUntil = 0;
           notifyRunningChange();
         }
         try {
@@ -934,18 +1001,35 @@ export class AgentSessionWrapper {
             message: command.message as string,
             ...(toImageContents(command.images) ? { images: toImageContents(command.images) } : {}),
             ...(streamingBehavior ? { streamingBehavior } : {}),
-          });
+          }, PROMPT_ACK_TIMEOUT_MS);
           // Slash commands fully consumed by a builtin report agentInvoked:false
           // in the ack itself — no prompt_result frame follows.
           if (ack?.agentInvoked === false && !streamingBehavior) {
             this.promptRunning = false;
+            this.awaitingAgentStart = false;
+            this.awaitingAgentStartDeadline = 0;
             this.emit({ type: "prompt_result", agentInvoked: false });
             notifyRunningChange();
+          } else if (!streamingBehavior && ack?.agentInvoked !== false) {
+            this.awaitingAgentStart = true;
+            this.awaitingAgentStartDeadline = Date.now() + AWAITING_AGENT_START_TIMEOUT_MS;
           }
         } catch (error) {
           this.promptRunning = false;
+          this.awaitingAgentStart = false;
+          this.awaitingAgentStartDeadline = 0;
           notifyRunningChange();
+          if (error instanceof RpcCommandTimeoutError || (error instanceof Error && error.name === "RpcCommandTimeoutError")) {
+            // The command was never acknowledged. Dispose the child so the
+            // next user action is guaranteed to attach a fresh session.
+            await this.destroyAndWait();
+            throw new WebRpcError("The OMP session stopped responding and was reset.", "session_unresponsive");
+          }
           throw error;
+        } finally {
+          if (!streamingBehavior) {
+            this.promptDispatchPendingCount = Math.max(0, this.promptDispatchPendingCount - 1);
+          }
         }
         return null;
       }
@@ -971,8 +1055,16 @@ export class AgentSessionWrapper {
         return null;
 
       case "get_state": {
-        const state = await this.proc.sendCommand<RpcSessionState>({ type: "get_state" });
-        return this.buildWebState(state);
+        try {
+          const state = await this.getStateWithTimeout();
+          return this.buildWebState(state);
+        } catch (error) {
+          if (error instanceof RpcCommandTimeoutError || (error instanceof Error && error.name === "RpcCommandTimeoutError")) {
+            await this.destroyAndWait();
+            throw new WebRpcError("The OMP session stopped responding and was reset.", "session_unresponsive");
+          }
+          throw error;
+        }
       }
 
       case "set_model": {
@@ -1137,9 +1229,20 @@ export class AgentSessionWrapper {
 
       default: {
         if (PASSTHROUGH_COMMANDS.has(type)) {
-          const result: unknown = await this.proc.sendCommand(command as { type: string });
-          if (type === "set_thinking_level") invalidateSessionListCache();
-          return result ?? null;
+          try {
+            const result: unknown = await this.proc.sendCommand(
+              command as { type: string },
+              type === "abort_and_prompt" ? PROMPT_ACK_TIMEOUT_MS : undefined,
+            );
+            if (type === "set_thinking_level") invalidateSessionListCache();
+            return result ?? null;
+          } catch (error) {
+            if (type === "abort_and_prompt" && (error instanceof RpcCommandTimeoutError || (error instanceof Error && error.name === "RpcCommandTimeoutError"))) {
+              await this.destroyAndWait();
+              throw new WebRpcError("The OMP session stopped responding and was reset.", "session_unresponsive");
+            }
+            throw error;
+          }
         }
         throw new Error(`Unsupported command: ${type}`);
       }
@@ -1166,6 +1269,10 @@ export class AgentSessionWrapper {
     }
     this.unsubscribeFrames?.();
     this.clearPendingUiRequests();
+    this.promptDispatchPendingCount = 0;
+    this.awaitingAgentStart = false;
+    this.awaitingAgentStartDeadline = 0;
+    this.continuationGraceUntil = 0;
     if (this.mcpListWaiter) {
       clearTimeout(this.mcpListWaiter.timer);
       this.mcpListWaiter.reject(new Error("Session was closed while loading MCP servers"));
@@ -1178,9 +1285,12 @@ export class AgentSessionWrapper {
     this.pendingHostUris.clear();
     this.hostUriSchemes.clear();
     this.emit({ type: "session_destroyed" });
-    this.onDestroyCallback?.();
     notifyRunningChange();
     await disposed;
+    // Keep this registry entry discoverable until the underlying child has
+    // stopped. A concurrent replacement then waits for destroyPromise instead
+    // of spawning a second process against the same session journal.
+    this.onDestroyCallback?.();
   }
 }
 

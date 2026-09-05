@@ -25,8 +25,11 @@ export async function GET(req: Request) {
     }
     return new NextResponse(bodyJson, { headers: { ETag: etag, "Content-Type": "application/json", ...SESSION_LIST_HEADERS } });
   } catch (error) {
+    const code = typeof (error as { code?: unknown } | null)?.code === "string"
+      ? (error as { code: string }).code
+      : "session_list_failed";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error), code: "internal_error" },
+      { error: error instanceof Error ? error.message : String(error), code },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }

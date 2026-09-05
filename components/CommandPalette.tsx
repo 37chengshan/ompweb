@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Command } from "cmdk";
-import { Moon, Plus, Sun, MessageSquare } from "lucide-react";
+import { BarChart3, Moon, Plus, Sun, MessageSquare } from "lucide-react";
 import type { SessionInfo } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
@@ -84,6 +84,16 @@ export function CommandPalette({ onSelectSession, onNewSession, currentModel }: 
             {sessions.map((session) => <Command.Item key={session.id} value={`${session.name ?? session.id} ${session.cwd}`} onSelect={() => choose(() => onSelectSession(session))} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: "var(--radius-control)", color: "var(--text)", cursor: "pointer" }}><MessageSquare size={15} color="var(--accent)" /><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.name || session.id}</span><span style={{ color: "var(--text-dim)", fontSize: 11 }}>{relativeTime(session.modified, locale)}</span></Command.Item>)}
           </Command.Group>
           <Command.Group heading={t("commandPalette.actions")}>
+            <Command.Item
+              value="用量与日志全景分析 仪表盘 消耗 报错 usage analytics dashboard"
+              onSelect={() => choose(() => {
+                window.dispatchEvent(new CustomEvent("omp-open-usage-dashboard", { detail: { tab: "limits" } }));
+              })}
+              style={{ display: "flex", gap: 10, padding: "9px 10px", borderRadius: "var(--radius-control)", color: "var(--text)", cursor: "pointer" }}
+            >
+              <BarChart3 size={15} color="var(--accent)" />
+              用量与日志分析全景仪表盘
+            </Command.Item>
             <Command.Item value={t("commandPalette.newSession")} onSelect={() => choose(onNewSession)} style={{ display: "flex", gap: 10, padding: "9px 10px", borderRadius: "var(--radius-control)", color: "var(--text)", cursor: "pointer" }}><Plus size={15} color="var(--accent)" />{t("commandPalette.newSession")}</Command.Item>
             <Command.Item value={t("commandPalette.toggleTheme")} onSelect={() => choose(toggleTheme)} style={{ display: "flex", gap: 10, padding: "9px 10px", borderRadius: "var(--radius-control)", color: "var(--text)", cursor: "pointer" }}>{isDark ? <Sun size={15} color="var(--accent)" /> : <Moon size={15} color="var(--accent)" />}{t("commandPalette.toggleTheme")}</Command.Item>
           </Command.Group>

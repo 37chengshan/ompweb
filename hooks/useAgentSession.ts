@@ -22,6 +22,7 @@ import { createMessageUpdateCoalescer, type MessageUpdateCoalescer } from "@/lib
 import { getToolNamesForPreset, type ToolPreset } from "@/lib/tool-presets";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { expandWebSlashCommand } from "@/lib/web-slash-commands";
+import { validateOutgoingPrompt } from "@/lib/image-attachments";
 import { createActiveGoal, parseActiveGoal, type ActiveGoal, type ActivePlan } from "@/lib/web-mode-state";
 import type { HostToolDefinition, HostUriSchemeDefinition, RpcAvailableSlashCommand, SessionStatsInfo, TodoPhase } from "@/lib/pi-types";
 import { isRecord } from "@/lib/type-guards";
@@ -2526,6 +2527,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return true;
     }
 
+    // Programmatic callers bypass ChatInput's preflight. Validate before
+    // optimistic state is created so a rejected route body cannot leave the
+    // composer locked behind a phantom turn.
+    const promptError = validateOutgoingPrompt(message, images ?? []);
+    if (promptError) {
+      addNotice({ type: "error", message: promptError });
+      return false;
+    }
+
     eventCoalescerRef.current?.reset();
     const promptRunId = promptRunIdRef.current + 1;
 
@@ -2656,6 +2666,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!trimmedMessage && !images?.length) return false;
     const sid = sessionIdRef.current;
     if (!sid || !agentRunningRef.current) return false;
+
+    const promptError = validateOutgoingPrompt(message, images ?? []);
+    if (promptError) {
+      addNotice({ type: "error", message: promptError });
+      return false;
+    }
 
     const { userMsg, piImages: interruptPiImages } = buildOutgoingPrompt(message, images);
     setMessages((prev) => [...prev, userMsg]);

@@ -18,7 +18,7 @@ import { ThemePicker } from "./ThemePicker";
 import { DesktopUpdateBanner } from "./DesktopUpdateBanner";
 import { OmpSetupWizard } from "./OmpSetupWizard";
 import { TerminalTabs } from "./terminal/TerminalTabs";
-import { RightWorkbench } from "./panels/RightWorkbench";
+import { RightWorkbench, type WorkbenchView } from "./panels/RightWorkbench";
 import { PanelErrorBoundary } from "./panels/PanelErrorBoundary";
 import { AgentsPanel } from "./agents/AgentsPanel";
 import { FileExplorer } from "./FileExplorer";
@@ -43,6 +43,7 @@ import { SettingsConfig } from "./SettingsConfig";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { GitHubStatusPanel } from "./GitHubStatusPanel";
 import { UpdateNoticeDialog } from "./UpdateNoticeDialog";
+import { UsageDashboardModal } from "./usage/UsageDashboardModal";
 import { recordCurrentVersion, isUpdateNoticeEnabled } from "@/lib/update-notice";
 import { publishSessionsChanged } from "@/lib/session-change-bus";
 import { removeBootSkeleton } from "@/lib/boot-skeleton";
@@ -639,6 +640,7 @@ export function AppShell() {
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [workbenchRequestedView, setWorkbenchRequestedView] = useState<{ view: WorkbenchView; nonce: number } | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalCwd, setTerminalCwd] = useState<string | null>(null);
 
@@ -817,6 +819,36 @@ export function AppShell() {
     }
   }, [router, isMobile, hydrateSelectedSession, armCwdSuppression]);
 
+  const [usageDashboardOpen, setUsageDashboardOpen] = useState(false);
+  const [usageDashboardTab, setUsageDashboardTab] = useState<"limits" | "models" | "projects" | "logs">("limits");
+
+  const handleOpenSessionFromFile = useCallback((sessionFilePath: string) => {
+    const filename = sessionFilePath.split("/").pop() ?? "";
+    const match = /_([0-9a-fA-F-]+)\.jsonl$/.exec(filename);
+    const sessionId = match ? match[1] : null;
+    if (sessionId) {
+      void fetch(`/api/sessions/${sessionId}`)
+        .then((res) => (res.ok ? (res.json() as Promise<SessionInfo>) : null))
+        .then((info) => {
+          if (info) {
+            handleSelectSession(info, false);
+            setUsageDashboardOpen(false);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [handleSelectSession]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const custom = e as CustomEvent<{ tab?: "limits" | "models" | "projects" | "logs" }>;
+      if (custom.detail?.tab) setUsageDashboardTab(custom.detail.tab);
+      setUsageDashboardOpen(true);
+    };
+    window.addEventListener("omp-open-usage-dashboard", handler);
+    return () => window.removeEventListener("omp-open-usage-dashboard", handler);
+  }, []);
+
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
@@ -982,6 +1014,7 @@ export function AppShell() {
       return prev.map((t) => t.id === tabId ? { ...t, sourceSessionId } : t);
     });
     setActiveFileTabId(tabId);
+    setWorkbenchRequestedView({ view: "files", nonce: Date.now() });
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
@@ -999,7 +1032,7 @@ export function AppShell() {
     let planFile: string | null = null;
     try {
       const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/plan`);
-      const data = await res.json().catch(() => ({})) as { planFile?: string | null };
+      const data = await res.json().catch(() => ({})) as { planFile?: string | null; plan?: string | null };
       planFile = typeof data.planFile === "string" ? data.planFile : null;
     } catch {
       // Fall through to the pill-less state; the chat pill only shows when a
@@ -1007,8 +1040,12 @@ export function AppShell() {
     }
     if (planFile) {
       handleOpenFile(planFile, getFileName(planFile), sessionId);
+    } else {
+      setWorkbenchRequestedView({ view: "files", nonce: Date.now() });
+      setRightPanelOpen(true);
+      toast.info(t("chatWindow.planGenerating") || "计划文件正在生成中，请稍候...");
     }
-  }, [handleOpenFile]);
+  }, [handleOpenFile, t]);
 
   const handleCloseFileTab = useCallback((tabId: string) => {
     // Compute everything from the current list outside the updaters: no side
@@ -1882,6 +1919,7 @@ export function AppShell() {
           }}
         >
           <RightWorkbench
+            requestedView={workbenchRequestedView}
             storageKey={selectedSession?.id ?? activeCwd ?? newSessionCwd ?? "new"}
             cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd}
             files={(
@@ -1908,14 +1946,22 @@ export function AppShell() {
             )}
             agents={(
               <PanelErrorBoundary title={t("rightPanel.agents") ?? "Agents"} unavailable={t("rightPanel.unavailable") ?? "is temporarily unavailable"} retryLabel={t("rightPanel.retry") ?? "Retry"}>
-                {selectedSubagent ? <SubagentDetailPanel subagent={selectedSubagent} sessionId={selectedSession?.id ?? null} onBack={() => setSelectedSubagent(null)} /> : subagents ? <AgentsPanel subagents={subagents} onSelectSubagent={(subagent) => { setSelectedSubagent(subagent); setRightPanelOpen(true); }} /> : <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12, textAlign: "center", padding: 24 }}>{t("appShell.noActiveSession") ?? "Open a session to see its agents."}</div>}
+                {selectedSubagent ? <SubagentDetailPanel subagent={selectedSubagent} sessionId={selectedSession?.id ?? null} onBack={() => setSelectedSubagent(null)} /> : subagents ? <AgentsPanel subagents={subagents} onSelectSubagent={(subagent) => { setSelectedSubagent(subagent); setWorkbenchRequestedView({ view: "agents", nonce: Date.now() }); setRightPanelOpen(true); }} /> : <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12, textAlign: "center", padding: 24 }}>{t("appShell.noActiveSession") ?? "Open a session to see its agents."}</div>}
               </PanelErrorBoundary>
             )}
           />
         </div>
       {/* File panel toggle — always visible at top-right */}
       <button
-        onClick={() => { setRightPanelOpen((v) => !v); }}
+        onClick={() => {
+          setRightPanelOpen((v) => {
+            const next = !v;
+            if (next && fileTabs.length > 0) {
+              setWorkbenchRequestedView({ view: "files", nonce: Date.now() });
+            }
+            return next;
+          });
+        }}
         title={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
         aria-label={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
         style={{
@@ -1969,6 +2015,12 @@ export function AppShell() {
       <UpdateNoticeDialog version={updateNoticeVersion} onClose={() => setUpdateNoticeVersion(null)} />
     )}
     {settingsTab && <SettingsConfig activeTab={settingsTab} toolCallsDefaultCollapsed={toolCallsDefaultCollapsed} onToolCallsDefaultCollapsedChange={handleToolCallsDefaultCollapsedChange} thinkingDisplayMode={thinkingDisplayMode} onThinkingDisplayModeChange={handleThinkingDisplayModeChange} cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd} sessionId={selectedSession?.id ?? null} onModelsSaved={() => setModelsRefreshKey((k) => k + 1)} onPluginsReloaded={() => setSessionKey((k) => k + 1)} onOmpUpdateAvailabilityChange={setOmpUpdateAvailable} onSelectTab={setSettingsTab} onClose={() => setSettingsTab(null)} />}
+    <UsageDashboardModal
+      open={usageDashboardOpen}
+      onOpenChange={setUsageDashboardOpen}
+      initialTab={usageDashboardTab}
+      onOpenSessionFile={handleOpenSessionFromFile}
+    />
     {archiveBrowserOpen && (
       <ArchiveBrowser
         open={archiveBrowserOpen}

@@ -82,11 +82,6 @@ interface NodeInfo {
 
 export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer, groups, layout, layoutRevision, onNavigateGroup }: Props) {
   const [visible, setVisible] = useState(false);
-  // The minimap must span EXACTLY the scroll viewport. It lives in a wrapper
-  // that covers the whole chat column (incl. the composer), so its height
-  // would otherwise be ~30% taller than the real viewport and every node/box
-  // percentage would be scaled by the wrong factor.
-  const [geometry, setGeometry] = useState({ top: 0, height: 0 });
   // Auto-scaling scrollbar thumb in rail pixels (computeThumb).
   const [thumb, setThumb] = useState({ top: 0, height: 0 });
   const [minimapHovered, setMinimapHovered] = useState(false);
@@ -190,13 +185,6 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     const totalH = scrollEl.scrollHeight;
     const clientH = scrollEl.clientHeight;
     const scrollable = totalH - clientH;
-    const wrapper = containerRef.current?.parentElement;
-    if (wrapper) {
-      const sr = scrollEl.getBoundingClientRect();
-      const wr = wrapper.getBoundingClientRect();
-      const top = sr.top - wr.top;
-      setGeometry((prev) => (prev.top === top && prev.height === clientH ? prev : { top, height: clientH }));
-    }
     setVisible(scrollable > 20);
     setThumb((prev) => {
       const next = computeThumb({ scrollTop: scrollEl.scrollTop, clientHeight: clientH, scrollHeight: totalH, minThumbHeight: MIN_THUMB_HEIGHT });
@@ -346,8 +334,8 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         width: MINIMAP_WIDTH,
         flexShrink: 0,
         position: "absolute",
-        top: geometry.top,
-        height: geometry.height,
+        top: 0,
+        bottom: 0,
         right: 0,
         cursor: draggingRef.current ? "grabbing" : "grab",
         userSelect: "none",

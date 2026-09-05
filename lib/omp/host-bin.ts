@@ -14,7 +14,8 @@
  *                回退 Node Authority —— OMPWEB_BACKEND=node 是唯一显式回滚）
  */
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export class RuntimeUnavailableError extends Error {
   readonly code = "runtime_unavailable";
@@ -46,6 +47,32 @@ export interface HostBinLookup {
   platform?: NodeJS.Platform;
   /** Test injection: filesystem probe. */
   exists?: (path: string) => boolean;
+}
+
+/**
+ * Resolve a source-module directory without making host startup depend on how
+ * Next/Electron serializes `import.meta.url`.  In particular, the Windows
+ * server bundle can expose a non-absolute `file:` URL; Node rejects that in
+ * `fileURLToPath` before a request can reach the Rust host.  The executable
+ * lookup already has an explicit env and cwd ladder, so falling back to cwd
+ * preserves those supported layouts rather than turning a URL-shape detail
+ * into a session-list 500.
+ *
+ * Kept injectable because URL conversion differs by host platform and the
+ * failure branch is a packaging contract we need to cover in tests.
+ */
+export function resolveModuleDir(
+  moduleUrl: string | undefined,
+  fallbackDir = process.cwd(),
+  toPath: (url: string | URL) => string = fileURLToPath,
+): string {
+  if (!moduleUrl || !moduleUrl.startsWith("file:")) return fallbackDir;
+  try {
+    const path = toPath(moduleUrl);
+    return isAbsolute(path) ? dirname(path) : fallbackDir;
+  } catch {
+    return fallbackDir;
+  }
 }
 
 export function hostExeName(platform: NodeJS.Platform): string {

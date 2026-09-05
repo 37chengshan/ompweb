@@ -97,6 +97,13 @@
 - 修复对比：原先 `timer.unref()`；现在活动请求保留定时器引用，响应/错误时清除。空闲 host/socket 仍不保活；退出等待同样有界保活。
 - 回归：移除生命周期测试里的人工 keepAlive。Node 22.19 与 Node 24.14 全套均为 738 项、729 通过、9 跳过、0 失败、0 取消。
 
+### F13 / P1：Windows host 隐含依赖 VC 运行库
+
+- 位置：Rust host 构建流程与 npm/App staging。
+- 触发与影响：5.1.8 候选 exe 的 PE imports 包含 VCRUNTIME140.dll；干净 Windows 用户没有该库时，npm 安装成功但原生 host 无法加载。GitHub runner 自带构建工具链，启动通过会掩盖问题。
+- 修复对比：原先直接 `cargo build`；现在 Windows 显式使用 MSVC target 和 `-C target-feature=+crt-static`，并解析最终 exe 的导入表，拒绝外部 VC CRT DLL。npm 聚合和 App staging 都执行检查。
+- 证据：[原候选导入表](evidence/windows-5.1.8-imports.json)。5.1.8 流水线已取消，发布候选改为 5.1.9；最终状态见发布记录。
+
 ### F11 / P2：目录子节点刷新可被旧响应覆盖
 
 - 位置：`components/FileExplorer.tsx:loadChildren`。

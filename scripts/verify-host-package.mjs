@@ -1,6 +1,7 @@
 import { accessSync, constants, openSync, readSync, closeSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyWindowsHost } from "./lib/host-pe.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const targets = process.argv.includes("--current")
@@ -20,5 +21,6 @@ for (const target of targets) {
     : target.startsWith("linux-") ? magic === "7f454c46"
       : ["cffaedfe", "feedfacf", "cafebabe", "bebafeca", "cafebabf", "bfbafeca"].includes(magic);
   if (!valid) throw new Error(`Wrong executable format: ${target}`);
+  if (target.startsWith("win32-")) verifyWindowsHost(path);
 }
 console.log(`Rust package payload verified: ${targets.join(", ")}`);

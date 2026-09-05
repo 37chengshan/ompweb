@@ -35,7 +35,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Rust host
-        run: cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host
+        run: node scripts/build-host.mjs
 
       - name: Stage host for npm vendor layout
         run: node scripts/stage-host.mjs --vendor

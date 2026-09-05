@@ -16,6 +16,7 @@
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyWindowsHost } from "./lib/host-pe.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const exe = process.platform === "win32" ? "ompweb-host.exe" : "ompweb-host";
@@ -50,6 +51,8 @@ if (!existsSync(from)) {
   console.error("Run `npm run host:build` first (cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host).");
   process.exit(1);
 }
+
+if (process.platform === "win32") verifyWindowsHost(from);
 
 // Keep only the current platform's binary in the staged dir so electron-builder
 // never ships a foreign executable under Resources/bin, and the npm vendor

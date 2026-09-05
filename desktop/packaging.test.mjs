@@ -44,8 +44,8 @@ test("desktop packaging explicitly preserves Next's hidden runtime directory", (
 
 test("desktop CI builds the Rust host before tracing and packaging", () => {
   assert.match(desktopWorkflow, /dtolnay\/rust-toolchain@stable/);
-  assert.match(desktopWorkflow, /cargo build --locked --manifest-path crates\/Cargo\.toml --bin ompweb-host/);
-  assert.ok(desktopWorkflow.indexOf("cargo build --locked") < desktopWorkflow.indexOf("npm run build"));
+  assert.match(desktopWorkflow, /node scripts\/build-host\.mjs/);
+  assert.ok(desktopWorkflow.indexOf("node scripts/build-host.mjs") < desktopWorkflow.indexOf("npm run build"));
 });
 test("desktop packaging ships the Rust host at Resources/bin (route 3)", () => {
   // extraResources stages build-resources/host (scripts/stage-host.mjs) into

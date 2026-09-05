@@ -249,7 +249,7 @@ fn main() {
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            if !is_path_within(&root, &path) {
+                            if !file_service::is_existing_path_within_any(std::slice::from_ref(&root), &path) {
                                 return Err(ipc_server::IpcError::new(
                                     "path_out_of_scope",
                                     "path outside sessions root",
@@ -273,7 +273,7 @@ fn main() {
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            if !is_path_within(&root, &path) {
+                            if !file_service::is_existing_path_within_any(std::slice::from_ref(&root), &path) {
                                 return Err(ipc_server::IpcError::new(
                                     "path_out_of_scope",
                                     "path outside sessions root",

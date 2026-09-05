@@ -235,20 +235,32 @@ function TreeNode({
   const [loading, setLoading] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const childrenRequestRef = useRef(0);
 
   const loadChildren = useCallback(async (force = false) => {
     if (loaded && !force) return;
+    const requestId = ++childrenRequestRef.current;
     setLoading(true);
     try {
       const entries = await fetchEntries(node.fullPath);
+      if (requestId !== childrenRequestRef.current) return;
       setChildren(entries);
       setLoaded(true);
-    } catch {
-      // ignore
+      setLoadError(null);
+    } catch (error) {
+      if (requestId !== childrenRequestRef.current) return;
+      setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
-      setLoading(false);
+      if (requestId === childrenRequestRef.current) setLoading(false);
     }
   }, [loaded, node.fullPath]);
+
+  // Invalidate any in-flight children request when the node's path changes or
+  // the node unmounts, so a stale response can never setState afterwards.
+  useEffect(() => {
+    return () => { childrenRequestRef.current += 1; };
+  }, [node.fullPath]);
 
   // Re-fetch children when the tree refreshes. Open directories re-fetch in
   // place; collapsed directories are marked stale so the next expand re-fetches
@@ -559,6 +571,11 @@ function TreeNode({
             {children.length === 0 && loaded && (
               <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
                 {t("fileExplorer.emptyDir")}
+              </div>
+            )}
+            {loadError && (
+              <div role="alert" style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--status-error)", height: 22, display: "flex", alignItems: "center", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {loadError}
               </div>
             )}
           </div>

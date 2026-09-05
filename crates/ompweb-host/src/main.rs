@@ -59,29 +59,28 @@ fn resolve_omp_bin() -> String {
 }
 
 fn rewrite_title_slot(path: &str, title: &str) -> Result<(), String> {
-    let raw = std::fs::read(path).map_err(|e| e.to_string())?;
-    let text = String::from_utf8_lossy(&raw);
-    let mut lines: Vec<&str> = text.split('\n').collect();
-    if lines.is_empty() || !lines[0].starts_with("{\"type\":\"title\"") {
-        return Err("not a title-slot session file".into());
+    use std::io::{Read, Seek, SeekFrom, Write};
+    let mut file = std::fs::OpenOptions::new().read(true).write(true).open(path)
+        .map_err(|e| e.to_string())?;
+    let mut existing = [0u8; 256];
+    file.read_exact(&mut existing).map_err(|e| e.to_string())?;
+    let parsed = mini_json::JsonValue::parse(std::str::from_utf8(&existing).map_err(|e| e.to_string())?)?;
+    if existing[255] != b'\n' || parsed.get(&["type"]).and_then(|v| v.as_str()) != Some("title") {
+        return Err("not a fixed-width title-slot session file".into());
     }
-    let mut slot = format!(
-        "{{\"type\":\"title\",\"v\":1,\"title\":{},\"updatedAt\":\"\",\"pad\":\"",
-        crate::ipc_server::json_str(title)
-    );
-    while slot.len() < 254 {
-        slot.push(' ');
-    }
-    slot.push_str("\"}");
-    // Keep the newline terminator: the slot is 256 bytes with the \n inside.
-    while slot.len() < 255 {
-        slot.push(' ');
-    }
-    slot.push('\n');
-    lines[0] = &slot;
-    let mut out = lines.join("\n");
-    out.push('\n');
-    std::fs::write(path, out.as_bytes()).map_err(|e| e.to_string())
+    let mut title: String = title.chars().map(|c| if c.is_control() { ' ' } else { c }).take(256).collect();
+    let mut slot = loop {
+        let slot = format!("{{\"type\":\"title\",\"v\":1,\"title\":{},\"source\":\"user\",\"updatedAt\":\"\",\"pad\":\"",
+            crate::ipc_server::json_str(title.trim()));
+        if slot.len() + 3 <= 256 { break slot; }
+        title.pop();
+    };
+    slot.extend(std::iter::repeat_n(' ', 256 - slot.len() - 3));
+    slot.push_str("\"}\n");
+    // Never truncate/rewrite the conversation body: another OMP process may
+    // be appending to this same file, including one outside our registry.
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    file.write_all(slot.as_bytes()).map_err(|e| e.to_string())
 }
 
 fn health_json() -> String {
@@ -131,24 +130,10 @@ fn main() {
             // {"status":"ok","port":N,"token":"...","pid":N}
             // The parent (Next/desktop) reads this line, connects to the
             // port and authenticates with the token.
-            // 128-bit token from /dev/urandom when available (same-host
-            // adversary hardening; subsec_nanos+pid is only the fallback).
-            let token = match std::fs::File::open("/dev/urandom").and_then(|mut f| {
-                use std::io::Read;
-                let mut buf = [0u8; 16];
-                f.read_exact(&mut buf)
-                    .map(|_| buf.iter().map(|b| format!("{b:02x}")).collect::<String>())
-            }) {
-                Ok(hex) => hex,
-                Err(_) => {
-                    format!(
-                        "{:x}",
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.subsec_nanos())
-                            .unwrap_or(0)
-                    ) + &format!("-{}", std::process::id())
-                }
+            // Fail closed if the OS RNG fails, including on Windows.
+            let token = match device_service::random_hex() {
+                Ok(token) => token,
+                Err(error) => { eprintln!("IPC token generation failed: {}", error.message); std::process::exit(4); }
             };
             let server = match ipc_server::IpcServer::start(token.clone()) {
                 Ok(srv) => srv,
@@ -862,6 +847,25 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::is_path_within;
+
+    #[test]
+    fn rename_preserves_body_and_fixed_utf8_slot() {
+        let path = std::env::temp_dir().join(format!("ompweb-title-{}.jsonl", std::process::id()));
+        let prefix = "{\"type\":\"title\",\"v\":1,\"title\":\"old\",\"pad\":\"";
+        let slot = format!("{}{}\"}}\n", prefix, " ".repeat(256 - prefix.len() - 3));
+        let body = b"{\"type\":\"session\",\"id\":\"fixture\"}\n{\"type\":\"message\"}\n";
+        let mut original = slot.into_bytes(); original.extend(body);
+        std::fs::write(&path, &original).unwrap();
+        for title in ["new title".to_string(), "标题😀\\\"".repeat(1000)] {
+            super::rewrite_title_slot(path.to_str().unwrap(), &title).unwrap();
+            let updated = std::fs::read(&path).unwrap();
+            assert_eq!(updated.len(), original.len());
+            assert_eq!(&updated[256..], body);
+            assert_eq!(updated[255], b'\n');
+            assert!(super::mini_json::JsonValue::parse(std::str::from_utf8(&updated[..256]).unwrap()).is_ok());
+        }
+        std::fs::remove_file(path).ok();
+    }
 
     #[test]
     fn containment_accepts_children_and_rejects_siblings() {

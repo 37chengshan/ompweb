@@ -15,6 +15,8 @@
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createConnection, type Socket } from "node:net";
+import { join } from "node:path";
+import { getAgentDir } from "./paths";
 import { assertHostAvailable, resolveHostBin, resolveModuleDir } from "./host-bin";
 import { RpcFrameDecoder, type RpcFrameRecord, type RpcProtocolVersion } from "./rpc-frame";
 import { RpcCommandError, RpcCommandTimeoutError } from "./rpc-process";
@@ -95,7 +97,7 @@ interface PendingCommand {
 /** Frame handler signature compatible with RpcProcess.onFrame. */
 export type RpcFrameHandler = (frame: RpcFrameRecord) => void;
 
-class RustHostManager {
+export class RustHostManager {
   private host: ChildProcess | null = null;
   private hostDying = false;
   private port = 0;
@@ -103,11 +105,14 @@ class RustHostManager {
   private bootBuffer = "";
   private bootPromise: Promise<void> | null = null;
   private control: Socket | null = null;
+  private controlPromise: Promise<void> | null = null;
   private controlBuffer = "";
   private pending = new Map<string, PendingCommand>();
   private nextId = 1;
   private subscribers = new Set<RpcFrameHandler>();
   private refs = 0;
+
+  constructor(private readonly spawnHost: typeof spawn = spawn) {}
 
   cleanupOrphans(): { stopped: number; pids: number[] } {
     return cleanupOrphanRustHosts();
@@ -138,6 +143,9 @@ class RustHostManager {
     this.host?.kill();
     this.hostDying = true;
     this.bootPromise = null;
+    for (const entry of this.pending.values()) {
+      entry.reject(new RpcCommandError(entry.type, "ompweb-host stopped", "runtime_unavailable"));
+    }
     this.pending.clear();
   }
 
@@ -148,7 +156,6 @@ class RustHostManager {
     if (host && host.exitCode === null) {
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, 3000);
-        timer.unref?.();
         host.once("exit", () => {
           clearTimeout(timer);
           resolve();
@@ -157,16 +164,24 @@ class RustHostManager {
     }
   }
 
-  private async ensure(): Promise<void> {
-    if (this.host && !this.hostDying && this.host.exitCode === null) return;
+  private ensure(): Promise<void> {
     if (this.bootPromise) return this.bootPromise;
+    if (this.host && !this.hostDying && this.host.exitCode === null && this.port > 0) return Promise.resolve();
+    const boot = this.boot().finally(() => {
+      if (this.bootPromise === boot) this.bootPromise = null;
+    });
+    this.bootPromise = boot;
+    return boot;
+  }
+
+  private async boot(): Promise<void> {
     if (this.host) {
       // Old host still exiting: wait for its process tree (incl. omp
       // children) to release before the new host spawns.
       if (this.host.exitCode === null) {
         await new Promise<void>((resolve) => {
-          this.host!.once("exit", () => resolve());
-          setTimeout(resolve, 3000).unref?.();
+          const timer = setTimeout(resolve, 3000);
+          this.host!.once("exit", () => { clearTimeout(timer); resolve(); });
         });
       }
       this.host = null;
@@ -174,10 +189,12 @@ class RustHostManager {
     // Fresh boot: drop any leftover boot line from the previous host — a
     // stale port/token here would connect to the dead process.
     this.bootBuffer = "";
+    this.port = 0;
+    this.token = "";
     // Route 3 (doc 16): a missing host binary is Runtime unavailable, never
     // a silent Node fallback. Throws RuntimeUnavailableError with remediation.
     const hostResolution = assertHostAvailable({ moduleDir: MODULE_DIR });
-    this.bootPromise = new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       // The supervisor remains resident for the Next service lifetime.
       // Do not inherit stderr here: Node's test runner (and other short-lived
       // callers) keeps an inherited child stdio handle live until the child
@@ -185,9 +202,10 @@ class RustHostManager {
       // failures still surface through the IPC disconnect/error path below.
       // The Rust host is a background IPC service. Without windowsHide, every
       // host recycle flashes a console window in packaged Windows builds.
-      const child = spawn(hostResolution.path, ["--ipc"], {
+      const child = this.spawnHost(hostResolution.path, ["--ipc"], {
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true,
+        env: { ...process.env, OMPWEB_RUNTIME_DB: process.env.OMPWEB_RUNTIME_DB || join(getAgentDir(), "ompweb", "runtime.db") },
       });
       // The host is a workhorse for this process: it must never keep the
       // process alive (tests, short-lived scripts). shutdown() owns its final
@@ -195,10 +213,14 @@ class RustHostManager {
       child.unref();
       this.host = child;
       child.on("error", (err) => {
-        this.bootPromise = null;
+        clearTimeout(timer);
+        if (this.host === child) this.host = null;
         reject(err);
       });
       child.on("exit", () => {
+        clearTimeout(timer);
+        reject(new Error("ompweb-host exited before readiness"));
+        if (this.host !== child) return;
         // Frames listeners get a synthetic disconnect on host death; the
         // next acquire re-boots.
         for (const sub of this.subscribers) sub({ type: "host_disconnected" } as RpcFrameRecord);
@@ -217,7 +239,8 @@ class RustHostManager {
         }
       });
       const timer = setTimeout(() => {
-        this.bootPromise = null;
+        this.hostDying = true;
+        child.kill();
         reject(new Error("ompweb-host boot timeout"));
       }, 5000);
       // The boot stream must not keep the process alive either; events still
@@ -226,39 +249,117 @@ class RustHostManager {
       // runtimes, so retain a guarded optional call.
       (child.stdout as typeof child.stdout & { unref?: () => void }).unref?.();
       child.stdout.on("data", (chunk) => {
+        if (this.port > 0 || this.host !== child) return;
         this.bootBuffer += chunk.toString();
+        if (this.bootBuffer.length > 16 * 1024) {
+          clearTimeout(timer);
+          this.hostDying = true;
+          child.kill();
+          reject(new Error("ompweb-host boot response too large"));
+          return;
+        }
         const idx = this.bootBuffer.indexOf("\n");
         if (idx < 0) return;
         clearTimeout(timer);
         const line = this.bootBuffer.slice(0, idx).trim();
         try {
           const info = JSON.parse(line);
+          if (!Number.isInteger(info.port) || info.port < 1 || info.port > 65535 || typeof info.token !== "string" || !info.token) {
+            throw new Error("invalid boot response");
+          }
           this.port = info.port;
           this.token = info.token;
-          this.bootPromise = null;
           resolve();
-        } catch (err) {
-          this.bootPromise = null;
-          reject(new Error("bad host boot line: " + line));
+        } catch {
+          this.hostDying = true;
+          child.kill();
+          reject(new Error("invalid ompweb-host boot response"));
         }
       });
     });
-    return this.bootPromise;
   }
 
   async controlRequest(method: string, params: Record<string, unknown>, timeoutMs = 30_000): Promise<unknown> {
     await this.ensure();
-    if (!this.control || this.control.destroyed) {
-      this.control = createConnection({ host: "127.0.0.1", port: this.port });
-      this.control.unref();
-      this.control.on("data", (chunk: Buffer) => this.handleControlData(chunk));
+    // These operations can block on a child pipe, script, or network. Keep
+    // the shared control channel free for cancellation and session state.
+    if (["agent.send", "commands.run", "git.push"].includes(method)) {
+      return this.isolatedRequest(method, params, method === "commands.run" ? Math.max(timeoutMs, 65_000) : timeoutMs);
+    }
+    if (!this.controlPromise && (!this.control || this.control.destroyed)) {
+      const connecting = this.connectControl(timeoutMs).finally(() => {
+        if (this.controlPromise === connecting) this.controlPromise = null;
+      });
+      this.controlPromise = connecting;
+    }
+    await this.controlPromise;
+    return this.controlRequestRaw(method, params, timeoutMs);
+  }
+
+  private isolatedRequest(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const socket = createConnection({ host: "127.0.0.1", port: this.port });
+      let buffer = "";
+      let settled = false;
+      const finish = (error?: Error, value?: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.destroy();
+        if (error) reject(error); else resolve(value);
+      };
+      const timer = setTimeout(() => finish(new RpcCommandTimeoutError(method, timeoutMs)), timeoutMs);
+      socket.once("error", (error) => finish(error));
+      socket.once("close", () => finish(new RpcCommandError(method, "host control disconnected", "runtime_unavailable")));
+      socket.once("connect", () => socket.write(JSON.stringify({ id: "hello", method: "hello", params: { token: this.token } }) + "\n"));
+      socket.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString();
+        let newline: number;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
+          try {
+            const response = JSON.parse(line);
+            if (!response.ok) { finish(new RpcCommandError(method, response.error?.message ?? "rpc failed", response.error?.code)); return; }
+            if (response.id === "hello") {
+              socket.write(JSON.stringify({ id: "request", method, params }) + "\n");
+            } else if (response.id === "request") finish(undefined, response.result);
+          } catch { finish(new Error("invalid host response")); return; }
+        }
+      });
+    });
+  }
+
+  private async connectControl(timeoutMs: number): Promise<void> {
+    const socket = createConnection({ host: "127.0.0.1", port: this.port });
+    this.control = socket;
+    this.controlBuffer = "";
+    socket.unref();
+    socket.on("data", (chunk: Buffer) => {
+      if (this.control === socket) this.handleControlData(chunk);
+    });
+    const disconnected = () => {
+      if (this.control !== socket) return;
+      this.control = null;
+      this.controlBuffer = "";
+      for (const entry of this.pending.values()) {
+        entry.reject(new RpcCommandError(entry.type, "host control disconnected", "runtime_unavailable"));
+      }
+      this.pending.clear();
+    };
+    socket.on("error", disconnected);
+    socket.on("close", disconnected);
+    try {
       await new Promise<void>((resolve, reject) => {
-      this.control!.once("connect", () => resolve());
-        this.control!.once("error", reject);
+        const timer = setTimeout(() => { socket.destroy(); reject(new Error("host control connect timeout")); }, Math.min(timeoutMs, 5000));
+        socket.once("connect", () => { clearTimeout(timer); resolve(); });
+        socket.once("error", (error) => { clearTimeout(timer); reject(error); });
       });
       await this.controlRequestRaw("hello", { token: this.token }, timeoutMs);
+    } catch (error) {
+      socket.destroy();
+      disconnected();
+      throw error;
     }
-    return this.controlRequestRaw(method, params, timeoutMs);
   }
 
   private controlRequestRaw(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
@@ -267,8 +368,6 @@ class RustHostManager {
       let settled = false;
       const finishResolve = (value: unknown) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } };
       const finishReject = (error: Error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } };
-      this.pending.set(id, { type: method, resolve: finishResolve, reject: finishReject });
-      this.control!.write(JSON.stringify({ id, method, params }) + "\n");
       // Guard against a lost/hung control socket: a request that never gets a
       // matching response must not keep the API route waiting forever.
       const timer = setTimeout(() => {
@@ -277,7 +376,20 @@ class RustHostManager {
         this.pending.delete(id);
         entry.reject(new RpcCommandTimeoutError(method, timeoutMs, "ompweb-host control request timed out"));
       }, timeoutMs);
-      timer.unref?.();
+      // Keep an active request alive even in a short-lived Node 22 caller.
+      // The idle host/socket stay unref'd; completion clears this timer.
+      this.pending.set(id, { type: method, resolve: finishResolve, reject: finishReject });
+      try {
+        if (!this.control || this.control.destroyed) throw new Error("host control unavailable");
+        this.control.write(JSON.stringify({ id, method, params }) + "\n", (error) => {
+          if (!error) return;
+          this.pending.delete(id);
+          finishReject(error);
+        });
+      } catch (error) {
+        this.pending.delete(id);
+        finishReject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 

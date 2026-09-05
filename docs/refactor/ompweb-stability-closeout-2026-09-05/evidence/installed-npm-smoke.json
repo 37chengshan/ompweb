@@ -1,0 +1,50 @@
+{
+  "package": "5.1.7 local candidate",
+  "method": "real npm install --omit=dev from locally built tarball, independent dependencies; same Next launch arguments as CLI without sibling adoption; no external host override; real OMP ensure_session without model prompt",
+  "results": [
+    {
+      "check": "health",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "app": "5.1.7",
+        "ompReady": true,
+        "ompVersion": "omp/18.1.8"
+      }
+    },
+    {
+      "check": "allow-fixture-root",
+      "status": 200
+    },
+    {
+      "check": "Rust file read without OMPWEB_HOST_BIN",
+      "status": 200,
+      "body": {
+        "content": "rust-file-read-ok",
+        "language": "text",
+        "size": 17
+      }
+    },
+    {
+      "check": "real OMP startup handshake, no prompt",
+      "status": 200,
+      "success": true,
+      "error": null
+    },
+    {
+      "check": "Rust PTY create",
+      "status": 200,
+      "ok": true,
+      "error": null
+    },
+    {
+      "check": "Rust PTY actual shell execution",
+      "status": 200,
+      "marker": "terminal-ok"
+    },
+    {
+      "check": "host process executable belongs to installed npm package",
+      "ok": true
+    }
+  ]
+}

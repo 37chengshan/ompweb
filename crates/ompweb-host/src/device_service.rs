@@ -45,7 +45,7 @@ impl DeviceService {
 
     pub fn issue_token(&self, ttl_ms: i64) -> Result<String, IpcError> {
         let now = now_ms();
-        let value = format!("{}{}", random_hex(), serial());
+        let value = format!("{}{}", random_hex()?, serial());
         self.use_registry(|registry| registry.issue_token(&value, now + ttl_ms))
             .and_then(|res| res.map_err(|e| IpcError::new("token_issue_failed", e.to_string())))?;
         Ok(value)
@@ -74,13 +74,13 @@ impl DeviceService {
                 "invalid or expired token",
             ));
         }
-        let id = random_hex();
+        let id = random_hex()?;
         let name = device_name_from_user_agent(user_agent, mobile);
         let platform = if mobile { "mobile" } else { "desktop" };
         // Per-device random auth secret (128-bit hex) — the remote runtime
         // uses it for challenge-response proof instead of exposing the bare
         // device id as a bearer credential.
-        let auth_secret = random_hex();
+        let auth_secret = random_hex()?;
         self.use_registry(|registry| {
             registry.register_device(&id, &name, platform, &auth_secret, now)
         })
@@ -254,20 +254,11 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-fn random_hex() -> String {
-    // 128-bit token/device id from /dev/urandom when available (same
-    // hardening as the IPC boot token).
+pub(crate) fn random_hex() -> Result<String, IpcError> {
     let mut buf = [0u8; 16];
-    if std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| {
-            use std::io::Read;
-            f.read_exact(&mut buf)
-        })
-        .is_ok()
-    {
-        return buf.iter().map(|b| format!("{b:02x}")).collect();
-    }
-    format!("{:016x}{:016x}", now_ms() as u64, std::process::id())
+    getrandom::getrandom(&mut buf)
+        .map_err(|e| IpcError::new("token_issue_failed", format!("OS randomness unavailable: {e}")))?;
+    Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 fn serial() -> u64 {

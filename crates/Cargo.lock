@@ -306,6 +306,7 @@ name = "ompweb-host"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "getrandom",
  "ompweb-protocol",
  "ompweb-storage",
  "portable-pty",

@@ -19,7 +19,7 @@ use std::io::Read;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::file_service::is_path_within_any;
+use crate::file_service::is_existing_path_within_any as is_path_within_any;
 use crate::ipc_server::{json_str, IpcError};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 

@@ -28,7 +28,7 @@ use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::file_service::is_path_within_any;
+use crate::file_service::is_existing_path_within_any as is_path_within_any;
 use crate::ipc_server::{json_str, IpcError};
 #[cfg(target_os = "windows")]
 use crate::process_visibility::hide_console_window;
@@ -48,6 +48,7 @@ fn spawn_shell_with_env(
         let mut cmd = Command::new("cmd.exe");
         cmd.args(["/d", "/s", "/c", command]);
         cmd.current_dir(cwd)
+            .env_remove("OMPWEB_PEER_SECRET")
             .env("LC_ALL", "C")
             .stdin(Stdio::null())
             .stdout(stdout)
@@ -58,16 +59,46 @@ fn spawn_shell_with_env(
     }
     #[cfg(not(target_os = "windows"))]
     {
+        use std::os::unix::process::CommandExt;
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", command]);
         cmd.current_dir(cwd)
+            .env_remove("OMPWEB_PEER_SECRET")
             .env("LC_ALL", "C")
             .stdin(Stdio::null())
             .stdout(stdout)
             .stderr(stderr);
         cmd.envs(envs.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+        // Isolate the whole script tree in its own process group so a
+        // timeout can terminate grandchildren too (they inherit the stdout
+        // pipe and would otherwise keep the drain threads from seeing EOF).
+        cmd.process_group(0);
         cmd.spawn()
     }
+}
+
+/// Terminate the whole script tree, not just the direct shell.
+/// POSIX: the child was spawned in its own process group (process_group(0)),
+/// so kill the group negative-PID — grandchildren holding the output pipes
+/// die too and the drain threads see EOF. /bin/kill is POSIX-mandated and
+/// supports negative (group) PIDs; no new crate dependency. Windows: no Job
+/// Object dependency here; taskkill /T /F walks the tree from the child.
+pub(crate) fn terminate_process_tree(child: &mut Child) {
+    #[cfg(unix)]
+    let mut command = { let mut c = Command::new("/bin/kill"); c.args(["-9", "--", &format!("-{}", child.id())]); c };
+    #[cfg(windows)]
+    let mut command = { let mut c = Command::new("taskkill"); c.args(["/pid", &child.id().to_string(), "/T", "/F"]); hide_console_window(&mut c); c };
+    command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    // Keep the parent alive until taskkill has enumerated its descendants.
+    if let Ok(mut killer) = command.spawn() {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if killer.try_wait().ok().flatten().is_some() { break; }
+            if Instant::now() >= deadline { let _ = killer.kill(); let _ = killer.wait(); break; }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    let _ = child.kill();
 }
 
 /// 20 KiB merged-output cap (mirror of MAX_OUTPUT_BYTES in the route).
@@ -142,20 +173,30 @@ fn run_wait_with_timeout(
             break;
         }
         if Instant::now() > deadline {
-            let _ = child.kill();
+            terminate_process_tree(&mut child);
             timed_out = true;
             break;
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+    // Bound pipe draining on every platform: a detached descendant may
+    // retain stdout even after the immediate process group has exited.
+    let join_deadline = Instant::now() + Duration::from_secs(2);
     for reader in readers {
-        let _ = reader.join();
+        while !reader.is_finished() && Instant::now() < join_deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if reader.is_finished() { let _ = reader.join(); }
+        // Dropping a still-blocked handle detaches it; it owns only the
+        // capped sink and ends when the escaped writer closes the pipe.
     }
-    let exit_code = if timed_out {
-        None
-    } else {
-        child.wait().ok().and_then(|s| s.code())
-    };
+    // Reap the direct child (both paths: natural exit, or after the tree
+    // kill) so it can never become a zombie. A second kill() is harmless
+    // when the process already exited.
+    if timed_out {
+        let _ = child.kill();
+    }
+    let exit_code = child.wait().ok().and_then(|s| s.code());
     let code_json = match exit_code {
         Some(code) => code.to_string(),
         None => "null".to_string(),
@@ -186,7 +227,7 @@ fn run_detach(cwd: &str, command: &str, envs: &[(String, String)]) -> Result<Str
         .append(true)
         .open(&log_path)
         .map_err(|e| IpcError::new("log_open_failed", e.to_string()))?;
-    let child = spawn_shell_with_env(
+    let mut child = spawn_shell_with_env(
         cwd,
         command,
         Stdio::from(
@@ -198,8 +239,8 @@ fn run_detach(cwd: &str, command: &str, envs: &[(String, String)]) -> Result<Str
     )
     .map_err(|e| IpcError::new("spawn_failed", e.to_string()))?;
     let pid = child.id();
-    // Never reap: the script outlives this request, like Node's unref().
-    std::mem::forget(child);
+    // The request may return immediately, but the process handle still needs a reaper.
+    std::thread::spawn(move || { let _ = child.wait(); });
     Ok(format!(
         "{{\"mode\":\"detach\",\"pid\":{},\"logPath\":{}}}",
         pid,
@@ -219,11 +260,11 @@ pub fn run(
     detach: bool,
     envs: &[(String, String)],
 ) -> Result<String, IpcError> {
-    if !is_path_within_any(roots, cwd) {
-        return Err(IpcError::new("access_denied", "cwd outside allowed roots"));
-    }
     if command.trim().is_empty() {
         return Err(IpcError::new("bad_params", "command required"));
+    }
+    if !is_path_within_any(roots, cwd) {
+        return Err(IpcError::new("access_denied", "cwd outside allowed roots"));
     }
     if detach {
         run_detach(cwd, command, envs)
@@ -265,7 +306,9 @@ mod tests {
         let d = temp_dir("timeout");
         // 60s production cap would make the test slow; exercise the same
         // kill-on-timeout path with a short deadline.
-        let out = run_wait_with_timeout(&d, "sleep 5", Duration::from_millis(300), &[]).unwrap();
+        let started = Instant::now();
+        let out = run_wait_with_timeout(&d, "sleep 5 & wait", Duration::from_millis(300), &[]).unwrap();
+        assert!(started.elapsed() < Duration::from_secs(3), "timeout must cover inherited pipes");
         assert!(out.contains("\"timedOut\":true"));
         std::fs::remove_dir_all(&d).ok();
     }

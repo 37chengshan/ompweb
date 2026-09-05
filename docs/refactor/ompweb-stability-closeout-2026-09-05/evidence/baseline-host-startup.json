@@ -1,0 +1,12 @@
+[
+  {
+    "status": "fulfilled",
+    "value": {
+      "pong": true
+    }
+  },
+  {
+    "status": "rejected",
+    "error": "connect EADDRNOTAVAIL 127.0.0.1 - Local (0.0.0.0:50864)"
+  }
+]

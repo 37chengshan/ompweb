@@ -3,15 +3,17 @@ import { isApiRequestOriginAllowed, shouldCheckApiRequestOrigin } from "@/lib/re
 import { isValidWebSession, isWebPasswordEnabled, OMP_WEB_SESSION_COOKIE } from "@/lib/web-auth";
 import { readFileSync, statSync } from "fs";
 import { join } from "path";
-import { isRemoteRequest } from "@/lib/remote-pairing";
 import { getAgentDir } from "@/lib/omp/paths";
+import { verifiedRequestPeer } from "./bin/request-peer";
 
 /**
  * Remote-access gate for /api/*: when pairing requires it, requests from a
- * non-loopback Host (LAN IP or public tunnel) must carry a valid
- * paired-device cookie. Only the pairing FLOW itself is exempt — issuing
- * and consuming tokens — so an unpaired LAN attacker cannot reach
- * revoke-all, config (which could disable the gate), devices, or tunnel.
+ * non-loopback SOCKET peer (LAN IP or public tunnel) must carry a valid
+ * paired-device cookie. Loopback exemption is decided by the socket peer
+ * alone — the Host header is forgeable and never bypasses the gate. Only the
+ * pairing FLOW itself is exempt — issuing and consuming tokens — so an
+ * unpaired LAN attacker cannot reach revoke-all, config (which could disable
+ * the gate), devices, or tunnel.
  */
 const PAIRING_FLOW_PATHS = ["/api/pair/token", "/api/pair/accept"];
 
@@ -43,33 +45,27 @@ function readPairingState(): PairingFileState | null {
 }
 
 function checkPairingGate(request: NextRequest): NextResponse | null {
-  // Loopback detection MUST NOT trust the Host header: a LAN attacker can
-  // send `Host: localhost` to bypass the loopback-only token gate. A forwarding
-  // header is equally forgeable on a direct listener, so it is considered only
-  // when the operator explicitly declares a trusted reverse proxy. Without a
-  // peer address the request is conservatively classified as non-loopback.
+  // Loopback exemption is decided by the SOCKET peer, carried from the HTTP
+  // boundary by the launcher preload (bin/request-peer.js stamps the real
+  // remoteAddress plus an HMAC proof; verifiedRequestPeer rejects forged
+  // copies). The Host header and bare forwarding headers are forgeable and
+  // never exempt a request. Without a verified peer the request is treated
+  // as remote — fail closed.
   const loopback = isLoopbackSocket(request);
-  const host = request.headers.get("host");
-  const hostSaysLocal = !host || isRemoteRequest(host) === false;
-  // LAN peers reach us with a Host that is NOT loopback AND a non-loopback
-  // socket; only treat as remote when BOTH signals agree (defense in depth —
-  // neither is sufficient alone).
-  const isRemote = hostSaysLocal === false && !loopback;
-  if (!isRemote) return null;
+  if (loopback) return null;
 
   const pathname = request.nextUrl.pathname;
-  // Token ISSUANCE must stay loopback-only: the server now listens on
-  // 0.0.0.0 (that is what makes LAN pairing possible), so without this a
-  // LAN attacker could mint a token and pair themselves. The phone only
-  // ever consumes tokens via /api/pair/accept, which stays reachable.
+  // Token ISSUANCE must stay loopback-only: minting a token is how a device
+  // pairs itself, so a remote peer must not be able to bootstrap one. The
+  // phone only ever consumes tokens via /api/pair/accept, which stays
+  // reachable below.
   if (pathname === "/api/pair/token") {
     return NextResponse.json({ error: "Pairing tokens can only be issued from this computer", code: "token_loopback_only" }, { status: 403 });
   }
   if (isPairingFlowPath(pathname)) return null;
   // The /remote landing page is part of the pairing FLOW itself (the phone
   // opens it from the QR and it performs the accept): it renders no data,
-  // so it must stay reachable before any device is paired. Previously a
-  // fresh phone hit this gate first and got a 401 JSON instead of the page.
+  // so it must stay reachable before any device is paired.
   if (pathname === "/remote" || pathname.startsWith("/remote/")) return null;
 
   const state = readPairingState();
@@ -121,7 +117,7 @@ function isLoopbackSocket(request: NextRequest): boolean {
   // Source-resolved IP when available. In Next versions that do not expose
   // it, unknown must fail closed as non-loopback; treating it as local would
   // silently open a wildcard listener to any LAN client.
-  const srcIp = (request as unknown as { ip?: string }).ip;
+  const srcIp = verifiedRequestPeer(request.headers) ?? (request as unknown as { ip?: string }).ip;
   if (srcIp) return isIpLoopback(srcIp);
   return false;
 }

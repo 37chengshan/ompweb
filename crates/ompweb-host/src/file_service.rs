@@ -189,7 +189,7 @@ pub fn is_path_within_any(roots: &[String], path: &str) -> bool {
 /// host is a security boundary too: a symlink *inside* an allowed directory
 /// must never be able to redirect a host-side read/list/meta request outside
 /// it.
-fn is_existing_path_within_any(roots: &[String], path: &str) -> bool {
+pub fn is_existing_path_within_any(roots: &[String], path: &str) -> bool {
     let Ok(real_path) = std::fs::canonicalize(path) else {
         return false;
     };
@@ -528,5 +528,23 @@ mod tests {
         assert_eq!(get_preview_kind("/p/a.docx"), Some("docx"));
         assert_eq!(get_preview_kind("/p/a.pdf"), Some("pdf"));
         assert_eq!(get_preview_kind("/p/a.txt"), None);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod canonical_root_tests {
+    #[test]
+    fn canonical_cwd_accepts_root_alias_but_rejects_escaping_symlink() {
+        let dir = std::env::temp_dir().join(format!("ompweb-root-alias-{}", std::process::id()));
+        let root = dir.join("real");
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&root, dir.join("alias")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
+        let roots = vec![dir.join("alias").to_string_lossy().into_owned()];
+        assert!(super::is_existing_path_within_any(&roots, root.to_str().unwrap()));
+        assert!(!super::is_existing_path_within_any(&roots, root.join("escape").to_str().unwrap()));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

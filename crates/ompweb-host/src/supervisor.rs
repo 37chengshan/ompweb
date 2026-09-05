@@ -16,7 +16,7 @@ use crate::mini_json::JsonValue;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 
 use crate::process_visibility::hide_console_window;
@@ -39,8 +39,8 @@ pub enum SessionEvent {
 
 struct Session {
     child: Child,
-    stdin: ChildStdin,
-    subscribers: Vec<Sender<SessionEvent>>,
+    stdin: Arc<Mutex<ChildStdin>>,
+    subscribers: Vec<SyncSender<SessionEvent>>,
     restarts: u32,
     killed: bool,
     /// Extra CLI args the child was spawned with (--resume/--tools/...).
@@ -96,11 +96,10 @@ impl Supervisor {
             .map_err(|e| format!("spawn omp: {e}"))?;
         let pid = child.id();
         let stdin = child.stdin.take().ok_or("child stdin unavailable")?;
-        let (reader_tx, rx) = channel();
         let session = Session {
             child,
-            stdin,
-            subscribers: vec![reader_tx],
+            stdin: Arc::new(Mutex::new(stdin)),
+            subscribers: vec![],
             restarts: 0,
             killed: false,
             args: extra_args.to_vec(),
@@ -108,7 +107,7 @@ impl Supervisor {
         };
         guard.insert(session_id.to_string(), session);
         drop(guard);
-        self.start_reader(session_id.to_string(), cwd.to_string(), rx, 0);
+        self.start_reader(session_id.to_string(), cwd.to_string(), 0);
         Ok((pid, 0))
     }
 
@@ -117,7 +116,7 @@ impl Supervisor {
     pub fn subscribe(&self, session_id: &str) -> Result<Receiver<SessionEvent>, String> {
         let mut guard = self.sessions.lock().unwrap();
         let session = guard.get_mut(session_id).ok_or("no such session")?;
-        let (tx, rx) = channel();
+        let (tx, rx) = sync_channel(64);
         session.subscribers.push(tx);
         Ok(rx)
     }
@@ -130,6 +129,7 @@ impl Supervisor {
         // --resume <file>, --tools, --advisor, ...
         cmd.args(["--mode", "rpc-ui", "--cwd", cwd])
             .current_dir(cwd)
+            .env_remove("OMPWEB_PEER_SECRET")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -139,6 +139,11 @@ impl Supervisor {
         for (key, value) in &self.omp_env {
             cmd.env(key, value);
         }
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
         hide_console_window(&mut cmd);
         cmd.spawn().map_err(|e| e.to_string())
     }
@@ -146,10 +151,16 @@ impl Supervisor {
     /// Send one logical RPC frame (JSON object text) to the child's stdin,
     /// chunking per protocol v2 when above the 1 MiB line cap.
     pub fn send(&self, session_id: &str, frame_json: &str) -> Result<(), String> {
-        let mut guard = self.sessions.lock().unwrap();
-        let session = guard.get_mut(session_id).ok_or("no such session")?;
+        let stdin = {
+            let guard = self.sessions.lock().unwrap();
+            let session = guard.get(session_id).ok_or("no such session")?;
+            if session.killed { return Err("session stopped".into()); }
+            Arc::clone(&session.stdin)
+        };
         let lines = encode_rpc_frames(frame_json).map_err(|e| e.to_string())?;
-        let stdin = &mut session.stdin;
+        // A blocked pipe must not hold the registry lock: list, broadcast and
+        // kill (including this session's kill) must remain available.
+        let mut stdin = stdin.lock().map_err(|_| "stdin writer unavailable")?;
         for line in &lines {
             stdin
                 .write_all(line.as_bytes())
@@ -165,7 +176,7 @@ impl Supervisor {
         let mut guard = self.sessions.lock().unwrap();
         if let Some(session) = guard.get_mut(session_id) {
             session.killed = true;
-            session.child.kill().map_err(|e| e.to_string())?;
+            crate::command_service::terminate_process_tree(&mut session.child);
         }
         Ok(())
     }
@@ -179,12 +190,11 @@ impl Supervisor {
         self: &Arc<Self>,
         session_id: String,
         cwd: String,
-        rx: Receiver<SessionEvent>,
         restarts: u32,
     ) {
         let this = Arc::clone(self);
         std::thread::spawn(move || {
-            this.reader_main(session_id, cwd, rx, restarts);
+            this.reader_main(session_id, cwd, restarts);
         });
     }
 
@@ -192,7 +202,6 @@ impl Supervisor {
         self: &Arc<Self>,
         session_id: String,
         cwd: String,
-        rx: Receiver<SessionEvent>,
         restarts: u32,
     ) {
         // Take the child's stdout under lock; the Session (with stdin and
@@ -234,16 +243,20 @@ impl Supervisor {
                 Err(_) => break,
             }
         }
-        let (code, signal) = {
+        // stdout EOF does not imply process exit. Poll without retaining the
+        // registry lock so a child that closes stdout can still be cancelled.
+        let (code, signal) = loop {
             let mut guard = self.sessions.lock().unwrap();
             match guard.get_mut(&session_id) {
-                Some(session) => session
-                    .child
-                    .wait()
-                    .map(|status| (status.code(), signal_of(&status)))
-                    .unwrap_or((None, None)),
-                None => (None, None),
+                Some(session) => match session.child.try_wait() {
+                    Ok(Some(status)) => break (status.code(), signal_of(&status)),
+                    Ok(None) => {},
+                    Err(_) => break (None, None),
+                },
+                None => return,
             }
+            drop(guard);
+            std::thread::sleep(std::time::Duration::from_millis(10));
         };
         // Crash recovery: restart only on UNEXPECTED exits (user kills are
         // flagged and must not resurrect the session).
@@ -262,13 +275,24 @@ impl Supervisor {
                     .map(|s| s.args.clone())
                     .unwrap_or_default()
             };
-            if let Ok(new_child) = self.spawn_child(&cwd, &restart_args) {
+            std::thread::sleep(std::time::Duration::from_millis(100 * (1 << restarts)));
+            if let Ok(mut new_child) = self.spawn_child(&cwd, &restart_args) {
                 let new_pid = new_child.id();
+                let new_stdin = new_child.stdin.take().expect("piped child stdin");
                 {
                     let mut guard = self.sessions.lock().unwrap();
-                    if let Some(session) = guard.get_mut(&session_id) {
+                    if let Some(session) = guard.get_mut(&session_id).filter(|s| !s.killed && s.restarts == restarts) {
                         session.child = new_child;
+                        session.stdin = Arc::new(Mutex::new(new_stdin));
                         session.restarts = restarts + 1;
+                        session.ring.clear();
+                    } else {
+                        drop(guard);
+                        crate::command_service::terminate_process_tree(&mut new_child);
+                        let _ = new_child.wait();
+                        self.broadcast(&session_id, SessionEvent::Exited { code, signal });
+                        self.sessions.lock().unwrap().remove(&session_id);
+                        return;
                     }
                 }
                 self.broadcast(&session_id, SessionEvent::Frame(format!(
@@ -277,7 +301,7 @@ impl Supervisor {
                     new_pid,
                     restarts + 1
                 )));
-                self.start_reader(session_id.clone(), cwd, rx, restarts + 1);
+                self.start_reader(session_id.clone(), cwd, restarts + 1);
                 return;
             }
         }
@@ -291,12 +315,17 @@ impl Supervisor {
         if let Some(session) = guard.get_mut(session_id) {
             session
                 .subscribers
-                .retain(|sub| sub.send(event.clone()).is_ok());
+                // Disconnect slow consumers; their attach stream closes once
+                // drained and the client reconciles. Never grow an unbounded
+                // channel or block another session behind a stalled consumer.
+                .retain(|sub| sub.try_send(event.clone()).is_ok());
             if let SessionEvent::Frame(frame) = &event {
-                if session.ring.len() >= 64 {
+                const REPLAY_BYTES: usize = 4 * 1024 * 1024;
+                while !session.ring.is_empty() && (session.ring.len() >= 64 ||
+                    session.ring.iter().map(String::len).sum::<usize>() + frame.len() > REPLAY_BYTES) {
                     session.ring.pop_front();
                 }
-                session.ring.push_back(frame.clone());
+                if frame.len() <= REPLAY_BYTES { session.ring.push_back(frame.clone()); }
             }
         }
     }
@@ -550,4 +579,76 @@ fn encode_base64(input: &[u8]) -> String {
         }
     }
     out
+}
+
+#[cfg(all(test, unix))]
+mod lifecycle_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
+
+    fn fixture(script: &str) -> (std::path::PathBuf, Arc<Supervisor>) {
+        let dir = std::env::temp_dir().join(format!("ompweb-supervisor-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("fake-omp");
+        std::fs::write(&bin, format!("#!/bin/sh\n{script}\n")).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let supervisor = Supervisor::new(bin.to_string_lossy().into_owned(), vec![]);
+        (dir, supervisor)
+    }
+
+    #[test]
+    fn restart_replaces_stdin_and_receives_response() {
+        let (dir, s) = fixture("if [ ! -f marker ]; then touch marker; exit 3; fi\nwhile IFS= read -r line; do printf '{\"type\":\"response\"}\\n'; done");
+        s.spawn("session", dir.to_str().unwrap(), &[]).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !s.list().iter().any(|(_, _, restarts)| *restarts == 1) {
+            assert!(Instant::now() < deadline, "restart did not complete");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let rx = s.subscribe("session").unwrap();
+        s.send("session", "{\"type\":\"get_state\"}").unwrap();
+        let mut responded = false;
+        while let Ok(event) = rx.recv_timeout(Duration::from_millis(500)) {
+            if let SessionEvent::Frame(text) = event {
+                if text.contains("response") { responded = true; break; }
+            }
+        }
+        s.kill("session").unwrap();
+        assert!(responded, "new child must read the next command");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn blocked_stdin_does_not_block_list_or_kill() {
+        let (dir, s) = fixture("exec sleep 10");
+        s.spawn("session", dir.to_str().unwrap(), &[]).unwrap();
+        let writer = s.clone();
+        let (tx, rx) = sync_channel(1);
+        std::thread::spawn(move || {
+            let frame = format!("{{\"message\":\"{}\"}}", "x".repeat(2 * 1024 * 1024));
+            let result = writer.send("session", &frame);
+            let _ = tx.send(result);
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        let start = Instant::now();
+        assert_eq!(s.list().len(), 1);
+        s.kill("session").unwrap();
+        assert!(start.elapsed() < Duration::from_secs(1));
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn stdout_eof_does_not_lock_registry_until_child_exit() {
+        let (dir, s) = fixture("exec 1>&-\nexec sleep 10");
+        s.spawn("session", dir.to_str().unwrap(), &[]).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        let start = Instant::now();
+        assert_eq!(s.list().len(), 1);
+        s.kill("session").unwrap();
+        assert!(start.elapsed() < Duration::from_secs(1));
+        std::fs::remove_dir_all(dir).ok();
+    }
 }

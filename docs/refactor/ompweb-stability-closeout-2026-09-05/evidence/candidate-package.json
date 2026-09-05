@@ -1,0 +1,13 @@
+{
+  "version": "5.1.7",
+  "files": 773,
+  "size": 14426506,
+  "rust": [
+    {
+      "path": "vendor/ompweb-host/darwin-arm64/ompweb-host",
+      "size": 8683408,
+      "mode": 493
+    }
+  ],
+  "accidental_state": []
+}

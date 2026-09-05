@@ -1,0 +1,43 @@
+{
+  "baseline": "4688a4c",
+  "platform": "macOS arm64",
+  "node": "v24.14.0",
+  "typecheck": "pass",
+  "isolated_next_build": "pass",
+  "checks": {
+    "npm": [
+      "ℹ tests 738",
+      "ℹ suites 0",
+      "ℹ pass 729",
+      "ℹ fail 0",
+      "ℹ cancelled 0",
+      "ℹ skipped 9",
+      "ℹ todo 0",
+      "ℹ duration_ms 9023.555917"
+    ],
+    "rust": [
+      "test result: ok. 58 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    ],
+    "lint": [
+      "✖ 82 problems (0 errors, 82 warnings)"
+    ]
+  },
+  "installed_package_host_path_verified": true,
+  "build_machine_host_hidden_during_final_smoke": true,
+  "release_candidate": "5.1.8",
+  "node22": {
+    "version": "22.19.0",
+    "tests": 738,
+    "pass": 729,
+    "skip": 9,
+    "fail": 0,
+    "cancelled": 0
+  },
+  "npm_audit_vulnerabilities": 0
+}

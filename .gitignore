@@ -95,3 +95,6 @@ dist-desktop/
 crates/target/
 # staged host binary for desktop packaging (scripts/stage-host.mjs)
 build-resources/
+# staged host binary for the npm package (scripts/stage-host.mjs --vendor);
+# the publish workflow stages it per-platform before packing
+vendor/ompweb-host/

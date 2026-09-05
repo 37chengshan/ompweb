@@ -46,8 +46,16 @@ export interface HostBinLookup {
   cwd?: string;
   /** Test injection: target platform (win32 picks the .exe name). */
   platform?: NodeJS.Platform;
+  /** Test injection: target arch (vendor dir layout). */
+  arch?: string;
   /** Test injection: filesystem probe. */
   exists?: (path: string) => boolean;
+}
+
+/** Vendor layout arch tag: normalize Node arch names to the publish set. */
+export function vendorArch(arch: string): string {
+  if (arch === "x64" || arch === "arm64") return arch;
+  return arch;
 }
 
 /**
@@ -84,6 +92,7 @@ export function hostExeName(platform: NodeJS.Platform): string {
 export function resolveHostBin(lookup: HostBinLookup = {}): HostBinResolution {
   const env = lookup.env ?? process.env;
   const platform = lookup.platform ?? process.platform;
+  const arch = vendorArch(lookup.arch ?? process.arch);
   const fileExists = lookup.exists ?? existsSync;
   const exe = hostExeName(platform);
 
@@ -102,22 +111,27 @@ export function resolveHostBin(lookup: HostBinLookup = {}): HostBinResolution {
     if (fileExists(packaged)) return { path: packaged, mode: "packaged", exists: true };
   }
 
-  // 3. npm/global-install vendor layout: <pkg>/vendor/ompweb-host/<platform>/<exe>
-  //    The published npm package cannot ship cargo build output, so the
-  //    release pipeline stages the current platform's Rust host binary into
-  //    vendor/ompweb-host/<platform>/ before packing. moduleDir points at
-  //    <pkg>/lib/omp (or <pkg>/.next/server/... in the bundled app), so climb
-  //    to the package root and probe the vendor dir.
+  // 3. npm/global-install vendor layout: <pkg>/vendor/ompweb-host/<platform>-<arch>/<exe>
+  //    The published npm package ships prebuilt Rust host binaries per
+  //    platform/arch (staged by the release pipeline before packing).
+  //    moduleDir points at <pkg>/lib/omp (or <pkg>/.next/server/... in the
+  //    bundled app), so climb to the package root and probe the vendor dir.
   const moduleDir = lookup.moduleDir;
-  if (moduleDir) {
-    // moduleDir = <pkg>/lib/omp -> package root is two levels up; for the
-    // bundled server (moduleDir under .next) keep climbing until a
-    // package.json / vendor marker is found (bounded to 5 levels).
-    let probeDir = moduleDir;
+  // Webpack can bake the build machine's import.meta.url into a chunk. The
+  // installed runtime root must win even if that old build still exists.
+  const vendorRoots = new Set([env.OMP_WEB_PACKAGE_DIR, lookup.cwd ?? process.cwd(), moduleDir].filter((value): value is string => Boolean(value)));
+  for (const root of vendorRoots) {
+    let probeDir = root;
     for (let depth = 0; depth < 5; depth += 1) {
-      const vendorCandidate = join(probeDir, "vendor", "ompweb-host", process.platform, exe);
-      if (fileExists(vendorCandidate)) {
-        return { path: vendorCandidate, mode: "workspace", exists: true };
+      // Never substitute a binary built for an unknown architecture.
+      const archDir = join(probeDir, "vendor", "ompweb-host", `${platform}-${arch}`);
+      const candidates = [
+        join(archDir, exe),
+      ];
+      for (const vendorCandidate of candidates) {
+        if (fileExists(vendorCandidate)) {
+          return { path: vendorCandidate, mode: "workspace", exists: true };
+        }
       }
       const parent = dirname(probeDir);
       if (parent === probeDir) break;

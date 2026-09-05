@@ -1,0 +1,23 @@
+{
+  "source_commit": "4688a4c",
+  "results": [
+    {
+      "case": "restart",
+      "code": 0,
+      "output": "restarts=[1]\nsend_after_restart=Err(\"stdin: Broken pipe (os error 32)\")",
+      "stderr": ""
+    },
+    {
+      "case": "lock",
+      "code": 0,
+      "output": "list_during_blocked_write=Err(Timeout)",
+      "stderr": ""
+    },
+    {
+      "case": "timeout",
+      "code": 0,
+      "output": "elapsed_ms=2011 result={\"mode\":\"wait\",\"exitCode\":null,\"timedOut\":true,\"output\":\"\"}",
+      "stderr": ""
+    }
+  ]
+}

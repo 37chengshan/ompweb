@@ -82,6 +82,7 @@ const browserUrl = getBrowserUrl(hostname, port);
 
 /** Quick health probe: true when the port answers as a healthy ompweb. */
 async function probeOmpWeb(probePort) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const http = require("http");
   return new Promise((resolve) => {
     const req = http.get({ host: "127.0.0.1", port: probePort, path: "/api/health", timeout: 1500 }, (res) => {
@@ -149,7 +150,7 @@ async function main() {
   // architecture) so "ompweb" works out of the box on installs that also have
   // the OmpWeb desktop app.
   if (!process.env.OMPWEB_HOST_BIN) {
-    const candidates = [];
+    const candidates = [path.join(pkgDir, "vendor", "ompweb-host", `${process.platform}-${process.arch}`, process.platform === "win32" ? "ompweb-host.exe" : "ompweb-host")];
     if (process.platform === "win32") {
       if (process.env.LOCALAPPDATA) candidates.push(path.join(process.env.LOCALAPPDATA, "Programs", "OmpWeb", "resources", "bin", "ompweb-host.exe"));
       if (process.env.ProgramFiles) candidates.push(path.join(process.env.ProgramFiles, "OmpWeb", "resources", "bin", "ompweb-host.exe"));
@@ -162,11 +163,11 @@ async function main() {
     const found = candidates.find((c) => fs.existsSync(c));
     if (found) {
       process.env.OMPWEB_HOST_BIN = found;
-      console.log("Using desktop app's ompweb-host: " + found);
+      console.log("Using ompweb-host: " + found);
     }
   }
 
-  const child = spawn(process.execPath, [nextBin, ...nextArgs], {
+  const child = spawn(process.execPath, ["--require", path.join(__dirname, "request-peer-preload.js"), nextBin, ...nextArgs], {
     cwd: pkgDir,
     stdio: ["inherit", "pipe", "inherit"],
     env: {

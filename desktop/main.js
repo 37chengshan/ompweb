@@ -407,7 +407,7 @@ async function startServerImpl() {
   spawnEnv.OMP_WEB_PACKAGE_DIR = pkgDir;
   spawnEnv.PATH = runtimePath;
   if (ompBin) spawnEnv.OMP_WEB_OMP_BIN = ompBin;
-  serverProcess = spawn(nodeBin, [serverJs], {
+  serverProcess = spawn(nodeBin, ["--require", path.join(pkgDir, "bin", "request-peer-preload.js"), serverJs], {
     cwd: standaloneDir,
     // POSIX needs an isolated group for recursive shutdown. Windows uses
     // taskkill /T instead; detaching there creates a separate visible console
@@ -479,66 +479,167 @@ function isPortFree() {
   });
 }
 
-function killStaleProcessOnPort(port) {
+/**
+ * Only the installation's dedicated standalone server entrypoint is used
+ * to identify a stale port owner. A shared executable path is insufficient.
+ */
+function getOmpProcessSignatures() {
+  // Only the dedicated server entrypoint identifies a hosted server. The
+  // Electron executable or installation directory can also belong to an
+  // unrelated process and must never authorize termination.
+  return [normalizeExePath(app.isPackaged
+    ? path.join(process.resourcesPath, "standalone", "server.js")
+    : path.join(pkgDir, ".next", "standalone", "server.js"))];
+}
+
+/** Normalize an executable path the same way as getOmpProcessSignatures(). */
+function normalizeExePath(exePath) {
+  return String(exePath).trim().toLowerCase().replace(/\\/g, "/");
+}
+
+/**
+ * PIDs of the processes listening on `port` (no killing). POSIX: `lsof -ti
+ * :port`. Windows: netstat -ano parsed strictly — LISTENING rows whose local
+ * address ends in 127.0.0.1:{port}, 0.0.0.0:{port} or [::]:{port} — instead
+ * of the old findstr text match, which could mis-hits rows for unrelated
+ * ports (e.g. :{port} matching :1{port}00).
+ */
+function getPortOwnerPids(port) {
   return new Promise((resolve) => {
     if (process.platform === "win32") {
-      const netstat = spawn("cmd.exe", ["/c", `netstat -ano | findstr :${port}`], { windowsHide: true });
+      const netstat = spawn("netstat", ["-ano"], { windowsHide: true });
       let out = "";
       netstat.stdout?.on("data", (d) => { out += d; });
       netstat.on("close", () => {
-        const lines = out.split("\n");
         const pids = new Set();
-        for (const line of lines) {
-          if (line.includes("LISTENING")) {
-            const parts = line.trim().split(/\s+/);
-            const pid = parts[parts.length - 1];
-            if (pid && /^\d+$/.test(pid) && pid !== "0") pids.add(pid);
+        for (const rawLine of out.split("\n")) {
+          const line = rawLine.trim();
+          if (!line.includes("LISTENING")) continue;
+          const parts = line.split(/\s+/);
+          const local = parts[1] || "";
+          const pid = parts[parts.length - 1];
+          if (!/^\d+$/.test(pid) || pid === "0") continue;
+          if (
+            local.endsWith(`127.0.0.1:${port}`) ||
+            local.endsWith(`0.0.0.0:${port}`) ||
+            local.endsWith(`[::]:${port}`)
+          ) {
+            pids.add(pid);
           }
         }
-        if (pids.size === 0) return resolve(false);
-        for (const pid of pids) {
-          try { spawn("taskkill", ["/pid", pid, "/T", "/F"], { stdio: "ignore", windowsHide: true }); } catch {}
-        }
-        resolve(true);
+        resolve(Array.from(pids));
       });
-      netstat.on("error", () => resolve(false));
+      netstat.on("error", () => resolve([]));
     } else {
-      const lsof = spawn("lsof", ["-ti", `:${port}`]);
+      const lsof = spawn("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]);
       let out = "";
       lsof.stdout?.on("data", (d) => { out += d; });
       lsof.on("close", () => {
         const pids = out.trim().split(/\s+/).filter((p) => /^\d+$/.test(p));
-        if (pids.length === 0) return resolve(false);
-        for (const pidStr of pids) {
-          const pid = Number(pidStr);
-          if (pid === process.pid) continue;
-          try { process.kill(pid, "SIGTERM"); } catch {}
-        }
-        setTimeout(() => {
-          for (const pidStr of pids) {
-            const pid = Number(pidStr);
-            if (pid === process.pid) continue;
-            try { process.kill(pid, "SIGKILL"); } catch {}
-          }
-          resolve(true);
-        }, 300);
+        resolve(pids);
       });
-      lsof.on("error", () => resolve(false));
+      lsof.on("error", () => resolve([]));
     }
+  });
+}
+
+/**
+ * Full command line of `pid` (POSIX: `ps -p <pid> -o command=`; Windows:
+ * `wmic process where processid=<pid> get commandline`). The command line —
+ * not the bare executable — is what carries the OmpWeb layout markers for
+ * the node/Electron-run standalone server. The read runs in-process with a
+ * timeout; a read/parse failure resolves null (conservative — never kill
+ * what we cannot identify).
+ */
+function readProcessCommand(pid) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (result) => { if (!settled) { settled = true; resolve(result); } };
+    const timer = setTimeout(() => { child?.kill(); done(null); }, 1500);
+    let cmd = null;
+    let args = [];
+    if (process.platform === "win32") {
+      cmd = "wmic";
+      args = ["process", "where", `processid=${pid}`, "get", "commandline"];
+    } else {
+      cmd = "ps";
+      // command= (not comm=) so we get the full executable path / argv0,
+      // comparable against the layout signatures. On macOS comm= truncates
+      // to a 16-char process name and loses the .app path.
+      args = ["-p", String(pid), "-o", "command="];
+    }
+    let child = null;
+    try {
+      child = spawn(cmd, args, { windowsHide: true });
+    } catch {
+      clearTimeout(timer);
+      done(null);
+      return;
+    }
+    let out = "";
+    child.stdout?.on("data", (d) => { out += d; });
+    child.on("error", () => { clearTimeout(timer); done(null); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return done(null);
+      const text = out.trim();
+      if (!text) return done(null);
+      done(normalizeExePath(text));
+    });
+  });
+}
+
+async function isOwnedOmpProcess(pid) {
+  if (Number(pid) === process.pid) return false;
+  const command = await readProcessCommand(pid);
+  if (command == null) return false;
+  const signatures = getOmpProcessSignatures();
+  // Match a complete entrypoint argument, including quoted paths.
+  return signatures.some((sig) => {
+    const escaped = sig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:^|[\\s"'])${escaped}(?=$|[\\s"'])`).test(command);
   });
 }
 
 async function reclaimPortIfStale(port) {
   if (await isPortFree()) return true;
-  appLog(`Port ${port} is occupied, attempting to kill stale process...`);
-  const killed = await killStaleProcessOnPort(port);
-  if (killed) {
-    for (let i = 0; i < 15; i++) {
-      await new Promise((r) => setTimeout(r, 100));
-      if (await isPortFree()) {
-        appLog(`Port ${port} successfully reclaimed from stale process.`);
-        return true;
+  const ownerPids = await getPortOwnerPids(port);
+  if (ownerPids.length === 0) return isPortFree();
+  appLog(`Port ${port} is occupied by pid(s) ${ownerPids.join(", ")}, verifying ownership...`);
+  const owned = [];
+  for (const pidStr of ownerPids) {
+    if (await isOwnedOmpProcess(pidStr)) owned.push(pidStr);
+    else appLog(`port ${port}: pid ${pidStr} is not an OmpWeb process — leaving it alone`);
+  }
+  if (owned.length === 0) {
+    // No occupant can be confirmed as OmpWeb (foreign service, or identity
+    // unreadable): do NOT kill. The caller surfaces the "端口被占用" dialog.
+    appLog(`port ${port}: no occupant is confirmed OmpWeb — not killing, reporting port conflict`);
+    return false;
+  }
+  if (process.platform === "win32") {
+    for (const pidStr of owned) {
+      try { spawn("taskkill", ["/pid", pidStr, "/T", "/F"], { stdio: "ignore", windowsHide: true }).once("error", () => {}); } catch { /* best effort */ }
+    }
+  } else {
+    for (const pidStr of owned) {
+      const pid = Number(pidStr);
+      try { process.kill(pid, "SIGTERM"); } catch { /* already dead */ }
+    }
+    // Original kill mechanism: SIGTERM first, then force SIGKILL after a
+    // grace period so the port is released.
+    setTimeout(() => {
+      for (const pidStr of owned) {
+        const pid = Number(pidStr);
+        try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ }
       }
+    }, 300);
+  }
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    if (await isPortFree()) {
+      appLog(`Port ${port} successfully reclaimed from stale OmpWeb process.`);
+      return true;
     }
   }
   return false;

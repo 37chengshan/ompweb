@@ -53,7 +53,7 @@ test("Windows desktop services stay headless and do not create a detached consol
   assert.match(mainJs, /detached: process\.platform !== "win32"/);
   assert.match(mainJs, /windowsHide: true/);
   const host = fs.readFileSync(path.join(root, "lib", "omp", "rust-rpc-process.ts"), "utf8");
-  assert.match(host, /spawn\(hostResolution\.path, \["--ipc"\], \{[\s\S]{0,160}windowsHide: true/);
+  assert.match(host, /this\.spawnHost\(hostResolution\.path, \["--ipc"\], \{[\s\S]{0,160}windowsHide: true/);
   const visibility = fs.readFileSync(path.join(root, "crates", "ompweb-host", "src", "process_visibility.rs"), "utf8");
   assert.match(visibility, /creation_flags\(0x0800_0000\)/);
   for (const service of ["supervisor.rs", "command_service.rs", "settings_service.rs", "git_service.rs"]) {

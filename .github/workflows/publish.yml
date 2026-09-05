@@ -10,9 +10,53 @@ permissions:
   id-token: write
 
 jobs:
-  publish:
+  # The npm package is cross-platform: build the Rust host on every
+  # supported platform/arch and merge the binaries into the package before
+  # publish (host-bin.ts resolves <pkg>/vendor/ompweb-host/<platform>-<arch>).
+  build-hosts:
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux-x64
+          - os: macos-15
+            platform: darwin-arm64
+          - os: macos-15-intel
+            platform: darwin-x64
+          - os: windows-latest
+            platform: win32-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust host
+        run: cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host
+
+      - name: Stage host for npm vendor layout
+        run: node scripts/stage-host.mjs --vendor
+
+      - name: Exercise packaged host on the target OS
+        run: node scripts/smoke-host-package.mjs
+
+      - name: Archive host with executable permissions
+        shell: bash
+        run: tar -C vendor/ompweb-host -czf ompweb-host-${{ matrix.platform }}.tar.gz ${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ompweb-host-${{ matrix.platform }}
+          path: ompweb-host-${{ matrix.platform }}.tar.gz
+          if-no-files-found: error
+
+  prepare-package:
+    needs: build-hosts
+    timeout-minutes: 20
     runs-on: ubuntu-latest
-    environment: npm
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -29,16 +73,85 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Download prebuilt hosts
+        uses: actions/download-artifact@v4
+        with:
+          path: .host-artifacts
+          pattern: ompweb-host-*
+          merge-multiple: true
 
-      - name: Build Rust host
-        run: cargo build --locked --manifest-path crates/Cargo.toml --bin ompweb-host
+      - name: Extract host archives
+        run: |
+          mkdir -p vendor/ompweb-host
+          for archive in .host-artifacts/*.tar.gz; do tar -xzf "$archive" -C vendor/ompweb-host; done
+
+      - name: Verify vendor layout
+        run: |
+          test -x vendor/ompweb-host/linux-x64/ompweb-host || { echo "linux-x64 host missing"; exit 1; }
+          test -x vendor/ompweb-host/darwin-arm64/ompweb-host || { echo "darwin-arm64 host missing"; exit 1; }
+          test -x vendor/ompweb-host/darwin-x64/ompweb-host || { echo "darwin-x64 host missing"; exit 1; }
+          test -f vendor/ompweb-host/win32-x64/ompweb-host.exe || { echo "win32-x64 host missing"; exit 1; }
+          ls -la vendor/ompweb-host/*/
 
       - run: npm install --global npm@^11.5.1
       - run: npm ci
       - run: npm test
+        timeout-minutes: 5
       - run: npm run build
+      - run: node scripts/verify-host-package.mjs
+
+      - name: Pack the verified build once
+        run: npm pack --ignore-scripts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-release-package
+          path: '*.tgz'
+          if-no-files-found: error
+
+  verify-install:
+    needs: prepare-package
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-release-package
+          path: .npm-artifact
+      - name: Install final tarball and run its native host
+        shell: bash
+        run: |
+          npm install --omit=dev --prefix '.install smoke' ./.npm-artifact/*.tgz
+          node scripts/smoke-host-package.mjs '.install smoke/node_modules/@37chengshan/ompweb'
+          node '.install smoke/node_modules/@37chengshan/ompweb/bin/omp-web.js' --version
+
+  publish:
+    needs: verify-install
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@^11.5.1
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-release-package
+          path: .npm-artifact
 
       - name: Create draft GitHub Release
         env:
@@ -86,7 +199,7 @@ jobs:
           if npm view "$PACKAGE_NAME@$VERSION" version --registry https://registry.npmjs.org/ >/dev/null 2>&1; then
             echo "$PACKAGE_NAME@$VERSION is already published"
           else
-            npm publish --provenance --access public
+            npm publish ./.npm-artifact/*.tgz --ignore-scripts --provenance --access public
           fi
 
       # Release publishing is owned by build-desktop.yml's publish-release

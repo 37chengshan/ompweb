@@ -83,7 +83,7 @@ async function main() {
   const nextArgs = ["start", "-p", port, "-H", hostname];
   // windowsHide keeps the console window off the screen on Windows; detached +
   // stdio ignore turns the launcher into a fire-and-forget app start on macOS.
-  const child = spawn(process.execPath, [nextBin, ...nextArgs], {
+  const child = spawn(process.execPath, ["--require", path.join(__dirname, "request-peer-preload.js"), nextBin, ...nextArgs], {
     cwd: pkgDir,
     detached: process.platform !== "win32",
     windowsHide: true,

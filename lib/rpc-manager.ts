@@ -1466,7 +1466,10 @@ export async function startRpcSession(
     // 文件正被另一个 omp/ompweb 实例占用（旧实例的孤儿进程持有锁/待定工具
     // 调用）——继续发消息会落到新会话里，UI 看不到任何响应。此时明确报错，
     // 并计入 RPC 健康信号，让顶栏横幅提示用户清理旧实例。
-    if (sessionId && realSessionId && realSessionId !== sessionId) {
+    // 仅对真正的 resume（sessionFile 非空）检测。新建会话（sessionFile === "")
+    // 时 sessionId 是 __new__<uuid> 临时键、omp 必然生成全新 id，二者不同是
+    // 正常现象；若也套用本检测会把每一次新建会话都误判为 session split。
+    if (sessionFile && sessionId && realSessionId && realSessionId !== sessionId) {
       const detail = `session split: requested ${sessionId}, omp resumed as ${realSessionId}`;
       recordRpcFailure(detail);
       await created.destroyAndWait();

@@ -14,6 +14,7 @@
  *                回退 Node Authority —— OMPWEB_BACKEND=node 是唯一显式回滚）
  */
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -101,9 +102,31 @@ export function resolveHostBin(lookup: HostBinLookup = {}): HostBinResolution {
     if (fileExists(packaged)) return { path: packaged, mode: "packaged", exists: true };
   }
 
-  // 3. Workspace layouts: repo crate output (dev/CI), or the standalone
-  //    artifact rooted at the server's cwd (desktop/headless standalone).
+  // 3. npm/global-install vendor layout: <pkg>/vendor/ompweb-host/<platform>/<exe>
+  //    The published npm package cannot ship cargo build output, so the
+  //    release pipeline stages the current platform's Rust host binary into
+  //    vendor/ompweb-host/<platform>/ before packing. moduleDir points at
+  //    <pkg>/lib/omp (or <pkg>/.next/server/... in the bundled app), so climb
+  //    to the package root and probe the vendor dir.
   const moduleDir = lookup.moduleDir;
+  if (moduleDir) {
+    // moduleDir = <pkg>/lib/omp -> package root is two levels up; for the
+    // bundled server (moduleDir under .next) keep climbing until a
+    // package.json / vendor marker is found (bounded to 5 levels).
+    let probeDir = moduleDir;
+    for (let depth = 0; depth < 5; depth += 1) {
+      const vendorCandidate = join(probeDir, "vendor", "ompweb-host", process.platform, exe);
+      if (fileExists(vendorCandidate)) {
+        return { path: vendorCandidate, mode: "workspace", exists: true };
+      }
+      const parent = dirname(probeDir);
+      if (parent === probeDir) break;
+      probeDir = parent;
+    }
+  }
+
+  // 4. Workspace layouts: repo crate output (dev/CI), or the standalone
+  //    artifact rooted at the server's cwd (desktop/headless standalone).
   const cwd = lookup.cwd ?? process.cwd();
   const candidates: Array<{ dir: string; label: string }> = [];
   if (moduleDir) candidates.push({ dir: join(moduleDir, "..", ".."), label: "module" });
@@ -113,7 +136,7 @@ export function resolveHostBin(lookup: HostBinLookup = {}): HostBinResolution {
     if (fileExists(candidate)) return { path: candidate, mode: "workspace", exists: true };
   }
 
-  // 4. None: report the best (first) candidate so remediation messages can
+  // 5. None: report the best (first) candidate so remediation messages can
   //    point at the expected location.
   const fallback = candidates.length > 0
     ? join(candidates[0].dir, "crates", "target", "debug", exe)

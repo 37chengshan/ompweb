@@ -350,7 +350,20 @@ async function startServerImpl() {
   }
   // Port pre-check: reclaim any stale zombie process on APP_PORT from a
   // previous abnormal termination instead of immediately dying with an error dialog.
+  // A HEALTHY ompweb already answering on APP_PORT (another app instance, or a
+  // CLI/desktop sibling sharing the port) is never killed — adopt it instead.
   if (!(await isPortFree())) {
+    const healthy = await probeOmpWebHealth(APP_PORT);
+    if (healthy) {
+      appLog("startup: healthy ompweb already on " + APP_PORT + " — adopting existing instance");
+      serverReady = true;
+      startup.record("listening", { attempts: 1, adopted: true });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("server-ready");
+        void mainWindow.loadURL(APP_URL);
+      }
+      return;
+    }
     const reclaimed = await reclaimPortIfStale(APP_PORT);
     if (!reclaimed) {
       dialog.showErrorBox(
@@ -432,6 +445,23 @@ async function startServerImpl() {
       );
     }
     app.quit();
+  });
+}
+
+/** True when something on 127.0.0.1:port answers /api/health ok (an ompweb). */
+function probeOmpWebHealth(probePort) {
+  return new Promise((resolve) => {
+    const http = require("http");
+    const req = http.get({ host: "127.0.0.1", port: probePort, path: "/api/health", timeout: 2000 }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; if (body.length > 500) req.destroy(); });
+      res.on("end", () => {
+        try { resolve(JSON.parse(body).ok === true); } catch { resolve(false); }
+      });
+      res.on("error", () => resolve(false));
+    });
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.on("error", () => resolve(false));
   });
 }
 

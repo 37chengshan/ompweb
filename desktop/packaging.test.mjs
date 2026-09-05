@@ -43,3 +43,7 @@ test("desktop packaging ships the Rust host at Resources/bin (route 3)", () => {
   assert.match(mainJs, /OMPWEB_HOST_BIN/);
   assert.match(mainJs, /process\.resourcesPath, "bin"/);
 });
+
+test("manual desktop builds upload artifacts without publishing a branch as a GitHub Release", () => {
+  assert.match(desktopWorkflow, /publish-release:\s+#[\s\S]*?if: github\.ref_type == 'tag'/);
+});

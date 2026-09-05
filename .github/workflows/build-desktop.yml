@@ -74,6 +74,9 @@ jobs:
   # draft created by publish.yml must not be flipped to "release" before the
   # slowest builder finishes (that race dropped macOS/Windows assets).
   publish-release:
+    # workflow_dispatch is a verification build: retain its three platform
+    # artifacts, but do not try to publish a branch named "main" as a release.
+    if: github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-latest
     permissions:

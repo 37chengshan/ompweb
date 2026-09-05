@@ -52,6 +52,7 @@ struct PtyHandle {
     // and kept for the session's lifetime.
     writer: Mutex<Option<Box<dyn std::io::Write + Send>>>,
     child: Mutex<Option<Box<dyn portable_pty::Child + Send>>>,
+    working_directory: Mutex<Option<crate::shell_cwd::ShellCwd>>,
 }
 
 pub struct PtyService {
@@ -108,12 +109,19 @@ impl PtyService {
             .openpty(size)
             .map_err(|e| IpcError::new("pty_open_failed", e.to_string()))?;
 
+        let working_directory = crate::shell_cwd::ShellCwd::prepare(cwd)
+            .map_err(|e| IpcError::new("pty_cwd_failed", e.to_string()))?;
         let (shell, args) = resolve_shell();
         let mut cmd = CommandBuilder::new(shell);
         for arg in args {
             cmd.arg(arg);
         }
-        cmd.cwd(cwd);
+        cmd.cwd(&working_directory.path);
+        #[cfg(windows)]
+        if let Some(unc) = &working_directory.unc {
+            cmd.args(["/d", "/v:off", "/k", "pushd \"%OMPWEB_TERMINAL_CWD%\" || exit /b 1"]);
+            cmd.env("OMPWEB_TERMINAL_CWD", unc);
+        }
         for (key, value) in envs {
             cmd.env(key, value);
         }
@@ -125,6 +133,7 @@ impl PtyService {
         cmd.env("COLORTERM", "truecolor");
         cmd.env("LANG", lang);
         cmd.env("LC_ALL", lc_all);
+        cmd.env_remove("OMPWEB_PEER_SECRET");
 
         let child = pair
             .slave
@@ -152,6 +161,7 @@ impl PtyService {
             master: Mutex::new(pair.master),
             writer: Mutex::new(Some(writer)),
             child: Mutex::new(Some(child)),
+            working_directory: Mutex::new(Some(working_directory)),
         });
 
         {
@@ -180,6 +190,7 @@ impl PtyService {
                     .take()
                     .and_then(|mut child| child.wait().ok())
                     .map(|status| status.exit_code() as i32);
+                handle_clone.working_directory.lock().unwrap().take();
                 let banner = format!(
                     "\r\n\x1b[33m[Terminal closed with code {}]\x1b[0m\r\n",
                     code.unwrap_or(0)

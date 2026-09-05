@@ -158,15 +158,22 @@ fn get_preview_kind(file_path: &str) -> Option<&'static str> {
 pub fn is_path_within(root: &str, path: &str) -> bool {
     #[cfg(windows)]
     fn normalize(p: &str) -> String {
-        p.replace('\\', "/").to_ascii_lowercase()
+        let path = p.replace('\\', "/").to_lowercase();
+        if let Some(unc) = path.strip_prefix("//?/unc/") {
+            format!("//{unc}")
+        } else {
+            path.strip_prefix("//?/").unwrap_or(&path).to_string()
+        }
     }
     #[cfg(not(windows))]
     fn normalize(p: &str) -> String {
         p.to_string()
     }
+    if root.is_empty() { return false; }
     let root_n = normalize(root);
+    let root_n = root_n.trim_end_matches('/');
     let path_n = normalize(path);
-    let Some(rest) = path_n.strip_prefix(&root_n) else {
+    let Some(rest) = path_n.strip_prefix(root_n) else {
         return false;
     };
     if !rest.is_empty() && !rest.starts_with('/') {

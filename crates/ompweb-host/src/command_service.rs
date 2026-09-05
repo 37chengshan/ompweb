@@ -42,27 +42,32 @@ fn spawn_shell_with_env(
     stdout: Stdio,
     stderr: Stdio,
     envs: &[(String, String)],
-) -> Result<Child, std::io::Error> {
+) -> Result<(Child, crate::shell_cwd::ShellCwd), std::io::Error> {
+    let working_directory = crate::shell_cwd::ShellCwd::prepare(cwd)?;
     #[cfg(target_os = "windows")]
     {
         let mut cmd = Command::new("cmd.exe");
-        cmd.args(["/d", "/s", "/c", command]);
-        cmd.current_dir(cwd)
+        let source = if working_directory.unc.is_some() {
+            format!("pushd \"%OMPWEB_COMMAND_CWD%\" || exit /b 1 & {command}")
+        } else { command.to_string() };
+        cmd.args(["/d", "/v:off", "/s", "/c", &source]);
+        cmd.current_dir(&working_directory.path)
             .env_remove("OMPWEB_PEER_SECRET")
             .env("LC_ALL", "C")
             .stdin(Stdio::null())
             .stdout(stdout)
             .stderr(stderr);
         cmd.envs(envs.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+        if let Some(unc) = &working_directory.unc { cmd.env("OMPWEB_COMMAND_CWD", unc); }
         hide_console_window(&mut cmd);
-        cmd.spawn()
+        cmd.spawn().map(|child| (child, working_directory))
     }
     #[cfg(not(target_os = "windows"))]
     {
         use std::os::unix::process::CommandExt;
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", command]);
-        cmd.current_dir(cwd)
+        cmd.current_dir(&working_directory.path)
             .env_remove("OMPWEB_PEER_SECRET")
             .env("LC_ALL", "C")
             .stdin(Stdio::null())
@@ -73,7 +78,7 @@ fn spawn_shell_with_env(
         // timeout can terminate grandchildren too (they inherit the stdout
         // pipe and would otherwise keep the drain threads from seeing EOF).
         cmd.process_group(0);
-        cmd.spawn()
+        cmd.spawn().map(|child| (child, working_directory))
     }
 }
 
@@ -156,7 +161,7 @@ fn run_wait_with_timeout(
     timeout: Duration,
     envs: &[(String, String)],
 ) -> Result<String, IpcError> {
-    let mut child = spawn_shell_with_env(cwd, command, Stdio::piped(), Stdio::piped(), envs)
+    let (mut child, _working_directory) = spawn_shell_with_env(cwd, command, Stdio::piped(), Stdio::piped(), envs)
         .map_err(|e| IpcError::new("spawn_failed", e.to_string()))?;
     let sink = std::sync::Arc::new(std::sync::Mutex::new(Sink::new()));
     let mut readers = Vec::new();
@@ -227,7 +232,7 @@ fn run_detach(cwd: &str, command: &str, envs: &[(String, String)]) -> Result<Str
         .append(true)
         .open(&log_path)
         .map_err(|e| IpcError::new("log_open_failed", e.to_string()))?;
-    let mut child = spawn_shell_with_env(
+    let (mut child, working_directory) = spawn_shell_with_env(
         cwd,
         command,
         Stdio::from(
@@ -240,7 +245,7 @@ fn run_detach(cwd: &str, command: &str, envs: &[(String, String)]) -> Result<Str
     .map_err(|e| IpcError::new("spawn_failed", e.to_string()))?;
     let pid = child.id();
     // The request may return immediately, but the process handle still needs a reaper.
-    std::thread::spawn(move || { let _ = child.wait(); });
+    std::thread::spawn(move || { let _working_directory = working_directory; let _ = child.wait(); });
     Ok(format!(
         "{{\"mode\":\"detach\",\"pid\":{},\"logPath\":{}}}",
         pid,

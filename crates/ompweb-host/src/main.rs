@@ -19,6 +19,7 @@ mod pty_service;
 mod remote_runtime;
 mod session_scan;
 mod settings_service;
+mod shell_cwd;
 mod supervisor;
 
 pub use file_service::is_path_within;

@@ -19,8 +19,10 @@ const long = join(allowed, ...Array.from({ length: 7 }, (_, i) => `segment-${i}-
 mkdirSync(long, { recursive: true });
 const psArgs = (code) => ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(code, "utf16le").toString("base64")];
 const literal = (value) => `'${value.replaceAll("'", "''")}'`;
+const psEnv = { ...process.env };
+delete psEnv.PSModulePath; // A pwsh runner must not force PS7 modules into Windows PowerShell 5.1.
 const ps = (code) => {
-  const result = spawnSync("powershell.exe", psArgs(`$ErrorActionPreference='Stop'; ${code}`), { encoding: "utf8", timeout: 15000, windowsHide: true });
+  const result = spawnSync("powershell.exe", psArgs(`$ErrorActionPreference='Stop'; ${code}`), { encoding: "utf8", timeout: 15000, windowsHide: true, env: psEnv });
   if (result.error || result.status !== 0) throw new Error(result.error?.message ?? result.stderr);
   return result.stdout.trim();
 };
@@ -46,7 +48,10 @@ const check = async (name, run) => {
   catch (error) { evidence.cases.push({ name, status: "fail", ms: Date.now() - start, error: String(error) }); }
   console.log(`${evidence.cases.at(-1).status}: ${name}`);
 };
-const sessionFile = (file) => writeFileSync(file, JSON.stringify({ type: "session", version: 3, id: "fixture", cwd: allowed }) + "\n");
+const sessionFile = (file) => {
+  const title = JSON.stringify({ type: "title", v: 1, title: "fixture" });
+  writeFileSync(file, title + " ".repeat(255 - Buffer.byteLength(title)) + "\n" + JSON.stringify({ type: "session", version: 3, id: "fixture", cwd: allowed }) + "\n");
+};
 try {
   const health = spawnSync(binary, ["--health"], { encoding: "utf8", timeout: 5000 });
   assert.equal(health.status, 0, health.stderr);
@@ -55,7 +60,9 @@ try {
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-4000); });
   const boot = createInterface({ input: child.stdout });
-  const [line] = await Promise.race([once(boot, "line"), once(child, "exit").then(() => { evidence.cases.push({ name: "long-path SQLite startup", status: "fail", error: stderr }); throw new Error(`host exited during startup: ${stderr}`); }), new Promise((_, reject) => setTimeout(() => reject(new Error("host startup timed out")), 12000).unref())]);
+  let booted = false;
+  const [line] = await Promise.race([once(boot, "line"), once(child, "exit").then(() => { if (booted) return; evidence.cases.push({ name: "long-path SQLite startup", status: "fail", error: stderr }); throw new Error(`host exited during startup: ${stderr}`); }), new Promise((_, reject) => setTimeout(() => reject(new Error("host startup timed out")), 12000).unref())]);
+  booted = true;
   const info = JSON.parse(line);
   socket = createConnection({ host: "127.0.0.1", port: info.port });
   await once(socket, "connect");

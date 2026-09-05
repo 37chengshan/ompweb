@@ -20,7 +20,7 @@
 | HTTP / Rust 文件读取 | **200，内容匹配** | 未设置外部 `OMPWEB_HOST_BIN` |
 | 真实 OMP 握手 | **200 / success=true** | OMP 18.1.8，`ensure_session`，没有发送模型提示 |
 | Rust PTY | **创建 200、输入 200、实际执行成功** | shell 生成测试文件，内容为 `terminal-ok` |
-| Windows / macOS x64 / Linux 实装 | **未执行** | CI 矩阵已实现，不能把配置存在写成 CI 已通过 |
+| Windows / macOS x64 / Linux 实装 | **最终 5.1.9 tarball 的基础安装通过** | 四平台 npm install、包内 host IPC/文件读取均成功，特殊权限/路径与完整 UI 仍待验收 |
 | 新版 packaged App 窗口 / 移动端 UI | **未执行** | 不能引用旧包或旧文档证据替代 |
 
 九项跳过包括七项直接使用真实 OMP 的既有测试，以及两项文件系统/平台条件测试。安装冒烟只补充了真实 OMP 基本握手，不等同于补齐七项真实 OMP 测试的所有断言。
@@ -54,8 +54,8 @@
 
 ### 阶段 2：跨平台安装
 
-- [ ] Linux x64、Windows x64、macOS x64/arm64 各跑 host 构建与包内执行。
-- [ ] 完整 npm tarball 四平台聚合，保留 tar 中执行权限。
+- [x] Linux x64、Windows x64、macOS x64/arm64 各跑 host 构建与包内执行。
+- [x] 完整 npm tarball 四平台聚合，保留 tar 中执行权限。
 - [ ] 无桌面 App/无 Cargo/无外部 host 覆盖的账户通过基础操作。
 - [ ] Windows 非管理员、中文空格目录、UNC/junction/长路径和代理环境。
 

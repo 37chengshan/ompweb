@@ -1,0 +1,14 @@
+{
+  "dll_imports": [
+    "api-ms-win-core-synch-l1-2-0.dll",
+    "ws2_32.dll",
+    "kernel32.dll",
+    "ntdll.dll",
+    "advapi32.dll",
+    "bcryptprimitives.dll",
+    "bcrypt.dll",
+    "ADVAPI32.dll",
+    "KERNEL32.dll",
+    "WS2_32.dll"
+  ]
+}

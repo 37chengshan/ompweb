@@ -19,9 +19,8 @@
 
 旧 v5.1.7 的 npm 任务卡在测试阶段超过一小时，已取消，防止过时产物后续意外发布。本轮为测试与发布任务加入明确超时。
 
-## 待回填
+## 尚待专项验收
 
-- 候选 SHA、工作流链接、npm integrity 与桌面文件摘要在发布完成后补充。
 - Windows UAC/UNC/长路径、完整 App 人工流程与移动端键盘/弱网仍待专项验收。
 
 ## 发布前补充发现
@@ -33,6 +32,27 @@
 
 5.1.8 的 Windows host 已能在 GitHub Windows runner 启动，但 PE import table 包含 `VCRUNTIME140.dll`。这只能说明预装 Visual Studio 的 runner 可运行，不能保证普通 npm 用户无 VC 运行库时可用，因此停止了 npm 与桌面流水线，保留 5.1.8 草稿而不发布。
 
-5.1.9 使用显式 MSVC target 与 `+crt-static` 构建；staging 和完整 npm payload verifier 都读取真实 PE import table，发现外部 VCRUNTIME/MSVCP/CONCRT DLL 即阻断。该机制同时覆盖 npm 和 App。已用 5.1.8 的真实 exe 验证拒绝分支；新 exe 的通过证据在 CI 产物完成后回填。
+5.1.9 使用显式 MSVC target 与 `+crt-static` 构建；staging 和完整 npm payload verifier 都读取真实 PE import table，发现外部 VCRUNTIME/MSVCP/CONCRT DLL 即阻断。该机制同时覆盖 npm 和 App。已用 5.1.8 的真实 exe 验证拒绝分支；新 exe 已通过四平台构建/运行门禁；下载后再次检查，导入表只剩 Windows 系统库，见 [5.1.9 导入表](evidence/windows-5.1.9-imports.json)。
 
 依据：[Rust 官方 CRT 链接说明](https://doc.rust-lang.org/reference/linkage.html#static-and-dynamic-c-runtimes)。
+
+## 最终候选
+
+- 标签：`v5.1.9`；源码 SHA：`12e119deaf503b52c166ae47cd30dbebde9d8db9`。
+- [main CI](https://github.com/37chengshan/ompweb/actions/runs/33967602705)：通过。
+- [npm 发布工作流](https://github.com/37chengshan/ompweb/actions/runs/33967736833)。
+- [桌面打包工作流](https://github.com/37chengshan/ompweb/actions/runs/33967736883)。
+
+## 实际发布与产物验证
+
+- GitHub Release 已于 2026-09-05 13:09:06 UTC 公开：[OmpWeb 5.1.9](https://github.com/37chengshan/ompweb/releases/tag/v5.1.9)。三平台桌面构建全部成功，10 个附件（安装包、zip、更新清单、blockmap）摘要见 [发布附件](evidence/github-release-5.1.9.json)。
+- npm 最终包：28,813,146 字节、781 个文件、四目标 Rust host，均保留可执行权限；没有 .omp、dist-desktop、嵌套 standalone 残留。完整 integrity 见 [包清单](evidence/release-package-5.1.9.json)。
+- 四平台均通过最终 tarball 的 npm install、安装目录 host 的 IPC/文件读/授权拒绝及 CLI --version。
+- 同一 CI tarball 在本机独立安装，HTTP 报告 app=5.1.9；Rust 文件读取、真实 OMP 18.1.8 握手、PTY shell 写文件均通过；进程路径确认 host 来自 npm 安装目录。[原始结果](evidence/release-installed-smoke-5.1.9.json)。
+- npm CI 的发布阶段返回 E404/权限拒绝；构建、包聚合和四平台安装阶段都成功。改用本机现有 37chengshan 登录发布同一 tarball，用户完成 npm 两步验证后，5.1.9 发布成功，latest=5.1.9；registry integrity 与验收 tarball 完全相同。[Registry 证据](evidence/npm-registry-5.1.9.json)。未改动或上传发布凭证。
+
+## 下一轮发布链路事项
+
+- 检查 npm 包的 trusted publisher 绑定与 GitHub publish.yml / npm environment 是否匹配；修复身份配置需要账户持有人参与，不将 CI 的 E404 误写成已成功发布。
+- [x] Registry integrity 与已验收 CI tarball 完全一致。
+- 重跑发布任务已成功识别 5.1.9 为已发布版本；该标签运行剩余失败是未配置 Discord webhook 的通知 job，发布和四平台验收均已成功。main 已改为未配置时跳过可选通知；保留旧运行的真实失败记录，不重写发布标签。

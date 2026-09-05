@@ -1,0 +1,29 @@
+{
+  "version": "5.1.9",
+  "bytes": 28813146,
+  "files": 781,
+  "hosts": [
+    {
+      "path": "package/vendor/ompweb-host/darwin-arm64/ompweb-host",
+      "size": 9543600,
+      "mode": "0o755"
+    },
+    {
+      "path": "package/vendor/ompweb-host/darwin-x64/ompweb-host",
+      "size": 9066152,
+      "mode": "0o755"
+    },
+    {
+      "path": "package/vendor/ompweb-host/linux-x64/ompweb-host",
+      "size": 34931712,
+      "mode": "0o755"
+    },
+    {
+      "path": "package/vendor/ompweb-host/win32-x64/ompweb-host.exe",
+      "size": 5715968,
+      "mode": "0o755"
+    }
+  ],
+  "accidental_state": [],
+  "integrity": "sha512-uMW69JYroi2MbpXWhNPWa/2ehh0s5WB7EOflG0nL9SFybiayH5FkeUnRqet8EbMVQ+aRNFCtJ/epfka+pBqX8g=="
+}

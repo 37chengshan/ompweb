@@ -219,6 +219,10 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           DISCORD_WEBHOOK_URL="$(printf '%s' "$DISCORD_WEBHOOK_URL" | tr -d '\r\n')"
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo 'No release webhook configured; skipping optional notification.'
+            exit 0
+          fi
           case "$DISCORD_WEBHOOK_URL" in
             https://discord.com/api/webhooks/*/*) ;;
             *) echo 'DISCORD_RELEASES_WEBHOOK is not a valid Discord webhook URL' >&2; exit 1 ;;

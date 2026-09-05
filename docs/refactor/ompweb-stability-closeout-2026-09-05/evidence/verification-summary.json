@@ -47,5 +47,21 @@
     "fail": 0,
     "cancelled": 0
   },
-  "linux_main_ci": "https://github.com/37chengshan/ompweb/actions/runs/33966992207"
+  "linux_main_ci": "https://github.com/37chengshan/ompweb/actions/runs/33966992207",
+  "release": {
+    "version": "5.1.9",
+    "sha": "12e119deaf503b52c166ae47cd30dbebde9d8db9",
+    "npm_latest": "5.1.9",
+    "registry_integrity_matches": true,
+    "github_published": true,
+    "host_platforms_tested": [
+      "linux-x64",
+      "darwin-arm64",
+      "darwin-x64",
+      "win32-x64"
+    ],
+    "desktop_builds": "3 passed",
+    "ci_publish_identity": "rejected; published same tarball using existing local login and user 2FA",
+    "post_release_notification": "failed: missing webhook"
+  }
 }

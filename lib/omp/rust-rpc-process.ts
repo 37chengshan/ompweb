@@ -98,7 +98,6 @@ export type RpcFrameHandler = (frame: RpcFrameRecord) => void;
 class RustHostManager {
   private host: ChildProcess | null = null;
   private hostDying = false;
-  private teardownTimer: ReturnType<typeof setTimeout> | null = null;
   private port = 0;
   private token = "";
   private bootBuffer = "";
@@ -116,25 +115,17 @@ class RustHostManager {
 
   acquire(): void {
     this.refs += 1;
-    // A new consumer cancels the pending idle teardown: frequent session
-    // switches reuse the same host instead of racing process shutdowns.
-    if (this.teardownTimer) {
-      clearTimeout(this.teardownTimer);
-      this.teardownTimer = null;
-    }
   }
 
   release(): void {
-    this.refs -= 1;
-    if (this.refs <= 0 && !this.teardownTimer) {
-      // Idle grace: keep the host warm across rapid session churn; tear it
-      // down only after sustained inactivity.
-      this.teardownTimer = setTimeout(() => {
-        this.teardownTimer = null;
-        this.teardown();
-      }, 30_000);
-      this.teardownTimer.unref?.();
-    }
+    this.refs = Math.max(0, this.refs - 1);
+    // The host owns every production service domain (sessions, files, Git,
+    // settings, PTY and agents), not only active agent streams.  Destroying
+    // it when the last stream ends made ordinary sidebar/diagnostic requests
+    // re-boot it moments later, which looks like a service restart and can
+    // interrupt an in-flight control request.  Keep one host for the lifetime
+    // of the Next service; shutdownRustHost()/the desktop process tree perform
+    // the explicit final cleanup.
   }
 
   private teardown(): void {
@@ -187,15 +178,20 @@ class RustHostManager {
     // a silent Node fallback. Throws RuntimeUnavailableError with remediation.
     const hostResolution = assertHostAvailable({ moduleDir: MODULE_DIR });
     this.bootPromise = new Promise<void>((resolve, reject) => {
-      // The supervisor is intentionally kept warm after the last session.
+      // The supervisor remains resident for the Next service lifetime.
       // Do not inherit stderr here: Node's test runner (and other short-lived
       // callers) keeps an inherited child stdio handle live until the child
-      // exits, defeating the unref'd idle lifecycle.  Host failures still
-      // surface through the IPC disconnect/error path below.
-      const child = spawn(hostResolution.path, ["--ipc"], { stdio: ["ignore", "pipe", "ignore"] });
+      // exits, defeating an explicit shutdown in short-lived callers. Host
+      // failures still surface through the IPC disconnect/error path below.
+      // The Rust host is a background IPC service. Without windowsHide, every
+      // host recycle flashes a console window in packaged Windows builds.
+      const child = spawn(hostResolution.path, ["--ipc"], {
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+      });
       // The host is a workhorse for this process: it must never keep the
-      // process alive (tests, short-lived scripts). teardown() owns its
-      // lifecycle while the process runs.
+      // process alive (tests, short-lived scripts). shutdown() owns its final
+      // cleanup while the process runs.
       child.unref();
       this.host = child;
       child.on("error", (err) => {

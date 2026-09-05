@@ -1781,7 +1781,13 @@ export function BackendStatusButton() {
       autoOpenedRef.current = true;
       setOpen(true);
     }
-    if (health === "ok") autoOpenedRef.current = false;
+    if (health === "ok") {
+      // A panel opened automatically for a fault must withdraw as soon as a
+      // confirmed healthy snapshot arrives. Leaving it open made the old
+      // "服务异常" label look stale even after recovery.
+      if (autoOpenedRef.current) setOpen(false);
+      autoOpenedRef.current = false;
+    }
   }, [health]);
 
   // Close on any pointer press outside the panel/button, or on Escape.
@@ -1821,7 +1827,7 @@ export function BackendStatusButton() {
         <Activity size={13} strokeWidth={2} aria-hidden="true" />
         <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: color, border: "1.5px solid var(--bg-panel)" }} />
         {health === "error" && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--status-error)" }}>{t("diagnostics.error")}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--status-error)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "7em" }}>{t("diagnostics.error")}</span>
         )}
       </button>
       {open && (

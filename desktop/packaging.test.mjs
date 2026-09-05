@@ -47,3 +47,29 @@ test("desktop packaging ships the Rust host at Resources/bin (route 3)", () => {
 test("manual desktop builds upload artifacts without publishing a branch as a GitHub Release", () => {
   assert.match(desktopWorkflow, /publish-release:\s+#[\s\S]*?if: github\.ref_type == 'tag'/);
 });
+
+test("Windows desktop services stay headless and do not create a detached console", () => {
+  const mainJs = fs.readFileSync(path.join(root, "desktop", "main.js"), "utf8");
+  assert.match(mainJs, /detached: process\.platform !== "win32"/);
+  assert.match(mainJs, /windowsHide: true/);
+  const host = fs.readFileSync(path.join(root, "lib", "omp", "rust-rpc-process.ts"), "utf8");
+  assert.match(host, /spawn\(hostResolution\.path, \["--ipc"\], \{[\s\S]{0,160}windowsHide: true/);
+  const visibility = fs.readFileSync(path.join(root, "crates", "ompweb-host", "src", "process_visibility.rs"), "utf8");
+  assert.match(visibility, /creation_flags\(0x0800_0000\)/);
+  for (const service of ["supervisor.rs", "command_service.rs", "settings_service.rs", "git_service.rs"]) {
+    const source = fs.readFileSync(path.join(root, "crates", "ompweb-host", "src", service), "utf8");
+    assert.match(source, /hide_console_window/);
+  }
+});
+
+test("desktop server startup and Rust host lifecycle cannot churn background processes", () => {
+  const mainJs = fs.readFileSync(path.join(root, "desktop", "main.js"), "utf8");
+  assert.match(mainJs, /let serverStartPromise = null/);
+  assert.match(mainJs, /if \(serverStartPromise\) return serverStartPromise/);
+  const host = fs.readFileSync(path.join(root, "lib", "omp", "rust-rpc-process.ts"), "utf8");
+  assert.match(host, /The host owns every production service domain/);
+  assert.doesNotMatch(host, /teardownTimer/);
+  const releaseBody = host.match(/release\(\): void \{([\s\S]*?)\n  \}\n\n  private teardown/);
+  assert.ok(releaseBody, "Rust host release implementation is present");
+  assert.doesNotMatch(releaseBody[1], /setTimeout/);
+});

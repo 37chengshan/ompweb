@@ -30,6 +30,8 @@ use std::time::{Duration, Instant};
 
 use crate::file_service::is_path_within_any;
 use crate::ipc_server::{json_str, IpcError};
+#[cfg(target_os = "windows")]
+use crate::process_visibility::hide_console_window;
 
 const WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_OUTPUT_BYTES: usize = 20 * 1024;
@@ -51,6 +53,7 @@ fn spawn_shell_with_env(
             .stdout(stdout)
             .stderr(stderr);
         cmd.envs(envs.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+        hide_console_window(&mut cmd);
         cmd.spawn()
     }
     #[cfg(not(target_os = "windows"))]

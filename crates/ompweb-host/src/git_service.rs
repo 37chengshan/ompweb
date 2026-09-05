@@ -13,6 +13,7 @@ use std::thread;
 
 use crate::file_service::is_path_within_any;
 use crate::ipc_server::{json_str, IpcError};
+use crate::process_visibility::hide_console_window;
 
 const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 /// Mirror of TEXT_PREVIEW_MAX_BYTES (lib/file-types.ts) — diff previews cap
@@ -29,6 +30,7 @@ fn run_git(cwd: &str, args: &[&str]) -> Result<String, String> {
         let mut cmd = Command::new("git");
         cmd.arg("-C").arg(&cwd_owned).args(&args_owned);
         cmd.env("LC_ALL", "C");
+        hide_console_window(&mut cmd);
         let _ = tx.send(cmd.output());
     });
     let result = rx

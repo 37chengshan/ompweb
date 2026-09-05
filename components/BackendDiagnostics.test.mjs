@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createJiti } from "jiti";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
@@ -59,4 +62,11 @@ test("shouldAutoFix: cooldown gates repeated auto-repair", () => {
   assert.equal(shouldAutoFix(now - 60_000, now), false);
   // 冷却期已过（≥5min）→ 允许。
   assert.equal(shouldAutoFix(now - 5 * 60_000, now), true);
+});
+
+test("status button retracts automatically after recovery and never stacks error text vertically", () => {
+  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "BackendDiagnostics.tsx"), "utf8");
+  assert.match(source, /if \(autoOpenedRef\.current\) setOpen\(false\)/);
+  assert.match(source, /whiteSpace: "nowrap"/);
+  assert.match(source, /textOverflow: "ellipsis"/);
 });

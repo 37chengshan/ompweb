@@ -7,6 +7,7 @@
 //! credential value itself.
 
 use crate::ipc_server::IpcError;
+use crate::process_visibility::hide_console_window;
 use std::process::Command;
 
 const MAX_SETTING_KEY: usize = 256;
@@ -42,9 +43,10 @@ fn omp_bin() -> String {
 }
 
 fn run(args: &[&str], json_output: bool) -> Result<String, IpcError> {
-    let output = Command::new(omp_bin())
-        .args(args)
-        .env("LC_ALL", "C")
+    let mut command = Command::new(omp_bin());
+    command.args(args).env("LC_ALL", "C");
+    hide_console_window(&mut command);
+    let output = command
         .output()
         .map_err(|err| IpcError::new("settings_exec_failed", err.to_string()))?;
     if output.stdout.len() > MAX_OUTPUT || output.stderr.len() > MAX_OUTPUT {

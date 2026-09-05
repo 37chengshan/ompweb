@@ -14,6 +14,7 @@ mod git_service;
 mod ipc_server;
 mod journal_shadow;
 mod mini_json;
+mod process_visibility;
 mod pty_service;
 mod remote_runtime;
 mod session_scan;

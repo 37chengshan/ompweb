@@ -123,6 +123,7 @@ process.on("unhandledRejection", (reason) => {
 let mainWindow = null;
 let tray = null;
 let serverProcess = null;
+let serverStartPromise = null;
 let quitting = false;
 let serverReady = false;
 // Startup state machine (doc 14 T1.3): spawning → listening →
@@ -250,6 +251,18 @@ function resolveOmpBin() {
 
 /** Start the Next standalone server (self-contained server.js + node_modules). */
 async function startServer() {
+  // Multiple startup surfaces (splash, retry, tray restoration) can race on
+  // a slow Windows machine. Reusing the live hosted server avoids duplicate
+  // Node trees, page reloads, and the console flashes each tree would create.
+  if (serverProcess && serverProcess.exitCode === null) return;
+  if (serverStartPromise) return serverStartPromise;
+  serverStartPromise = startServerImpl().finally(() => {
+    serverStartPromise = null;
+  });
+  return serverStartPromise;
+}
+
+async function startServerImpl() {
   serverReady = false;
   if (!isLoopbackHost(HOST) && !process.env.OMP_WEB_PASSWORD) {
     failStartup(
@@ -315,10 +328,13 @@ async function startServer() {
   if (ompBin) spawnEnv.OMP_WEB_OMP_BIN = ompBin;
   serverProcess = spawn(nodeBin, [serverJs], {
     cwd: standaloneDir,
-    // 独立进程组：退出时按组击杀，否则 omp RPC 子进程（孙进程）会变成
-    // 孤儿并继续持有会话文件锁——正是"旧实例扰乱新实例"（--resume 被
-    // 占用 → 每次新建会话 → 消息发不出去）的根因。
-    detached: true,
+    // POSIX needs an isolated group for recursive shutdown. Windows uses
+    // taskkill /T instead; detaching there creates a separate visible console
+    // for the otherwise background Next service.
+    detached: process.platform !== "win32",
+    // The hosted server is an implementation detail of the GUI app, never a
+    // user-facing terminal. This also applies on each restart after a crash.
+    windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: spawnEnv,
   });

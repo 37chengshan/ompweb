@@ -19,6 +19,8 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
+use crate::process_visibility::hide_console_window;
+
 pub const MAX_RPC_FRAME_BYTES: usize = 1024 * 1024;
 pub const MAX_RPC_REASSEMBLED_BYTES: usize = 64 * 1024 * 1024;
 const RPC_CHUNK_PAYLOAD_BYTES: usize = 256 * 1024;
@@ -137,6 +139,7 @@ impl Supervisor {
         for (key, value) in &self.omp_env {
             cmd.env(key, value);
         }
+        hide_console_window(&mut cmd);
         cmd.spawn().map_err(|e| e.to_string())
     }
 

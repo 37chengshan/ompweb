@@ -194,7 +194,10 @@ export async function resolveProject(cwd: string): Promise<ProjectInfo> {
         isTopLevel,
       };
     } catch {
-      info = { projectRoot: cwd, branch: null, isWorktree: false, isTopLevel: false };
+      // Managed projects use the on-disk path too. Keeping a symlink alias
+      // here puts non-Git sessions in a different sidebar group from their
+      // project (e.g. /tmp versus /private/tmp, or a Windows junction).
+      info = { projectRoot: realPathOrSelf(cwd), branch: null, isWorktree: false, isTopLevel: false };
     }
     cache.set(cwd, { info, expiresAt: Date.now() + PROJECT_CACHE_TTL_MS });
     return info;
